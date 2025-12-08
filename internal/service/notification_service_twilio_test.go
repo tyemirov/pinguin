@@ -5,9 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/temirov/pinguin/internal/config"
-	"gorm.io/gorm"
 	"log/slog"
+
+	"github.com/tyemirov/pinguin/internal/config"
+	"gorm.io/gorm"
 )
 
 func TestNewNotificationServiceLogsWhenSmsDisabled(t *testing.T) {

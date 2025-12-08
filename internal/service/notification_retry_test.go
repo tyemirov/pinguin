@@ -5,9 +5,10 @@ import (
 	"io"
 	"testing"
 
-	"github.com/temirov/pinguin/internal/model"
-	"github.com/temirov/pinguin/pkg/scheduler"
 	"log/slog"
+
+	"github.com/tyemirov/pinguin/internal/model"
+	"github.com/tyemirov/pinguin/pkg/scheduler"
 )
 
 type testEmailSender struct {

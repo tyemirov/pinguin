@@ -8,12 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/temirov/pinguin/pkg/grpcapi"
-	"github.com/temirov/pinguin/pkg/grpcutil"
+	"log/slog"
+
+	"github.com/tyemirov/pinguin/pkg/grpcapi"
+	"github.com/tyemirov/pinguin/pkg/grpcutil"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
-	"log/slog"
 )
 
 // ErrInvalidSettings indicates the provided Settings inputs do not meet

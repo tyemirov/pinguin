@@ -9,8 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/temirov/pinguin/internal/config"
 	"log/slog"
+
+	"github.com/tyemirov/pinguin/internal/config"
 )
 
 type SmsSender interface {

@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/temirov/pinguin/pkg/attachments"
-	"github.com/temirov/pinguin/pkg/grpcapi"
+	"github.com/tyemirov/pinguin/pkg/attachments"
+	"github.com/tyemirov/pinguin/pkg/grpcapi"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 

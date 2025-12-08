@@ -10,13 +10,14 @@ import (
 	"strings"
 	"time"
 
+	"log/slog"
+
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/temirov/pinguin/internal/model"
-	"github.com/temirov/pinguin/internal/service"
+	"github.com/tyemirov/pinguin/internal/model"
+	"github.com/tyemirov/pinguin/internal/service"
 	sessionvalidator "github.com/tyemirov/tauth/pkg/sessionvalidator"
 	"gorm.io/gorm"
-	"log/slog"
 )
 
 const (
