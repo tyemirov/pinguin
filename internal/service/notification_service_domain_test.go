@@ -7,9 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/temirov/pinguin/internal/model"
-	"gorm.io/gorm"
 	"log/slog"
+
+	"github.com/tyemirov/pinguin/internal/model"
+	"gorm.io/gorm"
 )
 
 func TestListNotificationsFiltersByStatus(t *testing.T) {

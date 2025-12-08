@@ -14,11 +14,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/temirov/pinguin/internal/model"
-	"github.com/temirov/pinguin/internal/service"
-	sessionvalidator "github.com/tyemirov/tauth/pkg/sessionvalidator"
 	"log/slog"
+
+	"github.com/gin-gonic/gin"
+	"github.com/tyemirov/pinguin/internal/model"
+	"github.com/tyemirov/pinguin/internal/service"
+	sessionvalidator "github.com/tyemirov/tauth/pkg/sessionvalidator"
 )
 
 func TestListNotificationsRequiresAuth(t *testing.T) {

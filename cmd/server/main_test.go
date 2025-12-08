@@ -11,16 +11,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/temirov/pinguin/internal/model"
-	"github.com/temirov/pinguin/internal/service"
-	"github.com/temirov/pinguin/pkg/client"
-	"github.com/temirov/pinguin/pkg/grpcapi"
+	"log/slog"
+
+	"github.com/tyemirov/pinguin/internal/model"
+	"github.com/tyemirov/pinguin/internal/service"
+	"github.com/tyemirov/pinguin/pkg/client"
+	"github.com/tyemirov/pinguin/pkg/grpcapi"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"log/slog"
 )
 
 func TestNotificationServerHandlesClientRequests(t *testing.T) {

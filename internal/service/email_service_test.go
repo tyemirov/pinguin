@@ -10,8 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/temirov/pinguin/internal/model"
 	"log/slog"
+
+	"github.com/tyemirov/pinguin/internal/model"
 )
 
 func newDiscardLogger() *slog.Logger {

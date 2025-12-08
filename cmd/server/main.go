@@ -13,21 +13,22 @@ import (
 	"strings"
 	"time"
 
-	"github.com/temirov/pinguin/internal/config"
-	"github.com/temirov/pinguin/internal/db"
-	"github.com/temirov/pinguin/internal/httpapi"
-	"github.com/temirov/pinguin/internal/model"
-	"github.com/temirov/pinguin/internal/service"
-	"github.com/temirov/pinguin/pkg/grpcapi"
-	"github.com/temirov/pinguin/pkg/grpcutil"
-	"github.com/temirov/pinguin/pkg/logging"
+	"log/slog"
+
+	"github.com/tyemirov/pinguin/internal/config"
+	"github.com/tyemirov/pinguin/internal/db"
+	"github.com/tyemirov/pinguin/internal/httpapi"
+	"github.com/tyemirov/pinguin/internal/model"
+	"github.com/tyemirov/pinguin/internal/service"
+	"github.com/tyemirov/pinguin/pkg/grpcapi"
+	"github.com/tyemirov/pinguin/pkg/grpcutil"
+	"github.com/tyemirov/pinguin/pkg/logging"
 	sessionvalidator "github.com/tyemirov/tauth/pkg/sessionvalidator"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"log/slog"
 )
 
 // notificationServiceServer implements grpcapi.NotificationServiceServer.

@@ -5,8 +5,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/temirov/pinguin/internal/config"
 	"log/slog"
+
+	"github.com/tyemirov/pinguin/internal/config"
 )
 
 func TestNewNotificationServiceUsesSMTPEmailSender(t *testing.T) {
