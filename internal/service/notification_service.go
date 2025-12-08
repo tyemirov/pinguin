@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/temirov/pinguin/internal/config"
-	"github.com/temirov/pinguin/internal/model"
-	"github.com/temirov/pinguin/pkg/scheduler"
+	"github.com/tyemirov/pinguin/internal/config"
+	"github.com/tyemirov/pinguin/internal/model"
+	"github.com/tyemirov/pinguin/pkg/scheduler"
 	"gorm.io/gorm"
 	"log/slog"
 )

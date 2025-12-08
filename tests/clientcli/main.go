@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/temirov/pinguin/pkg/attachments"
-	"github.com/temirov/pinguin/pkg/client"
-	"github.com/temirov/pinguin/pkg/grpcapi"
+	"github.com/tyemirov/pinguin/pkg/attachments"
+	"github.com/tyemirov/pinguin/pkg/client"
+	"github.com/tyemirov/pinguin/pkg/grpcapi"
 	"log/slog"
 )
 

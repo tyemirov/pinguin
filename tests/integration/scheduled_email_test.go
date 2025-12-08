@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/temirov/pinguin/internal/config"
-	"github.com/temirov/pinguin/internal/model"
-	"github.com/temirov/pinguin/internal/service"
+	"github.com/tyemirov/pinguin/internal/config"
+	"github.com/tyemirov/pinguin/internal/model"
+	"github.com/tyemirov/pinguin/internal/service"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"log/slog"

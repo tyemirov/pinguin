@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/temirov/pinguin/internal/config"
+	"github.com/tyemirov/pinguin/internal/config"
 	"gorm.io/gorm"
 	"log/slog"
 )

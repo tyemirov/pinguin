@@ -1,4 +1,4 @@
-module github.com/temirov/pinguin
+module github.com/tyemirov/pinguin
 
 go 1.25
 

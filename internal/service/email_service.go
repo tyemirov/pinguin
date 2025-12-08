@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/temirov/pinguin/internal/config"
-	"github.com/temirov/pinguin/internal/model"
+	"github.com/tyemirov/pinguin/internal/config"
+	"github.com/tyemirov/pinguin/internal/model"
 	"log/slog"
 )
 
