@@ -701,7 +701,7 @@ const file_pinguin_proto_rawDesc = "" +
 	"\x15GetNotificationStatus\x12%.pinguin.GetNotificationStatusRequest\x1a\x1d.pinguin.NotificationResponse\x12Z\n" +
 	"\x11ListNotifications\x12!.pinguin.ListNotificationsRequest\x1a\".pinguin.ListNotificationsResponse\x12_\n" +
 	"\x16RescheduleNotification\x12&.pinguin.RescheduleNotificationRequest\x1a\x1d.pinguin.NotificationResponse\x12W\n" +
-	"\x12CancelNotification\x12\".pinguin.CancelNotificationRequest\x1a\x1d.pinguin.NotificationResponseB0Z.github.com/temirov/pinguin/pkg/grpcapi;grpcapib\x06proto3"
+	"\x12CancelNotification\x12\".pinguin.CancelNotificationRequest\x1a\x1d.pinguin.NotificationResponseB0Z.github.com/tyemirov/pinguin/pkg/grpcapi;grpcapib\x06proto3"
 
 var (
 	file_pinguin_proto_rawDescOnce sync.Once

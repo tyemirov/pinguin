@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/temirov/pinguin/internal/model"
+	"github.com/tyemirov/pinguin/internal/model"
 )
 
 func TestInitDBCreatesSchema(t *testing.T) {

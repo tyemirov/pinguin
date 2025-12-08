@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/temirov/pinguin/internal/model"
+	"github.com/tyemirov/pinguin/internal/model"
 	"gorm.io/gorm"
 	"log/slog"
 )

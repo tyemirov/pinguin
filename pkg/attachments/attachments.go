@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/temirov/pinguin/pkg/grpcapi"
+	"github.com/tyemirov/pinguin/pkg/grpcapi"
 )
 
 const defaultContentType = "application/octet-stream"
