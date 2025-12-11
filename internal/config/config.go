@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/temirov/pinguin/internal/tenant"
+	"github.com/tyemirov/pinguin/internal/tenant"
 	"gopkg.in/yaml.v3"
 )
 

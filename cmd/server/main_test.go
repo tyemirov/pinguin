@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/temirov/pinguin/internal/model"
-	"github.com/temirov/pinguin/pkg/grpcapi"
+	"github.com/tyemirov/pinguin/internal/model"
+	"github.com/tyemirov/pinguin/pkg/grpcapi"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"

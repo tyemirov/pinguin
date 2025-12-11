@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/temirov/pinguin/internal/config"
-	"github.com/temirov/pinguin/internal/httpapi"
-	"github.com/temirov/pinguin/internal/service"
-	"github.com/temirov/pinguin/internal/tenant"
+	"github.com/tyemirov/pinguin/internal/config"
+	"github.com/tyemirov/pinguin/internal/httpapi"
+	"github.com/tyemirov/pinguin/internal/service"
+	"github.com/tyemirov/pinguin/internal/tenant"
 	"log/slog"
 )
 

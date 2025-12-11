@@ -67,7 +67,7 @@ Pinguin is a production‑quality notification service written in Go. It exposes
 Clone the repository and navigate to the project directory:
 
 ```bash
-git clone https://github.com/temirov/pinguin.git
+git clone https://github.com/tyemirov/pinguin.git
 cd pinguin
 ```
 

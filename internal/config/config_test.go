@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/temirov/pinguin/internal/tenant"
+	"github.com/tyemirov/pinguin/internal/tenant"
 )
 
 func TestLoadConfigFromYAMLWithEnvExpansion(t *testing.T) {

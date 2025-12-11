@@ -5,10 +5,10 @@ import (
 	"os"
 
 	"github.com/spf13/viper"
-	"github.com/temirov/pinguin/cmd/client/internal/command"
-	cliConfig "github.com/temirov/pinguin/cmd/client/internal/config"
-	"github.com/temirov/pinguin/pkg/client"
-	"github.com/temirov/pinguin/pkg/logging"
+	"github.com/tyemirov/pinguin/cmd/client/internal/command"
+	cliConfig "github.com/tyemirov/pinguin/cmd/client/internal/config"
+	"github.com/tyemirov/pinguin/pkg/client"
+	"github.com/tyemirov/pinguin/pkg/logging"
 )
 
 func main() {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/temirov/pinguin/internal/model"
+	"github.com/tyemirov/pinguin/internal/model"
 )
 
 func TestNormalizeAttachmentsEmail(t *testing.T) {

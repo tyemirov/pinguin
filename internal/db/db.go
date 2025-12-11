@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/temirov/pinguin/internal/model"
-	"github.com/temirov/pinguin/internal/tenant"
+	"github.com/tyemirov/pinguin/internal/model"
+	"github.com/tyemirov/pinguin/internal/tenant"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"

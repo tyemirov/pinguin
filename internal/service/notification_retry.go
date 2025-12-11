@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/temirov/pinguin/internal/model"
-	"github.com/temirov/pinguin/internal/tenant"
-	"github.com/temirov/pinguin/pkg/scheduler"
+	"github.com/tyemirov/pinguin/internal/model"
+	"github.com/tyemirov/pinguin/internal/tenant"
+	"github.com/tyemirov/pinguin/pkg/scheduler"
 	"gorm.io/gorm"
 )
 

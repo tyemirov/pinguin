@@ -12,9 +12,9 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/temirov/pinguin/internal/model"
-	"github.com/temirov/pinguin/internal/service"
-	"github.com/temirov/pinguin/internal/tenant"
+	"github.com/tyemirov/pinguin/internal/model"
+	"github.com/tyemirov/pinguin/internal/service"
+	"github.com/tyemirov/pinguin/internal/tenant"
 	sessionvalidator "github.com/tyemirov/tauth/pkg/sessionvalidator"
 	"gorm.io/gorm"
 	"log/slog"

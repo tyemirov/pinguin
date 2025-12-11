@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/temirov/pinguin/internal/model"
-	"github.com/temirov/pinguin/internal/tenant"
+	"github.com/tyemirov/pinguin/internal/model"
+	"github.com/tyemirov/pinguin/internal/tenant"
 )
 
 const dbTestTenantID = "tenant-db"
