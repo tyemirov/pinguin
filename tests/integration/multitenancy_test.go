@@ -3,6 +3,7 @@ package integrationtest
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -129,8 +130,9 @@ func TestHTTPMultitenantIsolation(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	svc := service.NewNotificationService(db, logger, config.Config{}, repo)
 
+	addr := allocateFreeAddr(t)
 	server, err := httpapi.NewServer(httpapi.Config{
-		ListenAddr:          ":8080",
+		ListenAddr:          addr,
 		SessionValidator:    &mockSessionValidator{},
 		NotificationService: svc,
 		TenantRepository:    repo,
@@ -166,9 +168,10 @@ func TestHTTPMultitenantIsolation(t *testing.T) {
 	time.Sleep(100 * time.Millisecond) // Brittle but simple for now.
 
 	client := &http.Client{}
+	runtimeConfigURL := fmt.Sprintf("http://%s/runtime-config", addr)
 
 	// Test 1: Valid Host (Tenant A)
-	req, _ := http.NewRequest("GET", "http://localhost:8080/runtime-config", nil)
+	req, _ := http.NewRequest("GET", runtimeConfigURL, nil)
 	req.Host = "a.example.com" // Set Host header
 	resp, err := client.Do(req)
 	if err != nil {
@@ -191,7 +194,7 @@ func TestHTTPMultitenantIsolation(t *testing.T) {
 	}
 
 	// Test 2: Invalid Host
-	req2, _ := http.NewRequest("GET", "http://localhost:8080/runtime-config", nil)
+	req2, _ := http.NewRequest("GET", runtimeConfigURL, nil)
 	req2.Host = "unknown.example.com"
 	resp2, err := client.Do(req2)
 	if err != nil {
