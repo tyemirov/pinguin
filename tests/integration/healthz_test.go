@@ -42,21 +42,28 @@ func TestHealthzBypassesTenantResolution(t *testing.T) {
 	go func() { _ = server.Start() }()
 	defer func() { _ = server.Shutdown(context.Background()) }()
 
-	client := &http.Client{Timeout: 5 * time.Second}
-	request, err := http.NewRequest(http.MethodGet, "http://"+addr+"/healthz", nil)
-	if err != nil {
-		t.Fatalf("build request error: %v", err)
-	}
-	request.Host = "unknown.localhost"
+	client := &http.Client{Timeout: 500 * time.Millisecond}
+	url := "http://" + addr + "/healthz"
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		request, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			t.Fatalf("build request error: %v", err)
+		}
+		request.Host = "unknown.localhost"
 
-	response, err := client.Do(request)
-	if err != nil {
-		t.Fatalf("healthz request error: %v", err)
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200 for healthz, got %d", response.StatusCode)
+		response, err := client.Do(request)
+		if err == nil {
+			defer response.Body.Close()
+			if response.StatusCode != http.StatusOK {
+				t.Fatalf("expected 200 for healthz, got %d", response.StatusCode)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("healthz request error: %v", err)
+		}
+		time.Sleep(25 * time.Millisecond)
 	}
 }
 
