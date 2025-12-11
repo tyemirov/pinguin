@@ -9,6 +9,8 @@ import (
 	"gorm.io/gorm"
 )
 
+const modelTestTenantID = "tenant-model"
+
 func TestNotificationListFiltersNormalizeStatuses(t *testing.T) {
 	t.Helper()
 
@@ -52,6 +54,7 @@ func TestNewNotificationConstructsQueuedRecord(t *testing.T) {
 			t.Helper()
 
 			request := NotificationRequest{
+				TenantID:         modelTestTenantID,
 				NotificationType: NotificationEmail,
 				Recipient:        "user@example.com",
 				Subject:          "Greetings",
@@ -86,6 +89,7 @@ func TestNewNotificationCopiesAttachments(t *testing.T) {
 	t.Helper()
 
 	request := NotificationRequest{
+		TenantID:         modelTestTenantID,
 		NotificationType: NotificationEmail,
 		Recipient:        "user@example.com",
 		Message:          "Body",
@@ -120,6 +124,7 @@ func TestNewNotificationResponseCopiesScheduledTime(t *testing.T) {
 
 	scheduledTime := time.Now().UTC().Add(5 * time.Minute)
 	response := NewNotificationResponse(Notification{
+		TenantID:         modelTestTenantID,
 		NotificationID:   "notif-1",
 		NotificationType: NotificationSMS,
 		Recipient:        "+15550000000",
@@ -148,6 +153,7 @@ func TestDatabaseHelpersFilterAndRetrieve(t *testing.T) {
 	ctx := context.Background()
 
 	baseNotification := Notification{
+		TenantID:         modelTestTenantID,
 		NotificationType: NotificationEmail,
 		Recipient:        "user@example.com",
 		Message:          "Body",
@@ -168,7 +174,7 @@ func TestDatabaseHelpersFilterAndRetrieve(t *testing.T) {
 		}
 	}
 
-	pending, pendingError := GetQueuedOrFailedNotifications(ctx, database, 5, time.Now().UTC())
+	pending, pendingError := GetQueuedOrFailedNotifications(ctx, database, modelTestTenantID, 5, time.Now().UTC())
 	if pendingError != nil {
 		t.Fatalf("pending retrieval error: %v", pendingError)
 	}
@@ -177,7 +183,7 @@ func TestDatabaseHelpersFilterAndRetrieve(t *testing.T) {
 		t.Fatalf("expected two pending notifications, got %d", len(pending))
 	}
 
-	fetched, fetchError := MustGetNotificationByID(ctx, database, "queued-now")
+	fetched, fetchError := MustGetNotificationByID(ctx, database, modelTestTenantID, "queued-now")
 	if fetchError != nil {
 		t.Fatalf("fetch notification error: %v", fetchError)
 	}
@@ -185,7 +191,7 @@ func TestDatabaseHelpersFilterAndRetrieve(t *testing.T) {
 		t.Fatalf("unexpected fetched id %s", fetched.NotificationID)
 	}
 
-	_, missingError := MustGetNotificationByID(ctx, database, "missing")
+	_, missingError := MustGetNotificationByID(ctx, database, modelTestTenantID, "missing")
 	if missingError == nil {
 		t.Fatalf("expected missing error")
 	}

@@ -106,6 +106,7 @@ func TestSendCommandBuildsRequest(t *testing.T) {
 				Sender:           stub,
 				OperationTimeout: 2 * time.Second,
 				Output:           &bytes.Buffer{},
+				TenantID:         "tenant-123",
 			}
 			cmd := NewRootCommand(deps)
 			cmd.SetArgs(testCase.args)
@@ -157,6 +158,7 @@ func TestSendCommandHandlesClientError(t *testing.T) {
 		Sender:           stub,
 		OperationTimeout: time.Second,
 		Output:           &bytes.Buffer{},
+		TenantID:         "tenant-123",
 	}
 	cmd := NewRootCommand(deps)
 	cmd.SetArgs([]string{
@@ -179,6 +181,30 @@ func TestSendCommandHandlesClientError(t *testing.T) {
 	}
 }
 
+func TestSendCommandRequiresTenant(t *testing.T) {
+	t.Helper()
+
+	stub := &stubClient{}
+	deps := Dependencies{
+		Sender:           stub,
+		OperationTimeout: time.Second,
+		Output:           &bytes.Buffer{},
+		TenantID:         "",
+	}
+	cmd := NewRootCommand(deps)
+	cmd.SetArgs([]string{
+		"send",
+		"--type", "email",
+		"--recipient", "user@example.com",
+		"--subject", "Subj",
+		"--message", "Body",
+	})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "tenant-id is required") {
+		t.Fatalf("expected tenant error, got %v", err)
+	}
+}
+
 func TestSendCommandFormatsOutput(t *testing.T) {
 	t.Parallel()
 
@@ -188,6 +214,7 @@ func TestSendCommandFormatsOutput(t *testing.T) {
 		Sender:           stub,
 		OperationTimeout: time.Second,
 		Output:           output,
+		TenantID:         "tenant-123",
 	}
 	cmd := NewRootCommand(deps)
 	cmd.SetArgs([]string{
@@ -227,6 +254,7 @@ func TestSendCommandLoadsAttachments(t *testing.T) {
 		Sender:           stub,
 		OperationTimeout: time.Second,
 		Output:           output,
+		TenantID:         "tenant-123",
 	}
 	cmd := NewRootCommand(deps)
 	cmd.SetArgs([]string{
@@ -269,6 +297,7 @@ func TestSendCommandRejectsAttachmentsForSms(t *testing.T) {
 		Sender:           stub,
 		OperationTimeout: time.Second,
 		Output:           &bytes.Buffer{},
+		TenantID:         "tenant-123",
 	}
 	cmd := NewRootCommand(deps)
 	cmd.SetArgs([]string{

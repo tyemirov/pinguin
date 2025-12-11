@@ -4,6 +4,8 @@
 const runtimeWindow = window;
 const rawConfig = runtimeWindow.__PINGUIN_CONFIG__ ?? {};
 const tauthConfig = runtimeWindow.PINGUIN_TAUTH_CONFIG || {};
+const tenantConfig =
+  rawConfig && typeof rawConfig.tenant === 'object' ? rawConfig.tenant : null;
 
 const normalizeUrl = (value, fallback) => {
   if (!value || typeof value !== "string") {
@@ -66,10 +68,15 @@ export const RUNTIME_CONFIG = Object.freeze({
     normalizeGoogleClientId(rawConfig.googleClientId || tauthConfig.googleClientId) || deriveGoogleClientId(),
   landingUrl: String(rawConfig.landingUrl || "/index.html"),
   dashboardUrl: String(rawConfig.dashboardUrl || "/dashboard.html"),
+  tenant: tenantConfig,
 });
 
+const tenantDisplayName =
+  (tenantConfig && typeof tenantConfig.displayName === "string" && tenantConfig.displayName.trim()) ||
+  "Pinguin Notification Service";
+
 export const STRINGS = Object.freeze({
-  appName: "Pinguin Notification Service",
+  appName: tenantDisplayName,
   landing: {
     eyebrow: "Trusted delivery infrastructure",
     headline: "Deliver email and SMS notifications with confidence",

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package pinguin;
 
-option go_package = "github.com/temirov/pinguin/pkg/grpcapi;grpcapi";
+option go_package = "github.com/tyemirov/pinguin/pkg/grpcapi;grpcapi";
 import "google/protobuf/timestamp.proto";
 
 // Enumeration for notification type.
@@ -36,6 +36,7 @@ message NotificationRequest {
   string message = 4;
   google.protobuf.Timestamp scheduled_time = 5;
   repeated EmailAttachment attachments = 6;
+  string tenant_id = 7;
 }
 
 // Response returned after sending (or when retrieving) a notification.
@@ -52,16 +53,19 @@ message NotificationResponse {
   string updated_at = 10;
   google.protobuf.Timestamp scheduled_time = 11;
   repeated EmailAttachment attachments = 12;
+  string tenant_id = 13;
 }
 
 // Request for retrieving the status.
 message GetNotificationStatusRequest {
   string notification_id = 1;
+  string tenant_id = 2;
 }
 
 // Request for listing notifications.
 message ListNotificationsRequest {
   repeated Status statuses = 1;
+  string tenant_id = 2;
 }
 
 // Response containing notifications for list requests.
@@ -73,11 +77,13 @@ message ListNotificationsResponse {
 message RescheduleNotificationRequest {
   string notification_id = 1;
   google.protobuf.Timestamp scheduled_time = 2;
+  string tenant_id = 3;
 }
 
 // Request to cancel a queued notification.
 message CancelNotificationRequest {
   string notification_id = 1;
+  string tenant_id = 2;
 }
 
 // NotificationService defines two RPC methods.

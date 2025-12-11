@@ -4,11 +4,12 @@ const testServerUrl = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:4173'
 
 export default defineConfig({
   testDir: './tests/e2e',
-  timeout: 30 * 1000,
+  timeout: 60 * 1000,
   expect: {
     timeout: 5 * 1000,
   },
   fullyParallel: false,
+  globalSetup: './tests/e2e/global-setup.js',
   reporter: [['list']],
   workers: 1,
   use: {
@@ -20,7 +21,7 @@ export default defineConfig({
   webServer: {
     command: 'node tests/support/devServer.js',
     url: testServerUrl,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: true,
     stdout: 'pipe',
     stderr: 'pipe',
   },

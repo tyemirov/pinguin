@@ -33,15 +33,15 @@ func TestNewNotificationServiceUsesSMTPEmailSender(t *testing.T) {
 		OperationTimeoutSec:  10,
 	}
 
-	serviceInstance := NewNotificationService(database, logger, configuration)
+	serviceInstance := NewNotificationService(database, logger, configuration, nil)
 	concrete, ok := serviceInstance.(*notificationServiceImpl)
 	if !ok {
 		t.Fatalf("unexpected service implementation type %T", serviceInstance)
 	}
 
-	smtpSender, ok := concrete.emailSender.(*SMTPEmailSender)
+	smtpSender, ok := concrete.defaultEmailSender.(*SMTPEmailSender)
 	if !ok {
-		t.Fatalf("expected SMTPEmailSender, got %T", concrete.emailSender)
+		t.Fatalf("expected SMTPEmailSender, got %T", concrete.defaultEmailSender)
 	}
 
 	if smtpSender.Config.Host != configuration.SMTPHost {

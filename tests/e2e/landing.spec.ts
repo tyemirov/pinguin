@@ -49,4 +49,46 @@ test.describe('Landing page auth flow', () => {
       expect(headerBase).not.toBe('');
     }
   });
+
+  test('updates header brand label with tenant display name', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.waitForFunction((expected) => {
+      const header = document.querySelector('mpr-header');
+      return header && header.getAttribute('brand-label') === expected;
+    }, 'Playwright Tenant');
+  });
+
+  test.describe('Tenant branding variants', () => {
+    test.beforeEach(async ({ page, request }) => {
+      await resetNotifications(request);
+      await stubExternalAssets(page);
+      await configureRuntime(page, {
+        authenticated: false,
+        tenant: {
+          id: 'tenant-bravo',
+          slug: 'bravo',
+          displayName: 'Bravo Labs',
+          identity: {
+            googleClientId: 'bravo-google-client',
+            tauthBaseUrl: 'https://auth.bravo.test',
+          },
+        },
+      });
+    });
+
+    test('applies runtime tenant display name and Google client ID', async ({ page }) => {
+      await page.goto('/index.html');
+      await page.waitForFunction((expected) => {
+        const header = document.querySelector('mpr-header');
+        return header && header.getAttribute('brand-label') === expected;
+      }, 'Bravo Labs');
+      await expect(
+        page.locator('mpr-header').first(),
+      ).toHaveAttribute('site-id', 'bravo-google-client');
+      const slug = await page.evaluate(
+        () => (window as any).__PINGUIN_CONFIG__?.tenant?.slug || '',
+      );
+      expect(slug).toBe('bravo');
+    });
+  });
 });

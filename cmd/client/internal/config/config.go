@@ -11,6 +11,7 @@ import (
 const (
 	serverAddressKey     = "grpc_server_addr"
 	authTokenKey         = "grpc_auth_token"
+	tenantIDKey          = "tenant_id"
 	connectionTimeoutKey = "connection_timeout_sec"
 	operationTimeoutKey  = "operation_timeout_sec"
 	logLevelKey          = "log_level"
@@ -19,6 +20,7 @@ const (
 type Config struct {
 	serverAddress     string
 	authToken         string
+	tenantID          string
 	connectionTimeout int
 	operationTimeout  int
 	logLevel          string
@@ -47,6 +49,11 @@ func Load(provider *viper.Viper) (Config, error) {
 		return Config{}, fmt.Errorf("missing gRPC auth token")
 	}
 
+	tenantID := strings.TrimSpace(provider.GetString(tenantIDKey))
+	if tenantID == "" {
+		return Config{}, fmt.Errorf("missing tenant id (set PINGUIN_TENANT_ID)")
+	}
+
 	connectionTimeout := provider.GetInt(connectionTimeoutKey)
 	if connectionTimeout <= 0 {
 		return Config{}, fmt.Errorf("invalid connection timeout %d", connectionTimeout)
@@ -65,6 +72,7 @@ func Load(provider *viper.Viper) (Config, error) {
 	return Config{
 		serverAddress:     serverAddress,
 		authToken:         authToken,
+		tenantID:          tenantID,
 		connectionTimeout: connectionTimeout,
 		operationTimeout:  operationTimeout,
 		logLevel:          strings.ToUpper(logLevel),
@@ -85,6 +93,10 @@ func (configuration Config) ConnectionTimeoutSeconds() int {
 
 func (configuration Config) OperationTimeoutSeconds() int {
 	return configuration.operationTimeout
+}
+
+func (configuration Config) TenantID() string {
+	return configuration.tenantID
 }
 
 func (configuration Config) ConnectionTimeout() time.Duration {

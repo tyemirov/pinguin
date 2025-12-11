@@ -51,7 +51,7 @@ test-integration: test-slow
 test: test-fast test-slow
 
 test-frontend:
-	$(LONG_TIMEOUT) npm test
+	CI=1 $(LONG_TIMEOUT) npm test
 
 build:
 	mkdir -p bin

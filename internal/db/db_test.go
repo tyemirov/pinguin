@@ -10,7 +10,10 @@ import (
 	"time"
 
 	"github.com/tyemirov/pinguin/internal/model"
+	"github.com/tyemirov/pinguin/internal/tenant"
 )
+
+const dbTestTenantID = "tenant-db"
 
 func TestInitDBCreatesSchema(t *testing.T) {
 	t.Helper()
@@ -24,6 +27,7 @@ func TestInitDBCreatesSchema(t *testing.T) {
 	}
 
 	notification := model.Notification{
+		TenantID:         dbTestTenantID,
 		NotificationID:   "db-test",
 		NotificationType: model.NotificationEmail,
 		Recipient:        "user@example.com",
@@ -33,16 +37,31 @@ func TestInitDBCreatesSchema(t *testing.T) {
 		UpdatedAt:        time.Now().UTC(),
 	}
 
-	if createError := database.WithContext(context.Background()).Create(&notification).Error; createError != nil {
+	ctx := context.Background()
+	if createError := database.WithContext(ctx).Create(&notification).Error; createError != nil {
 		t.Fatalf("create notification error: %v", createError)
 	}
 
-	fetched, fetchError := model.GetNotificationByID(context.Background(), database, "db-test")
+	fetched, fetchError := model.GetNotificationByID(ctx, database, dbTestTenantID, "db-test")
 	if fetchError != nil {
 		t.Fatalf("fetch notification error: %v", fetchError)
 	}
 	if fetched.NotificationID != "db-test" {
 		t.Fatalf("unexpected notification id %s", fetched.NotificationID)
+	}
+
+	tables := []interface{}{
+		&tenant.Tenant{},
+		&tenant.TenantDomain{},
+		&tenant.TenantMember{},
+		&tenant.TenantIdentity{},
+		&tenant.EmailProfile{},
+		&tenant.SMSProfile{},
+	}
+	for _, table := range tables {
+		if exists := database.Migrator().HasTable(table); !exists {
+			t.Fatalf("expected tenant table for %T", table)
+		}
 	}
 }
 

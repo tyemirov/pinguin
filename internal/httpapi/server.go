@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/tyemirov/pinguin/internal/model"
 	"github.com/tyemirov/pinguin/internal/service"
+	"github.com/tyemirov/pinguin/internal/tenant"
 	sessionvalidator "github.com/tyemirov/tauth/pkg/sessionvalidator"
 	"gorm.io/gorm"
 	"log/slog"
@@ -34,9 +35,9 @@ type Config struct {
 	ListenAddr           string
 	StaticRoot           string
 	AllowedOrigins       []string
-	AdminEmails          []string
 	SessionValidator     SessionValidator
 	NotificationService  service.NotificationService
+	TenantRepository     *tenant.Repository
 	Logger               *slog.Logger
 	ReadHeaderTimeout    time.Duration
 	ShutdownGraceTimeout time.Duration
@@ -47,7 +48,6 @@ type Server struct {
 	config     Config
 	httpServer *http.Server
 	logger     *slog.Logger
-	adminSet   map[string]struct{}
 }
 
 // NewServer wires Gin, middleware, and handlers for the HTTP API.
@@ -61,18 +61,18 @@ func NewServer(cfg Config) (*Server, error) {
 	if cfg.NotificationService == nil {
 		return nil, errors.New("httpapi: notification service is required")
 	}
+	if cfg.TenantRepository == nil {
+		return nil, errors.New("httpapi: tenant repository is required")
+	}
 	if cfg.Logger == nil {
 		return nil, errors.New("httpapi: logger is required")
-	}
-	adminAllowlist := normalizeEmailAllowlist(cfg.AdminEmails)
-	if len(adminAllowlist) == 0 {
-		return nil, errors.New("httpapi: admin allowlist is required")
 	}
 
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
 	engine.Use(gin.Recovery())
 	engine.Use(requestLogger(cfg.Logger))
+	engine.Use(tenantMiddleware(cfg.TenantRepository))
 	engine.Use(buildCORS(cfg.AllowedOrigins))
 
 	engine.GET("/runtime-config", serveRuntimeConfig())
@@ -81,7 +81,7 @@ func NewServer(cfg Config) (*Server, error) {
 	})
 
 	protected := engine.Group("/api")
-	protected.Use(sessionMiddleware(cfg.SessionValidator, adminAllowlist))
+	protected.Use(sessionMiddleware(cfg.SessionValidator))
 
 	handler := newNotificationHandler(cfg.NotificationService, cfg.Logger)
 	protected.GET("/notifications", handler.listNotifications)
@@ -136,7 +136,6 @@ func NewServer(cfg Config) (*Server, error) {
 		config:     cfg,
 		httpServer: httpServer,
 		logger:     cfg.Logger,
-		adminSet:   adminAllowlist,
 	}, nil
 }
 
@@ -190,19 +189,39 @@ func buildCORS(allowedOrigins []string) gin.HandlerFunc {
 	return cors.New(cfg)
 }
 
-func sessionMiddleware(validator SessionValidator, adminAllowlist map[string]struct{}) gin.HandlerFunc {
+func tenantMiddleware(repo *tenant.Repository) gin.HandlerFunc {
 	return func(contextGin *gin.Context) {
+		if contextGin.Request != nil && contextGin.Request.URL != nil && contextGin.Request.URL.Path == "/healthz" {
+			contextGin.Next()
+			return
+		}
+		runtimeCfg, err := repo.ResolveByHost(contextGin.Request.Context(), contextGin.Request.Host)
+		if err != nil {
+			contextGin.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "tenant_not_found"})
+			return
+		}
+		ctx := tenant.WithRuntime(contextGin.Request.Context(), runtimeCfg)
+		contextGin.Request = contextGin.Request.WithContext(ctx)
+		contextGin.Next()
+	}
+}
+
+func sessionMiddleware(validator SessionValidator) gin.HandlerFunc {
+	return func(contextGin *gin.Context) {
+		runtimeCfg, ok := tenant.RuntimeFromContext(contextGin.Request.Context())
+		if !ok {
+			contextGin.AbortWithStatus(http.StatusInternalServerError)
+			return
+		}
 		claims, err := validator.ValidateRequest(contextGin.Request)
 		if err != nil {
 			contextGin.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
 		email := strings.ToLower(strings.TrimSpace(claims.GetUserEmail()))
-		if len(adminAllowlist) > 0 {
-			if _, ok := adminAllowlist[email]; !ok {
-				contextGin.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "admin access required"})
-				return
-			}
+		if _, ok := runtimeCfg.Admins[email]; !ok {
+			contextGin.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "admin access required"})
+			return
 		}
 		contextGin.Set(contextKeyClaims, claims)
 		contextGin.Next()
@@ -327,31 +346,43 @@ func pickDuration(candidate time.Duration, fallback time.Duration) time.Duration
 }
 
 type runtimeConfigPayload struct {
-	APIBaseURL string `json:"apiBaseUrl"`
+	APIBaseURL string              `json:"apiBaseUrl"`
+	Tenant     runtimeConfigTenant `json:"tenant"`
+}
+
+type runtimeConfigTenant struct {
+	ID          string                      `json:"id"`
+	Slug        string                      `json:"slug"`
+	DisplayName string                      `json:"displayName"`
+	Identity    runtimeConfigTenantIdentity `json:"identity"`
+}
+
+type runtimeConfigTenantIdentity struct {
+	GoogleClientID string `json:"googleClientId"`
+	TAuthBaseURL   string `json:"tauthBaseUrl"`
 }
 
 func serveRuntimeConfig() gin.HandlerFunc {
 	return func(contextGin *gin.Context) {
+		runtimeCfg, ok := tenant.RuntimeFromContext(contextGin.Request.Context())
+		if !ok {
+			contextGin.AbortWithStatus(http.StatusInternalServerError)
+			return
+		}
 		payload := runtimeConfigPayload{
 			APIBaseURL: buildAPIBaseURL(contextGin.Request),
+			Tenant: runtimeConfigTenant{
+				ID:          runtimeCfg.Tenant.ID,
+				Slug:        runtimeCfg.Tenant.Slug,
+				DisplayName: runtimeCfg.Tenant.DisplayName,
+				Identity: runtimeConfigTenantIdentity{
+					GoogleClientID: runtimeCfg.Identity.GoogleClientID,
+					TAuthBaseURL:   runtimeCfg.Identity.TAuthBaseURL,
+				},
+			},
 		}
 		contextGin.JSON(http.StatusOK, payload)
 	}
-}
-
-func normalizeEmailAllowlist(values []string) map[string]struct{} {
-	if len(values) == 0 {
-		return nil
-	}
-	normalized := make(map[string]struct{}, len(values))
-	for _, value := range values {
-		email := strings.TrimSpace(strings.ToLower(value))
-		if email == "" {
-			continue
-		}
-		normalized[email] = struct{}{}
-	}
-	return normalized
 }
 
 func buildAPIBaseURL(request *http.Request) string {

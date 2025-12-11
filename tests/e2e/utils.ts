@@ -8,8 +8,32 @@ const authClientStub = fs.readFileSync(
   'utf-8',
 );
 
-export async function configureRuntime(page: Page, options: { authenticated: boolean }) {
+type TenantConfig = {
+  id: string;
+  slug: string;
+  displayName: string;
+  identity?: {
+    googleClientId?: string;
+    tauthBaseUrl?: string;
+  };
+};
+
+type ConfigureRuntimeOptions = {
+  authenticated: boolean;
+  tenant?: TenantConfig;
+};
+
+export async function configureRuntime(page: Page, options: ConfigureRuntimeOptions) {
   const baseUrl = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:4173';
+  const tenant: TenantConfig = options.tenant || {
+    id: 'tenant-playwright',
+    slug: 'playwright',
+    displayName: 'Playwright Tenant',
+    identity: {
+      googleClientId: 'playwright-client',
+      tauthBaseUrl: baseUrl,
+    },
+  };
   await page.addInitScript(
     ({ authenticated }) => {
       if (!window.name) {
@@ -29,14 +53,18 @@ export async function configureRuntime(page: Page, options: { authenticated: boo
     { authenticated: options.authenticated },
   );
   await page.addInitScript(
-    ({ base, authenticated }) => {
+    ({ base, authenticated, tenantPayload }) => {
       window.__PINGUIN_CONFIG__ = {
         apiBaseUrl: '/api',
-        tauthBaseUrl: base,
+        tauthBaseUrl: tenantPayload.identity?.tauthBaseUrl || base,
+        googleClientId:
+          tenantPayload.identity?.googleClientId ||
+          '991677581607-r0dj8q6irjagipali0jpca7nfp8sfj9r.apps.googleusercontent.com',
         landingUrl: '/index.html',
         dashboardUrl: '/dashboard.html',
         runtimeConfigUrl: '/runtime-config',
         skipRemoteConfig: true,
+        tenant: tenantPayload,
       };
       window.__PINGUIN_RUNTIME_CONFIG_URL = '/runtime-config';
       const defaultProfile = {
@@ -68,14 +96,16 @@ export async function configureRuntime(page: Page, options: { authenticated: boo
       };
       window.__persistMockAuth();
     },
-    { base: baseUrl, authenticated: options.authenticated },
+    { base: baseUrl, authenticated: options.authenticated, tenantPayload: tenant },
   );
-  await page.addInitScript(({ base }) => {
+  await page.addInitScript(({ base, tenantPayload }) => {
     window.PINGUIN_TAUTH_CONFIG = {
-      baseUrl: base,
-      googleClientId: '991677581607-r0dj8q6irjagipali0jpca7nfp8sfj9r.apps.googleusercontent.com',
+      baseUrl: tenantPayload.identity?.tauthBaseUrl || base,
+      googleClientId:
+        tenantPayload.identity?.googleClientId ||
+        '991677581607-r0dj8q6irjagipali0jpca7nfp8sfj9r.apps.googleusercontent.com',
     };
-  }, { base: baseUrl });
+  }, { base: baseUrl, tenantPayload: tenant });
 }
 
 export async function stubExternalAssets(page: Page) {
@@ -292,16 +322,30 @@ export async function clickHeaderGoogleButton(page: Page) {
 export async function completeHeaderLogin(page: Page) {
   await expectHeaderGoogleButton(page);
   await clickHeaderGoogleButton(page);
+  
+  // Wait for the Google Identity stub to be initialized with a callback
+  await page.waitForFunction(() => {
+    const stub = (window as any).__playwrightGoogle;
+    return stub && typeof stub.callback === 'function';
+  }, undefined, { timeout: 30000 }).catch(() => {
+    throw new Error('Timed out waiting for Google Identity callback to be registered');
+  });
+
   const waitForDashboard = page.url().includes('/dashboard.html')
     ? Promise.resolve()
-    : page.waitForURL('**/dashboard.html', { timeout: 10000 });
+    : page.waitForURL('**/dashboard.html', { timeout: 30000 });
+
   const triggered = await page.evaluate(() => {
     const googleStub = (window as any).__playwrightGoogle;
-    googleStub?.trigger({ credential: 'playwright-token' });
-    return Boolean(googleStub);
+    if (googleStub && googleStub.trigger) {
+      googleStub.trigger({ credential: 'playwright-token' });
+      return true;
+    }
+    return false;
   });
+
   if (!triggered) {
-    throw new Error('Google Identity stub unavailable');
+    throw new Error('Google Identity stub unavailable or failed to trigger');
   }
   await waitForDashboard;
   await expect(page.getByTestId('notifications-table')).toBeVisible();

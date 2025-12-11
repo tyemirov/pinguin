@@ -78,7 +78,8 @@ func (filters NotificationListFilters) NormalizedStatuses() []NotificationStatus
 // You can return this directly via JSON or create a separate struct if you like.
 type Notification struct {
 	ID                uint                     `json:"-" gorm:"primaryKey"`
-	NotificationID    string                   `json:"notification_id" gorm:"uniqueIndex"`
+	TenantID          string                   `json:"tenant_id" gorm:"index"`
+	NotificationID    string                   `json:"notification_id" gorm:"index:idx_tenant_notification,unique"`
 	NotificationType  NotificationType         `json:"notification_type"`
 	Recipient         string                   `json:"recipient"`
 	Subject           string                   `json:"subject,omitempty"`
@@ -90,12 +91,13 @@ type Notification struct {
 	ScheduledFor      *time.Time               `json:"scheduled_for"`
 	CreatedAt         time.Time                `json:"created_at"`
 	UpdatedAt         time.Time                `json:"updated_at"`
-	Attachments       []NotificationAttachment `json:"attachments,omitempty" gorm:"foreignKey:NotificationID;references:NotificationID;constraint:OnDelete:CASCADE"`
+	Attachments       []NotificationAttachment `json:"attachments,omitempty" gorm:"foreignKey:NotificationID,TenantID;references:NotificationID,TenantID;constraint:OnDelete:CASCADE"`
 }
 
 // NotificationAttachment persists attachment payloads per notification.
 type NotificationAttachment struct {
 	ID             uint      `json:"-" gorm:"primaryKey"`
+	TenantID       string    `json:"tenant_id" gorm:"index"`
 	NotificationID string    `json:"notification_id" gorm:"index"`
 	Filename       string    `json:"filename"`
 	ContentType    string    `json:"content_type"`
@@ -106,6 +108,7 @@ type NotificationAttachment struct {
 
 // NotificationRequest represents the incoming request payload (REST/gRPC).
 type NotificationRequest struct {
+	TenantID         string            `json:"tenant_id"`
 	NotificationType NotificationType  `json:"notification_type"`
 	Recipient        string            `json:"recipient"`
 	Subject          string            `json:"subject,omitempty"`
@@ -118,6 +121,7 @@ type NotificationRequest struct {
 // You could also return the Notification itself, but some prefer a separate shape.
 type NotificationResponse struct {
 	NotificationID    string             `json:"notification_id"`
+	TenantID          string             `json:"tenant_id"`
 	NotificationType  NotificationType   `json:"notification_type"`
 	Recipient         string             `json:"recipient"`
 	Subject           string             `json:"subject,omitempty"`
@@ -140,6 +144,7 @@ func NewNotification(notificationID string, req NotificationRequest) Notificatio
 		scheduledFor = &normalizedScheduled
 	}
 	return Notification{
+		TenantID:         req.TenantID,
 		NotificationID:   notificationID,
 		NotificationType: req.NotificationType,
 		Recipient:        req.Recipient,
@@ -149,7 +154,7 @@ func NewNotification(notificationID string, req NotificationRequest) Notificatio
 		ScheduledFor:     scheduledFor,
 		CreatedAt:        now,
 		UpdatedAt:        now,
-		Attachments:      convertEmailAttachments(notificationID, req.Attachments),
+		Attachments:      convertEmailAttachments(req.TenantID, notificationID, req.Attachments),
 	}
 }
 
@@ -166,6 +171,7 @@ func NewNotificationResponse(n Notification) NotificationResponse {
 	}
 	return NotificationResponse{
 		NotificationID:    n.NotificationID,
+		TenantID:          n.TenantID,
 		NotificationType:  n.NotificationType,
 		Recipient:         n.Recipient,
 		Subject:           n.Subject,
@@ -186,11 +192,11 @@ func CreateNotification(ctx context.Context, db *gorm.DB, n *Notification) error
 	return db.WithContext(ctx).Create(n).Error
 }
 
-func GetNotificationByID(ctx context.Context, db *gorm.DB, notificationID string) (*Notification, error) {
+func GetNotificationByID(ctx context.Context, db *gorm.DB, tenantID string, notificationID string) (*Notification, error) {
 	var notif Notification
 	err := db.WithContext(ctx).
 		Preload("Attachments").
-		Where("notification_id = ?", notificationID).
+		Where("tenant_id = ? AND notification_id = ?", tenantID, notificationID).
 		First(&notif).Error
 	if err != nil {
 		return nil, err
@@ -202,12 +208,12 @@ func SaveNotification(ctx context.Context, db *gorm.DB, n *Notification) error {
 	return db.WithContext(ctx).Save(n).Error
 }
 
-func GetQueuedOrFailedNotifications(ctx context.Context, db *gorm.DB, maxRetries int, currentTime time.Time) ([]Notification, error) {
+func GetQueuedOrFailedNotifications(ctx context.Context, db *gorm.DB, tenantID string, maxRetries int, currentTime time.Time) ([]Notification, error) {
 	var notifications []Notification
 	err := db.WithContext(ctx).
 		Preload("Attachments").
-		Where("(status = ? OR status = ? OR status = ?) AND retry_count < ? AND (scheduled_for IS NULL OR scheduled_for <= ?)",
-			StatusQueued, StatusErrored, StatusFailed, maxRetries, currentTime).
+		Where("tenant_id = ? AND (status = ? OR status = ? OR status = ?) AND retry_count < ? AND (scheduled_for IS NULL OR scheduled_for <= ?)",
+			tenantID, StatusQueued, StatusErrored, StatusFailed, maxRetries, currentTime).
 		Find(&notifications).Error
 	if err != nil {
 		return nil, err
@@ -215,8 +221,8 @@ func GetQueuedOrFailedNotifications(ctx context.Context, db *gorm.DB, maxRetries
 	return notifications, nil
 }
 
-func ListNotifications(ctx context.Context, db *gorm.DB, filters NotificationListFilters) ([]Notification, error) {
-	query := db.WithContext(ctx).Preload("Attachments").Order("created_at DESC")
+func ListNotifications(ctx context.Context, db *gorm.DB, tenantID string, filters NotificationListFilters) ([]Notification, error) {
+	query := db.WithContext(ctx).Preload("Attachments").Order("created_at DESC").Where("tenant_id = ?", tenantID)
 	statuses := filters.NormalizedStatuses()
 	if len(statuses) > 0 {
 		statusStrings := make([]string, 0, len(statuses))
@@ -235,8 +241,8 @@ func ListNotifications(ctx context.Context, db *gorm.DB, filters NotificationLis
 	return notifications, nil
 }
 
-func MustGetNotificationByID(ctx context.Context, db *gorm.DB, notificationID string) (*Notification, error) {
-	n, err := GetNotificationByID(ctx, db, notificationID)
+func MustGetNotificationByID(ctx context.Context, db *gorm.DB, tenantID string, notificationID string) (*Notification, error) {
+	n, err := GetNotificationByID(ctx, db, tenantID, notificationID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, fmt.Errorf("%w: %s", ErrNotificationNotFound, notificationID)
@@ -246,7 +252,7 @@ func MustGetNotificationByID(ctx context.Context, db *gorm.DB, notificationID st
 	return n, nil
 }
 
-func convertEmailAttachments(notificationID string, attachments []EmailAttachment) []NotificationAttachment {
+func convertEmailAttachments(tenantID string, notificationID string, attachments []EmailAttachment) []NotificationAttachment {
 	if len(attachments) == 0 {
 		return nil
 	}
@@ -255,6 +261,7 @@ func convertEmailAttachments(notificationID string, attachments []EmailAttachmen
 		clonedData := make([]byte, len(att.Data))
 		copy(clonedData, att.Data)
 		converted = append(converted, NotificationAttachment{
+			TenantID:       tenantID,
 			NotificationID: notificationID,
 			Filename:       att.Filename,
 			ContentType:    att.ContentType,

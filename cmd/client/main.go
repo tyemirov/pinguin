@@ -22,6 +22,7 @@ func main() {
 	settings, err := client.NewSettings(
 		cfg.ServerAddress(),
 		cfg.AuthToken(),
+		cfg.TenantID(),
 		cfg.ConnectionTimeoutSeconds(),
 		cfg.OperationTimeoutSeconds(),
 	)
@@ -43,6 +44,7 @@ func main() {
 		Sender:           notificationClient,
 		OperationTimeout: cfg.OperationTimeout(),
 		Output:           os.Stdout,
+		TenantID:         cfg.TenantID(),
 	})
 	root.SetOut(os.Stdout)
 	root.SetErr(os.Stderr)

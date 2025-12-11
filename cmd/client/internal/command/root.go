@@ -21,6 +21,7 @@ type Dependencies struct {
 	Sender           NotificationSender
 	OperationTimeout time.Duration
 	Output           io.Writer
+	TenantID         string
 }
 
 func NewRootCommand(dependencies Dependencies) *cobra.Command {
@@ -36,6 +37,7 @@ func NewRootCommand(dependencies Dependencies) *cobra.Command {
 func buildSendCommand(dependencies Dependencies) *cobra.Command {
 	var (
 		typeInput      string
+		tenantIDInput  string
 		recipientInput string
 		subjectInput   string
 		messageInput   string
@@ -52,7 +54,13 @@ func buildSendCommand(dependencies Dependencies) *cobra.Command {
 				return err
 			}
 
+			tenantID := strings.TrimSpace(tenantIDInput)
+			if tenantID == "" {
+				return fmt.Errorf("tenant-id is required")
+			}
+
 			request := &grpcapi.NotificationRequest{
+				TenantId:         tenantID,
 				NotificationType: notificationType,
 				Recipient:        recipientInput,
 				Subject:          subjectInput,
@@ -109,6 +117,7 @@ func buildSendCommand(dependencies Dependencies) *cobra.Command {
 	}
 
 	command.Flags().StringVar(&typeInput, "type", "", "Notification type (email or sms)")
+	command.Flags().StringVar(&tenantIDInput, "tenant-id", dependencies.TenantID, "Tenant identifier that owns the notification")
 	command.Flags().StringVar(&recipientInput, "recipient", "", "Notification recipient")
 	command.Flags().StringVar(&subjectInput, "subject", "", "Email subject (ignored for sms)")
 	command.Flags().StringVar(&messageInput, "message", "", "Notification message")

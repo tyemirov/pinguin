@@ -1,15 +1,23 @@
 (function applyTauthConfig() {
-  const config = window.PINGUIN_TAUTH_CONFIG || {};
-  if (!window.__PINGUIN_CONFIG__) {
-    window.__PINGUIN_CONFIG__ = {};
+  const fallback = window.PINGUIN_TAUTH_CONFIG || {};
+  function resolveConfig() {
+    const runtime = window.__PINGUIN_CONFIG__ || {};
+    const base = runtime.tauthBaseUrl || fallback.baseUrl || '';
+    const googleClientId = runtime.googleClientId || fallback.googleClientId || '';
+    if (!runtime.tauthBaseUrl && base) {
+      runtime.tauthBaseUrl = base;
+    }
+    if (!runtime.googleClientId && googleClientId) {
+      runtime.googleClientId = googleClientId;
+    }
+    return {
+      baseUrl: typeof base === 'string' ? base.replace(/\/$/, '') : '',
+      googleClientId: typeof googleClientId === 'string' ? googleClientId.trim() : '',
+    };
   }
-  if (config.baseUrl) {
-    window.__PINGUIN_CONFIG__.tauthBaseUrl = config.baseUrl;
-  }
-  if (config.googleClientId) {
-    window.__PINGUIN_CONFIG__.googleClientId = config.googleClientId;
-  }
+
   function applyAttributes() {
+    const config = resolveConfig();
     const headers = document.querySelectorAll('mpr-header');
     headers.forEach((header) => {
       if (config.googleClientId) {
@@ -41,9 +49,12 @@
       button.setAttribute('nonce-path', '/auth/nonce');
     });
   }
+
+  const initialize = () => requestAnimationFrame(applyAttributes);
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', applyAttributes);
+    document.addEventListener('DOMContentLoaded', initialize, { once: true });
   } else {
-    applyAttributes();
+    initialize();
   }
+  window.addEventListener('pinguin:config-updated', () => requestAnimationFrame(applyAttributes));
 })();

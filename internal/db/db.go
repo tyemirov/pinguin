@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/tyemirov/pinguin/internal/model"
+	"github.com/tyemirov/pinguin/internal/tenant"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -32,7 +33,16 @@ func InitDB(dbPath string, logger *slog.Logger) (*gorm.DB, error) {
 		return nil, fmt.Errorf("open sqlite failed: %w", err)
 	}
 
-	if err := database.AutoMigrate(&model.Notification{}, &model.NotificationAttachment{}); err != nil {
+	if err := database.AutoMigrate(
+		&model.Notification{},
+		&model.NotificationAttachment{},
+		&tenant.Tenant{},
+		&tenant.TenantDomain{},
+		&tenant.TenantMember{},
+		&tenant.TenantIdentity{},
+		&tenant.EmailProfile{},
+		&tenant.SMSProfile{},
+	); err != nil {
 		return nil, fmt.Errorf("migration failed: %w", err)
 	}
 

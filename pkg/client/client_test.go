@@ -14,19 +14,22 @@ import (
 
 func TestNewSettingsValidation(t *testing.T) {
 	t.Helper()
-	if _, err := NewSettings("", "token", 1, 1); err == nil {
+	if _, err := NewSettings("", "token", "tenant", 1, 1); err == nil {
 		t.Fatalf("expected error for empty server address")
 	}
-	if _, err := NewSettings("addr", "", 1, 1); err == nil {
+	if _, err := NewSettings("addr", "", "tenant", 1, 1); err == nil {
 		t.Fatalf("expected error for empty token")
 	}
-	if _, err := NewSettings("addr", "token", 0, 1); err == nil {
+	if _, err := NewSettings("addr", "token", "tenant", 0, 1); err == nil {
 		t.Fatalf("expected error for invalid connection timeout")
 	}
-	if _, err := NewSettings("addr", "token", 1, 0); err == nil {
+	if _, err := NewSettings("addr", "token", "tenant", 1, 0); err == nil {
 		t.Fatalf("expected error for invalid operation timeout")
 	}
-	settings, err := NewSettings(" addr ", " token ", 2, 3)
+	if _, err := NewSettings("addr", "token", "", 1, 1); err == nil {
+		t.Fatalf("expected error for empty tenant id")
+	}
+	settings, err := NewSettings(" addr ", " token ", " tenant ", 2, 3)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -95,7 +98,7 @@ func TestNotificationClientSendAndWait(t *testing.T) {
 	address, stop := startFakeServer(t, server)
 	defer stop()
 
-	settings, err := NewSettings(address, "token", 5, 5)
+	settings, err := NewSettings(address, "token", "tenant", 5, 5)
 	if err != nil {
 		t.Fatalf("NewSettings error: %v", err)
 	}
@@ -133,7 +136,7 @@ func TestNotificationClientFailurePaths(t *testing.T) {
 	sendPollInterval = 5 * time.Millisecond
 
 	failureAddr := startServerWithStatuses(t, grpcapi.Status_FAILED, grpcapi.Status_FAILED)
-	settings, err := NewSettings(failureAddr, "token", 5, 1)
+	settings, err := NewSettings(failureAddr, "token", "tenant", 5, 1)
 	if err != nil {
 		t.Fatalf("NewSettings error: %v", err)
 	}
@@ -149,7 +152,7 @@ func TestNotificationClientFailurePaths(t *testing.T) {
 	}
 
 	timeoutAddr := startServerWithStatuses(t, grpcapi.Status_QUEUED, grpcapi.Status_QUEUED)
-	unresponsiveSettings, err := NewSettings(timeoutAddr, "token", 5, 1)
+	unresponsiveSettings, err := NewSettings(timeoutAddr, "token", "tenant", 5, 1)
 	if err != nil {
 		t.Fatalf("NewSettings error: %v", err)
 	}

@@ -240,8 +240,8 @@ func TestUtilityMessages(t *testing.T) {
 
 func TestRawDescriptorFunctions(t *testing.T) {
 	t.Helper()
-	if len(file_pinguin_proto_rawDescGZIP()) == 0 {
+	if len(file_pkg_proto_pinguin_proto_rawDescGZIP()) == 0 {
 		t.Fatalf("raw descriptor should not be empty")
 	}
-	file_pinguin_proto_init()
+	file_pkg_proto_pinguin_proto_init()
 }

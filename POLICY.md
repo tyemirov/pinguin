@@ -8,6 +8,8 @@
 - **Narrow interfaces**: accept domain types, not loose primitives, when a domain type exists.
 - **No duplicate checks** in core; once validated, don’t re-validate.
 - Tests target **contracts/invariants**, not defensive branches.
+- Testing follows an **inverted test pyramid**: prefer high-value black-box integration tests over unit tests; unit tests are optional implementation guardrails, not product-level acceptance tests.
+- We **strive for 100% test coverage** driven primarily by integration/black-box suites that exercise observable behavior and contracts rather than internal implementation details; replacing clunky unit tests with stronger integration coverage is encouraged.
 
 ---
 
@@ -82,6 +84,7 @@
 - **Go:** `go vet ./... && staticcheck ./... && ineffassign ./...`
 - **Python:** `mypy --strict domain service` (or `pyright`)
 - **JS:** `tsc --noEmit` with `// @ts-check` present in edited files
+- **Coverage:** CI MUST enforce a coverage gate aligned with the repo-wide testing philosophy in `AGENTS.md`—integration/black-box suites should drive effective coverage to (approximately) 100% for code under test, and CI should fail when coverage drops below the agreed threshold.
 
 > Failing any gate = patch is not acceptable.
 
@@ -212,6 +215,8 @@ verify:
 	go vet ./...
 	staticcheck ./...
 	ineffassign ./...
+	go test ./... -coverprofile=coverage.out -covermode=count
+	go tool cover -func=coverage.out | awk 'END { if ($3+0 < 100.0) { print "coverage below 100%"; exit 1 } }'
 ```
 
 **Python (Makefile)**
@@ -220,6 +225,7 @@ verify:
 .PHONY: verify
 verify:
 	mypy --strict domain service
+	pytest -q --cov=your_package --cov-fail-under=100
 ```
 
 **JS (package.json)**

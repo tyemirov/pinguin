@@ -34,6 +34,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	tenantID := os.Getenv("TENANT_ID")
+	if tenantID == "" {
+		fmt.Fprintln(os.Stderr, "TENANT_ID is required")
+		os.Exit(1)
+	}
+
 	serverAddress := os.Getenv("GRPC_SERVER_ADDR")
 	if serverAddress == "" {
 		serverAddress = "localhost:50051"
@@ -55,7 +61,7 @@ func main() {
 		Level: slog.LevelInfo,
 	}))
 
-	settings, err := client.NewSettings(serverAddress, authToken, connectionTimeoutSec, operationTimeoutSec)
+	settings, err := client.NewSettings(serverAddress, authToken, tenantID, connectionTimeoutSec, operationTimeoutSec)
 	if err != nil {
 		logger.Error("Failed to validate client settings", "error", err)
 		os.Exit(1)
@@ -69,6 +75,7 @@ func main() {
 	defer notificationClient.Close()
 
 	notificationRequest := &grpcapi.NotificationRequest{
+		TenantId:         tenantID,
 		NotificationType: grpcapi.NotificationType_EMAIL,
 		Recipient:        *recipient,
 		Subject:          *subject,

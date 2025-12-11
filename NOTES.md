@@ -1,103 +1,66 @@
 # Notes
 
+Operational playbook for working in this repository. Use it to coordinate planning, execution, and delivery. Code style, stack-specific rules, and tooling details remain in the AGENTS* documents; this file focuses purely on day-to-day process.
+
 ## Role
 
-You are a staff level full stack engineer. Your task is to **re-evaluate and refactor the Pinguin Notification Service repository** according to the coding standards already written in **AGENTS.md**.  
-**Read-only:** Keep operational notes only. Record all issues in `ISSUES.md`. Track changes in the `CHANGELOG.md`
+You are a staff level full stack engineer. Your task is to **re-evaluate and refactor the code repository** according to the coding, process and product standards already written in teh files provided by the repo.
 
-## Context
+## Authoritative References
 
-- AGENTS.md defines all rules: naming, state/event principles, structure, testing, accessibility, performance, and security.
-- The repo uses Alpine.js, CDN scripts only, no bundlers.
-- Event-scoped architecture: components communicate via `$dispatch`/`$listen`; prefer DOM-scoped events; `Alpine.store` only for true shared domain state.
-- The backend uses Go language ecosystem
+- `AGENTS.md` + per-stack guides for coding standards.
+- `POLICY.md` for validation/confident-programming rules.
+- `AGENTS.GIT.md` for Git/GitHub workflow.
+- `AGENTS.DOCKER.md` for container expectations.
+- `PLANNING.md` for planning stage.
+- `README.md`, `PRD.md`, and `ARCHITECTURE.md` for product context.
 
-## Your tasks
+## Workflow Overview
 
-1. **Read AGENTS.md first** → treat it as the _authoritative style guide_.
-2. **Scan the codebase** → identify violations (inline handlers, globals, duplicated strings, lack of constants, cross-component state leakage, etc.).
-3. **Generate PLAN.md** → bullet list of problems and refactors needed, scoped by file. PLAN.md is a part of PR metadata. It's a transient document outlining the work on a given issue. Do not commit PLAN.md; copy its content into the PR description.
-4. **Refactor in small commits** →
-   Front-end:
-   - Inline → Alpine `x-on:`
-   - Buttons → standardized Alpine factories/events
-   - Notifications → event-scoped listeners (DOM-scoped preferred)
-   - Strings → move to `constants.js`
-   - Utilities → extract into `/js/utils/`
-   - Composition → normalize `/js/app.js` as Alpine composition root
-     Backend:
-   - Use "object-oreinted" stye of functions attached to structs
-   - Prioritize data-driven solutions over imperative approach
-   - Design and use shared components
-5. **Tests** → Add/adjust Puppeteer tests for key flows (button → event → notification; cross-panel isolation). Prioritize end-2-end and integration tests.
-6. **Docs** → Update README and CHANGELOG.md with new event contracts, removed globals, and developer instructions.
-7. **Timeouts** Prepend every CLI command with `timeout -k <N>s -s SIGKILL <N>s <command>`. This is mandatory for all commands (local dev, CI, docs, scripts). Pick `<N>` appropriate to the operation; avoid indefinite waits. The Node test harness enforces per-test budgets but the shell-level timeout remains required.
-   7a. Any individual test or command must be terminated in 30s. The only long running command is a full test, which must be terminated in 350s. There are no exception to this rule, and no extension of time: each individual test or command must finish under 30s.
+1. Read `AGENTS.md` (plus relevant stack guides) before touching code.
+2. Review the backlog in `ISSUES.md`; work sequentially through Features, BugFixes, Improvements, then Maintenance.
+3. For the active issue, read `PLANNING.md` and create `PLAN.md` (ignored by git) with bullet steps. Keep it updated and delete/rewrite it for the next issue.For the active issue.
+4. Create a new branch (per `AGENTS.GIT.md`) from the latest issue branch, not from `master`, so history stays linear.
+5. Before writing code, describe the bug/feature via failing automated tests first. Run `make test` to watch them fail, then run `make lint` and any mandatory formatter targets defined for your stack in `AGENTS*` to establish the initial tooling baseline; if these fail before your changes, record the situation in `ISSUES.md`.
+6. Implement the change, keeping to stack-specific standards. Limit edits to necessary files plus `ISSUES.md` (append-only log) and `CHANGELOG.md` (post-completion summary).
+7. After implementing changes but before committing, re-run the full tooling suite for your stack—`make test`, `make lint`, `make ci` where present, and any mandatory formatter targets defined in `AGENTS*`. All must pass locally before opening a PR unless the work is explicitly documented as blocked.
+8. Commit the work with a descriptive message, push with tracking (`git push -u origin <branch>` on first push), and open the PR via `gh pr create`.
+9. Move immediately to the next issue, repeating the cycle until the backlog is empty.
 
-## Output requirements
+## Testing & Tooling
 
-- Always follow AGENTS.md rules (do not restate them, do not invent new ones).
-- Output a **PLAN.md** first, then refactor step-by-step.
-- Only modify necessary files.
-- Treat `NOTES.md` as read-only; never edit it during an implementation cycle.
-- Only touch the following markdown files while delivering work: `ISSUES.md` (append-only status log), `PLAN.md` (local, untracked scratchpad), and `CHANGELOG.md` (post-completion history).
-- If `PLAN.md` becomes tracked, remove it from history with `git filter-repo --path PLAN.md --invert-paths` before continuing.
-- Descriptive identifiers, no single-letter names.
-- End with a short summary of changed files and new event contracts.
+- Use the `Makefile` targets (`make test`, `make lint`, `make ci`) instead of ad-hoc commands. `make test` runs the Playwright harness headless; `make lint` enforces lint rules; `make ci` mirrors GitHub Actions.
+- Run stack-specific formatters as defined in the relevant `AGENTS*` guides (for example, `go fmt` for Go or any other formatter that is required for that stack); do not introduce new formatters or override stack policies.
+- Add or update Playwright scenarios covering button → event → notification flows, cross-panel isolation, and other observable behavior. Tests are black-box and table-driven.
+- Prefix every CLI command with `timeout -k <N>s -s SIGKILL <N>s <command>`. Pick `<N>` appropriate to the task (≤30s for individual commands/tests, ≤350s for the full suite). No exceptions.
 
-**Begin by reading AGENTS.md and generating PLAN.md now.**
+## Git & Release Flow
 
-## Rules of engagement
+- `master` is production. Branches use the taxonomy prefixes (`feature/`, `improvement/`, `bugfix/`, `maintenance/`, `blocked/`) outlined in `AGENTS.GIT.md`.
+- Forbidden operations: `git push --force`, `git rebase`, `git cherry-pick`, history rewrites.
+- If blocked after three careful attempts, push the work to `blocked/<issue-id>` and document the reason in `ISSUES.md` before moving on.
+- All PRs are opened with `gh pr create` targeting the prior PR, if exists, or master if it's the beginning of work.. GitHub Actions CI (triggered automatically) is the authoritative validation gate for merges and releases.
 
-Review the backlog in `ISSUES.md`. Make a plan for autonomously fixing every item under Features, BugFixes, Improvements, Maintenance. Ensure no regressions. Ensure adding tests. Lean into integration tests. Fix every issue. Document the changes directly in `ISSUES.md`. Continue cycling through the backlog without pausing for additional confirmation until every marked item is complete.
+## Output Requirements
 
-Fix issues one by one, working sequentially.
+- Always follow AGENTS* rules; do not restate them in PRs.
+- Begin every implementation with an up-to-date `PLAN.md`.
+- Do not touch `NOTES.md` during normal work; treat it as read-only guidance.
+- `ISSUES.md` is append-only; mark items `[x]` with a concise resolution note once tests pass.
+- `PLAN.md` must remain untracked. If it enters git history, remove it via `git filter-repo --path PLAN.md --invert-paths` before continuing.
+- Summaries at the end of each issue should list changed files and any new/updated event contracts.
 
-1. The production git branch is called `master`. The `main` branch does not exist.
-2. Before making any changes, create a new git branch with a descriptive name (e.g., `bugfix/GN-58-editor-duplicate-preview`) and branch from the previous issue’s branch. Use the taxonomy prefixes improvement/, feature/, bugfix/, maintenace/ followed by the issue ID and a short description. Respect branch name limits.
-3. On that branch, describe the issue through tests.
-   3a. Add comprehensive regression coverage that initially fails on the branch prior to implementing the fix (run the suite to observe the failure before proceeding).
-   3b. Ensure AGENTS.md coding standards are checked and test names/descriptions reflect those rules.
-4. Fix the issue
-5. Rerun the tests
-6. Repeat pp 2-4 untill the issue is fixed:
-   6a. old and new comprehensive tests are passing
-   6b. Confirm black-box contract aligns with event-driven architecture (frontend) or data-driven logic (backend).
-   6c. If an issue can not be resolved after 3 carefull iterations, - mark the issue as [Blocked]. - document the reason for the bockage. - commit the changes into a separate branch called "blocked/<issue-id>". - work on the next issue from the divergence point of the previous issue.
-7. Write a nice comprehensive commit message AFTER EACH issue is fixed and tested and covered with tests.
-8. Optional: update the README in case the changes warrant updated documentation (e.g. have user-facing consequences)
-9. Optional: ipdate the PRD in case the changes warrant updated product requirements (e.g. change product undestanding)
-10. Optional: update the code examples in case the changes warrant updated code examples
-11. Mark an issue as done ([X]) in `ISSUES.md` after the issue is fixed: New and existing tests are passing without regressions
-12. After each issue-level commit, push the local branch to the remote with `git push -u origin <branch>` so the branch tracks its remote counterpart. Subsequent pushes should use `git push` only. Never push to arbitrary remotes or untracked branch names.
-13. Repeat the entire cycle immediately for the next issue, continuing until all backlog items are resolved. Do not wait for additional prompts between issues.
+## Pre-Finish Checklist
 
-Do not work on all issues at once. Work at one issue at a time sequntially.
+1. `PLAN.md` reflects the final state for the active issue.
+2. `ISSUES.md` entry is marked `[x]` with the resolution note.
+3. The full tooling suite for the active stack has been run and is passing: at minimum, `make test`, `make lint`, and `make ci` succeed locally (subject to the timeout rule), and any mandatory formatter targets from `AGENTS*` have been applied.
+4. Commit contains only intended changes and is pushed to the tracking branch on `origin`.
+5. PR opened via `gh pr create`, referencing the issue ID.
+6. Provide a short summary plus next steps in the CLI output before moving to the next issue.
 
-Working with git bracnhes you are forbidden from using --force, rebase or cherry-pick operations. Any changes in history are strictly and explcitly forbidden, The git branches only move up, and any issues are fixed in the next sequential commit. Only merges and sequential progression of changes.
+## Action Items Reminder
 
-Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixes are implemented but don't delete the sections themselves.
-
-## Pre-finish Checklist
-
-1. Update `PLAN.md` for the active issue, then clear it before starting working on the next issue.
-2. Ensure the issue entry in `ISSUES.md` is marked `[x]` and includes an appended resolution note.
-3. Run tests, whether `go test ./...` or `npm test` or the relevant suite and resolve all failures.
-4. Commit only the intended changes and push the branch to origin. Esnure that the local branch is tracking the remote.
-5. Verify no required steps were skipped; if anything cannot be completed, stop and ask before proceeding.
-
-## Issue Tracking
-
-All feature, improvement, bugfix, and maintenance backlog entries now live in `ISSUES.md`. This file remains append-only for process notes.
-
-_Use `PLAN.md` (ignored by git) as a scratchpad for the single active issue; do not commit it._
-
-## Action Items
-
-The deliverables are code changes. Sequentially open PRs use `gh` utility after finishing your autonomous work. Present a list of opened PRs at the end for reviews
-
-    1. Read the files that guide the development: README.md , PRD.md  , AGENTS.md , NOTES.md , ARCHITECTURE.md .
-    2. Run the tests
-    3. Plan the required changes to close the open issues. If issues are missing based on analysis of the code, add them and plan to fix them.
-    4. Use PLAN.md for an individual issue to plan the fix
-    5. Read the documentation of gthe 3rd party libraries before implementing changes
+- Read guiding docs (`README.md`, `PRD.md`, `AGENTS*`, `NOTES.md`, `ARCHITECTURE.md`) before planning.
+- Keep working sequentially through the backlog—never parallelize issues.
+- Add missing issues to `ISSUES.md` if you discover new work while investigating; plan and resolve them in order.

@@ -11,6 +11,7 @@ import (
 	"github.com/tyemirov/pinguin/internal/config"
 	"github.com/tyemirov/pinguin/internal/model"
 	"github.com/tyemirov/pinguin/internal/service"
+	"github.com/tyemirov/pinguin/internal/tenant"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"log/slog"
@@ -35,10 +36,10 @@ func TestScheduledEmailDispatchesAfterWorkerRuns(t *testing.T) {
 		OperationTimeoutSec:  5,
 	}
 
-	notificationService := service.NewNotificationServiceWithSenders(database, logger, cfg, emailSender, nil)
+	notificationService := service.NewNotificationServiceWithSenders(database, logger, cfg, nil, emailSender, nil)
 	scheduledFor := time.Now().UTC().Add(2 * time.Second)
 
-	response, err := notificationService.SendNotification(context.Background(), model.NotificationRequest{
+	response, err := notificationService.SendNotification(integrationTenantContext(), model.NotificationRequest{
 		NotificationType: model.NotificationEmail,
 		Recipient:        "user@example.com",
 		Subject:          "Welcome",
@@ -130,7 +131,7 @@ func waitForNotificationStatus(t *testing.T, notificationService service.Notific
 
 	var lastResponse model.NotificationResponse
 	for {
-		response, err := notificationService.GetNotificationStatus(context.Background(), notificationID)
+		response, err := notificationService.GetNotificationStatus(integrationTenantContext(), notificationID)
 		if err != nil {
 			t.Fatalf("status retrieval error: %v", err)
 		}
@@ -143,4 +144,19 @@ func waitForNotificationStatus(t *testing.T, notificationService service.Notific
 		}
 		<-ticker.C
 	}
+}
+
+func integrationTenantContext() context.Context {
+	return tenant.WithRuntime(context.Background(), tenant.RuntimeConfig{
+		Tenant: tenant.Tenant{
+			ID: "integration-tenant",
+		},
+		Email: tenant.EmailCredentials{
+			Host:        "smtp.integration",
+			Port:        25,
+			Username:    "integration",
+			Password:    "secret",
+			FromAddress: "noreply@integration",
+		},
+	})
 }

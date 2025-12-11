@@ -87,6 +87,8 @@ function mergeConfig(base, overrides) {
 (async function bootstrap() {
   const preloaded = window.__PINGUIN_CONFIG__ || {};
   const skipRemote = Boolean(preloaded && preloaded.skipRemoteConfig);
+  const preloadedTenant =
+    preloaded && typeof preloaded.tenant === 'object' ? preloaded.tenant : null;
   const tauthSeed = {};
   if (typeof TAUTH_CONFIG.baseUrl === 'string') {
     tauthSeed.tauthBaseUrl = TAUTH_CONFIG.baseUrl;
@@ -96,14 +98,28 @@ function mergeConfig(base, overrides) {
   }
   let effectiveConfig = mergeConfig(DEFAULT_CONFIG, tauthSeed);
   effectiveConfig = mergeConfig(effectiveConfig, preloaded);
+  let resolvedTenant = preloadedTenant;
   if (!skipRemote) {
     try {
       const remote = await fetchRuntimeConfig(preloaded || null, RUNTIME_CONFIG_URL_HINT);
+      if (remote && typeof remote.tenant === 'object') {
+        resolvedTenant = remote.tenant;
+      }
       const apiOverride =
         remote && typeof remote.apiBaseUrl === 'string' ? { apiBaseUrl: remote.apiBaseUrl } : {};
       effectiveConfig = mergeConfig(effectiveConfig, apiOverride);
     } catch (error) {
       console.warn('runtime config fetch failed', error);
+    }
+  }
+  if (resolvedTenant) {
+    effectiveConfig.tenant = resolvedTenant;
+    const identity = resolvedTenant.identity || {};
+    if (typeof identity.googleClientId === 'string' && identity.googleClientId.trim()) {
+      effectiveConfig.googleClientId = identity.googleClientId.trim();
+    }
+    if (typeof identity.tauthBaseUrl === 'string' && identity.tauthBaseUrl.trim()) {
+      effectiveConfig.tauthBaseUrl = identity.tauthBaseUrl.trim();
     }
   }
   const finalConfig = {
@@ -112,12 +128,33 @@ function mergeConfig(base, overrides) {
     googleClientId: effectiveConfig.googleClientId,
     landingUrl: effectiveConfig.landingUrl || DEFAULT_CONFIG.landingUrl,
     dashboardUrl: effectiveConfig.dashboardUrl || DEFAULT_CONFIG.dashboardUrl,
+    tenant: effectiveConfig.tenant || null,
   };
   delete finalConfig.skipRemoteConfig;
   delete finalConfig.runtimeConfigUrl;
   window.__PINGUIN_CONFIG__ = finalConfig;
+  window.dispatchEvent(new CustomEvent('pinguin:config-updated', { detail: finalConfig }));
+  if (finalConfig.tenant) {
+    applyTenantBranding(finalConfig.tenant);
+  }
   if (typeof window.initAuthClient !== 'function') {
     console.warn('auth-client.js has not finished loading; authentication may be delayed.');
   }
   await import('./app.js');
 })();
+
+function applyTenantBranding(tenantConfig) {
+  const label =
+    (tenantConfig && typeof tenantConfig.displayName === 'string' && tenantConfig.displayName.trim()) ||
+    'Pinguin';
+  const update = () => {
+    document.querySelectorAll('mpr-header').forEach((header) => {
+      header.setAttribute('brand-label', label);
+    });
+    document.documentElement.dataset.tenantSlug = tenantConfig?.slug || '';
+    if (document.title && document.title.toLowerCase().includes('pinguin')) {
+      document.title = `${label} — Notification Service`;
+    }
+  };
+  requestAnimationFrame(update);
+}

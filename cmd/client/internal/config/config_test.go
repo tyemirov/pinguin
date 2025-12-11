@@ -13,6 +13,7 @@ func TestLoadSuccessful(t *testing.T) {
 	v := viper.New()
 	v.Set(serverAddressKey, "localhost:5050")
 	v.Set(authTokenKey, "secret")
+	v.Set(tenantIDKey, "tenant-cli")
 	v.Set(connectionTimeoutKey, 7)
 	v.Set(operationTimeoutKey, 13)
 	v.Set(logLevelKey, "debug")
@@ -26,6 +27,9 @@ func TestLoadSuccessful(t *testing.T) {
 	}
 	if cfg.AuthToken() != "secret" {
 		t.Fatalf("unexpected auth token: %s", cfg.AuthToken())
+	}
+	if cfg.TenantID() != "tenant-cli" {
+		t.Fatalf("unexpected tenant id: %s", cfg.TenantID())
 	}
 	if cfg.ConnectionTimeoutSeconds() != 7 {
 		t.Fatalf("unexpected connection timeout seconds: %d", cfg.ConnectionTimeoutSeconds())
@@ -55,6 +59,7 @@ func TestLoadErrorConditions(t *testing.T) {
 			name: "missing server",
 			values: map[string]interface{}{
 				authTokenKey:     "token",
+				tenantIDKey:      "tenant",
 				serverAddressKey: "",
 			},
 			wantErr: "missing gRPC server address",
@@ -63,6 +68,7 @@ func TestLoadErrorConditions(t *testing.T) {
 			name: "missing token",
 			values: map[string]interface{}{
 				serverAddressKey: "localhost:5050",
+				tenantIDKey:      "tenant",
 				authTokenKey:     "",
 			},
 			wantErr: "missing gRPC auth token",
@@ -72,6 +78,7 @@ func TestLoadErrorConditions(t *testing.T) {
 			values: map[string]interface{}{
 				serverAddressKey:     "localhost:5050",
 				authTokenKey:         "token",
+				tenantIDKey:          "tenant",
 				connectionTimeoutKey: 0,
 			},
 			wantErr: "invalid connection timeout",
@@ -81,9 +88,19 @@ func TestLoadErrorConditions(t *testing.T) {
 			values: map[string]interface{}{
 				serverAddressKey:    "localhost:5050",
 				authTokenKey:        "token",
+				tenantIDKey:         "tenant",
 				operationTimeoutKey: 0,
 			},
 			wantErr: "invalid operation timeout",
+		},
+		{
+			name: "missing tenant id",
+			values: map[string]interface{}{
+				serverAddressKey: "localhost:5050",
+				authTokenKey:     "token",
+				tenantIDKey:      "",
+			},
+			wantErr: "missing tenant id",
 		},
 	}
 	for _, tc := range testCases {
