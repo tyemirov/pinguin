@@ -44,7 +44,7 @@
 ## Configuration & Secrets
 1. **Bootstrap config**  
    - Keep global env vars for database, logging, etc.  
-   - Introduce `TENANT_CONFIG_PATH` pointing to an encrypted YAML file storing seed tenants and credential profiles. Provide CLI: `pinguin tenants import --file tenants.yaml`.
+   - Store tenant seed data alongside service config in a single YAML file (default `configs/config.yml`). Provide CLI: `pinguin tenants import --file configs/config.yml`.
 2. **Secrets management**  
    - Add `MASTER_ENCRYPTION_KEY` env for credential encryption-at-rest. Use AES-256-GCM to store SMTP/Twilio secrets in DB.
    - For migrations from current env-based config, supply `pinguin tenants migrate-single-tenant --from-env` CLI to create a default tenant using existing vars.

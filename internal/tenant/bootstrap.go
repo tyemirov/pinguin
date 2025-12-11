@@ -14,49 +14,49 @@ import (
 
 // BootstrapConfig defines the YAML layout for tenant provisioning.
 type BootstrapConfig struct {
-	Tenants []BootstrapTenant `json:"tenants"`
+	Tenants []BootstrapTenant `json:"tenants" yaml:"tenants"`
 }
 
 // BootstrapTenant declares per-tenant metadata.
 type BootstrapTenant struct {
-	ID           string                `json:"id"`
-	Slug         string                `json:"slug"`
-	DisplayName  string                `json:"displayName"`
-	SupportEmail string                `json:"supportEmail"`
-	Status       string                `json:"status"`
-	Domains      []string              `json:"domains"`
-	Admins       []BootstrapMember     `json:"admins"`
-	Identity     BootstrapIdentity     `json:"identity"`
-	EmailProfile BootstrapEmailProfile `json:"emailProfile"`
-	SMSProfile   *BootstrapSMSProfile  `json:"smsProfile"`
+	ID           string                `json:"id" yaml:"id"`
+	Slug         string                `json:"slug" yaml:"slug"`
+	DisplayName  string                `json:"displayName" yaml:"displayName"`
+	SupportEmail string                `json:"supportEmail" yaml:"supportEmail"`
+	Status       string                `json:"status" yaml:"status"`
+	Domains      []string              `json:"domains" yaml:"domains"`
+	Admins       []BootstrapMember     `json:"admins" yaml:"admins"`
+	Identity     BootstrapIdentity     `json:"identity" yaml:"identity"`
+	EmailProfile BootstrapEmailProfile `json:"emailProfile" yaml:"emailProfile"`
+	SMSProfile   *BootstrapSMSProfile  `json:"smsProfile" yaml:"smsProfile"`
 }
 
 // BootstrapMember captures admin membership entries.
 type BootstrapMember struct {
-	Email string `json:"email"`
-	Role  string `json:"role"`
+	Email string `json:"email" yaml:"email"`
+	Role  string `json:"role" yaml:"role"`
 }
 
 // BootstrapIdentity holds GIS/TAuth metadata.
 type BootstrapIdentity struct {
-	GoogleClientID string `json:"googleClientId"`
-	TAuthBaseURL   string `json:"tauthBaseUrl"`
+	GoogleClientID string `json:"googleClientId" yaml:"googleClientId"`
+	TAuthBaseURL   string `json:"tauthBaseUrl" yaml:"tauthBaseUrl"`
 }
 
 // BootstrapEmailProfile defines SMTP credentials.
 type BootstrapEmailProfile struct {
-	Host        string `json:"host"`
-	Port        int    `json:"port"`
-	Username    string `json:"username"`
-	Password    string `json:"password"`
-	FromAddress string `json:"fromAddress"`
+	Host        string `json:"host" yaml:"host"`
+	Port        int    `json:"port" yaml:"port"`
+	Username    string `json:"username" yaml:"username"`
+	Password    string `json:"password" yaml:"password"`
+	FromAddress string `json:"fromAddress" yaml:"fromAddress"`
 }
 
 // BootstrapSMSProfile defines Twilio credentials.
 type BootstrapSMSProfile struct {
-	AccountSID string `json:"accountSid"`
-	AuthToken  string `json:"authToken"`
-	FromNumber string `json:"fromNumber"`
+	AccountSID string `json:"accountSid" yaml:"accountSid"`
+	AuthToken  string `json:"authToken" yaml:"authToken"`
+	FromNumber string `json:"fromNumber" yaml:"fromNumber"`
 }
 
 // BootstrapFromFile loads tenants from a YAML file and upserts them.
@@ -69,8 +69,13 @@ func BootstrapFromFile(ctx context.Context, db *gorm.DB, keeper *SecretKeeper, p
 	if err := yaml.Unmarshal(contents, &cfg); err != nil {
 		return fmt.Errorf("tenant bootstrap: parse yaml: %w", err)
 	}
+	return Bootstrap(ctx, db, keeper, cfg)
+}
+
+// Bootstrap loads tenants from an in-memory config and upserts them.
+func Bootstrap(ctx context.Context, db *gorm.DB, keeper *SecretKeeper, cfg BootstrapConfig) error {
 	if len(cfg.Tenants) == 0 {
-		return fmt.Errorf("tenant bootstrap: no tenants in %s", path)
+		return fmt.Errorf("tenant bootstrap: no tenants configured")
 	}
 	for _, tenantSpec := range cfg.Tenants {
 		if err := upsertTenant(ctx, db, keeper, tenantSpec); err != nil {

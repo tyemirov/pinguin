@@ -1,355 +1,248 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/temirov/pinguin/internal/tenant"
 )
 
-type envEntry struct {
-	key   string
-	value string
-}
-
-func TestLoadConfig(t *testing.T) {
+func TestLoadConfigFromYAMLWithEnvExpansion(t *testing.T) {
 	t.Helper()
 
-	completeEnvironment := []envEntry{
-		{key: "DATABASE_PATH", value: "test.db"},
-		{key: "GRPC_AUTH_TOKEN", value: "unit-token"},
-		{key: "LOG_LEVEL", value: "INFO"},
-		{key: "MAX_RETRIES", value: "5"},
-		{key: "RETRY_INTERVAL_SEC", value: "4"},
-		{key: "MASTER_ENCRYPTION_KEY", value: strings.Repeat("a", 64)},
-		{key: "TENANT_CONFIG_PATH", value: "/etc/pinguin/tenants.yml"},
-		{key: "HTTP_LISTEN_ADDR", value: ":8080"},
-		{key: "HTTP_STATIC_ROOT", value: "web"},
-		{key: "HTTP_ALLOWED_ORIGINS", value: "https://app.local,https://alt.local"},
-		{key: "TAUTH_SIGNING_KEY", value: "signing-key"},
-		{key: "TAUTH_ISSUER", value: "tauth"},
-		{key: "TAUTH_COOKIE_NAME", value: "custom_session"},
-		{key: "SMTP_USERNAME", value: "apikey"},
-		{key: "SMTP_PASSWORD", value: "secret"},
-		{key: "SMTP_HOST", value: "smtp.test"},
-		{key: "SMTP_PORT", value: "587"},
-		{key: "FROM_EMAIL", value: "noreply@test"},
-		{key: "TWILIO_ACCOUNT_SID", value: "sid"},
-		{key: "TWILIO_AUTH_TOKEN", value: "auth"},
-		{key: "TWILIO_FROM_NUMBER", value: "+10000000000"},
-		{key: "CONNECTION_TIMEOUT_SEC", value: "3"},
-		{key: "OPERATION_TIMEOUT_SEC", value: "7"},
+	configPath := writeConfigFile(t, `
+server:
+  databasePath: ${DATABASE_PATH}
+  grpcAuthToken: ${GRPC_AUTH_TOKEN}
+  logLevel: INFO
+  maxRetries: 5
+  retryIntervalSec: 4
+  masterEncryptionKey: ${MASTER_ENCRYPTION_KEY}
+  connectionTimeoutSec: 3
+  operationTimeoutSec: 7
+tenants:
+  tenants:
+    - id: tenant-one
+      slug: one
+      displayName: One Corp
+      supportEmail: support@one.test
+      status: active
+      domains: [one.test]
+      admins:
+        - email: admin@one.test
+          role: owner
+      identity:
+        googleClientId: google-one
+        tauthBaseUrl: https://auth.one.test
+      emailProfile:
+        host: smtp.one.test
+        port: 587
+        username: ${SMTP_USERNAME}
+        password: ${SMTP_PASSWORD}
+        fromAddress: noreply@one.test
+      smsProfile:
+        accountSid: ${TWILIO_ACCOUNT_SID}
+        authToken: ${TWILIO_AUTH_TOKEN}
+        fromNumber: ${TWILIO_FROM_NUMBER}
+web:
+  enabled: true
+  listenAddr: :8080
+  staticRoot: web
+  allowedOrigins:
+    - https://app.local
+    - https://alt.local
+  tauth:
+    signingKey: ${TAUTH_SIGNING_KEY}
+    issuer: tauth
+    cookieName: custom_session
+`)
+
+	t.Setenv("PINGUIN_CONFIG_PATH", configPath)
+	t.Setenv("DATABASE_PATH", "test.db")
+	t.Setenv("GRPC_AUTH_TOKEN", "unit-token")
+	t.Setenv("MASTER_ENCRYPTION_KEY", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	t.Setenv("TAUTH_SIGNING_KEY", "signing-key")
+	t.Setenv("SMTP_USERNAME", "apikey")
+	t.Setenv("SMTP_PASSWORD", "secret")
+	t.Setenv("TWILIO_ACCOUNT_SID", "sid")
+	t.Setenv("TWILIO_AUTH_TOKEN", "auth")
+	t.Setenv("TWILIO_FROM_NUMBER", "+10000000000")
+
+	cfg, err := LoadConfig(false)
+	if err != nil {
+		t.Fatalf("LoadConfig returned error: %v", err)
 	}
 
-	testCases := []struct {
-		name           string
-		mutateEnv      func(t *testing.T)
-		expectError    bool
-		errorSubstring string
-		expectedConfig Config
-		assert         func(t *testing.T, cfg Config)
-		disableWeb     bool
-	}{
-		{
-			name: "AllVariablesPresent",
-			mutateEnv: func(t *testing.T) {
-				setEnvironment(t, completeEnvironment)
-			},
-			expectedConfig: Config{
-				DatabasePath:         "test.db",
-				GRPCAuthToken:        "unit-token",
-				LogLevel:             "INFO",
-				MaxRetries:           5,
-				RetryIntervalSec:     4,
-				MasterEncryptionKey:  strings.Repeat("a", 64),
-				TenantConfigPath:     "/etc/pinguin/tenants.yml",
-				WebInterfaceEnabled:  true,
-				HTTPListenAddr:       ":8080",
-				HTTPStaticRoot:       "web",
-				HTTPAllowedOrigins:   []string{"https://app.local", "https://alt.local"},
-				TAuthSigningKey:      "signing-key",
-				TAuthIssuer:          "tauth",
-				TAuthCookieName:      "custom_session",
-				SMTPUsername:         "apikey",
-				SMTPPassword:         "secret",
-				SMTPHost:             "smtp.test",
-				SMTPPort:             587,
-				FromEmail:            "noreply@test",
-				TwilioAccountSID:     "sid",
-				TwilioAuthToken:      "auth",
-				TwilioFromNumber:     "+10000000000",
-				ConnectionTimeoutSec: 3,
-				OperationTimeoutSec:  7,
-			},
-			assert: func(t *testing.T, cfg Config) {
-				t.Helper()
-				if !cfg.TwilioConfigured() {
-					t.Fatalf("expected Twilio to be configured")
-				}
+	expected := Config{
+		DatabasePath:        "test.db",
+		GRPCAuthToken:       "unit-token",
+		LogLevel:            "INFO",
+		MaxRetries:          5,
+		RetryIntervalSec:    4,
+		MasterEncryptionKey: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		TenantBootstrap: tenant.BootstrapConfig{
+			Tenants: []tenant.BootstrapTenant{
+				{
+					ID:           "tenant-one",
+					Slug:         "one",
+					DisplayName:  "One Corp",
+					SupportEmail: "support@one.test",
+					Status:       "active",
+					Domains:      []string{"one.test"},
+					Admins: []tenant.BootstrapMember{
+						{Email: "admin@one.test", Role: "owner"},
+					},
+					Identity: tenant.BootstrapIdentity{
+						GoogleClientID: "google-one",
+						TAuthBaseURL:   "https://auth.one.test",
+					},
+					EmailProfile: tenant.BootstrapEmailProfile{
+						Host:        "smtp.one.test",
+						Port:        587,
+						Username:    "apikey",
+						Password:    "secret",
+						FromAddress: "noreply@one.test",
+					},
+					SMSProfile: &tenant.BootstrapSMSProfile{
+						AccountSID: "sid",
+						AuthToken:  "auth",
+						FromNumber: "+10000000000",
+					},
+				},
 			},
 		},
-		{
-			name: "StaticRootDefaults",
-			mutateEnv: func(t *testing.T) {
-				var trimmed []envEntry
-				for _, entry := range completeEnvironment {
-					if entry.key == "HTTP_STATIC_ROOT" {
-						continue
-					}
-					trimmed = append(trimmed, entry)
-				}
-				setEnvironment(t, trimmed)
-			},
-			expectedConfig: Config{
-				DatabasePath:         "test.db",
-				GRPCAuthToken:        "unit-token",
-				LogLevel:             "INFO",
-				MaxRetries:           5,
-				RetryIntervalSec:     4,
-				MasterEncryptionKey:  strings.Repeat("a", 64),
-				TenantConfigPath:     "/etc/pinguin/tenants.yml",
-				WebInterfaceEnabled:  true,
-				HTTPListenAddr:       ":8080",
-				HTTPStaticRoot:       defaultHTTPStaticRoot,
-				HTTPAllowedOrigins:   []string{"https://app.local", "https://alt.local"},
-				TAuthSigningKey:      "signing-key",
-				TAuthIssuer:          "tauth",
-				TAuthCookieName:      "custom_session",
-				SMTPUsername:         "apikey",
-				SMTPPassword:         "secret",
-				SMTPHost:             "smtp.test",
-				SMTPPort:             587,
-				FromEmail:            "noreply@test",
-				TwilioAccountSID:     "sid",
-				TwilioAuthToken:      "auth",
-				TwilioFromNumber:     "+10000000000",
-				ConnectionTimeoutSec: 3,
-				OperationTimeoutSec:  7,
-			},
-			assert: func(t *testing.T, cfg Config) {
-				t.Helper()
-				if !cfg.TwilioConfigured() {
-					t.Fatalf("expected Twilio to be configured")
-				}
-			},
-		},
-		{
-			name: "MissingVariable",
-			mutateEnv: func(t *testing.T) {
-				var truncated []envEntry
-				for _, entry := range completeEnvironment {
-					if entry.key == "OPERATION_TIMEOUT_SEC" {
-						continue
-					}
-					truncated = append(truncated, entry)
-				}
-				setEnvironment(t, truncated)
-			},
-			expectError:    true,
-			errorSubstring: "missing environment variable OPERATION_TIMEOUT_SEC",
-		},
-		{
-			name: "InvalidInteger",
-			mutateEnv: func(t *testing.T) {
-				invalid := append([]envEntry{}, completeEnvironment...)
-				invalid[3].value = "invalid"
-				setEnvironment(t, invalid)
-			},
-			expectError:    true,
-			errorSubstring: "invalid integer for MAX_RETRIES",
-		},
-		{
-			name: "TwilioCredentialsOptional",
-			mutateEnv: func(t *testing.T) {
-				var trimmed []envEntry
-				for _, entry := range completeEnvironment {
-					if strings.HasPrefix(entry.key, "TWILIO_") {
-						continue
-					}
-					trimmed = append(trimmed, entry)
-				}
-				setEnvironment(t, trimmed)
-			},
-			expectedConfig: Config{
-				DatabasePath:         "test.db",
-				GRPCAuthToken:        "unit-token",
-				LogLevel:             "INFO",
-				MaxRetries:           5,
-				RetryIntervalSec:     4,
-				MasterEncryptionKey:  strings.Repeat("a", 64),
-				TenantConfigPath:     "/etc/pinguin/tenants.yml",
-				WebInterfaceEnabled:  true,
-				HTTPListenAddr:       ":8080",
-				HTTPStaticRoot:       "web",
-				HTTPAllowedOrigins:   []string{"https://app.local", "https://alt.local"},
-				TAuthSigningKey:      "signing-key",
-				TAuthIssuer:          "tauth",
-				TAuthCookieName:      "custom_session",
-				SMTPUsername:         "apikey",
-				SMTPPassword:         "secret",
-				SMTPHost:             "smtp.test",
-				SMTPPort:             587,
-				FromEmail:            "noreply@test",
-				ConnectionTimeoutSec: 3,
-				OperationTimeoutSec:  7,
-			},
-			assert: func(t *testing.T, cfg Config) {
-				t.Helper()
-				if cfg.TwilioConfigured() {
-					t.Fatalf("expected Twilio to be disabled")
-				}
-			},
-		},
-		{
-			name: "MissingTenantConfigPath",
-			mutateEnv: func(t *testing.T) {
-				var trimmed []envEntry
-				for _, entry := range completeEnvironment {
-					if entry.key == "TENANT_CONFIG_PATH" {
-						continue
-					}
-					trimmed = append(trimmed, entry)
-				}
-				setEnvironment(t, trimmed)
-			},
-			expectError:    true,
-			errorSubstring: "missing environment variable TENANT_CONFIG_PATH",
-		},
-		{
-			name: "DisableWebViaFlagSkipsHTTPRequirements",
-			mutateEnv: func(t *testing.T) {
-				var trimmed []envEntry
-				for _, entry := range completeEnvironment {
-					switch entry.key {
-					case "HTTP_LISTEN_ADDR", "HTTP_STATIC_ROOT", "HTTP_ALLOWED_ORIGINS", "ADMINS", "TAUTH_SIGNING_KEY", "TAUTH_ISSUER", "TAUTH_COOKIE_NAME":
-						continue
-					default:
-						trimmed = append(trimmed, entry)
-					}
-				}
-				setEnvironment(t, trimmed)
-			},
-			disableWeb: true,
-			expectedConfig: Config{
-				DatabasePath:         "test.db",
-				GRPCAuthToken:        "unit-token",
-				LogLevel:             "INFO",
-				MaxRetries:           5,
-				RetryIntervalSec:     4,
-				MasterEncryptionKey:  strings.Repeat("a", 64),
-				TenantConfigPath:     "/etc/pinguin/tenants.yml",
-				WebInterfaceEnabled:  false,
-				SMTPUsername:         "apikey",
-				SMTPPassword:         "secret",
-				SMTPHost:             "smtp.test",
-				SMTPPort:             587,
-				FromEmail:            "noreply@test",
-				TwilioAccountSID:     "sid",
-				TwilioAuthToken:      "auth",
-				TwilioFromNumber:     "+10000000000",
-				ConnectionTimeoutSec: 3,
-				OperationTimeoutSec:  7,
-			},
-		},
-		{
-			name: "DisableWebViaEnvSkipsHTTPRequirements",
-			mutateEnv: func(t *testing.T) {
-				var trimmed []envEntry
-				for _, entry := range completeEnvironment {
-					switch entry.key {
-					case "HTTP_LISTEN_ADDR", "HTTP_STATIC_ROOT", "HTTP_ALLOWED_ORIGINS", "TAUTH_SIGNING_KEY", "TAUTH_ISSUER", "TAUTH_COOKIE_NAME":
-						continue
-					default:
-						trimmed = append(trimmed, entry)
-					}
-				}
-				trimmed = append(trimmed, envEntry{key: "DISABLE_WEB_INTERFACE", value: "true"})
-				setEnvironment(t, trimmed)
-			},
-			expectedConfig: Config{
-				DatabasePath:         "test.db",
-				GRPCAuthToken:        "unit-token",
-				LogLevel:             "INFO",
-				MaxRetries:           5,
-				RetryIntervalSec:     4,
-				MasterEncryptionKey:  strings.Repeat("a", 64),
-				TenantConfigPath:     "/etc/pinguin/tenants.yml",
-				WebInterfaceEnabled:  false,
-				SMTPUsername:         "apikey",
-				SMTPPassword:         "secret",
-				SMTPHost:             "smtp.test",
-				SMTPPort:             587,
-				FromEmail:            "noreply@test",
-				TwilioAccountSID:     "sid",
-				TwilioAuthToken:      "auth",
-				TwilioFromNumber:     "+10000000000",
-				ConnectionTimeoutSec: 3,
-				OperationTimeoutSec:  7,
-			},
-		},
+		WebInterfaceEnabled:  true,
+		HTTPListenAddr:       ":8080",
+		HTTPStaticRoot:       "web",
+		HTTPAllowedOrigins:   []string{"https://app.local", "https://alt.local"},
+		TAuthSigningKey:      "signing-key",
+		TAuthIssuer:          "tauth",
+		TAuthCookieName:      "custom_session",
+		ConnectionTimeoutSec: 3,
+		OperationTimeoutSec:  7,
 	}
 
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			t.Helper()
-			testCase.mutateEnv(t)
-
-			loadedConfig, loadError := LoadConfig(testCase.disableWeb)
-			if testCase.expectError {
-				if loadError == nil {
-					t.Fatalf("expected error")
-				}
-				if !strings.Contains(loadError.Error(), testCase.errorSubstring) {
-					t.Fatalf("unexpected error %v", loadError)
-				}
-				return
-			}
-
-			if loadError != nil {
-				t.Fatalf("load config error: %v", loadError)
-			}
-
-			assertConfigEquals(t, loadedConfig, testCase.expectedConfig)
-
-			if testCase.assert != nil {
-				testCase.assert(t, loadedConfig)
-			}
-		})
+	if !reflect.DeepEqual(cfg, expected) {
+		t.Fatalf("unexpected config:\n got: %#v\nwant: %#v", cfg, expected)
+	}
+	if cfg.TwilioConfigured() {
+		t.Fatalf("expected global Twilio credentials to remain empty when provided via tenants")
 	}
 }
 
-func setEnvironment(t *testing.T, entries []envEntry) {
+func TestLoadConfigAppliesDefaultsAndRespectsDisableWeb(t *testing.T) {
 	t.Helper()
-	for _, entry := range entries {
-		t.Setenv(entry.key, entry.value)
+	configPath := writeConfigFile(t, `
+server:
+  databasePath: app.db
+  grpcAuthToken: token
+  logLevel: DEBUG
+  maxRetries: 3
+  retryIntervalSec: 30
+  masterEncryptionKey: ${MASTER_ENCRYPTION_KEY}
+  connectionTimeoutSec: 5
+  operationTimeoutSec: 10
+tenants:
+  tenants:
+    - id: tenant-one
+      slug: one
+      displayName: One Corp
+      supportEmail: support@one.test
+      status: active
+      domains: [one.test]
+      admins:
+        - email: admin@one.test
+          role: owner
+      identity:
+        googleClientId: google-one
+        tauthBaseUrl: https://auth.one.test
+      emailProfile:
+        host: smtp.one.test
+        port: 587
+        username: smtp-user
+        password: smtp-pass
+        fromAddress: noreply@one.test
+web:
+  enabled: true
+  listenAddr: :0
+  tauth:
+    signingKey: ${TAUTH_SIGNING_KEY}
+    issuer: tauth
+`)
+	t.Setenv("PINGUIN_CONFIG_PATH", configPath)
+	t.Setenv("MASTER_ENCRYPTION_KEY", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+	t.Setenv("TAUTH_SIGNING_KEY", "signing-key")
+
+	cfg, err := LoadConfig(true)
+	if err != nil {
+		t.Fatalf("LoadConfig returned error: %v", err)
+	}
+
+	if cfg.WebInterfaceEnabled {
+		t.Fatalf("expected web interface to be disabled")
+	}
+	if cfg.HTTPStaticRoot != "" || cfg.TAuthCookieName != "" || cfg.HTTPAllowedOrigins != nil {
+		t.Fatalf("expected web fields to be cleared when disabled")
+	}
+	if cfg.ConnectionTimeoutSec != 5 || cfg.OperationTimeoutSec != 10 {
+		t.Fatalf("expected timeout values to be set from config")
 	}
 }
 
-func assertConfigEquals(t *testing.T, actual Config, expected Config) {
+func TestLoadConfigRejectsMissingRequiredField(t *testing.T) {
 	t.Helper()
+	configPath := writeConfigFile(t, `
+server:
+  databasePath: db.sqlite
+  grpcAuthToken: ""
+  logLevel: INFO
+  maxRetries: 1
+  retryIntervalSec: 10
+  masterEncryptionKey: key
+  connectionTimeoutSec: 5
+  operationTimeoutSec: 10
+tenants:
+  tenants:
+    - id: tenant-one
+      slug: one
+      displayName: One Corp
+      supportEmail: support@one.test
+      status: active
+      domains: [one.test]
+      admins:
+        - email: admin@one.test
+          role: owner
+      identity:
+        googleClientId: google-one
+        tauthBaseUrl: https://auth.one.test
+      emailProfile:
+        host: smtp.one.test
+        port: 587
+        username: smtp-user
+        password: smtp-pass
+        fromAddress: noreply@one.test
+web:
+  enabled: false
+`)
+	t.Setenv("PINGUIN_CONFIG_PATH", configPath)
 
-	if actual.DatabasePath != expected.DatabasePath ||
-		actual.GRPCAuthToken != expected.GRPCAuthToken ||
-		actual.LogLevel != expected.LogLevel ||
-		actual.MaxRetries != expected.MaxRetries ||
-		actual.RetryIntervalSec != expected.RetryIntervalSec ||
-		actual.MasterEncryptionKey != expected.MasterEncryptionKey ||
-		actual.TenantConfigPath != expected.TenantConfigPath ||
-		actual.WebInterfaceEnabled != expected.WebInterfaceEnabled ||
-		actual.HTTPListenAddr != expected.HTTPListenAddr ||
-		actual.HTTPStaticRoot != expected.HTTPStaticRoot ||
-		actual.TAuthSigningKey != expected.TAuthSigningKey ||
-		actual.TAuthIssuer != expected.TAuthIssuer ||
-		actual.TAuthCookieName != expected.TAuthCookieName ||
-		actual.SMTPUsername != expected.SMTPUsername ||
-		actual.SMTPPassword != expected.SMTPPassword ||
-		actual.SMTPHost != expected.SMTPHost ||
-		actual.SMTPPort != expected.SMTPPort ||
-		actual.FromEmail != expected.FromEmail ||
-		actual.ConnectionTimeoutSec != expected.ConnectionTimeoutSec ||
-		actual.OperationTimeoutSec != expected.OperationTimeoutSec {
-		t.Fatalf("unexpected scalar configuration: %+v", actual)
+	_, err := LoadConfig(false)
+	if err == nil {
+		t.Fatalf("expected validation error")
 	}
-	if !reflect.DeepEqual(actual.HTTPAllowedOrigins, expected.HTTPAllowedOrigins) {
-		t.Fatalf("unexpected allowed origins: %+v", actual.HTTPAllowedOrigins)
+	if !strings.Contains(err.Error(), "server.grpcAuthToken") {
+		t.Fatalf("unexpected error: %v", err)
 	}
+}
+
+func writeConfigFile(t *testing.T, contents string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.yml")
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatalf("write config file: %v", err)
+	}
+	return path
 }

@@ -3,12 +3,14 @@ package config
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
-	"sync"
+
+	"github.com/temirov/pinguin/internal/tenant"
+	"gopkg.in/yaml.v3"
 )
 
 const defaultHTTPStaticRoot = "/web"
+const defaultConfigPath = "configs/config.yml"
 
 type Config struct {
 	DatabasePath     string
@@ -19,6 +21,7 @@ type Config struct {
 
 	MasterEncryptionKey string
 	TenantConfigPath    string
+	TenantBootstrap     tenant.BootstrapConfig
 
 	WebInterfaceEnabled bool
 	HTTPListenAddr      string
@@ -44,132 +47,114 @@ type Config struct {
 	OperationTimeoutSec  int
 }
 
-// LoadConfig retrieves all required environment variables concurrently.
+type fileConfig struct {
+	Server  serverSection `yaml:"server"`
+	Web     webSection    `yaml:"web"`
+	Tenants tenantSection `yaml:"tenants"`
+}
+
+type serverSection struct {
+	DatabasePath        string `yaml:"databasePath"`
+	GRPCAuthToken       string `yaml:"grpcAuthToken"`
+	LogLevel            string `yaml:"logLevel"`
+	MaxRetries          int    `yaml:"maxRetries"`
+	RetryIntervalSec    int    `yaml:"retryIntervalSec"`
+	MasterEncryptionKey string `yaml:"masterEncryptionKey"`
+	ConnectionTimeout   int    `yaml:"connectionTimeoutSec"`
+	OperationTimeout    int    `yaml:"operationTimeoutSec"`
+}
+
+type webSection struct {
+	Enabled        *bool        `yaml:"enabled"`
+	ListenAddr     string       `yaml:"listenAddr"`
+	StaticRoot     string       `yaml:"staticRoot"`
+	AllowedOrigins []string     `yaml:"allowedOrigins"`
+	TAuth          tauthSection `yaml:"tauth"`
+}
+
+type tauthSection struct {
+	SigningKey string `yaml:"signingKey"`
+	Issuer     string `yaml:"issuer"`
+	CookieName string `yaml:"cookieName"`
+}
+
+type tenantSection struct {
+	ConfigPath string                   `yaml:"configPath"`
+	Tenants    []tenant.BootstrapTenant `yaml:"tenants"`
+}
+
+// LoadConfig reads the YAML config file (with environment expansion) into Config.
 func LoadConfig(disableWebInterface bool) (Config, error) {
-	var configuration Config
-	configuration.WebInterfaceEnabled = !disableWebInterface && !parseDisabledEnv("DISABLE_WEB_INTERFACE")
+	configPath := strings.TrimSpace(os.Getenv("PINGUIN_CONFIG_PATH"))
+	if configPath == "" {
+		configPath = defaultConfigPath
+	}
 
-	var waitGroup sync.WaitGroup
+	rawContents, err := os.ReadFile(configPath)
+	if err != nil {
+		return Config{}, fmt.Errorf("configuration: read %s: %w", configPath, err)
+	}
+	expanded := os.ExpandEnv(string(rawContents))
 
-	taskFunctions := []func() error{
-		loadEnvString("DATABASE_PATH", &configuration.DatabasePath),
-		loadEnvString("GRPC_AUTH_TOKEN", &configuration.GRPCAuthToken),
-		loadEnvString("LOG_LEVEL", &configuration.LogLevel),
-		loadEnvInt("MAX_RETRIES", &configuration.MaxRetries),
-		loadEnvInt("RETRY_INTERVAL_SEC", &configuration.RetryIntervalSec),
-		loadEnvString("MASTER_ENCRYPTION_KEY", &configuration.MasterEncryptionKey),
-		loadEnvString("TENANT_CONFIG_PATH", &configuration.TenantConfigPath),
-		loadEnvString("SMTP_USERNAME", &configuration.SMTPUsername),
-		loadEnvString("SMTP_PASSWORD", &configuration.SMTPPassword),
-		loadEnvString("SMTP_HOST", &configuration.SMTPHost),
-		loadEnvInt("SMTP_PORT", &configuration.SMTPPort),
-		loadEnvString("FROM_EMAIL", &configuration.FromEmail),
-		loadEnvInt("CONNECTION_TIMEOUT_SEC", &configuration.ConnectionTimeoutSec),
-		loadEnvInt("OPERATION_TIMEOUT_SEC", &configuration.OperationTimeoutSec),
+	var fileCfg fileConfig
+	if err := yaml.Unmarshal([]byte(expanded), &fileCfg); err != nil {
+		return Config{}, fmt.Errorf("configuration: parse yaml: %w", err)
+	}
+
+	webEnabled := true
+	if fileCfg.Web.Enabled != nil {
+		webEnabled = *fileCfg.Web.Enabled
+	}
+	if disableWebInterface || parseDisabledEnv("DISABLE_WEB_INTERFACE") {
+		webEnabled = false
+	}
+
+	configuration := Config{
+		DatabasePath:         strings.TrimSpace(fileCfg.Server.DatabasePath),
+		GRPCAuthToken:        strings.TrimSpace(fileCfg.Server.GRPCAuthToken),
+		LogLevel:             strings.TrimSpace(fileCfg.Server.LogLevel),
+		MaxRetries:           fileCfg.Server.MaxRetries,
+		RetryIntervalSec:     fileCfg.Server.RetryIntervalSec,
+		MasterEncryptionKey:  strings.TrimSpace(fileCfg.Server.MasterEncryptionKey),
+		TenantConfigPath:     strings.TrimSpace(fileCfg.Tenants.ConfigPath),
+		WebInterfaceEnabled:  webEnabled,
+		HTTPListenAddr:       strings.TrimSpace(fileCfg.Web.ListenAddr),
+		HTTPStaticRoot:       strings.TrimSpace(fileCfg.Web.StaticRoot),
+		HTTPAllowedOrigins:   normalizeStrings(fileCfg.Web.AllowedOrigins),
+		TAuthSigningKey:      strings.TrimSpace(fileCfg.Web.TAuth.SigningKey),
+		TAuthIssuer:          strings.TrimSpace(fileCfg.Web.TAuth.Issuer),
+		TAuthCookieName:      strings.TrimSpace(fileCfg.Web.TAuth.CookieName),
+		ConnectionTimeoutSec: fileCfg.Server.ConnectionTimeout,
+		OperationTimeoutSec:  fileCfg.Server.OperationTimeout,
+		TenantBootstrap: tenant.BootstrapConfig{
+			Tenants: fileCfg.Tenants.Tenants,
+		},
 	}
 
 	if configuration.WebInterfaceEnabled {
-		taskFunctions = append(taskFunctions,
-			loadEnvString("HTTP_LISTEN_ADDR", &configuration.HTTPListenAddr),
-			loadEnvString("TAUTH_SIGNING_KEY", &configuration.TAuthSigningKey),
-			loadEnvString("TAUTH_ISSUER", &configuration.TAuthIssuer),
-		)
-	}
-
-	errorChannel := make(chan error, len(taskFunctions))
-	for _, taskFunction := range taskFunctions {
-		waitGroup.Add(1)
-		go func(task func() error) {
-			defer waitGroup.Done()
-			if taskError := task(); taskError != nil {
-				errorChannel <- taskError
-			}
-		}(taskFunction)
-	}
-
-	waitGroup.Wait()
-	close(errorChannel)
-
-	var errorMessages []string
-	for errorValue := range errorChannel {
-		errorMessages = append(errorMessages, errorValue.Error())
-	}
-	if len(errorMessages) > 0 {
-		return Config{}, fmt.Errorf("configuration errors: %s", strings.Join(errorMessages, ", "))
-	}
-
-	if configuration.WebInterfaceEnabled {
-		configuration.HTTPStaticRoot = strings.TrimSpace(os.Getenv("HTTP_STATIC_ROOT"))
 		if configuration.HTTPStaticRoot == "" {
 			configuration.HTTPStaticRoot = defaultHTTPStaticRoot
 		}
-		configuration.HTTPAllowedOrigins = parseCSV(os.Getenv("HTTP_ALLOWED_ORIGINS"))
-
-		configuration.TAuthCookieName = strings.TrimSpace(os.Getenv("TAUTH_COOKIE_NAME"))
 		if configuration.TAuthCookieName == "" {
 			configuration.TAuthCookieName = "app_session"
 		}
 	} else {
 		configuration.HTTPStaticRoot = ""
 		configuration.HTTPAllowedOrigins = nil
+		configuration.TAuthSigningKey = ""
+		configuration.TAuthIssuer = ""
 		configuration.TAuthCookieName = ""
 	}
 
-	configuration.TwilioAccountSID = strings.TrimSpace(os.Getenv("TWILIO_ACCOUNT_SID"))
-	configuration.TwilioAuthToken = strings.TrimSpace(os.Getenv("TWILIO_AUTH_TOKEN"))
-	configuration.TwilioFromNumber = strings.TrimSpace(os.Getenv("TWILIO_FROM_NUMBER"))
+	if err := validateConfig(configuration); err != nil {
+		return Config{}, err
+	}
 
 	return configuration, nil
 }
 
-func loadEnvString(environmentKey string, destination *string) func() error {
-	const missingEnvFormat = "missing environment variable %s"
-	return func() error {
-		environmentValue := strings.TrimSpace(os.Getenv(environmentKey))
-		if environmentValue == "" {
-			return fmt.Errorf(missingEnvFormat, environmentKey)
-		}
-		*destination = environmentValue
-		return nil
-	}
-}
-
-func loadEnvInt(environmentKey string, destination *int) func() error {
-	const missingEnvFormat = "missing environment variable %s"
-	const invalidIntFormat = "invalid integer for %s: %v"
-	return func() error {
-		environmentValue := os.Getenv(environmentKey)
-		if environmentValue == "" {
-			return fmt.Errorf(missingEnvFormat, environmentKey)
-		}
-		parsedInteger, conversionError := strconv.Atoi(environmentValue)
-		if conversionError != nil {
-			return fmt.Errorf(invalidIntFormat, environmentKey, conversionError)
-		}
-		*destination = parsedInteger
-		return nil
-	}
-}
-
 func (configuration Config) TwilioConfigured() bool {
 	return configuration.TwilioAccountSID != "" && configuration.TwilioAuthToken != "" && configuration.TwilioFromNumber != ""
-}
-
-func parseCSV(value string) []string {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return nil
-	}
-	rawParts := strings.Split(trimmed, ",")
-	var normalized []string
-	for _, part := range rawParts {
-		candidate := strings.TrimSpace(part)
-		if candidate == "" {
-			continue
-		}
-		normalized = append(normalized, candidate)
-	}
-	return normalized
 }
 
 func parseDisabledEnv(environmentKey string) bool {
@@ -182,5 +167,55 @@ func parseDisabledEnv(environmentKey string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func normalizeStrings(values []string) []string {
+	var normalized []string
+	for _, value := range values {
+		candidate := strings.TrimSpace(value)
+		if candidate == "" {
+			continue
+		}
+		normalized = append(normalized, candidate)
+	}
+	return normalized
+}
+
+func validateConfig(cfg Config) error {
+	var errors []string
+	requireString(cfg.DatabasePath, "server.databasePath", &errors)
+	requireString(cfg.GRPCAuthToken, "server.grpcAuthToken", &errors)
+	requireString(cfg.LogLevel, "server.logLevel", &errors)
+	requirePositive(cfg.MaxRetries, "server.maxRetries", &errors)
+	requirePositive(cfg.RetryIntervalSec, "server.retryIntervalSec", &errors)
+	requireString(cfg.MasterEncryptionKey, "server.masterEncryptionKey", &errors)
+	if len(cfg.TenantBootstrap.Tenants) == 0 {
+		requireString(cfg.TenantConfigPath, "tenants.configPath", &errors)
+	}
+	requirePositive(cfg.ConnectionTimeoutSec, "server.connectionTimeoutSec", &errors)
+	requirePositive(cfg.OperationTimeoutSec, "server.operationTimeoutSec", &errors)
+
+	if cfg.WebInterfaceEnabled {
+		requireString(cfg.HTTPListenAddr, "web.listenAddr", &errors)
+		requireString(cfg.TAuthSigningKey, "web.tauth.signingKey", &errors)
+		requireString(cfg.TAuthIssuer, "web.tauth.issuer", &errors)
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("configuration errors: %s", strings.Join(errors, ", "))
+	}
+	return nil
+}
+
+func requireString(value string, name string, errors *[]string) {
+	if strings.TrimSpace(value) == "" {
+		*errors = append(*errors, fmt.Sprintf("missing %s", name))
+	}
+}
+
+func requirePositive(value int, name string, errors *[]string) {
+	if value <= 0 {
+		*errors = append(*errors, fmt.Sprintf("missing %s", name))
 	}
 }

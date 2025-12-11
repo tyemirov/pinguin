@@ -393,8 +393,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	if bootstrapErr := tenant.BootstrapFromFile(context.Background(), databaseInstance, secretKeeper, configuration.TenantConfigPath); bootstrapErr != nil {
-		mainLogger.Error("Failed to bootstrap tenants", "error", bootstrapErr)
+	bootstrapCfg := configuration.TenantBootstrap
+	switch {
+	case len(bootstrapCfg.Tenants) > 0:
+		if bootstrapErr := tenant.Bootstrap(context.Background(), databaseInstance, secretKeeper, bootstrapCfg); bootstrapErr != nil {
+			mainLogger.Error("Failed to bootstrap tenants", "error", bootstrapErr)
+			os.Exit(1)
+		}
+	case configuration.TenantConfigPath != "":
+		if bootstrapErr := tenant.BootstrapFromFile(context.Background(), databaseInstance, secretKeeper, configuration.TenantConfigPath); bootstrapErr != nil {
+			mainLogger.Error("Failed to bootstrap tenants", "error", bootstrapErr)
+			os.Exit(1)
+		}
+	default:
+		mainLogger.Error("Failed to bootstrap tenants", "error", "no tenant config supplied")
 		os.Exit(1)
 	}
 	tenantRepo := tenant.NewRepository(databaseInstance, secretKeeper)
