@@ -19,10 +19,8 @@ tenants:
         - ${TENANT_LOCAL_DOMAIN_PRIMARY}
         - ${TENANT_LOCAL_DOMAIN_SECONDARY}
       admins:
-        - email: ${TENANT_LOCAL_ADMIN_EMAIL}
-          role: owner
-        - email: ${TENANT_LOCAL_VIEWER_EMAIL}
-          role: viewer
+        - ${TENANT_LOCAL_ADMIN_EMAIL}
+        - ${TENANT_LOCAL_ADMIN_EMAIL_2}
       identity:
         googleClientId: ${TENANT_LOCAL_GOOGLE_CLIENT_ID}
         tauthBaseUrl: ${TENANT_LOCAL_TAUTH_BASE_URL}

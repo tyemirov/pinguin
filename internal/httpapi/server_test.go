@@ -492,10 +492,7 @@ func newTestHTTPServerWithRepo(t *testing.T, svc service.NotificationService, va
 
 func newTestTenantRepository(t *testing.T, admins []string) *tenant.Repository {
 	t.Helper()
-	var members []tenant.BootstrapMember
-	for _, email := range admins {
-		members = append(members, tenant.BootstrapMember{Email: email, Role: "admin"})
-	}
+	members := tenant.BootstrapAdmins(admins)
 	cfg := tenant.BootstrapConfig{
 		Tenants: []tenant.BootstrapTenant{
 			{
@@ -534,10 +531,7 @@ func newMultiTenantRepository(t *testing.T) *tenant.Repository {
 				SupportEmail: "alpha@example.com",
 				Status:       string(tenant.TenantStatusActive),
 				Domains:      []string{"alpha.localhost"},
-				Admins: []tenant.BootstrapMember{
-					{Email: "admin-alpha@example.com", Role: "admin"},
-					{Email: "user@example.com", Role: "admin"},
-				},
+				Admins:       tenant.BootstrapAdmins{"admin-alpha@example.com", "user@example.com"},
 				Identity: tenant.BootstrapIdentity{
 					GoogleClientID: "alpha-google",
 					TAuthBaseURL:   "https://auth.alpha.localhost",
@@ -557,10 +551,7 @@ func newMultiTenantRepository(t *testing.T) *tenant.Repository {
 				SupportEmail: "bravo@example.com",
 				Status:       string(tenant.TenantStatusActive),
 				Domains:      []string{"bravo.localhost"},
-				Admins: []tenant.BootstrapMember{
-					{Email: "admin-bravo@example.com", Role: "admin"},
-					{Email: "user@example.com", Role: "admin"},
-				},
+				Admins:       tenant.BootstrapAdmins{"admin-bravo@example.com", "user@example.com"},
 				Identity: tenant.BootstrapIdentity{
 					GoogleClientID: "bravo-google",
 					TAuthBaseURL:   "https://auth.bravo.localhost",

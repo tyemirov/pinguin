@@ -62,10 +62,7 @@ func sampleBootstrapConfig() BootstrapConfig {
 				SupportEmail: "support@alpha.example",
 				Status:       string(TenantStatusActive),
 				Domains:      []string{"alpha.example", "portal.alpha.example"},
-				Admins: []BootstrapMember{
-					{Email: "admin@alpha.example", Role: "owner"},
-					{Email: "viewer@alpha.example", Role: "viewer"},
-				},
+				Admins:       BootstrapAdmins{"admin@alpha.example", "viewer@alpha.example"},
 				Identity: BootstrapIdentity{
 					GoogleClientID: "google-alpha",
 					TAuthBaseURL:   "https://tauth.alpha.example",

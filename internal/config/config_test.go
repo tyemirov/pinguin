@@ -92,9 +92,7 @@ web:
 					SupportEmail: "support@one.test",
 					Status:       "active",
 					Domains:      []string{"one.test"},
-					Admins: []tenant.BootstrapMember{
-						{Email: "admin@one.test", Role: "owner"},
-					},
+					Admins:       tenant.BootstrapAdmins{"admin@one.test"},
 					Identity: tenant.BootstrapIdentity{
 						GoogleClientID: "google-one",
 						TAuthBaseURL:   "https://auth.one.test",

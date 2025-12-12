@@ -100,8 +100,8 @@ tenants:
       displayName: Local Sandbox
       domains: [${TENANT_LOCAL_DOMAIN_PRIMARY}, ${TENANT_LOCAL_DOMAIN_SECONDARY}]
       admins:
-        - email: ${TENANT_LOCAL_ADMIN_EMAIL}
-          role: owner
+        - ${TENANT_LOCAL_ADMIN_EMAIL}
+        - ${TENANT_LOCAL_ADMIN_EMAIL_2}
       identity:
         googleClientId: ${TENANT_LOCAL_GOOGLE_CLIENT_ID}
         tauthBaseUrl: ${TENANT_LOCAL_TAUTH_BASE_URL}
@@ -211,10 +211,8 @@ tenants:
         - acme.example
         - portal.acme.example
       admins:
-        - email: admin@acme.example
-          role: owner
-        - email: viewer@acme.example
-          role: viewer
+        - admin@acme.example
+        - viewer@acme.example
       identity:
         googleClientId: google-client-id.apps.googleusercontent.com
         tauthBaseUrl: https://auth.acme.example

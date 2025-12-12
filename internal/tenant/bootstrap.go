@@ -25,16 +25,68 @@ type BootstrapTenant struct {
 	SupportEmail string                `json:"supportEmail" yaml:"supportEmail"`
 	Status       string                `json:"status" yaml:"status"`
 	Domains      []string              `json:"domains" yaml:"domains"`
-	Admins       []BootstrapMember     `json:"admins" yaml:"admins"`
+	Admins       BootstrapAdmins       `json:"admins" yaml:"admins"`
 	Identity     BootstrapIdentity     `json:"identity" yaml:"identity"`
 	EmailProfile BootstrapEmailProfile `json:"emailProfile" yaml:"emailProfile"`
 	SMSProfile   *BootstrapSMSProfile  `json:"smsProfile" yaml:"smsProfile"`
 }
 
-// BootstrapMember captures admin membership entries.
-type BootstrapMember struct {
-	Email string `json:"email" yaml:"email"`
-	Role  string `json:"role" yaml:"role"`
+// BootstrapAdmins lists admin emails.
+//
+// For backward-compatibility, it accepts both:
+// - a YAML sequence of strings: ["admin@example.com"]
+// - a YAML sequence of objects: [{email: admin@example.com, role: owner}]
+type BootstrapAdmins []string
+
+func (admins *BootstrapAdmins) UnmarshalYAML(value *yaml.Node) error {
+	if value == nil {
+		*admins = nil
+		return nil
+	}
+
+	switch value.Kind {
+	case yaml.SequenceNode:
+		var decoded []string
+		for _, entry := range value.Content {
+			if entry == nil {
+				continue
+			}
+			switch entry.Kind {
+			case yaml.ScalarNode:
+				decoded = append(decoded, strings.TrimSpace(entry.Value))
+			case yaml.MappingNode:
+				var (
+					email    string
+					hasEmail bool
+				)
+				for idx := 0; idx+1 < len(entry.Content); idx += 2 {
+					key := entry.Content[idx]
+					val := entry.Content[idx+1]
+					if key == nil || val == nil {
+						continue
+					}
+					if strings.EqualFold(strings.TrimSpace(key.Value), "email") {
+						email = strings.TrimSpace(val.Value)
+						hasEmail = true
+						break
+					}
+				}
+				if !hasEmail {
+					return fmt.Errorf("tenant bootstrap: admin entry missing email")
+				}
+				decoded = append(decoded, email)
+			default:
+				return fmt.Errorf("tenant bootstrap: admins entry must be string or {email: ...}")
+			}
+		}
+		*admins = decoded
+		return nil
+	case yaml.ScalarNode:
+		*admins = BootstrapAdmins{strings.TrimSpace(value.Value)}
+		return nil
+	default:
+		return fmt.Errorf("tenant bootstrap: admins must be a sequence")
+	}
 }
 
 // BootstrapIdentity holds GIS/TAuth metadata.
@@ -132,17 +184,13 @@ func upsertTenant(ctx context.Context, db *gorm.DB, keeper *SecretKeeper, spec B
 		if err := tx.Where("tenant_id = ?", spec.ID).Delete(&TenantMember{}).Error; err != nil {
 			return err
 		}
-		for _, admin := range spec.Admins {
+		for _, adminEmail := range spec.Admins {
 			member := TenantMember{
 				TenantID: spec.ID,
-				Email:    strings.ToLower(strings.TrimSpace(admin.Email)),
-				Role:     strings.TrimSpace(admin.Role),
+				Email:    strings.ToLower(strings.TrimSpace(adminEmail)),
 			}
 			if member.Email == "" {
 				continue
-			}
-			if member.Role == "" {
-				member.Role = "admin"
 			}
 			if err := tx.Create(&member).Error; err != nil {
 				return fmt.Errorf("tenant bootstrap: member %s: %w", member.Email, err)

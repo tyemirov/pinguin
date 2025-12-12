@@ -40,7 +40,6 @@ type TenantMember struct {
 	ID        uint   `gorm:"primaryKey"`
 	TenantID  string `gorm:"index"`
 	Email     string `gorm:"index"`
-	Role      string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

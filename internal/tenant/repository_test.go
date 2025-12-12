@@ -162,7 +162,7 @@ func TestRepositoryRuntimeCacheIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve by id error: %v", err)
 	}
-	runtimeCfg.Admins["mutated@example.com"] = "owner"
+	runtimeCfg.Admins["mutated@example.com"] = struct{}{}
 	if runtimeCfg.SMS != nil {
 		runtimeCfg.SMS.AuthToken = "tampered"
 	}
@@ -196,9 +196,7 @@ func TestRepositoryCachesInvalidateAfterBootstrap(t *testing.T) {
 		t.Fatalf("resolve host error: %v", err)
 	}
 
-	cfg.Tenants[0].Admins = []BootstrapMember{
-		{Email: "rotated@alpha.example", Role: "owner"},
-	}
+	cfg.Tenants[0].Admins = BootstrapAdmins{"rotated@alpha.example"}
 	cfg.Tenants[0].EmailProfile.Password = "new-smtp-password"
 	cfg.Tenants[0].SMSProfile = &BootstrapSMSProfile{
 		AccountSID: "AC999",
@@ -237,7 +235,7 @@ func TestRepositoryListActiveTenants(t *testing.T) {
 		SupportEmail: "support@beta.example",
 		Status:       string(TenantStatusSuspended),
 		Domains:      []string{"beta.example"},
-		Admins:       []BootstrapMember{},
+		Admins:       BootstrapAdmins{},
 		Identity: BootstrapIdentity{
 			GoogleClientID: "google-beta",
 			TAuthBaseURL:   "https://tauth.beta.example",

@@ -249,10 +249,10 @@ func countNonEmptyStrings(values []string) int {
 	return count
 }
 
-func countNonEmptyAdminEmails(values []tenant.BootstrapMember) int {
+func countNonEmptyAdminEmails(values tenant.BootstrapAdmins) int {
 	count := 0
 	for _, value := range values {
-		if strings.TrimSpace(value.Email) == "" {
+		if strings.TrimSpace(value) == "" {
 			continue
 		}
 		count++
