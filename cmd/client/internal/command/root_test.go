@@ -3,13 +3,16 @@ package command
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/tyemirov/pinguin/pkg/client"
 	"github.com/tyemirov/pinguin/pkg/grpcapi"
+	"log/slog"
 )
 
 type stubClient struct {
@@ -51,6 +54,16 @@ func TestSendCommandBuildsRequest(t *testing.T) {
 			expectedType: grpcapi.NotificationType_EMAIL,
 		},
 		{
+			name: "email default type",
+			args: []string{
+				"send",
+				"--recipient", "user@example.com",
+				"--subject", "Subj",
+				"--message", "Body",
+			},
+			expectedType: grpcapi.NotificationType_EMAIL,
+		},
+		{
 			name: "sms with schedule",
 			args: []string{
 				"send",
@@ -62,16 +75,6 @@ func TestSendCommandBuildsRequest(t *testing.T) {
 			expectedType:   grpcapi.NotificationType_SMS,
 			expectSchedule: true,
 			expectedTime:   time.Date(2025, 1, 2, 15, 4, 5, 0, time.UTC),
-		},
-		{
-			name: "missing type fails",
-			args: []string{
-				"send",
-				"--recipient", "user@example.com",
-				"--subject", "Subj",
-				"--message", "Body",
-			},
-			expectedErr: "required flag(s) \"type\" not set",
 		},
 		{
 			name: "invalid type fails",
@@ -88,11 +91,10 @@ func TestSendCommandBuildsRequest(t *testing.T) {
 			name: "missing message fails",
 			args: []string{
 				"send",
-				"--type", "email",
 				"--recipient", "user@example.com",
 				"--subject", "Subj",
 			},
-			expectedErr: "required flag(s) \"message\" not set",
+			expectedErr: "message is required",
 		},
 	}
 
@@ -102,14 +104,20 @@ func TestSendCommandBuildsRequest(t *testing.T) {
 			t.Parallel()
 
 			stub := &stubClient{}
+			output := &bytes.Buffer{}
 			deps := Dependencies{
-				Sender:           stub,
-				OperationTimeout: 2 * time.Second,
-				Output:           &bytes.Buffer{},
-				TenantID:         "tenant-123",
+				NewSender: func(_ *slog.Logger, _ client.Settings) (NotificationSender, io.Closer, error) {
+					return stub, nil, nil
+				},
 			}
 			cmd := NewRootCommand(deps)
-			cmd.SetArgs(testCase.args)
+			cmd.SetOut(output)
+			cmd.SetErr(output)
+
+			cmd.SetArgs(append([]string{
+				"--grpc-auth-token", "token",
+				"--tenant-id", "tenant-123",
+			}, testCase.args...))
 
 			err := cmd.Execute()
 			if testCase.expectedErr != "" {
@@ -154,16 +162,19 @@ func TestSendCommandHandlesClientError(t *testing.T) {
 	stub := &stubClient{
 		err: context.DeadlineExceeded,
 	}
+	output := &bytes.Buffer{}
 	deps := Dependencies{
-		Sender:           stub,
-		OperationTimeout: time.Second,
-		Output:           &bytes.Buffer{},
-		TenantID:         "tenant-123",
+		NewSender: func(_ *slog.Logger, _ client.Settings) (NotificationSender, io.Closer, error) {
+			return stub, nil, nil
+		},
 	}
 	cmd := NewRootCommand(deps)
+	cmd.SetOut(output)
+	cmd.SetErr(output)
 	cmd.SetArgs([]string{
+		"--grpc-auth-token", "token",
+		"--tenant-id", "tenant-123",
 		"send",
-		"--type", "email",
 		"--recipient", "user@example.com",
 		"--subject", "Subj",
 		"--message", "Body",
@@ -185,16 +196,18 @@ func TestSendCommandRequiresTenant(t *testing.T) {
 	t.Helper()
 
 	stub := &stubClient{}
+	output := &bytes.Buffer{}
 	deps := Dependencies{
-		Sender:           stub,
-		OperationTimeout: time.Second,
-		Output:           &bytes.Buffer{},
-		TenantID:         "",
+		NewSender: func(_ *slog.Logger, _ client.Settings) (NotificationSender, io.Closer, error) {
+			return stub, nil, nil
+		},
 	}
 	cmd := NewRootCommand(deps)
+	cmd.SetOut(output)
+	cmd.SetErr(output)
 	cmd.SetArgs([]string{
+		"--grpc-auth-token", "token",
 		"send",
-		"--type", "email",
 		"--recipient", "user@example.com",
 		"--subject", "Subj",
 		"--message", "Body",
@@ -211,15 +224,17 @@ func TestSendCommandFormatsOutput(t *testing.T) {
 	stub := &stubClient{}
 	output := &bytes.Buffer{}
 	deps := Dependencies{
-		Sender:           stub,
-		OperationTimeout: time.Second,
-		Output:           output,
-		TenantID:         "tenant-123",
+		NewSender: func(_ *slog.Logger, _ client.Settings) (NotificationSender, io.Closer, error) {
+			return stub, nil, nil
+		},
 	}
 	cmd := NewRootCommand(deps)
+	cmd.SetOut(output)
+	cmd.SetErr(output)
 	cmd.SetArgs([]string{
+		"--grpc-auth-token", "token",
+		"--tenant-id", "tenant-123",
 		"send",
-		"--type", "email",
 		"--recipient", "user@example.com",
 		"--subject", "Subj",
 		"--message", "Body",
@@ -251,15 +266,17 @@ func TestSendCommandLoadsAttachments(t *testing.T) {
 	stub := &stubClient{}
 	output := &bytes.Buffer{}
 	deps := Dependencies{
-		Sender:           stub,
-		OperationTimeout: time.Second,
-		Output:           output,
-		TenantID:         "tenant-123",
+		NewSender: func(_ *slog.Logger, _ client.Settings) (NotificationSender, io.Closer, error) {
+			return stub, nil, nil
+		},
 	}
 	cmd := NewRootCommand(deps)
+	cmd.SetOut(output)
+	cmd.SetErr(output)
 	cmd.SetArgs([]string{
+		"--grpc-auth-token", "token",
+		"--tenant-id", "tenant-123",
 		"send",
-		"--type", "email",
 		"--recipient", "user@example.com",
 		"--subject", "Subj",
 		"--message", "Body",
@@ -293,14 +310,18 @@ func TestSendCommandRejectsAttachmentsForSms(t *testing.T) {
 	}
 
 	stub := &stubClient{}
+	output := &bytes.Buffer{}
 	deps := Dependencies{
-		Sender:           stub,
-		OperationTimeout: time.Second,
-		Output:           &bytes.Buffer{},
-		TenantID:         "tenant-123",
+		NewSender: func(_ *slog.Logger, _ client.Settings) (NotificationSender, io.Closer, error) {
+			return stub, nil, nil
+		},
 	}
 	cmd := NewRootCommand(deps)
+	cmd.SetOut(output)
+	cmd.SetErr(output)
 	cmd.SetArgs([]string{
+		"--grpc-auth-token", "token",
+		"--tenant-id", "tenant-123",
 		"send",
 		"--type", "sms",
 		"--recipient", "+15551234567",

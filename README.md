@@ -417,6 +417,8 @@ Configuration values are read from environment variables prefixed with `PINGUIN_
 | `PINGUIN_OPERATION_TIMEOUT_SEC` | Per-command timeout in seconds | `30` |
 | `PINGUIN_LOG_LEVEL` | CLI log level (`DEBUG`, `INFO`, `WARN`, `ERROR`) | `INFO` |
 
+The CLI also accepts the unprefixed variants (`GRPC_SERVER_ADDR`, `GRPC_AUTH_TOKEN`, `TENANT_ID`, `CONNECTION_TIMEOUT_SEC`, `OPERATION_TIMEOUT_SEC`, `LOG_LEVEL`) which is handy for ad-hoc testing and CI scripts.
+
 Example command that schedules an email:
 
 ```bash
@@ -424,7 +426,7 @@ PINGUIN_GRPC_AUTH_TOKEN=my-secret-token \
 PINGUIN_TENANT_ID=tenant-acme \
 ./pinguin-cli send \
   --type email \
-  --recipient someone@example.com \
+  --to someone@example.com \
   --subject "Meeting Reminder" \
   --message "See you at 10:00" \
   --scheduled-time "2025-01-02T15:04:05Z"
@@ -442,26 +444,6 @@ PINGUIN_TENANT_ID=tenant-acme \
   --message "See attached report." \
   --attachment /tmp/report.pdf \
   --attachment "/tmp/notes.txt::text/plain"
-```
-
-### Command-Line Client Test
-
-A lightweight client test application lives under `tests/clientcli` (no extra module). This client wraps the gRPC calls and demonstrates sending a notification. To run the client test, use:
-
-```bash
-TENANT_ID=tenant-acme \
-GRPC_AUTH_TOKEN=my-secret-token \
-go run ./tests/clientcli \
-  --to your-email@yourdomain.com \
-  --subject "Test Email" \
-  --message "Hello, world!" \
-  --attachment /tmp/report.pdf
-```
-
-If successful, you will see output similar to:
-
-```
-Notification sent successfully. Notification ID: notif-1741932356116855000
 ```
 
 ### Using grpcurl
