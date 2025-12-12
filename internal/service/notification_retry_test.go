@@ -10,7 +10,7 @@ import (
 
 	"github.com/tyemirov/pinguin/internal/model"
 	"github.com/tyemirov/pinguin/internal/tenant"
-	"github.com/tyemirov/pinguin/pkg/scheduler"
+	"github.com/tyemirov/utils/scheduler"
 )
 
 type testEmailSender struct {
