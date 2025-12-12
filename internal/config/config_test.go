@@ -10,6 +10,10 @@ import (
 	"github.com/tyemirov/pinguin/internal/tenant"
 )
 
+func ptrBool(value bool) *bool {
+	return &value
+}
+
 func TestLoadConfigFromYAMLWithEnvExpansion(t *testing.T) {
 	t.Helper()
 
@@ -25,10 +29,9 @@ server:
   operationTimeoutSec: 7
 tenants:
   - id: tenant-one
-    slug: one
     displayName: One Corp
     supportEmail: support@one.test
-    status: active
+    enabled: true
     domains: [one.test]
     admins: [admin@one.test]
     identity:
@@ -84,10 +87,9 @@ web:
 			Tenants: []tenant.BootstrapTenant{
 				{
 					ID:           "tenant-one",
-					Slug:         "one",
 					DisplayName:  "One Corp",
 					SupportEmail: "support@one.test",
-					Status:       "active",
+					Enabled:      ptrBool(true),
 					Domains:      []string{"one.test"},
 					Admins:       tenant.BootstrapAdmins{"admin@one.test"},
 					Identity: tenant.BootstrapIdentity{
@@ -142,10 +144,9 @@ server:
   operationTimeoutSec: 10
 tenants:
   - id: tenant-one
-    slug: one
     displayName: One Corp
     supportEmail: support@one.test
-    status: active
+    enabled: true
     domains: [one.test]
     admins: [admin@one.test]
     identity:
@@ -198,10 +199,9 @@ server:
   operationTimeoutSec: 10
 tenants:
   - id: tenant-one
-    slug: one
     displayName: One Corp
     supportEmail: support@one.test
-    status: active
+    enabled: true
     domains: [one.test]
     admins: [admin@one.test]
     identity:

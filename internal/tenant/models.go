@@ -17,7 +17,6 @@ const (
 // Tenant represents a logical customer served by the deployment.
 type Tenant struct {
 	ID           string `gorm:"primaryKey"`
-	Slug         string `gorm:"uniqueIndex"`
 	DisplayName  string
 	SupportEmail string
 	Status       TenantStatus `gorm:"index"`

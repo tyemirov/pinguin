@@ -12,6 +12,10 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+func ptrBool(value bool) *bool {
+	return &value
+}
+
 type queryCounter struct {
 	logger.Interface
 	mutex   sync.Mutex
@@ -58,8 +62,8 @@ func TestRepositoryResolveByHost(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve host error: %v", err)
 	}
-	if runtimeCfg.Tenant.Slug != "alpha" {
-		t.Fatalf("unexpected tenant slug %q", runtimeCfg.Tenant.Slug)
+	if runtimeCfg.Tenant.ID != "tenant-one" {
+		t.Fatalf("unexpected tenant id %q", runtimeCfg.Tenant.ID)
 	}
 	if runtimeCfg.Email.Username != "smtp-user" || runtimeCfg.Email.Password != "smtp-pass" {
 		t.Fatalf("SMTP credentials not decrypted correctly")
@@ -230,10 +234,9 @@ func TestRepositoryListActiveTenants(t *testing.T) {
 	cfg := sampleBootstrapConfig()
 	cfg.Tenants = append(cfg.Tenants, BootstrapTenant{
 		ID:           "tenant-two",
-		Slug:         "beta",
 		DisplayName:  "Beta",
 		SupportEmail: "support@beta.example",
-		Status:       string(TenantStatusSuspended),
+		Enabled:      ptrBool(false),
 		Domains:      []string{"beta.example"},
 		Admins:       BootstrapAdmins{},
 		Identity: BootstrapIdentity{
@@ -258,7 +261,7 @@ func TestRepositoryListActiveTenants(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list active tenants error: %v", err)
 	}
-	if len(tenants) != 1 || tenants[0].Slug != "alpha" {
+	if len(tenants) != 1 || tenants[0].ID != "tenant-one" {
 		t.Fatalf("expected only active tenant, got %+v", tenants)
 	}
 }
@@ -266,7 +269,7 @@ func TestRepositoryListActiveTenants(t *testing.T) {
 func TestRuntimeContextHelpers(t *testing.T) {
 	t.Helper()
 	cfg := RuntimeConfig{
-		Tenant: Tenant{ID: "tenant-ctx", Slug: "ctx"},
+		Tenant: Tenant{ID: "tenant-ctx"},
 	}
 	ctx := context.Background()
 	ctx = WithRuntime(ctx, cfg)
