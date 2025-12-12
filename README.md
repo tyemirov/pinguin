@@ -94,27 +94,26 @@ server:
   databasePath: ${DATABASE_PATH}
   masterEncryptionKey: ${MASTER_ENCRYPTION_KEY}
 tenants:
-  tenants:
-    - id: tenant-local
-      slug: local
-      displayName: Local Sandbox
-      domains: [${TENANT_LOCAL_DOMAIN_PRIMARY}, ${TENANT_LOCAL_DOMAIN_SECONDARY}]
-      admins:
-        - ${TENANT_LOCAL_ADMIN_EMAIL}
-        - ${TENANT_LOCAL_ADMIN_EMAIL_2}
-      identity:
-        googleClientId: ${TENANT_LOCAL_GOOGLE_CLIENT_ID}
-        tauthBaseUrl: ${TENANT_LOCAL_TAUTH_BASE_URL}
-      emailProfile:
-        host: ${TENANT_LOCAL_SMTP_HOST}
-        port: ${TENANT_LOCAL_SMTP_PORT}
-        username: ${TENANT_LOCAL_SMTP_USERNAME}
-        password: ${TENANT_LOCAL_SMTP_PASSWORD}
-        fromAddress: ${TENANT_LOCAL_FROM_EMAIL}
-      smsProfile:
-        accountSid: ${TWILIO_ACCOUNT_SID}
-        authToken: ${TWILIO_AUTH_TOKEN}
-        fromNumber: ${TWILIO_FROM_NUMBER}
+  - id: tenant-local
+    slug: local
+    displayName: Local Sandbox
+    domains: [${TENANT_LOCAL_DOMAIN_PRIMARY}, ${TENANT_LOCAL_DOMAIN_SECONDARY}]
+    admins:
+      - ${TENANT_LOCAL_ADMIN_EMAIL}
+      - ${TENANT_LOCAL_ADMIN_EMAIL_2}
+    identity:
+      googleClientId: ${TENANT_LOCAL_GOOGLE_CLIENT_ID}
+      tauthBaseUrl: ${TENANT_LOCAL_TAUTH_BASE_URL}
+    emailProfile:
+      host: ${TENANT_LOCAL_SMTP_HOST}
+      port: ${TENANT_LOCAL_SMTP_PORT}
+      username: ${TENANT_LOCAL_SMTP_USERNAME}
+      password: ${TENANT_LOCAL_SMTP_PASSWORD}
+      fromAddress: ${TENANT_LOCAL_FROM_EMAIL}
+    smsProfile:
+      accountSid: ${TWILIO_ACCOUNT_SID}
+      authToken: ${TWILIO_AUTH_TOKEN}
+      fromNumber: ${TWILIO_FROM_NUMBER}
 ```
 
 Export the referenced environment variables before starting the server. The default config references or sets the following keys:
@@ -201,31 +200,30 @@ Pinguin now keeps all configuration—including tenants—in a single YAML file 
 
 ```yaml
 tenants:
-  tenants:
-    - id: tenant-acme
-      slug: acme
-      displayName: Acme Corp
-      supportEmail: support@acme.example
-      status: active
-      domains:
-        - acme.example
-        - portal.acme.example
-      admins:
-        - admin@acme.example
-        - viewer@acme.example
-      identity:
-        googleClientId: google-client-id.apps.googleusercontent.com
-        tauthBaseUrl: https://auth.acme.example
-      emailProfile:
-        host: smtp.acme.example
-        port: 587
-        username: smtp-user
-        password: smtp-password
-        fromAddress: noreply@acme.example
-      smsProfile:
-        accountSid: ACxxxxxxxx
-        authToken: twilio-secret
-        fromNumber: "+12015550123"
+  - id: tenant-acme
+    slug: acme
+    displayName: Acme Corp
+    supportEmail: support@acme.example
+    status: active
+    domains:
+      - acme.example
+      - portal.acme.example
+    admins:
+      - admin@acme.example
+      - viewer@acme.example
+    identity:
+      googleClientId: google-client-id.apps.googleusercontent.com
+      tauthBaseUrl: https://auth.acme.example
+    emailProfile:
+      host: smtp.acme.example
+      port: 587
+      username: smtp-user
+      password: smtp-password
+      fromAddress: noreply@acme.example
+    smsProfile:
+      accountSid: ACxxxxxxxx
+      authToken: twilio-secret
+      fromNumber: "+12015550123"
 ```
 
 See `configs/config.yml` for a ready-to-use sample. The `MASTER_ENCRYPTION_KEY` is used to encrypt the SMTP/Twilio secrets before they are stored in SQLite. Regenerate the file (or run tenant bootstrap) whenever you need to add tenants, rotate credentials, or change admin memberships. See [`docs/multitenancy-plan.md`](docs/multitenancy-plan.md) for the end-to-end roadmap.

@@ -24,29 +24,26 @@ server:
   connectionTimeoutSec: 3
   operationTimeoutSec: 7
 tenants:
-  tenants:
-    - id: tenant-one
-      slug: one
-      displayName: One Corp
-      supportEmail: support@one.test
-      status: active
-      domains: [one.test]
-      admins:
-        - email: admin@one.test
-          role: owner
-      identity:
-        googleClientId: google-one
-        tauthBaseUrl: https://auth.one.test
-      emailProfile:
-        host: smtp.one.test
-        port: 587
-        username: ${SMTP_USERNAME}
-        password: ${SMTP_PASSWORD}
-        fromAddress: noreply@one.test
-      smsProfile:
-        accountSid: ${TWILIO_ACCOUNT_SID}
-        authToken: ${TWILIO_AUTH_TOKEN}
-        fromNumber: ${TWILIO_FROM_NUMBER}
+  - id: tenant-one
+    slug: one
+    displayName: One Corp
+    supportEmail: support@one.test
+    status: active
+    domains: [one.test]
+    admins: [admin@one.test]
+    identity:
+      googleClientId: google-one
+      tauthBaseUrl: https://auth.one.test
+    emailProfile:
+      host: smtp.one.test
+      port: 587
+      username: ${SMTP_USERNAME}
+      password: ${SMTP_PASSWORD}
+      fromAddress: noreply@one.test
+    smsProfile:
+      accountSid: ${TWILIO_ACCOUNT_SID}
+      authToken: ${TWILIO_AUTH_TOKEN}
+      fromNumber: ${TWILIO_FROM_NUMBER}
 web:
   enabled: true
   listenAddr: :8080
@@ -144,25 +141,22 @@ server:
   connectionTimeoutSec: 5
   operationTimeoutSec: 10
 tenants:
-  tenants:
-    - id: tenant-one
-      slug: one
-      displayName: One Corp
-      supportEmail: support@one.test
-      status: active
-      domains: [one.test]
-      admins:
-        - email: admin@one.test
-          role: owner
-      identity:
-        googleClientId: google-one
-        tauthBaseUrl: https://auth.one.test
-      emailProfile:
-        host: smtp.one.test
-        port: 587
-        username: smtp-user
-        password: smtp-pass
-        fromAddress: noreply@one.test
+  - id: tenant-one
+    slug: one
+    displayName: One Corp
+    supportEmail: support@one.test
+    status: active
+    domains: [one.test]
+    admins: [admin@one.test]
+    identity:
+      googleClientId: google-one
+      tauthBaseUrl: https://auth.one.test
+    emailProfile:
+      host: smtp.one.test
+      port: 587
+      username: smtp-user
+      password: smtp-pass
+      fromAddress: noreply@one.test
 web:
   enabled: true
   listenAddr: :0
@@ -203,25 +197,22 @@ server:
   connectionTimeoutSec: 5
   operationTimeoutSec: 10
 tenants:
-  tenants:
-    - id: tenant-one
-      slug: one
-      displayName: One Corp
-      supportEmail: support@one.test
-      status: active
-      domains: [one.test]
-      admins:
-        - email: admin@one.test
-          role: owner
-      identity:
-        googleClientId: google-one
-        tauthBaseUrl: https://auth.one.test
-      emailProfile:
-        host: smtp.one.test
-        port: 587
-        username: smtp-user
-        password: smtp-pass
-        fromAddress: noreply@one.test
+  - id: tenant-one
+    slug: one
+    displayName: One Corp
+    supportEmail: support@one.test
+    status: active
+    domains: [one.test]
+    admins: [admin@one.test]
+    identity:
+      googleClientId: google-one
+      tauthBaseUrl: https://auth.one.test
+    emailProfile:
+      host: smtp.one.test
+      port: 587
+      username: smtp-user
+      password: smtp-pass
+      fromAddress: noreply@one.test
 web:
   enabled: false
 `)
