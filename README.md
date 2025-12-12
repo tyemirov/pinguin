@@ -202,7 +202,7 @@ tenants:
   - id: tenant-acme
     displayName: Acme Corp
     supportEmail: support@acme.example
-    status: active
+    enabled: true
     domains:
       - acme.example
       - portal.acme.example

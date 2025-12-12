@@ -22,6 +22,7 @@ type BootstrapTenant struct {
 	ID           string                `json:"id" yaml:"id"`
 	DisplayName  string                `json:"displayName" yaml:"displayName"`
 	SupportEmail string                `json:"supportEmail" yaml:"supportEmail"`
+	Enabled      *bool                 `json:"enabled" yaml:"enabled"`
 	Status       string                `json:"status" yaml:"status"`
 	Domains      []string              `json:"domains" yaml:"domains"`
 	Admins       BootstrapAdmins       `json:"admins" yaml:"admins"`
@@ -141,15 +142,26 @@ func upsertTenant(ctx context.Context, db *gorm.DB, keeper *SecretKeeper, spec B
 	if strings.TrimSpace(spec.ID) == "" {
 		spec.ID = uuid.NewString()
 	}
-	if spec.Status == "" {
-		spec.Status = string(TenantStatusActive)
+	status := strings.ToLower(strings.TrimSpace(spec.Status))
+	if spec.Enabled != nil {
+		if *spec.Enabled {
+			status = string(TenantStatusActive)
+		} else {
+			status = string(TenantStatusSuspended)
+		}
+	}
+	if status == "" {
+		status = string(TenantStatusActive)
+	}
+	if status != string(TenantStatusActive) && status != string(TenantStatusSuspended) {
+		return fmt.Errorf("tenant bootstrap: unsupported tenant status %q", status)
 	}
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		tenantModel := Tenant{
 			ID:           spec.ID,
 			DisplayName:  spec.DisplayName,
 			SupportEmail: spec.SupportEmail,
-			Status:       TenantStatus(spec.Status),
+			Status:       TenantStatus(status),
 		}
 		if err := tx.Clauses(clauseOnConflictUpdateAll()).
 			Create(&tenantModel).Error; err != nil {
