@@ -14,7 +14,7 @@ import (
 type RuntimeConfig struct {
 	Tenant   Tenant
 	Identity TenantIdentity
-	Admins   map[string]string
+	Admins   map[string]struct{}
 	Email    EmailCredentials
 	SMS      *SMSCredentials
 }
@@ -156,13 +156,13 @@ func (repo *Repository) loadRuntimeConfig(ctx context.Context, tenantID string) 
 	} else if err != nil && err != gorm.ErrRecordNotFound {
 		return RuntimeConfig{}, fmt.Errorf("tenant runtime: sms profile: %w", err)
 	}
-	admins := make(map[string]string)
+	admins := make(map[string]struct{})
 	var members []TenantMember
 	if err := repo.db.WithContext(ctx).Where("tenant_id = ?", tenantID).Find(&members).Error; err != nil {
 		return RuntimeConfig{}, fmt.Errorf("tenant runtime: members: %w", err)
 	}
 	for _, member := range members {
-		admins[normalizeEmail(member.Email)] = member.Role
+		admins[normalizeEmail(member.Email)] = struct{}{}
 	}
 	username, err := repo.keeper.Decrypt(emailProfile.UsernameCipher)
 	if err != nil {
@@ -230,9 +230,9 @@ func (repo *Repository) cacheTenantID(host string, tenantID string) {
 }
 
 func cloneRuntimeConfig(cfg RuntimeConfig) RuntimeConfig {
-	clonedAdmins := make(map[string]string, len(cfg.Admins))
-	for email, role := range cfg.Admins {
-		clonedAdmins[email] = role
+	clonedAdmins := make(map[string]struct{}, len(cfg.Admins))
+	for email := range cfg.Admins {
+		clonedAdmins[email] = struct{}{}
 	}
 	clonedCfg := cfg
 	clonedCfg.Admins = clonedAdmins

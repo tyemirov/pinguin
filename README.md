@@ -2,7 +2,7 @@
 
 Pinguin is a notification service written in Go. It exposes a gRPC interface for sending **email** and **SMS** notifications. The service uses SQLite (via GORM) for persistent storage and runs a background worker to retry failed notifications using exponential backoff. Structured logging is provided using Go’s built‑in `slog` package.
 
-> **Note:** This version of Pinguin is gRPC‑only; all interactions are via gRPC.
+Pinguin also ships an optional HTTP + browser dashboard for inspecting and managing queued notifications; set `DISABLE_WEB_INTERFACE=true` (or start with `--disable-web-interface`) to run gRPC-only.
 
 ---
 
@@ -24,8 +24,8 @@ Pinguin is a notification service written in Go. It exposes a gRPC interface for
 
 ## Features
 
-- **gRPC-Only API:**  
-  All interactions (sending notifications, retrieving statuses) are done via a gRPC interface.
+- **gRPC API + optional dashboard:**  
+  Notifications are sent via gRPC; the optional HTTP UI provides a dashboard and JSON endpoints for listing/rescheduling/cancelling queued notifications.
 
 - **Email and SMS Notifications:**  
   - **Email:** Delivered via SMTP using the credentials you configure for your preferred mail provider.
@@ -94,32 +94,30 @@ server:
   databasePath: ${DATABASE_PATH}
   masterEncryptionKey: ${MASTER_ENCRYPTION_KEY}
 tenants:
-  tenants:
-    - id: tenant-local
-      slug: local
-      displayName: Local Sandbox
-      domains: [${TENANT_LOCAL_DOMAIN_PRIMARY}, ${TENANT_LOCAL_DOMAIN_SECONDARY}]
-      admins:
-        - email: ${TENANT_LOCAL_ADMIN_EMAIL}
-          role: owner
-      identity:
-        googleClientId: ${TENANT_LOCAL_GOOGLE_CLIENT_ID}
-        tauthBaseUrl: ${TENANT_LOCAL_TAUTH_BASE_URL}
-      emailProfile:
-        host: ${TENANT_LOCAL_SMTP_HOST}
-        port: ${TENANT_LOCAL_SMTP_PORT}
-        username: ${TENANT_LOCAL_SMTP_USERNAME}
-        password: ${TENANT_LOCAL_SMTP_PASSWORD}
-        fromAddress: ${TENANT_LOCAL_FROM_EMAIL}
-      smsProfile:
-        accountSid: ${TWILIO_ACCOUNT_SID}
-        authToken: ${TWILIO_AUTH_TOKEN}
-        fromNumber: ${TWILIO_FROM_NUMBER}
+  - id: tenant-local
+    displayName: Local Sandbox
+    domains: [${TENANT_LOCAL_DOMAIN_PRIMARY}, ${TENANT_LOCAL_DOMAIN_SECONDARY}]
+    admins:
+      - ${TENANT_LOCAL_ADMIN_EMAIL}
+      - ${TENANT_LOCAL_ADMIN_EMAIL_2}
+    identity:
+      googleClientId: ${TENANT_LOCAL_GOOGLE_CLIENT_ID}
+      tauthBaseUrl: ${TENANT_LOCAL_TAUTH_BASE_URL}
+    emailProfile:
+      host: ${TENANT_LOCAL_SMTP_HOST}
+      port: ${TENANT_LOCAL_SMTP_PORT}
+      username: ${TENANT_LOCAL_SMTP_USERNAME}
+      password: ${TENANT_LOCAL_SMTP_PASSWORD}
+      fromAddress: ${TENANT_LOCAL_FROM_EMAIL}
+    smsProfile:
+      accountSid: ${TWILIO_ACCOUNT_SID}
+      authToken: ${TWILIO_AUTH_TOKEN}
+      fromNumber: ${TWILIO_FROM_NUMBER}
 ```
 
 Export the referenced environment variables before starting the server. The default config references or sets the following keys:
 
-- See `configs/.env.example` for a full list of variables to seed your environment when using the default config template.
+- See `.env.pinguin.example` for a full list of variables to seed your environment when using the default config template.
 - **PINGUIN_CONFIG_PATH:**  
   Optional override for the service configuration file (defaults to `configs/config.yml`).
 
@@ -197,40 +195,69 @@ Export the referenced environment variables before starting the server. The defa
 
 ### Tenant configuration (single YAML)
 
-Pinguin now keeps all configuration—including tenants—in a single YAML file (`configs/config.yml` by default). The `tenants` section holds tenant metadata (domains, admin accounts, SMTP/Twilio credentials, TAuth identifiers). JSON is no longer supported. A sample block:
+Pinguin keeps all configuration—including tenants—in a single YAML file (`configs/config.yml` by default). The `tenants` section defines which tenants exist, which domains map to each tenant, who can access the web UI, and what delivery credentials each tenant uses.
+
+`tenants[].status` is not supported. Use `tenants[].enabled: true|false`.
+
+Example (inline tenants):
 
 ```yaml
 tenants:
-  tenants:
-    - id: tenant-acme
-      slug: acme
-      displayName: Acme Corp
-      supportEmail: support@acme.example
-      status: active
-      domains:
-        - acme.example
-        - portal.acme.example
-      admins:
-        - email: admin@acme.example
-          role: owner
-        - email: viewer@acme.example
-          role: viewer
-      identity:
-        googleClientId: google-client-id.apps.googleusercontent.com
-        tauthBaseUrl: https://auth.acme.example
-      emailProfile:
-        host: smtp.acme.example
-        port: 587
-        username: smtp-user
-        password: smtp-password
-        fromAddress: noreply@acme.example
-      smsProfile:
-        accountSid: ACxxxxxxxx
-        authToken: twilio-secret
-        fromNumber: "+12015550123"
+  - id: tenant-acme
+    displayName: Acme Corp
+    supportEmail: support@acme.example
+    enabled: true
+    domains:
+      - acme.example
+      - portal.acme.example
+    admins:
+      - admin@acme.example
+      - viewer@acme.example
+    identity:
+      googleClientId: google-client-id.apps.googleusercontent.com
+      tauthBaseUrl: https://auth.acme.example
+    emailProfile:
+      host: smtp.acme.example
+      port: 587
+      username: smtp-user
+      password: smtp-password
+      fromAddress: noreply@acme.example
+    smsProfile:
+      accountSid: ACxxxxxxxx
+      authToken: twilio-secret
+      fromNumber: "+12015550123"
 ```
 
-See `configs/config.yml` for a ready-to-use sample. The `MASTER_ENCRYPTION_KEY` is used to encrypt the SMTP/Twilio secrets before they are stored in SQLite. Regenerate the file (or run tenant bootstrap) whenever you need to add tenants, rotate credentials, or change admin memberships. See [`docs/multitenancy-plan.md`](docs/multitenancy-plan.md) for the end-to-end roadmap.
+See `configs/config.yml` for a ready-to-use sample. `MASTER_ENCRYPTION_KEY` encrypts tenant SMTP/Twilio secrets at rest in SQLite.
+
+#### Tenant keys
+
+- `tenants`: list of tenant objects. Must contain at least one enabled tenant (`enabled: true`) or the server exits during startup.
+- `tenants[].id` (string, required): stable tenant identifier.
+  - Used by gRPC callers (`tenant_id`) and as the database partition key.
+  - Avoid leaving it empty: an empty id is auto-generated during bootstrap and will drift between runs.
+- `tenants[].enabled` (bool, optional): whether the tenant is enabled.
+  - `true` → persisted as tenant status `active`.
+  - `false` → persisted as tenant status `suspended`.
+  - Defaults to `true` when omitted.
+- `tenants[].displayName` (string, required): tenant name shown in the UI (e.g. the header label).
+- `tenants[].supportEmail` (string, optional): tenant support contact (reserved for future use in UI/templates).
+- `tenants[].domains` (list of strings, required): hostnames that map HTTP requests to this tenant.
+  - The first domain is treated as the tenant’s default domain.
+  - Matching is case-insensitive; ports are ignored (e.g. `localhost:8080` matches `localhost`).
+- `tenants[].admins` (list of emails):
+  - Required when `web.enabled: true`.
+  - These emails are allowed to access the HTTP API after TAuth session validation.
+- `tenants[].identity`:
+  - Required when `web.enabled: true`.
+  - `googleClientId` (string): Google OAuth client id for the tenant.
+  - `tauthBaseUrl` (string): base URL for the tenant’s TAuth instance (used by the UI header).
+- `tenants[].emailProfile` (required): tenant SMTP settings.
+  - `host` (string), `port` (int), `username` (string), `password` (string), `fromAddress` (string).
+  - `username` and `password` are encrypted with `MASTER_ENCRYPTION_KEY` before storing in SQLite.
+- `tenants[].smsProfile` (optional): tenant Twilio settings.
+  - If omitted, SMS delivery is disabled for that tenant.
+  - `accountSid` and `authToken` are encrypted with `MASTER_ENCRYPTION_KEY`; `fromNumber` is stored as-is.
 
 Example `.env` file:
 
@@ -281,12 +308,12 @@ Open `http://localhost:4173` in your browser for the landing/dashboard UI. The H
    ${EDITOR:-vi} .env.pinguin .env.tauth
    ```
 
-   - `.env.pinguin` configures the gRPC/HTTP server plus SMTP/Twilio credentials.
-   - When serving the UI via ghttp, ensure `HTTP_ALLOWED_ORIGINS` includes `http://localhost:4173` so CORS accepts dashboard requests.
-   - `.env.tauth` configures the Google OAuth client, signing key, and CORS settings for local development.
+   - `.env.pinguin` configures the environment variables referenced by `configs/config.yml` (including `PINGUIN_CONFIG_PATH=/configs/config.yml`, tenant domains/admins, SMTP/Twilio credentials, and `TAUTH_SIGNING_KEY`).
+   - If `GET http://localhost:8080/runtime-config` returns `{"error":"tenant_not_found"}`, the tenant domain env vars (`TENANT_LOCAL_DOMAIN_PRIMARY` / `TENANT_LOCAL_DOMAIN_SECONDARY`) are missing/mismatched.
+   - `.env.tauth` configures the Google OAuth client, signing key, and CORS settings for local development. In both compose profiles, these values are expanded into `configs/tauth/config.yaml` and passed to TAuth via `TAUTH_CONFIG_FILE`.
    - Keep `TAUTH_SIGNING_KEY` (Pinguin) identical to `APP_JWT_SIGNING_KEY` (TAuth) so cookie validation succeeds.
-   - Ensure `HTTP_ALLOWED_ORIGINS` includes the UI host (`http://localhost:4173` when using the bundled ghttp server). Comma-separate additional origins if you front the UI elsewhere.
-   - Match the same UI origin in `.env.tauth` via `APP_CORS_ALLOWED_ORIGINS` so the auth endpoints accept browser requests (use `http://localhost:4173` for the default setup).
+   - `configs/config.yml` controls the Pinguin web allowlist (`web.allowedOrigins`); keep `http://localhost:4173` there when using ghttp.
+   - Match the same UI origin in `.env.tauth` via `APP_CORS_ALLOWED_ORIGINS` so the auth endpoints accept browser requests (use `http://localhost:4173` for the default setup, plus `https://accounts.google.com`).
 
 2. Build and start the stack (this creates the named Docker volume `pinguin-data` automatically). Use the `dev` profile to build Pinguin from the local Dockerfile:
 
@@ -294,13 +321,14 @@ Open `http://localhost:4173` in your browser for the landing/dashboard UI. The H
    docker compose --profile dev up --build
    ```
 
-   To pull prebuilt images from GHCR instead of building locally, start the `docker` profile:
+   To pull the prebuilt Pinguin + ghttp images from GHCR, start the `docker` profile (TAuth still builds locally to load `configs/tauth/config.yaml`):
 
    ```bash
    docker compose --profile docker up -d
    ```
 
    Pinguin writes its SQLite file to the Docker-managed volume, validates browser sessions issued by the colocated TAuth instance, and exposes the HTTP API on port 8080. The static landing/dashboard bundle is served by ghttp on `http://localhost:4173`.
+   Note: TAuth currently builds from a pinned upstream commit in both profiles so it can consume `configs/tauth/config.yaml`.
 
 3. Stop the stack when you are finished (use the same profile you started):
 
@@ -330,7 +358,7 @@ docker volume inspect pinguin-data
    docker compose --profile dev up --build
    ```
 
-   To run the prebuilt containers from GHCR instead, run `docker compose --profile docker up -d`.
+   To run the prebuilt Pinguin + ghttp containers from GHCR instead, run `docker compose --profile docker up -d` (TAuth still builds locally).
 
    - gRPC server → `localhost:50051`
    - HTTP API → `http://localhost:8080`
@@ -389,6 +417,8 @@ Configuration values are read from environment variables prefixed with `PINGUIN_
 | `PINGUIN_OPERATION_TIMEOUT_SEC` | Per-command timeout in seconds | `30` |
 | `PINGUIN_LOG_LEVEL` | CLI log level (`DEBUG`, `INFO`, `WARN`, `ERROR`) | `INFO` |
 
+The CLI also accepts the unprefixed variants (`GRPC_SERVER_ADDR`, `GRPC_AUTH_TOKEN`, `TENANT_ID`, `CONNECTION_TIMEOUT_SEC`, `OPERATION_TIMEOUT_SEC`, `LOG_LEVEL`) which is handy for ad-hoc testing and CI scripts.
+
 Example command that schedules an email:
 
 ```bash
@@ -396,7 +426,7 @@ PINGUIN_GRPC_AUTH_TOKEN=my-secret-token \
 PINGUIN_TENANT_ID=tenant-acme \
 ./pinguin-cli send \
   --type email \
-  --recipient someone@example.com \
+  --to someone@example.com \
   --subject "Meeting Reminder" \
   --message "See you at 10:00" \
   --scheduled-time "2025-01-02T15:04:05Z"
@@ -414,26 +444,6 @@ PINGUIN_TENANT_ID=tenant-acme \
   --message "See attached report." \
   --attachment /tmp/report.pdf \
   --attachment "/tmp/notes.txt::text/plain"
-```
-
-### Command-Line Client Test
-
-A lightweight client test application lives under `tests/clientcli` (no extra module). This client wraps the gRPC calls and demonstrates sending a notification. To run the client test, use:
-
-```bash
-TENANT_ID=tenant-acme \
-GRPC_AUTH_TOKEN=my-secret-token \
-go run ./tests/clientcli \
-  --to your-email@yourdomain.com \
-  --subject "Test Email" \
-  --message "Hello, world!" \
-  --attachment /tmp/report.pdf
-```
-
-If successful, you will see output similar to:
-
-```
-Notification sent successfully. Notification ID: notif-1741932356116855000
 ```
 
 ### Using grpcurl

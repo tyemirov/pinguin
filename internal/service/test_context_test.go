@@ -21,8 +21,7 @@ func tenantContextWithoutSMS() context.Context {
 func baseRuntimeConfig() tenant.RuntimeConfig {
 	return tenant.RuntimeConfig{
 		Tenant: tenant.Tenant{
-			ID:   testTenantID,
-			Slug: "slug-" + testTenantID,
+			ID: testTenantID,
 		},
 		Email: tenant.EmailCredentials{
 			Host:        "smtp.test",

@@ -20,21 +20,73 @@ type BootstrapConfig struct {
 // BootstrapTenant declares per-tenant metadata.
 type BootstrapTenant struct {
 	ID           string                `json:"id" yaml:"id"`
-	Slug         string                `json:"slug" yaml:"slug"`
 	DisplayName  string                `json:"displayName" yaml:"displayName"`
 	SupportEmail string                `json:"supportEmail" yaml:"supportEmail"`
+	Enabled      *bool                 `json:"enabled" yaml:"enabled"`
 	Status       string                `json:"status" yaml:"status"`
 	Domains      []string              `json:"domains" yaml:"domains"`
-	Admins       []BootstrapMember     `json:"admins" yaml:"admins"`
+	Admins       BootstrapAdmins       `json:"admins" yaml:"admins"`
 	Identity     BootstrapIdentity     `json:"identity" yaml:"identity"`
 	EmailProfile BootstrapEmailProfile `json:"emailProfile" yaml:"emailProfile"`
 	SMSProfile   *BootstrapSMSProfile  `json:"smsProfile" yaml:"smsProfile"`
 }
 
-// BootstrapMember captures admin membership entries.
-type BootstrapMember struct {
-	Email string `json:"email" yaml:"email"`
-	Role  string `json:"role" yaml:"role"`
+// BootstrapAdmins lists admin emails.
+//
+// For backward-compatibility, it accepts both:
+// - a YAML sequence of strings: ["admin@example.com"]
+// - a YAML sequence of objects: [{email: admin@example.com, role: owner}]
+type BootstrapAdmins []string
+
+func (admins *BootstrapAdmins) UnmarshalYAML(value *yaml.Node) error {
+	if value == nil {
+		*admins = nil
+		return nil
+	}
+
+	switch value.Kind {
+	case yaml.SequenceNode:
+		var decoded []string
+		for _, entry := range value.Content {
+			if entry == nil {
+				continue
+			}
+			switch entry.Kind {
+			case yaml.ScalarNode:
+				decoded = append(decoded, strings.TrimSpace(entry.Value))
+			case yaml.MappingNode:
+				var (
+					email    string
+					hasEmail bool
+				)
+				for idx := 0; idx+1 < len(entry.Content); idx += 2 {
+					key := entry.Content[idx]
+					val := entry.Content[idx+1]
+					if key == nil || val == nil {
+						continue
+					}
+					if strings.EqualFold(strings.TrimSpace(key.Value), "email") {
+						email = strings.TrimSpace(val.Value)
+						hasEmail = true
+						break
+					}
+				}
+				if !hasEmail {
+					return fmt.Errorf("tenant bootstrap: admin entry missing email")
+				}
+				decoded = append(decoded, email)
+			default:
+				return fmt.Errorf("tenant bootstrap: admins entry must be string or {email: ...}")
+			}
+		}
+		*admins = decoded
+		return nil
+	case yaml.ScalarNode:
+		*admins = BootstrapAdmins{strings.TrimSpace(value.Value)}
+		return nil
+	default:
+		return fmt.Errorf("tenant bootstrap: admins must be a sequence")
+	}
 }
 
 // BootstrapIdentity holds GIS/TAuth metadata.
@@ -77,6 +129,16 @@ func Bootstrap(ctx context.Context, db *gorm.DB, keeper *SecretKeeper, cfg Boots
 	if len(cfg.Tenants) == 0 {
 		return fmt.Errorf("tenant bootstrap: no tenants configured")
 	}
+	enabledCount := 0
+	for _, tenantSpec := range cfg.Tenants {
+		if tenantSpec.Enabled != nil && !*tenantSpec.Enabled {
+			continue
+		}
+		enabledCount++
+	}
+	if enabledCount == 0 {
+		return fmt.Errorf("tenant bootstrap: no enabled tenants configured")
+	}
 	for _, tenantSpec := range cfg.Tenants {
 		if err := upsertTenant(ctx, db, keeper, tenantSpec); err != nil {
 			return err
@@ -90,20 +152,23 @@ func upsertTenant(ctx context.Context, db *gorm.DB, keeper *SecretKeeper, spec B
 	if strings.TrimSpace(spec.ID) == "" {
 		spec.ID = uuid.NewString()
 	}
-	if spec.Status == "" {
-		spec.Status = string(TenantStatusActive)
+	if strings.TrimSpace(spec.Status) != "" {
+		return fmt.Errorf("tenant bootstrap: tenants[].status is no longer supported; use tenants[].enabled (true|false)")
+	}
+	status := string(TenantStatusActive)
+	if spec.Enabled != nil && !*spec.Enabled {
+		status = string(TenantStatusSuspended)
 	}
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		tenantModel := Tenant{
 			ID:           spec.ID,
-			Slug:         spec.Slug,
 			DisplayName:  spec.DisplayName,
 			SupportEmail: spec.SupportEmail,
-			Status:       TenantStatus(spec.Status),
+			Status:       TenantStatus(status),
 		}
 		if err := tx.Clauses(clauseOnConflictUpdateAll()).
 			Create(&tenantModel).Error; err != nil {
-			return fmt.Errorf("tenant bootstrap: upsert tenant %s: %w", spec.Slug, err)
+			return fmt.Errorf("tenant bootstrap: upsert tenant %s: %w", spec.ID, err)
 		}
 
 		if err := tx.Where("tenant_id = ?", spec.ID).Delete(&TenantDomain{}).Error; err != nil {
@@ -132,17 +197,13 @@ func upsertTenant(ctx context.Context, db *gorm.DB, keeper *SecretKeeper, spec B
 		if err := tx.Where("tenant_id = ?", spec.ID).Delete(&TenantMember{}).Error; err != nil {
 			return err
 		}
-		for _, admin := range spec.Admins {
+		for _, adminEmail := range spec.Admins {
 			member := TenantMember{
 				TenantID: spec.ID,
-				Email:    strings.ToLower(strings.TrimSpace(admin.Email)),
-				Role:     strings.TrimSpace(admin.Role),
+				Email:    strings.ToLower(strings.TrimSpace(adminEmail)),
 			}
 			if member.Email == "" {
 				continue
-			}
-			if member.Role == "" {
-				member.Role = "admin"
 			}
 			if err := tx.Create(&member).Error; err != nil {
 				return fmt.Errorf("tenant bootstrap: member %s: %w", member.Email, err)

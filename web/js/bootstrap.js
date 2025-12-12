@@ -130,8 +130,6 @@ function mergeConfig(base, overrides) {
     dashboardUrl: effectiveConfig.dashboardUrl || DEFAULT_CONFIG.dashboardUrl,
     tenant: effectiveConfig.tenant || null,
   };
-  delete finalConfig.skipRemoteConfig;
-  delete finalConfig.runtimeConfigUrl;
   window.__PINGUIN_CONFIG__ = finalConfig;
   window.dispatchEvent(new CustomEvent('pinguin:config-updated', { detail: finalConfig }));
   if (finalConfig.tenant) {
@@ -151,7 +149,7 @@ function applyTenantBranding(tenantConfig) {
     document.querySelectorAll('mpr-header').forEach((header) => {
       header.setAttribute('brand-label', label);
     });
-    document.documentElement.dataset.tenantSlug = tenantConfig?.slug || '';
+    document.documentElement.dataset.tenantId = tenantConfig?.id || '';
     if (document.title && document.title.toLowerCase().includes('pinguin')) {
       document.title = `${label} — Notification Service`;
     }

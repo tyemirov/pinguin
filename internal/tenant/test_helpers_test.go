@@ -57,15 +57,11 @@ func sampleBootstrapConfig() BootstrapConfig {
 		Tenants: []BootstrapTenant{
 			{
 				ID:           "tenant-one",
-				Slug:         "alpha",
 				DisplayName:  "Alpha Corp",
 				SupportEmail: "support@alpha.example",
-				Status:       string(TenantStatusActive),
+				Enabled:      ptrBool(true),
 				Domains:      []string{"alpha.example", "portal.alpha.example"},
-				Admins: []BootstrapMember{
-					{Email: "admin@alpha.example", Role: "owner"},
-					{Email: "viewer@alpha.example", Role: "viewer"},
-				},
+				Admins:       BootstrapAdmins{"admin@alpha.example", "viewer@alpha.example"},
 				Identity: BootstrapIdentity{
 					GoogleClientID: "google-alpha",
 					TAuthBaseURL:   "https://tauth.alpha.example",

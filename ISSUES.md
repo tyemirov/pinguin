@@ -14,6 +14,8 @@ Read @AGENTS.md, @ARCHITECTURE.md, @POLICY.md, PLANNING.md, @NOTES.md, @README.m
 - [x] [PG-205] Support YAML tenant config (TENANT_CONFIG_PATH) and ship a YAML sample for docker/dev; JSON input no longer accepted.
 - [x] [PG-206] Use configs/config.yml as the canonical service config with env-variable expansion; remove direct env loading.
 - [x] [PG-207] Migrate `pkg/scheduler` to `github.com/tyemirov/utils/scheduler` (utils v0.1.1) and update Pinguin imports.
+- [x] [PG-320] Document tenant configuration schema: add a key-by-key reference for `tenants` (id, enabled, domains, admins, identity, emailProfile, smsProfile) in `README.md`.
+- [x] [PG-321] Remove `tests/clientcli` and make `cmd/client` the single CLI for manual usage + test harnesses; `--help` works without env, `--to` is supported, and unprefixed env vars are accepted.
 
 ## BugFixes (308–399)
 
@@ -48,6 +50,9 @@ Read @AGENTS.md, @ARCHITECTURE.md, @POLICY.md, PLANNING.md, @NOTES.md, @README.m
   15 passed (38.8s)
 make: *** [test-frontend] Error 1
 ```
+- [x] [PG-313] Fix dev orchestration login + reduce local test flakiness: align `.env.pinguin.example` with YAML tenant config, mount `configs/config.yml` in `docker-compose.yaml`, validate tenant bootstrap config, correct web header TAuth wiring, and move Playwright dev server to port 4174 to avoid clashing with docker-compose ghttp (4173). `make ci` passes.
+- [x] [PG-314] Add YAML config file for TAuth in dev orchestration: introduce `configs/tauth/config.yaml`, add `tauth-dev` service that builds TAuth from a pinned upstream commit via `docker/tauth/Dockerfile` and uses `TAUTH_CONFIG_FILE`, keep `docker` profile on the prebuilt TAuth image. `make ci` passes.
+- [x] [PG-314] Follow-up: remove `tauth-dev` and run TAuth from `docker/tauth/Dockerfile` in both `dev` and `docker` compose profiles so `configs/tauth/config.yaml` is used consistently. `make ci` passes.
 
 ## Maintenance (400–499)
 
