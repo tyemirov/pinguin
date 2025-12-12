@@ -59,7 +59,7 @@ func sampleBootstrapConfig() BootstrapConfig {
 				ID:           "tenant-one",
 				DisplayName:  "Alpha Corp",
 				SupportEmail: "support@alpha.example",
-				Status:       string(TenantStatusActive),
+				Enabled:      ptrBool(true),
 				Domains:      []string{"alpha.example", "portal.alpha.example"},
 				Admins:       BootstrapAdmins{"admin@alpha.example", "viewer@alpha.example"},
 				Identity: BootstrapIdentity{

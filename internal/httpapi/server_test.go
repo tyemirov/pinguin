@@ -26,6 +26,10 @@ import (
 	"log/slog"
 )
 
+func ptrBool(value bool) *bool {
+	return &value
+}
+
 func TestListNotificationsRequiresAuth(t *testing.T) {
 	t.Helper()
 
@@ -498,7 +502,7 @@ func newTestTenantRepository(t *testing.T, admins []string) *tenant.Repository {
 				ID:           "tenant-test",
 				DisplayName:  "Test Tenant",
 				SupportEmail: "support@example.com",
-				Status:       string(tenant.TenantStatusActive),
+				Enabled:      ptrBool(true),
 				Domains:      []string{"example.com"},
 				Admins:       members,
 				Identity: tenant.BootstrapIdentity{
@@ -526,7 +530,7 @@ func newMultiTenantRepository(t *testing.T) *tenant.Repository {
 				ID:           "tenant-alpha",
 				DisplayName:  "Alpha Corp",
 				SupportEmail: "alpha@example.com",
-				Status:       string(tenant.TenantStatusActive),
+				Enabled:      ptrBool(true),
 				Domains:      []string{"alpha.localhost"},
 				Admins:       tenant.BootstrapAdmins{"admin-alpha@example.com", "user@example.com"},
 				Identity: tenant.BootstrapIdentity{
@@ -545,7 +549,7 @@ func newMultiTenantRepository(t *testing.T) *tenant.Repository {
 				ID:           "tenant-bravo",
 				DisplayName:  "Bravo Labs",
 				SupportEmail: "bravo@example.com",
-				Status:       string(tenant.TenantStatusActive),
+				Enabled:      ptrBool(true),
 				Domains:      []string{"bravo.localhost"},
 				Admins:       tenant.BootstrapAdmins{"admin-bravo@example.com", "user@example.com"},
 				Identity: tenant.BootstrapIdentity{

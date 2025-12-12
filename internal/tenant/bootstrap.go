@@ -22,6 +22,7 @@ type BootstrapTenant struct {
 	ID           string                `json:"id" yaml:"id"`
 	DisplayName  string                `json:"displayName" yaml:"displayName"`
 	SupportEmail string                `json:"supportEmail" yaml:"supportEmail"`
+	Enabled      *bool                 `json:"enabled" yaml:"enabled"`
 	Status       string                `json:"status" yaml:"status"`
 	Domains      []string              `json:"domains" yaml:"domains"`
 	Admins       BootstrapAdmins       `json:"admins" yaml:"admins"`
@@ -128,6 +129,16 @@ func Bootstrap(ctx context.Context, db *gorm.DB, keeper *SecretKeeper, cfg Boots
 	if len(cfg.Tenants) == 0 {
 		return fmt.Errorf("tenant bootstrap: no tenants configured")
 	}
+	enabledCount := 0
+	for _, tenantSpec := range cfg.Tenants {
+		if tenantSpec.Enabled != nil && !*tenantSpec.Enabled {
+			continue
+		}
+		enabledCount++
+	}
+	if enabledCount == 0 {
+		return fmt.Errorf("tenant bootstrap: no enabled tenants configured")
+	}
 	for _, tenantSpec := range cfg.Tenants {
 		if err := upsertTenant(ctx, db, keeper, tenantSpec); err != nil {
 			return err
@@ -141,15 +152,19 @@ func upsertTenant(ctx context.Context, db *gorm.DB, keeper *SecretKeeper, spec B
 	if strings.TrimSpace(spec.ID) == "" {
 		spec.ID = uuid.NewString()
 	}
-	if spec.Status == "" {
-		spec.Status = string(TenantStatusActive)
+	if strings.TrimSpace(spec.Status) != "" {
+		return fmt.Errorf("tenant bootstrap: tenants[].status is no longer supported; use tenants[].enabled (true|false)")
+	}
+	status := string(TenantStatusActive)
+	if spec.Enabled != nil && !*spec.Enabled {
+		status = string(TenantStatusSuspended)
 	}
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		tenantModel := Tenant{
 			ID:           spec.ID,
 			DisplayName:  spec.DisplayName,
 			SupportEmail: spec.SupportEmail,
-			Status:       TenantStatus(spec.Status),
+			Status:       TenantStatus(status),
 		}
 		if err := tx.Clauses(clauseOnConflictUpdateAll()).
 			Create(&tenantModel).Error; err != nil {

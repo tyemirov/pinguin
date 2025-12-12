@@ -12,6 +12,10 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+func ptrBool(value bool) *bool {
+	return &value
+}
+
 type queryCounter struct {
 	logger.Interface
 	mutex   sync.Mutex
@@ -232,7 +236,7 @@ func TestRepositoryListActiveTenants(t *testing.T) {
 		ID:           "tenant-two",
 		DisplayName:  "Beta",
 		SupportEmail: "support@beta.example",
-		Status:       string(TenantStatusSuspended),
+		Enabled:      ptrBool(false),
 		Domains:      []string{"beta.example"},
 		Admins:       BootstrapAdmins{},
 		Identity: BootstrapIdentity{
