@@ -43,7 +43,7 @@ Pinguin is a notification service written in Go. It exposes a gRPC interface for
   Processes queued or failed notifications and retries them with exponential backoff.
 
 - **Reusable Scheduler Package:**  
-  The retry worker now lives in `pkg/scheduler`, exposing repository and dispatcher interfaces so other binaries can embed the same persistence-agnostic scheduler without reimplementing the ticker, backoff, or status bookkeeping logic.
+  The retry worker is built on `github.com/tyemirov/utils/scheduler`, exposing repository and dispatcher interfaces so other binaries can embed the same persistence-agnostic scheduler without reimplementing the ticker, backoff, or status bookkeeping logic.
 
 - **Structured Logging:**  
   Uses Go’s `slog` package for structured logging with configurable levels.

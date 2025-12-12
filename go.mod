@@ -1,6 +1,6 @@
 module github.com/tyemirov/pinguin
 
-go 1.25
+go 1.25.4
 
 require (
 	github.com/gin-contrib/cors v1.7.6
@@ -9,6 +9,7 @@ require (
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.21.0
 	github.com/tyemirov/tauth v0.0.3
+	github.com/tyemirov/utils v0.1.1
 	google.golang.org/grpc v1.76.0
 	google.golang.org/protobuf v1.36.10
 	gopkg.in/yaml.v3 v3.0.1

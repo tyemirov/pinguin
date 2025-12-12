@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/tyemirov/pinguin/internal/model"
-	"github.com/tyemirov/pinguin/pkg/scheduler"
+	"github.com/tyemirov/utils/scheduler"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"log/slog"
