@@ -129,6 +129,16 @@ func Bootstrap(ctx context.Context, db *gorm.DB, keeper *SecretKeeper, cfg Boots
 	if len(cfg.Tenants) == 0 {
 		return fmt.Errorf("tenant bootstrap: no tenants configured")
 	}
+	enabledCount := 0
+	for _, tenantSpec := range cfg.Tenants {
+		if tenantSpec.Enabled != nil && !*tenantSpec.Enabled {
+			continue
+		}
+		enabledCount++
+	}
+	if enabledCount == 0 {
+		return fmt.Errorf("tenant bootstrap: no enabled tenants configured")
+	}
 	for _, tenantSpec := range cfg.Tenants {
 		if err := upsertTenant(ctx, db, keeper, tenantSpec); err != nil {
 			return err
