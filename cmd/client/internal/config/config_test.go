@@ -48,6 +48,40 @@ func TestLoadSuccessful(t *testing.T) {
 	}
 }
 
+func TestLoadBindsUnprefixedEnvFallbacks(t *testing.T) {
+	t.Helper()
+	t.Setenv("GRPC_SERVER_ADDR", "localhost:6060")
+	t.Setenv("GRPC_AUTH_TOKEN", "secret")
+	t.Setenv("TENANT_ID", "tenant-cli")
+	t.Setenv("CONNECTION_TIMEOUT_SEC", "9")
+	t.Setenv("OPERATION_TIMEOUT_SEC", "11")
+	t.Setenv("LOG_LEVEL", "warn")
+
+	v := viper.New()
+	cfg, err := Load(v)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.ServerAddress() != "localhost:6060" {
+		t.Fatalf("unexpected server address: %s", cfg.ServerAddress())
+	}
+	if cfg.AuthToken() != "secret" {
+		t.Fatalf("unexpected auth token: %s", cfg.AuthToken())
+	}
+	if cfg.TenantID() != "tenant-cli" {
+		t.Fatalf("unexpected tenant id: %s", cfg.TenantID())
+	}
+	if cfg.ConnectionTimeoutSeconds() != 9 {
+		t.Fatalf("unexpected connection timeout seconds: %d", cfg.ConnectionTimeoutSeconds())
+	}
+	if cfg.OperationTimeoutSeconds() != 11 {
+		t.Fatalf("unexpected operation timeout seconds: %d", cfg.OperationTimeoutSeconds())
+	}
+	if cfg.LogLevel() != "WARN" {
+		t.Fatalf("unexpected log level: %s", cfg.LogLevel())
+	}
+}
+
 func TestLoadErrorConditions(t *testing.T) {
 	t.Helper()
 	testCases := []struct {
@@ -58,27 +92,14 @@ func TestLoadErrorConditions(t *testing.T) {
 		{
 			name: "missing server",
 			values: map[string]interface{}{
-				authTokenKey:     "token",
-				tenantIDKey:      "tenant",
 				serverAddressKey: "",
 			},
 			wantErr: "missing gRPC server address",
 		},
 		{
-			name: "missing token",
-			values: map[string]interface{}{
-				serverAddressKey: "localhost:5050",
-				tenantIDKey:      "tenant",
-				authTokenKey:     "",
-			},
-			wantErr: "missing gRPC auth token",
-		},
-		{
 			name: "invalid connection timeout",
 			values: map[string]interface{}{
 				serverAddressKey:     "localhost:5050",
-				authTokenKey:         "token",
-				tenantIDKey:          "tenant",
 				connectionTimeoutKey: 0,
 			},
 			wantErr: "invalid connection timeout",
@@ -87,20 +108,9 @@ func TestLoadErrorConditions(t *testing.T) {
 			name: "invalid operation timeout",
 			values: map[string]interface{}{
 				serverAddressKey:    "localhost:5050",
-				authTokenKey:        "token",
-				tenantIDKey:         "tenant",
 				operationTimeoutKey: 0,
 			},
 			wantErr: "invalid operation timeout",
-		},
-		{
-			name: "missing tenant id",
-			values: map[string]interface{}{
-				serverAddressKey: "localhost:5050",
-				authTokenKey:     "token",
-				tenantIDKey:      "",
-			},
-			wantErr: "missing tenant id",
 		},
 	}
 	for _, tc := range testCases {
