@@ -283,7 +283,7 @@ Open `http://localhost:4173` in your browser for the landing/dashboard UI. The H
 
    - `.env.pinguin` configures the environment variables referenced by `configs/config.yml` (including `PINGUIN_CONFIG_PATH=/configs/config.yml`, tenant domains/admins, SMTP/Twilio credentials, and `TAUTH_SIGNING_KEY`).
    - If `GET http://localhost:8080/runtime-config` returns `{"error":"tenant_not_found"}`, the tenant domain env vars (`TENANT_LOCAL_DOMAIN_PRIMARY` / `TENANT_LOCAL_DOMAIN_SECONDARY`) are missing/mismatched.
-   - `.env.tauth` configures the Google OAuth client, signing key, and CORS settings for local development.
+   - `.env.tauth` configures the Google OAuth client, signing key, and CORS settings for local development. In the `dev` compose profile, these values are expanded into `configs/tauth/config.yaml` and passed to TAuth via `TAUTH_CONFIG_FILE`.
    - Keep `TAUTH_SIGNING_KEY` (Pinguin) identical to `APP_JWT_SIGNING_KEY` (TAuth) so cookie validation succeeds.
    - `configs/config.yml` controls the Pinguin web allowlist (`web.allowedOrigins`); keep `http://localhost:4173` there when using ghttp.
    - Match the same UI origin in `.env.tauth` via `APP_CORS_ALLOWED_ORIGINS` so the auth endpoints accept browser requests (use `http://localhost:4173` for the default setup, plus `https://accounts.google.com`).

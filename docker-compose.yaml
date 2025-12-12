@@ -1,7 +1,5 @@
 x-pinguin-service: &pinguin-service
   restart: unless-stopped
-  depends_on:
-    - tauth
   ports:
     - "50051:50051"
     - "8080:8080"
@@ -30,7 +28,6 @@ services:
 
   tauth:
     profiles:
-      - dev
       - docker
     image: ghcr.io/tyemirov/tauth:latest
     container_name: tauth
@@ -43,11 +40,31 @@ services:
     volumes:
       - tauth_data:/data
 
+  tauth-dev:
+    profiles:
+      - dev
+    build:
+      context: ./docker/tauth
+    image: tauth-local:latest
+    container_name: tauth
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    env_file:
+      - .env.tauth
+    environment:
+      - TAUTH_CONFIG_FILE=/config/config.yaml
+    volumes:
+      - tauth_data:/data
+      - ./configs/tauth/config.yaml:/config/config.yaml:ro
+
   pinguin-dev:
     <<: *pinguin-service
     profiles:
       - dev
     container_name: pinguin-dev
+    depends_on:
+      - tauth-dev
     build:
       context: .
       dockerfile: Dockerfile
@@ -57,6 +74,8 @@ services:
     profiles:
       - docker
     container_name: pinguin
+    depends_on:
+      - tauth
     image: ghcr.io/tyemirov/pinguin:latest
 
 volumes:
