@@ -1,3 +1,4 @@
+// @ts-check
 (function applyTauthConfig() {
   const fallback = window.PINGUIN_TAUTH_CONFIG || {};
   function resolveConfig() {
@@ -50,11 +51,9 @@
     });
   }
 
-  const initialize = () => requestAnimationFrame(applyAttributes);
+  applyAttributes();
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initialize, { once: true });
-  } else {
-    initialize();
+    document.addEventListener('DOMContentLoaded', applyAttributes, { once: true });
   }
   window.addEventListener('pinguin:config-updated', () => requestAnimationFrame(applyAttributes));
 })();

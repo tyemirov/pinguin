@@ -48,6 +48,7 @@ Read @AGENTS.md, @ARCHITECTURE.md, @POLICY.md, PLANNING.md, @NOTES.md, @README.m
   15 passed (38.8s)
 make: *** [test-frontend] Error 1
 ```
+- [x] [PG-313] Fix dev orchestration login + reduce local test flakiness: align `.env.pinguin.example` with YAML tenant config, mount `configs/config.yml` in `docker-compose.yaml`, validate tenant bootstrap config, correct web header TAuth wiring, and move Playwright dev server to port 4174 to avoid clashing with docker-compose ghttp (4173). `make ci` passes.
 
 ## Maintenance (400–499)
 

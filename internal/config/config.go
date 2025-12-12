@@ -202,6 +202,24 @@ func validateConfig(cfg Config) error {
 		requireString(cfg.TAuthIssuer, "web.tauth.issuer", &errors)
 	}
 
+	if len(cfg.TenantBootstrap.Tenants) > 0 {
+		for idx, tenantSpec := range cfg.TenantBootstrap.Tenants {
+			tenantPrefix := fmt.Sprintf("tenants.tenants[%d]", idx)
+			requireString(strings.TrimSpace(tenantSpec.Slug), tenantPrefix+".slug", &errors)
+			requireString(strings.TrimSpace(tenantSpec.DisplayName), tenantPrefix+".displayName", &errors)
+			if countNonEmptyStrings(tenantSpec.Domains) == 0 {
+				errors = append(errors, fmt.Sprintf("missing %s.domains", tenantPrefix))
+			}
+			if cfg.WebInterfaceEnabled {
+				requireString(strings.TrimSpace(tenantSpec.Identity.GoogleClientID), tenantPrefix+".identity.googleClientId", &errors)
+				requireString(strings.TrimSpace(tenantSpec.Identity.TAuthBaseURL), tenantPrefix+".identity.tauthBaseUrl", &errors)
+				if countNonEmptyAdminEmails(tenantSpec.Admins) == 0 {
+					errors = append(errors, fmt.Sprintf("missing %s.admins", tenantPrefix))
+				}
+			}
+		}
+	}
+
 	if len(errors) > 0 {
 		return fmt.Errorf("configuration errors: %s", strings.Join(errors, ", "))
 	}
@@ -218,4 +236,26 @@ func requirePositive(value int, name string, errors *[]string) {
 	if value <= 0 {
 		*errors = append(*errors, fmt.Sprintf("missing %s", name))
 	}
+}
+
+func countNonEmptyStrings(values []string) int {
+	count := 0
+	for _, value := range values {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		count++
+	}
+	return count
+}
+
+func countNonEmptyAdminEmails(values []tenant.BootstrapMember) int {
+	count := 0
+	for _, value := range values {
+		if strings.TrimSpace(value.Email) == "" {
+			continue
+		}
+		count++
+	}
+	return count
 }

@@ -5,7 +5,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const HOST = '127.0.0.1';
-const PORT = process.env.PLAYWRIGHT_PORT ? Number(process.env.PLAYWRIGHT_PORT) : 4173;
+const PORT = process.env.PLAYWRIGHT_PORT ? Number(process.env.PLAYWRIGHT_PORT) : 4174;
 const WEB_ROOT = path.resolve(__dirname, '../../web');
 const AUTH_CLIENT_PATH = path.resolve(__dirname, './stubs/auth-client.js');
 const runtimeConfig = {

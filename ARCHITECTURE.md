@@ -15,7 +15,7 @@
   4. Successful sign-in yields an HttpOnly `app_session` cookie issued by TAuth; Pinguin validates that cookie on every `/api` request.
 - The Go backend only needs the shared signing key (`TAUTH_SIGNING_KEY`), expected issuer, and optional cookie name override. There is **no** backend environment variable for the TAuth base URL or Google client ID.
 - Admin gating:
-  - `.env.pinguin` supplies `ADMINS=comma,separated,list`.
+  - Tenant admins are provisioned via the YAML tenant bootstrap (`tenants.tenants[].admins` in `configs/config.yml` by default).
   - `internal/httpapi/sessionMiddleware` rejects any request whose claims email is not on that list (HTTP 403).
 
 ## HTTP Server Responsibilities
@@ -45,7 +45,7 @@
 - Go unit/integration tests cover configuration loading, HTTP handlers, domain scheduling logic, and the SQLite-backed scheduler worker (`go test ./...` gate).
 
 ## Configuration Files
-- `.env.pinguin.example`: defines the Go server settings (database path, HTTP listen address, allowed origins, admin allowlist, SMTP/Twilio credentials, TAuth signing metadata).
+- `.env.pinguin.example`: defines the environment variables referenced by `configs/config.yml` (database path, master encryption key, tenant bootstrap values, shared TAuth signing key, optional Twilio credentials).
 - `.env.tauth.example`: holds the Google OAuth client ID, signing key, cookie domain, and CORS allowlist (must include both the UI origin e.g. `http://localhost:4173` and `https://accounts.google.com` so GIS nonce exchanges succeed).
 - Front-end TAuth details (base URL + Google client ID) live in `web/js/tauth-config.js`; deployments swap this file per environment rather than injecting env vars at runtime.
 
@@ -59,4 +59,3 @@
   1. Copy the example env files and populate secrets.
   2. `docker compose up --build`.
   3. Visit `http://localhost:4173` for the landing page; the UI talks to `http://localhost:8080/api`, and TAuth runs on `http://localhost:8081`.
-

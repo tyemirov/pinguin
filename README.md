@@ -2,7 +2,7 @@
 
 Pinguin is a notification service written in Go. It exposes a gRPC interface for sending **email** and **SMS** notifications. The service uses SQLite (via GORM) for persistent storage and runs a background worker to retry failed notifications using exponential backoff. Structured logging is provided using Go’s built‑in `slog` package.
 
-> **Note:** This version of Pinguin is gRPC‑only; all interactions are via gRPC.
+Pinguin also ships an optional HTTP + browser dashboard for inspecting and managing queued notifications; set `DISABLE_WEB_INTERFACE=true` (or start with `--disable-web-interface`) to run gRPC-only.
 
 ---
 
@@ -24,8 +24,8 @@ Pinguin is a notification service written in Go. It exposes a gRPC interface for
 
 ## Features
 
-- **gRPC-Only API:**  
-  All interactions (sending notifications, retrieving statuses) are done via a gRPC interface.
+- **gRPC API + optional dashboard:**  
+  Notifications are sent via gRPC; the optional HTTP UI provides a dashboard and JSON endpoints for listing/rescheduling/cancelling queued notifications.
 
 - **Email and SMS Notifications:**  
   - **Email:** Delivered via SMTP using the credentials you configure for your preferred mail provider.
@@ -281,12 +281,12 @@ Open `http://localhost:4173` in your browser for the landing/dashboard UI. The H
    ${EDITOR:-vi} .env.pinguin .env.tauth
    ```
 
-   - `.env.pinguin` configures the gRPC/HTTP server plus SMTP/Twilio credentials.
-   - When serving the UI via ghttp, ensure `HTTP_ALLOWED_ORIGINS` includes `http://localhost:4173` so CORS accepts dashboard requests.
+   - `.env.pinguin` configures the environment variables referenced by `configs/config.yml` (including `PINGUIN_CONFIG_PATH=/configs/config.yml`, tenant domains/admins, SMTP/Twilio credentials, and `TAUTH_SIGNING_KEY`).
+   - If `GET http://localhost:8080/runtime-config` returns `{"error":"tenant_not_found"}`, the tenant domain env vars (`TENANT_LOCAL_DOMAIN_PRIMARY` / `TENANT_LOCAL_DOMAIN_SECONDARY`) are missing/mismatched.
    - `.env.tauth` configures the Google OAuth client, signing key, and CORS settings for local development.
    - Keep `TAUTH_SIGNING_KEY` (Pinguin) identical to `APP_JWT_SIGNING_KEY` (TAuth) so cookie validation succeeds.
-   - Ensure `HTTP_ALLOWED_ORIGINS` includes the UI host (`http://localhost:4173` when using the bundled ghttp server). Comma-separate additional origins if you front the UI elsewhere.
-   - Match the same UI origin in `.env.tauth` via `APP_CORS_ALLOWED_ORIGINS` so the auth endpoints accept browser requests (use `http://localhost:4173` for the default setup).
+   - `configs/config.yml` controls the Pinguin web allowlist (`web.allowedOrigins`); keep `http://localhost:4173` there when using ghttp.
+   - Match the same UI origin in `.env.tauth` via `APP_CORS_ALLOWED_ORIGINS` so the auth endpoints accept browser requests (use `http://localhost:4173` for the default setup, plus `https://accounts.google.com`).
 
 2. Build and start the stack (this creates the named Docker volume `pinguin-data` automatically). Use the `dev` profile to build Pinguin from the local Dockerfile:
 
