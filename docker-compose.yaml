@@ -39,11 +39,9 @@ services:
       - "8081:8081"
     env_file:
       - .env.tauth
-    environment:
-      - TAUTH_CONFIG_FILE=/config/config.yaml
     volumes:
       - tauth_data:/data
-      - ./configs/tauth/config.yaml:/config/config.yaml:ro
+      - ./configs/config.tauth.yaml:/configs/config.yaml:ro
 
   pinguin-dev:
     <<: *pinguin-service
