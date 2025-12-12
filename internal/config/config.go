@@ -50,7 +50,7 @@ type Config struct {
 type fileConfig struct {
 	Server  serverSection `yaml:"server"`
 	Web     webSection    `yaml:"web"`
-	Tenants tenantSection `yaml:"tenants"`
+	Tenants tenantConfig  `yaml:"tenants"`
 }
 
 type serverSection struct {
@@ -78,9 +78,45 @@ type tauthSection struct {
 	CookieName string `yaml:"cookieName"`
 }
 
-type tenantSection struct {
-	ConfigPath string                   `yaml:"configPath"`
-	Tenants    []tenant.BootstrapTenant `yaml:"tenants"`
+type tenantConfig struct {
+	ConfigPath string
+	Tenants    []tenant.BootstrapTenant
+}
+
+func (cfg *tenantConfig) UnmarshalYAML(value *yaml.Node) error {
+	if value == nil {
+		*cfg = tenantConfig{}
+		return nil
+	}
+
+	switch value.Kind {
+	case yaml.SequenceNode:
+		var tenants []tenant.BootstrapTenant
+		if err := value.Decode(&tenants); err != nil {
+			return fmt.Errorf("configuration: parse tenants: %w", err)
+		}
+		cfg.ConfigPath = ""
+		cfg.Tenants = tenants
+		return nil
+	case yaml.MappingNode:
+		var decoded struct {
+			ConfigPath string                   `yaml:"configPath"`
+			Tenants    []tenant.BootstrapTenant `yaml:"tenants"`
+			Items      []tenant.BootstrapTenant `yaml:"items"`
+		}
+		if err := value.Decode(&decoded); err != nil {
+			return fmt.Errorf("configuration: parse tenants: %w", err)
+		}
+		cfg.ConfigPath = strings.TrimSpace(decoded.ConfigPath)
+		if len(decoded.Items) > 0 {
+			cfg.Tenants = decoded.Items
+			return nil
+		}
+		cfg.Tenants = decoded.Tenants
+		return nil
+	default:
+		return fmt.Errorf("configuration: tenants must be a list")
+	}
 }
 
 // LoadConfig reads the YAML config file (with environment expansion) into Config.
@@ -204,8 +240,7 @@ func validateConfig(cfg Config) error {
 
 	if len(cfg.TenantBootstrap.Tenants) > 0 {
 		for idx, tenantSpec := range cfg.TenantBootstrap.Tenants {
-			tenantPrefix := fmt.Sprintf("tenants.tenants[%d]", idx)
-			requireString(strings.TrimSpace(tenantSpec.Slug), tenantPrefix+".slug", &errors)
+			tenantPrefix := fmt.Sprintf("tenants[%d]", idx)
 			requireString(strings.TrimSpace(tenantSpec.DisplayName), tenantPrefix+".displayName", &errors)
 			if countNonEmptyStrings(tenantSpec.Domains) == 0 {
 				errors = append(errors, fmt.Sprintf("missing %s.domains", tenantPrefix))
@@ -249,10 +284,10 @@ func countNonEmptyStrings(values []string) int {
 	return count
 }
 
-func countNonEmptyAdminEmails(values []tenant.BootstrapMember) int {
+func countNonEmptyAdminEmails(values tenant.BootstrapAdmins) int {
 	count := 0
 	for _, value := range values {
-		if strings.TrimSpace(value.Email) == "" {
+		if strings.TrimSpace(value) == "" {
 			continue
 		}
 		count++

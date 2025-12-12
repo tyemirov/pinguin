@@ -1,7 +1,7 @@
 server:
   databasePath: ${DATABASE_PATH}
   grpcAuthToken: ${GRPC_AUTH_TOKEN}
-  logLevel: INFO
+  logLevel: ${LOG_LEVEL}
   maxRetries: 3
   retryIntervalSec: 30
   masterEncryptionKey: ${MASTER_ENCRYPTION_KEY}
@@ -9,40 +9,37 @@ server:
   operationTimeoutSec: 30
 
 tenants:
-  tenants:
-    - id: tenant-local
-      slug: local
-      displayName: Local Sandbox
-      supportEmail: support@localhost
-      status: active
-      domains:
-        - ${TENANT_LOCAL_DOMAIN_PRIMARY}
-        - ${TENANT_LOCAL_DOMAIN_SECONDARY}
-      admins:
-        - email: ${TENANT_LOCAL_ADMIN_EMAIL}
-          role: owner
-        - email: ${TENANT_LOCAL_VIEWER_EMAIL}
-          role: viewer
-      identity:
-        googleClientId: ${TENANT_LOCAL_GOOGLE_CLIENT_ID}
-        tauthBaseUrl: ${TENANT_LOCAL_TAUTH_BASE_URL}
-      emailProfile:
-        host: ${TENANT_LOCAL_SMTP_HOST}
-        port: ${TENANT_LOCAL_SMTP_PORT}
-        username: ${TENANT_LOCAL_SMTP_USERNAME}
-        password: ${TENANT_LOCAL_SMTP_PASSWORD}
-        fromAddress: ${TENANT_LOCAL_FROM_EMAIL}
-      smsProfile:
-        accountSid: ${TWILIO_ACCOUNT_SID}
-        authToken: ${TWILIO_AUTH_TOKEN}
-        fromNumber: ${TWILIO_FROM_NUMBER}
+  - id: tenant-local
+    displayName: Local Sandbox
+    supportEmail: support@mprlab.com
+    enabled: true
+    domains:
+      - ${TENANT_LOCAL_DOMAIN_PRIMARY}
+      - ${TENANT_LOCAL_DOMAIN_SECONDARY}
+    admins:
+      - ${TENANT_LOCAL_ADMIN_EMAIL}
+    identity:
+      googleClientId: ${TENANT_LOCAL_GOOGLE_CLIENT_ID}
+      tauthBaseUrl: ${TENANT_LOCAL_TAUTH_BASE_URL}
+    emailProfile:
+      host: ${TENANT_LOCAL_SMTP_HOST}
+      port: ${TENANT_LOCAL_SMTP_PORT}
+      username: ${TENANT_LOCAL_SMTP_USERNAME}
+      password: ${TENANT_LOCAL_SMTP_PASSWORD}
+      fromAddress: ${TENANT_LOCAL_FROM_EMAIL}
+    smsProfile:
+      accountSid: ${TWILIO_ACCOUNT_SID}
+      authToken: ${TWILIO_AUTH_TOKEN}
+      fromNumber: ${TWILIO_FROM_NUMBER}
 
 web:
   enabled: true
-  listenAddr: :8080
-  staticRoot: /web
+  listenAddr: ${HTTP_LISTEN_ADDR}
+  staticRoot: ${HTTP_STATIC_ROOT}
   allowedOrigins:
-    - http://localhost:4173
+    - ${HTTP_ALLOWED_ORIGIN1}
+    - ${HTTP_ALLOWED_ORIGIN2}
+    - ${HTTP_ALLOWED_ORIGIN3}
   tauth:
     signingKey: ${TAUTH_SIGNING_KEY}
     issuer: tauth

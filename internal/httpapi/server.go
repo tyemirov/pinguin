@@ -352,7 +352,6 @@ type runtimeConfigPayload struct {
 
 type runtimeConfigTenant struct {
 	ID          string                      `json:"id"`
-	Slug        string                      `json:"slug"`
 	DisplayName string                      `json:"displayName"`
 	Identity    runtimeConfigTenantIdentity `json:"identity"`
 }
@@ -373,7 +372,6 @@ func serveRuntimeConfig() gin.HandlerFunc {
 			APIBaseURL: buildAPIBaseURL(contextGin.Request),
 			Tenant: runtimeConfigTenant{
 				ID:          runtimeCfg.Tenant.ID,
-				Slug:        runtimeCfg.Tenant.Slug,
 				DisplayName: runtimeCfg.Tenant.DisplayName,
 				Identity: runtimeConfigTenantIdentity{
 					GoogleClientID: runtimeCfg.Identity.GoogleClientID,

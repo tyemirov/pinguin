@@ -33,6 +33,12 @@ func Load(provider *viper.Viper) (Config, error) {
 
 	provider.SetEnvPrefix("PINGUIN")
 	provider.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	_ = provider.BindEnv(serverAddressKey, "PINGUIN_GRPC_SERVER_ADDR", "GRPC_SERVER_ADDR")
+	_ = provider.BindEnv(authTokenKey, "PINGUIN_GRPC_AUTH_TOKEN", "GRPC_AUTH_TOKEN")
+	_ = provider.BindEnv(tenantIDKey, "PINGUIN_TENANT_ID", "TENANT_ID")
+	_ = provider.BindEnv(connectionTimeoutKey, "PINGUIN_CONNECTION_TIMEOUT_SEC", "CONNECTION_TIMEOUT_SEC")
+	_ = provider.BindEnv(operationTimeoutKey, "PINGUIN_OPERATION_TIMEOUT_SEC", "OPERATION_TIMEOUT_SEC")
+	_ = provider.BindEnv(logLevelKey, "PINGUIN_LOG_LEVEL", "LOG_LEVEL")
 	provider.AutomaticEnv()
 	provider.SetDefault(serverAddressKey, "localhost:50051")
 	provider.SetDefault(connectionTimeoutKey, 5)
@@ -45,14 +51,7 @@ func Load(provider *viper.Viper) (Config, error) {
 	}
 
 	authToken := strings.TrimSpace(provider.GetString(authTokenKey))
-	if authToken == "" {
-		return Config{}, fmt.Errorf("missing gRPC auth token")
-	}
-
 	tenantID := strings.TrimSpace(provider.GetString(tenantIDKey))
-	if tenantID == "" {
-		return Config{}, fmt.Errorf("missing tenant id (set PINGUIN_TENANT_ID)")
-	}
 
 	connectionTimeout := provider.GetInt(connectionTimeoutKey)
 	if connectionTimeout <= 0 {

@@ -12,6 +12,10 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+func ptrBool(value bool) *bool {
+	return &value
+}
+
 type queryCounter struct {
 	logger.Interface
 	mutex   sync.Mutex
@@ -58,8 +62,8 @@ func TestRepositoryResolveByHost(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve host error: %v", err)
 	}
-	if runtimeCfg.Tenant.Slug != "alpha" {
-		t.Fatalf("unexpected tenant slug %q", runtimeCfg.Tenant.Slug)
+	if runtimeCfg.Tenant.ID != "tenant-one" {
+		t.Fatalf("unexpected tenant id %q", runtimeCfg.Tenant.ID)
 	}
 	if runtimeCfg.Email.Username != "smtp-user" || runtimeCfg.Email.Password != "smtp-pass" {
 		t.Fatalf("SMTP credentials not decrypted correctly")
@@ -162,7 +166,7 @@ func TestRepositoryRuntimeCacheIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve by id error: %v", err)
 	}
-	runtimeCfg.Admins["mutated@example.com"] = "owner"
+	runtimeCfg.Admins["mutated@example.com"] = struct{}{}
 	if runtimeCfg.SMS != nil {
 		runtimeCfg.SMS.AuthToken = "tampered"
 	}
@@ -196,9 +200,7 @@ func TestRepositoryCachesInvalidateAfterBootstrap(t *testing.T) {
 		t.Fatalf("resolve host error: %v", err)
 	}
 
-	cfg.Tenants[0].Admins = []BootstrapMember{
-		{Email: "rotated@alpha.example", Role: "owner"},
-	}
+	cfg.Tenants[0].Admins = BootstrapAdmins{"rotated@alpha.example"}
 	cfg.Tenants[0].EmailProfile.Password = "new-smtp-password"
 	cfg.Tenants[0].SMSProfile = &BootstrapSMSProfile{
 		AccountSID: "AC999",
@@ -232,12 +234,11 @@ func TestRepositoryListActiveTenants(t *testing.T) {
 	cfg := sampleBootstrapConfig()
 	cfg.Tenants = append(cfg.Tenants, BootstrapTenant{
 		ID:           "tenant-two",
-		Slug:         "beta",
 		DisplayName:  "Beta",
 		SupportEmail: "support@beta.example",
-		Status:       string(TenantStatusSuspended),
+		Enabled:      ptrBool(false),
 		Domains:      []string{"beta.example"},
-		Admins:       []BootstrapMember{},
+		Admins:       BootstrapAdmins{},
 		Identity: BootstrapIdentity{
 			GoogleClientID: "google-beta",
 			TAuthBaseURL:   "https://tauth.beta.example",
@@ -260,7 +261,7 @@ func TestRepositoryListActiveTenants(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list active tenants error: %v", err)
 	}
-	if len(tenants) != 1 || tenants[0].Slug != "alpha" {
+	if len(tenants) != 1 || tenants[0].ID != "tenant-one" {
 		t.Fatalf("expected only active tenant, got %+v", tenants)
 	}
 }
@@ -268,7 +269,7 @@ func TestRepositoryListActiveTenants(t *testing.T) {
 func TestRuntimeContextHelpers(t *testing.T) {
 	t.Helper()
 	cfg := RuntimeConfig{
-		Tenant: Tenant{ID: "tenant-ctx", Slug: "ctx"},
+		Tenant: Tenant{ID: "tenant-ctx"},
 	}
 	ctx := context.Background()
 	ctx = WithRuntime(ctx, cfg)

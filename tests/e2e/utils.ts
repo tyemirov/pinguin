@@ -10,7 +10,6 @@ const authClientStub = fs.readFileSync(
 
 type TenantConfig = {
   id: string;
-  slug: string;
   displayName: string;
   identity?: {
     googleClientId?: string;
@@ -27,7 +26,6 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
   const baseUrl = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:4174';
   const tenant: TenantConfig = options.tenant || {
     id: 'tenant-playwright',
-    slug: 'playwright',
     displayName: 'Playwright Tenant',
     identity: {
       googleClientId: 'playwright-client',
