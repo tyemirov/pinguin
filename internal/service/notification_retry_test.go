@@ -121,9 +121,9 @@ func TestNotificationRetryStoreFetchesJobsPerTenant(t *testing.T) {
 		t.Fatalf("tenant migration error: %v", err)
 	}
 	tenants := []tenant.Tenant{
-		{ID: "tenant-retry-1", Slug: "retry-1", Status: tenant.TenantStatusActive},
-		{ID: "tenant-retry-2", Slug: "retry-2", Status: tenant.TenantStatusActive},
-		{ID: "tenant-suspended", Slug: "retry-suspended", Status: tenant.TenantStatusSuspended},
+		{ID: "tenant-retry-1", Status: tenant.TenantStatusActive},
+		{ID: "tenant-retry-2", Status: tenant.TenantStatusActive},
+		{ID: "tenant-suspended", Status: tenant.TenantStatusSuspended},
 	}
 	for _, tenantRow := range tenants {
 		if err := database.WithContext(context.Background()).Create(&tenantRow).Error; err != nil {

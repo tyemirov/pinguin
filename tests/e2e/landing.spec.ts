@@ -66,7 +66,6 @@ test.describe('Landing page auth flow', () => {
         authenticated: false,
         tenant: {
           id: 'tenant-bravo',
-          slug: 'bravo',
           displayName: 'Bravo Labs',
           identity: {
             googleClientId: 'bravo-google-client',
@@ -85,10 +84,8 @@ test.describe('Landing page auth flow', () => {
       await expect(
         page.locator('mpr-header').first(),
       ).toHaveAttribute('site-id', 'bravo-google-client');
-      const slug = await page.evaluate(
-        () => (window as any).__PINGUIN_CONFIG__?.tenant?.slug || '',
-      );
-      expect(slug).toBe('bravo');
+      const id = await page.evaluate(() => (window as any).__PINGUIN_CONFIG__?.tenant?.id || '');
+      expect(id).toBe('tenant-bravo');
     });
   });
 });

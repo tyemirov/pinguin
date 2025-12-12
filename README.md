@@ -95,7 +95,6 @@ server:
   masterEncryptionKey: ${MASTER_ENCRYPTION_KEY}
 tenants:
   - id: tenant-local
-    slug: local
     displayName: Local Sandbox
     domains: [${TENANT_LOCAL_DOMAIN_PRIMARY}, ${TENANT_LOCAL_DOMAIN_SECONDARY}]
     admins:
@@ -201,7 +200,6 @@ Pinguin now keeps all configuration—including tenants—in a single YAML file 
 ```yaml
 tenants:
   - id: tenant-acme
-    slug: acme
     displayName: Acme Corp
     supportEmail: support@acme.example
     status: active

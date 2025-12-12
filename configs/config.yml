@@ -10,7 +10,6 @@ server:
 
 tenants:
   - id: tenant-local
-    slug: local
     displayName: Local Sandbox
     supportEmail: support@localhost
     status: active

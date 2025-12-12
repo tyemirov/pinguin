@@ -57,7 +57,6 @@ func sampleBootstrapConfig() BootstrapConfig {
 		Tenants: []BootstrapTenant{
 			{
 				ID:           "tenant-one",
-				Slug:         "alpha",
 				DisplayName:  "Alpha Corp",
 				SupportEmail: "support@alpha.example",
 				Status:       string(TenantStatusActive),

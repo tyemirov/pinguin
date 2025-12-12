@@ -241,7 +241,6 @@ func validateConfig(cfg Config) error {
 	if len(cfg.TenantBootstrap.Tenants) > 0 {
 		for idx, tenantSpec := range cfg.TenantBootstrap.Tenants {
 			tenantPrefix := fmt.Sprintf("tenants[%d]", idx)
-			requireString(strings.TrimSpace(tenantSpec.Slug), tenantPrefix+".slug", &errors)
 			requireString(strings.TrimSpace(tenantSpec.DisplayName), tenantPrefix+".displayName", &errors)
 			if countNonEmptyStrings(tenantSpec.Domains) == 0 {
 				errors = append(errors, fmt.Sprintf("missing %s.domains", tenantPrefix))

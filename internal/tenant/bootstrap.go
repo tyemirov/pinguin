@@ -20,7 +20,6 @@ type BootstrapConfig struct {
 // BootstrapTenant declares per-tenant metadata.
 type BootstrapTenant struct {
 	ID           string                `json:"id" yaml:"id"`
-	Slug         string                `json:"slug" yaml:"slug"`
 	DisplayName  string                `json:"displayName" yaml:"displayName"`
 	SupportEmail string                `json:"supportEmail" yaml:"supportEmail"`
 	Status       string                `json:"status" yaml:"status"`
@@ -148,14 +147,13 @@ func upsertTenant(ctx context.Context, db *gorm.DB, keeper *SecretKeeper, spec B
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		tenantModel := Tenant{
 			ID:           spec.ID,
-			Slug:         spec.Slug,
 			DisplayName:  spec.DisplayName,
 			SupportEmail: spec.SupportEmail,
 			Status:       TenantStatus(spec.Status),
 		}
 		if err := tx.Clauses(clauseOnConflictUpdateAll()).
 			Create(&tenantModel).Error; err != nil {
-			return fmt.Errorf("tenant bootstrap: upsert tenant %s: %w", spec.Slug, err)
+			return fmt.Errorf("tenant bootstrap: upsert tenant %s: %w", spec.ID, err)
 		}
 
 		if err := tx.Where("tenant_id = ?", spec.ID).Delete(&TenantDomain{}).Error; err != nil {

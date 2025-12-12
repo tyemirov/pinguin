@@ -231,7 +231,7 @@ func setupTenantConfig(t *testing.T) string {
 	config := tenant.BootstrapConfig{
 		Tenants: []tenant.BootstrapTenant{
 			{
-				ID: "tenant-a", Slug: "a", DisplayName: "Tenant A", Status: "active",
+				ID: "tenant-a", DisplayName: "Tenant A", Status: "active",
 				Domains: []string{"a.example.com"},
 				EmailProfile: tenant.BootstrapEmailProfile{
 					Host: "smtp.a.com", Port: 587, Username: "userA", Password: "passA", FromAddress: "no@a.com",
@@ -239,7 +239,7 @@ func setupTenantConfig(t *testing.T) string {
 				Identity: tenant.BootstrapIdentity{GoogleClientID: "gc-a", TAuthBaseURL: "https://auth.a.com"},
 			},
 			{
-				ID: "tenant-b", Slug: "b", DisplayName: "Tenant B", Status: "active",
+				ID: "tenant-b", DisplayName: "Tenant B", Status: "active",
 				Domains: []string{"b.example.com"},
 				EmailProfile: tenant.BootstrapEmailProfile{
 					Host: "smtp.b.com", Port: 587, Username: "userB", Password: "passB", FromAddress: "no@b.com",

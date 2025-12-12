@@ -25,7 +25,6 @@ server:
   operationTimeoutSec: 7
 tenants:
   - id: tenant-one
-    slug: one
     displayName: One Corp
     supportEmail: support@one.test
     status: active
@@ -84,7 +83,6 @@ web:
 			Tenants: []tenant.BootstrapTenant{
 				{
 					ID:           "tenant-one",
-					Slug:         "one",
 					DisplayName:  "One Corp",
 					SupportEmail: "support@one.test",
 					Status:       "active",
@@ -142,7 +140,6 @@ server:
   operationTimeoutSec: 10
 tenants:
   - id: tenant-one
-    slug: one
     displayName: One Corp
     supportEmail: support@one.test
     status: active
@@ -198,7 +195,6 @@ server:
   operationTimeoutSec: 10
 tenants:
   - id: tenant-one
-    slug: one
     displayName: One Corp
     supportEmail: support@one.test
     status: active

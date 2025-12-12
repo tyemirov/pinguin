@@ -382,7 +382,6 @@ func TestRuntimeConfigEndpointReturnsValues(t *testing.T) {
 		APIBaseURL string `json:"apiBaseUrl"`
 		Tenant     struct {
 			ID          string `json:"id"`
-			Slug        string `json:"slug"`
 			DisplayName string `json:"displayName"`
 			Identity    struct {
 				GoogleClientID string `json:"googleClientId"`
@@ -396,7 +395,7 @@ func TestRuntimeConfigEndpointReturnsValues(t *testing.T) {
 	if payload.APIBaseURL != "http://example.com/api" {
 		t.Fatalf("unexpected api base %q", payload.APIBaseURL)
 	}
-	if payload.Tenant.Slug != "test" || payload.Tenant.Identity.GoogleClientID == "" {
+	if payload.Tenant.ID != "tenant-test" || payload.Tenant.Identity.GoogleClientID == "" {
 		t.Fatalf("unexpected tenant payload %+v", payload.Tenant)
 	}
 }
@@ -417,7 +416,7 @@ func TestRuntimeConfigResolvesPerHost(t *testing.T) {
 		t.Fatalf("server init error: %v", err)
 	}
 
-	checkHost := func(host string, expectedSlug string) {
+	checkHost := func(host string, expectedID string) {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodGet, "/runtime-config", nil)
 		request.Host = host
@@ -427,19 +426,19 @@ func TestRuntimeConfigResolvesPerHost(t *testing.T) {
 		}
 		var payload struct {
 			Tenant struct {
-				Slug string `json:"slug"`
+				ID string `json:"id"`
 			} `json:"tenant"`
 		}
 		if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
 			t.Fatalf("decode error: %v", err)
 		}
-		if payload.Tenant.Slug != expectedSlug {
-			t.Fatalf("host %s resolved slug %s", host, payload.Tenant.Slug)
+		if payload.Tenant.ID != expectedID {
+			t.Fatalf("host %s resolved id %s", host, payload.Tenant.ID)
 		}
 	}
 
-	checkHost("alpha.localhost", "alpha")
-	checkHost("bravo.localhost", "bravo")
+	checkHost("alpha.localhost", "tenant-alpha")
+	checkHost("bravo.localhost", "tenant-bravo")
 }
 
 func TestRuntimeConfigRejectsUnknownHost(t *testing.T) {
@@ -497,7 +496,6 @@ func newTestTenantRepository(t *testing.T, admins []string) *tenant.Repository {
 		Tenants: []tenant.BootstrapTenant{
 			{
 				ID:           "tenant-test",
-				Slug:         "test",
 				DisplayName:  "Test Tenant",
 				SupportEmail: "support@example.com",
 				Status:       string(tenant.TenantStatusActive),
@@ -526,7 +524,6 @@ func newMultiTenantRepository(t *testing.T) *tenant.Repository {
 		Tenants: []tenant.BootstrapTenant{
 			{
 				ID:           "tenant-alpha",
-				Slug:         "alpha",
 				DisplayName:  "Alpha Corp",
 				SupportEmail: "alpha@example.com",
 				Status:       string(tenant.TenantStatusActive),
@@ -546,7 +543,6 @@ func newMultiTenantRepository(t *testing.T) *tenant.Repository {
 			},
 			{
 				ID:           "tenant-bravo",
-				Slug:         "bravo",
 				DisplayName:  "Bravo Labs",
 				SupportEmail: "bravo@example.com",
 				Status:       string(tenant.TenantStatusActive),
