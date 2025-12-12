@@ -50,6 +50,7 @@ make: *** [test-frontend] Error 1
 ```
 - [x] [PG-313] Fix dev orchestration login + reduce local test flakiness: align `.env.pinguin.example` with YAML tenant config, mount `configs/config.yml` in `docker-compose.yaml`, validate tenant bootstrap config, correct web header TAuth wiring, and move Playwright dev server to port 4174 to avoid clashing with docker-compose ghttp (4173). `make ci` passes.
 - [x] [PG-314] Add YAML config file for TAuth in dev orchestration: introduce `configs/tauth/config.yaml`, add `tauth-dev` service that builds TAuth from a pinned upstream commit via `docker/tauth/Dockerfile` and uses `TAUTH_CONFIG_FILE`, keep `docker` profile on the prebuilt TAuth image. `make ci` passes.
+- [x] [PG-314] Follow-up: remove `tauth-dev` and run TAuth from `docker/tauth/Dockerfile` in both `dev` and `docker` compose profiles so `configs/tauth/config.yaml` is used consistently. `make ci` passes.
 
 ## Maintenance (400–499)
 

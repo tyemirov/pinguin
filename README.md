@@ -283,7 +283,7 @@ Open `http://localhost:4173` in your browser for the landing/dashboard UI. The H
 
    - `.env.pinguin` configures the environment variables referenced by `configs/config.yml` (including `PINGUIN_CONFIG_PATH=/configs/config.yml`, tenant domains/admins, SMTP/Twilio credentials, and `TAUTH_SIGNING_KEY`).
    - If `GET http://localhost:8080/runtime-config` returns `{"error":"tenant_not_found"}`, the tenant domain env vars (`TENANT_LOCAL_DOMAIN_PRIMARY` / `TENANT_LOCAL_DOMAIN_SECONDARY`) are missing/mismatched.
-   - `.env.tauth` configures the Google OAuth client, signing key, and CORS settings for local development. In the `dev` compose profile, these values are expanded into `configs/tauth/config.yaml` and passed to TAuth via `TAUTH_CONFIG_FILE`.
+   - `.env.tauth` configures the Google OAuth client, signing key, and CORS settings for local development. In both compose profiles, these values are expanded into `configs/tauth/config.yaml` and passed to TAuth via `TAUTH_CONFIG_FILE`.
    - Keep `TAUTH_SIGNING_KEY` (Pinguin) identical to `APP_JWT_SIGNING_KEY` (TAuth) so cookie validation succeeds.
    - `configs/config.yml` controls the Pinguin web allowlist (`web.allowedOrigins`); keep `http://localhost:4173` there when using ghttp.
    - Match the same UI origin in `.env.tauth` via `APP_CORS_ALLOWED_ORIGINS` so the auth endpoints accept browser requests (use `http://localhost:4173` for the default setup, plus `https://accounts.google.com`).
@@ -294,13 +294,14 @@ Open `http://localhost:4173` in your browser for the landing/dashboard UI. The H
    docker compose --profile dev up --build
    ```
 
-   To pull prebuilt images from GHCR instead of building locally, start the `docker` profile:
+   To pull the prebuilt Pinguin + ghttp images from GHCR, start the `docker` profile (TAuth still builds locally to load `configs/tauth/config.yaml`):
 
    ```bash
    docker compose --profile docker up -d
    ```
 
    Pinguin writes its SQLite file to the Docker-managed volume, validates browser sessions issued by the colocated TAuth instance, and exposes the HTTP API on port 8080. The static landing/dashboard bundle is served by ghttp on `http://localhost:4173`.
+   Note: TAuth currently builds from a pinned upstream commit in both profiles so it can consume `configs/tauth/config.yaml`.
 
 3. Stop the stack when you are finished (use the same profile you started):
 
@@ -330,7 +331,7 @@ docker volume inspect pinguin-data
    docker compose --profile dev up --build
    ```
 
-   To run the prebuilt containers from GHCR instead, run `docker compose --profile docker up -d`.
+   To run the prebuilt Pinguin + ghttp containers from GHCR instead, run `docker compose --profile docker up -d` (TAuth still builds locally).
 
    - gRPC server → `localhost:50051`
    - HTTP API → `http://localhost:8080`

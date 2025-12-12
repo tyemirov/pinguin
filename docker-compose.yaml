@@ -28,21 +28,8 @@ services:
 
   tauth:
     profiles:
-      - docker
-    image: ghcr.io/tyemirov/tauth:latest
-    container_name: tauth
-    restart: unless-stopped
-    pull_policy: always
-    ports:
-      - "8081:8081"
-    env_file:
-      - .env.tauth
-    volumes:
-      - tauth_data:/data
-
-  tauth-dev:
-    profiles:
       - dev
+      - docker
     build:
       context: ./docker/tauth
     image: tauth-local:latest
@@ -64,7 +51,7 @@ services:
       - dev
     container_name: pinguin-dev
     depends_on:
-      - tauth-dev
+      - tauth
     build:
       context: .
       dockerfile: Dockerfile
