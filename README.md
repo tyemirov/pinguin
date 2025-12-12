@@ -117,7 +117,7 @@ tenants:
 
 Export the referenced environment variables before starting the server. The default config references or sets the following keys:
 
-- See `configs/.env.example` for a full list of variables to seed your environment when using the default config template.
+- See `.env.pinguin.example` for a full list of variables to seed your environment when using the default config template.
 - **PINGUIN_CONFIG_PATH:**  
   Optional override for the service configuration file (defaults to `configs/config.yml`).
 
@@ -195,7 +195,11 @@ Export the referenced environment variables before starting the server. The defa
 
 ### Tenant configuration (single YAML)
 
-Pinguin now keeps all configuration—including tenants—in a single YAML file (`configs/config.yml` by default). The `tenants` section holds tenant metadata (domains, admin accounts, SMTP/Twilio credentials, TAuth identifiers). JSON is no longer supported. A sample block:
+Pinguin keeps all configuration—including tenants—in a single YAML file (`configs/config.yml` by default). The `tenants` section defines which tenants exist, which domains map to each tenant, who can access the web UI, and what delivery credentials each tenant uses.
+
+`tenants[].status` is not supported. Use `tenants[].enabled: true|false`.
+
+Example (inline tenants):
 
 ```yaml
 tenants:
@@ -224,7 +228,36 @@ tenants:
       fromNumber: "+12015550123"
 ```
 
-See `configs/config.yml` for a ready-to-use sample. The `MASTER_ENCRYPTION_KEY` is used to encrypt the SMTP/Twilio secrets before they are stored in SQLite. Regenerate the file (or run tenant bootstrap) whenever you need to add tenants, rotate credentials, or change admin memberships. See [`docs/multitenancy-plan.md`](docs/multitenancy-plan.md) for the end-to-end roadmap.
+See `configs/config.yml` for a ready-to-use sample. `MASTER_ENCRYPTION_KEY` encrypts tenant SMTP/Twilio secrets at rest in SQLite.
+
+#### Tenant keys
+
+- `tenants`: list of tenant objects. Must contain at least one enabled tenant (`enabled: true`) or the server exits during startup.
+- `tenants[].id` (string, required): stable tenant identifier.
+  - Used by gRPC callers (`tenant_id`) and as the database partition key.
+  - Avoid leaving it empty: an empty id is auto-generated during bootstrap and will drift between runs.
+- `tenants[].enabled` (bool, optional): whether the tenant is enabled.
+  - `true` → persisted as tenant status `active`.
+  - `false` → persisted as tenant status `suspended`.
+  - Defaults to `true` when omitted.
+- `tenants[].displayName` (string, required): tenant name shown in the UI (e.g. the header label).
+- `tenants[].supportEmail` (string, optional): tenant support contact (reserved for future use in UI/templates).
+- `tenants[].domains` (list of strings, required): hostnames that map HTTP requests to this tenant.
+  - The first domain is treated as the tenant’s default domain.
+  - Matching is case-insensitive; ports are ignored (e.g. `localhost:8080` matches `localhost`).
+- `tenants[].admins` (list of emails):
+  - Required when `web.enabled: true`.
+  - These emails are allowed to access the HTTP API after TAuth session validation.
+- `tenants[].identity`:
+  - Required when `web.enabled: true`.
+  - `googleClientId` (string): Google OAuth client id for the tenant.
+  - `tauthBaseUrl` (string): base URL for the tenant’s TAuth instance (used by the UI header).
+- `tenants[].emailProfile` (required): tenant SMTP settings.
+  - `host` (string), `port` (int), `username` (string), `password` (string), `fromAddress` (string).
+  - `username` and `password` are encrypted with `MASTER_ENCRYPTION_KEY` before storing in SQLite.
+- `tenants[].smsProfile` (optional): tenant Twilio settings.
+  - If omitted, SMS delivery is disabled for that tenant.
+  - `accountSid` and `authToken` are encrypted with `MASTER_ENCRYPTION_KEY`; `fromNumber` is stored as-is.
 
 Example `.env` file:
 
@@ -384,6 +417,8 @@ Configuration values are read from environment variables prefixed with `PINGUIN_
 | `PINGUIN_OPERATION_TIMEOUT_SEC` | Per-command timeout in seconds | `30` |
 | `PINGUIN_LOG_LEVEL` | CLI log level (`DEBUG`, `INFO`, `WARN`, `ERROR`) | `INFO` |
 
+The CLI also accepts the unprefixed variants (`GRPC_SERVER_ADDR`, `GRPC_AUTH_TOKEN`, `TENANT_ID`, `CONNECTION_TIMEOUT_SEC`, `OPERATION_TIMEOUT_SEC`, `LOG_LEVEL`) which is handy for ad-hoc testing and CI scripts.
+
 Example command that schedules an email:
 
 ```bash
@@ -391,7 +426,7 @@ PINGUIN_GRPC_AUTH_TOKEN=my-secret-token \
 PINGUIN_TENANT_ID=tenant-acme \
 ./pinguin-cli send \
   --type email \
-  --recipient someone@example.com \
+  --to someone@example.com \
   --subject "Meeting Reminder" \
   --message "See you at 10:00" \
   --scheduled-time "2025-01-02T15:04:05Z"
@@ -409,26 +444,6 @@ PINGUIN_TENANT_ID=tenant-acme \
   --message "See attached report." \
   --attachment /tmp/report.pdf \
   --attachment "/tmp/notes.txt::text/plain"
-```
-
-### Command-Line Client Test
-
-A lightweight client test application lives under `tests/clientcli` (no extra module). This client wraps the gRPC calls and demonstrates sending a notification. To run the client test, use:
-
-```bash
-TENANT_ID=tenant-acme \
-GRPC_AUTH_TOKEN=my-secret-token \
-go run ./tests/clientcli \
-  --to your-email@yourdomain.com \
-  --subject "Test Email" \
-  --message "Hello, world!" \
-  --attachment /tmp/report.pdf
-```
-
-If successful, you will see output similar to:
-
-```
-Notification sent successfully. Notification ID: notif-1741932356116855000
 ```
 
 ### Using grpcurl

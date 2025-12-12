@@ -11,7 +11,7 @@ server:
 tenants:
   - id: tenant-local
     displayName: Local Sandbox
-    supportEmail: support@localhost
+    supportEmail: support@mprlab.com
     enabled: true
     domains:
       - ${TENANT_LOCAL_DOMAIN_PRIMARY}

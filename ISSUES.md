@@ -14,6 +14,8 @@ Read @AGENTS.md, @ARCHITECTURE.md, @POLICY.md, PLANNING.md, @NOTES.md, @README.m
 - [x] [PG-205] Support YAML tenant config (TENANT_CONFIG_PATH) and ship a YAML sample for docker/dev; JSON input no longer accepted.
 - [x] [PG-206] Use configs/config.yml as the canonical service config with env-variable expansion; remove direct env loading.
 - [x] [PG-207] Migrate `pkg/scheduler` to `github.com/tyemirov/utils/scheduler` (utils v0.1.1) and update Pinguin imports.
+- [x] [PG-320] Document tenant configuration schema: add a key-by-key reference for `tenants` (id, enabled, domains, admins, identity, emailProfile, smsProfile) in `README.md`.
+- [x] [PG-321] Remove `tests/clientcli` and make `cmd/client` the single CLI for manual usage + test harnesses; `--help` works without env, `--to` is supported, and unprefixed env vars are accepted.
 
 ## BugFixes (308–399)
 

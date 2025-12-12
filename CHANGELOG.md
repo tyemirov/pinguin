@@ -8,7 +8,7 @@
 - Moved the Cobra CLI into `cmd/client`, removed the extra module/go.work entry, and updated build/docs/tests to reference the unified binary (PG-407).
 - Removed the Go workspace files (`go.work`/`go.work.sum`) now that the repository relies solely on the root module (PG-408).
 - Relocated integration tests to `tests/integration`, renamed the package to `integrationtest`, and updated build tooling accordingly (PG-404).
-- Moved the integration test client CLI into `tests/clientcli`, eliminating the extra `cmd/client_test` module and keeping all test tooling under the shared directory (PG-403).
+- Removed `tests/clientcli`; `cmd/client` is the single CLI for manual usage and automated test harnesses (PG-321).
 - Removed the `third_party` directory and rely entirely on module-managed dependencies, simplifying Go workspace setup and proto regeneration (PG-402).
 - Gated the docker-build GitHub Actions workflow so it only runs after the Go Tests workflow completes successfully, while preserving manual dispatch for emergencies (PG-401).
 - Added `dev` and `docker` docker-compose profiles plus a regression test and README guidance so operators can choose between local builds and GHCR-hosted images (PG-400).
