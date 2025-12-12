@@ -113,6 +113,8 @@ github.com/twitchyliquid64/golang-asm v0.15.1 h1:SU5vSMR7hnwNxj24w34ZyCi/FmDZTkS
 github.com/twitchyliquid64/golang-asm v0.15.1/go.mod h1:a1lVb/DtPvCB8fslRZhAngC2+aY1QWCk3Cedj/Gdt08=
 github.com/tyemirov/tauth v0.0.3 h1:RRar3jtyinOa6hOuCTIGnxxBoDYZCXY7V3Gpbl/U3nU=
 github.com/tyemirov/tauth v0.0.3/go.mod h1:P5zI74bXzIUy9fBd5aNVwwZMl368CDlEoKjyZsYXb6Y=
+github.com/tyemirov/utils v0.1.1 h1:Z8qu2uk0zTriFlTIxKJBhuqErtRupc8RkaNBDYbUj2Q=
+github.com/tyemirov/utils v0.1.1/go.mod h1:9ZGEQgLraFSVjsa2DQZNzFew4TM3rlMRLciRyBTZwIE=
 github.com/ugorji/go/codec v1.3.0 h1:Qd2W2sQawAfG8XSvzwhBeoGq71zXOC/Q1E9y/wUcsUA=
 github.com/ugorji/go/codec v1.3.0/go.mod h1:pRBVtBSKl77K30Bv8R2P+cLSGaTtex6fsA2Wjqmfxj4=
 go.opentelemetry.io/auto/sdk v1.1.0 h1:cH53jehLUN6UFLY71z+NDOiNJqDdPRaXzTel0sJySYA=

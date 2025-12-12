@@ -21,7 +21,7 @@
 - Fixed the sample `HTTP_ALLOWED_ORIGINS` value and README docker-compose instructions so compose users open the UI on `http://localhost:4173` and the HTTP API accepts requests from that origin (BF-301).
 - Added GoDoc coverage for all client-facing packages (client, attachments, grpcapi, grpcutil, logging) so integrators can rely on `go doc` to understand how to embed the SDK.
 - Added a scheduling integration test backed by injectable senders to ensure emails queued with future timestamps are dispatched only after the background worker releases them.
-- Extracted the scheduling/retry worker into `pkg/scheduler`, wired the server through a repository/dispatcher bridge, and added unit tests so other binaries can reuse the persistence-agnostic scheduler.
+- Extracted the scheduling/retry worker into `github.com/tyemirov/utils/scheduler`, wired the server through a repository/dispatcher bridge, and added unit tests so other binaries can reuse the persistence-agnostic scheduler.
 - Removed the `generate-secret` CLI command and `pkg/secret` helper in favor of documenting `openssl rand -base64 32` for token generation.
 - Split the CLI and client-test utilities into standalone Go modules so `go run ./...` targets only the server binary.
 - Documented all required environment variables in README/.env so the server starts without configuration surprises.
