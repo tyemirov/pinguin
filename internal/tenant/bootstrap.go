@@ -142,19 +142,12 @@ func upsertTenant(ctx context.Context, db *gorm.DB, keeper *SecretKeeper, spec B
 	if strings.TrimSpace(spec.ID) == "" {
 		spec.ID = uuid.NewString()
 	}
-	status := strings.ToLower(strings.TrimSpace(spec.Status))
-	if spec.Enabled != nil {
-		if *spec.Enabled {
-			status = string(TenantStatusActive)
-		} else {
-			status = string(TenantStatusSuspended)
-		}
+	if strings.TrimSpace(spec.Status) != "" {
+		return fmt.Errorf("tenant bootstrap: tenants[].status is no longer supported; use tenants[].enabled (true|false)")
 	}
-	if status == "" {
-		status = string(TenantStatusActive)
-	}
-	if status != string(TenantStatusActive) && status != string(TenantStatusSuspended) {
-		return fmt.Errorf("tenant bootstrap: unsupported tenant status %q", status)
+	status := string(TenantStatusActive)
+	if spec.Enabled != nil && !*spec.Enabled {
+		status = string(TenantStatusSuspended)
 	}
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		tenantModel := Tenant{
