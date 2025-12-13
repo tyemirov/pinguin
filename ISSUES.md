@@ -56,5 +56,41 @@ make: *** [test-frontend] Error 1
 
 ## Maintenance (400–499)
 
+- [ ] [PS-400] Replace the placeholders with real values. generate the new keys when needed. Look up in .emv files under tools/{tauth} or in ../loopaware or .env to find the actual production values
+
+• Placeholders in .env.pinguin
+
+  1. GRPC_AUTH_TOKEN (.env.pinguin:7): currently dev-secret-token. configs/config.yml:2-8 feeds this into server.grpcAuthToken, and cmd/server/main.go:327/internal/grpc use it to gate every client call.
+     Replace it with a production‑grade bearer token so attackers cannot talk to your gRPC surface.
+  2. MASTER_ENCRYPTION_KEY (.env.pinguin:21): the 32‑byte hex string is used at configs/config.yml:7 and in tenant.NewSecretKeeper to encrypt SMTP/Twilio secrets. Using the placeholder leaks every secret if
+     the DB is copied—generate a real random key and keep it secret.
+  3. HTTP_ALLOWED_ORIGIN1/2/3 (.env.pinguin:16-18): these populate web.allowedOrigins (configs/config.yml:35-41 and internal/config/config.go:145-175). For production, list the actual UI origins (and https://
+     accounts.google.com for GIS) so browsers can send TAuth cookies without CORS errors.
+  4. Tenant metadata (TENANT_LOCAL_*, .env.pinguin:23-39):
+      - TENANT_LOCAL_DOMAIN_* (configs/config.yml:16-19) controls which hosts resolve to the tenant.
+      - TENANT_LOCAL_ADMIN_EMAIL (configs/config.yml:19 + internal/httpapi/sessionMiddleware) defines who can access /api.
+      - TENANT_LOCAL_GOOGLE_CLIENT_ID + TENANT_LOCAL_TAUTH_BASE_URL (configs/config.yml:21-23 and web/js/tauth-config.js) drive the UI’s Identity/TAuth configuration.
+      - TENANT_LOCAL_SMTP_*/FROM_EMAIL (configs/config.yml:24-29) become the SMTP profile for sending email.
+        Replace the localhost values and fake credentials with your production mail server, domains, admins, and Google client.
+  5. TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER (.env.pinguin:41-43): optionally set if you enable SMS; configs/config.yml:30-33 wires them into the tenant’s SMS profile and internal/service/
+     sms_service.go consumes the decrypted secrets. Leave them blank to disable SMS or supply real Twilio credentials for production.
+  6. TAUTH_SIGNING_KEY (.env.pinguin:38): used at configs/config.yml:42-45 and later passed into cmd/server/main.go:421-440 to build the session validator. It must be a strong HS256 key and must match
+     APP_JWT_SIGNING_KEY (see below).
+
+  Placeholders in .env.tauth
+
+  1. APP_GOOGLE_WEB_CLIENT_ID (.env.tauth:3 → configs/config.tauth.yaml:15): this value tells TAuth (and indirectly the UI) which Google OAuth client to trust. Replace it with your production Google Web
+     Client ID so the login flow points to the right project.
+  2. APP_JWT_SIGNING_KEY (.env.tauth:4 → configs/config.tauth.yaml:16): must exactly match TAUTH_SIGNING_KEY above; TAuth signs cookies with this value, and Pinguin validates them with the same key (cmd/
+     server/main.go:421-440). Generate and share a strong secret for production.
+  3. APP_COOKIE_DOMAIN (.env.tauth:5 → configs/config.tauth.yaml:17): currently localhost. Set it to your real cookie domain so browsers send app_session back to TAuth/Pinguin.
+  4. APP_CORS_ALLOWED_ORIGINS (.env.tauth:7 → configs/config.tauth.yaml:5-6): the placeholder list covers localhost + Google. Production needs the actual UI origin(s) plus https://accounts.google.com so GIS
+     nonce exchanges work.
+  5. APP_DEV_INSECURE_HTTP (.env.tauth:8 → configs/config.tauth.yaml:23): true allows HTTP; it must be false (or unset) in prod to force TLS.
+  6. (Optional) APP_DATABASE_URL is commented out; enable it if you persist TAuth sessions in SQLite/Postgres.
+
+  Every placeholder above maps into the YAML configs and, via internal/config/config.go plus cmd/server/main.go, drives the runtime behavior of both Pinguin and TAuth. Replace them with production secrets,
+  domains, and credentials before deploying.
+
 ## Planning
 *do not work on these, not ready*
