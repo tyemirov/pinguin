@@ -137,9 +137,7 @@ Export the referenced environment variables before starting the server. The defa
 - **OPERATION_TIMEOUT_SEC:**  
   Maximum number of seconds to wait for a send attempt before treating it as failed. Set this to `30` seconds unless your provider requires longer operations.
 - **HTTP_LISTEN_ADDR:**  
-  Address used by the Gin HTTP server that serves the UI + JSON API (e.g. `:8080`).
-- **HTTP_STATIC_ROOT:**  
-  Filesystem path that holds the `/web` assets served to browsers (defaults to `/web` when unset; docker-compose mounts the same path).
+  Address used by the Gin HTTP server that exposes runtime config and the JSON `/api/*` endpoints (e.g. `:8080`). The HTTP stack no longer serves static assets directly—use a separate host such as ghttp (`http://localhost:4173`) for `/web`.
 - **HTTP_ALLOWED_ORIGINS:**  
   Comma-separated list of origins allowed to call the JSON API when running cross-origin (leave empty to allow same-origin only). The docker-compose workflow serves the UI via ghttp on `http://localhost:4173`, so keep that origin in the list unless you host the web bundle elsewhere.
 - **DISABLE_WEB_INTERFACE:**  
@@ -510,7 +508,7 @@ grpcurl -d '{
 
 The gRPC server now ships with a sibling Gin HTTP server that:
 
-- Serves static assets from `HTTP_STATIC_ROOT` (future `/web` front-end).
+- Serves runtime configuration (`/runtime-config`) and the REST-ish JSON `/api/*` endpoints the browser UI consumes. Static assets under `/web` are hosted separately (the Compose workflow runs ghttp on `http://localhost:4173`).
 - Validates every authenticated request by reading the TAuth `app_session` cookie (via `TAUTH_*` settings and the shared signing key).
 - Exposes JSON endpoints for the UI:
   - `GET /api/notifications?status=queued&status=errored` – lists stored notifications filtered by status.
@@ -522,11 +520,11 @@ All endpoints emit structured JSON errors (`401` for auth failures, `400` for in
 
 ### Browser UI (beta)
 
-- Static assets live under `/web` and are served directly by the HTTP server (see `HTTP_STATIC_ROOT`). `index.html` provides the marketing + Google Sign-In landing experience, and `dashboard.html` renders the authenticated notifications table.
+- Static assets live under `/web` and are served by the dedicated ghttp host on `http://localhost:4173` (the Go HTTP server keeps `/api`/`/runtime-config` in this arrangement). `index.html` provides the marketing + Google Sign-In landing experience, and `dashboard.html` renders the authenticated notifications table.
 - The UI follows AGENTS.md: Alpine components per section, mpr-ui header/footer, DOM-scoped events (`notifications:*`) for toasts + table refreshes, and all strings centralized in `js/constants.js`.
 - `js/app.js` bootstraps Alpine, hydrates the TAuth session (`auth-client.js`), and guards routes. Components interact with the new `/api/notifications` endpoints via the shared `apiClient`.
 - Authentication state is broadcast across tabs via TAuth’s `BroadcastChannel("auth")`, so signing out in one tab logs out the others automatically.
-- Handy for local testing: run the Go server with the HTTP config set, then visit `http://localhost:<http_port>/web/index.html` to exercise sign-in, reschedule, and cancellation flows without needing an external client.
+- Handy for local testing: start the Compose stack so ghttp (`http://localhost:4173`) serves the `/web` bundle while the Go server handles `/api`/`/runtime-config`, then visit the ghttp host to exercise the landing and dashboard flows without needing an external client.
 
 ### Front-End Tests (Playwright)
 

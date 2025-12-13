@@ -431,7 +431,6 @@ func main() {
 
 		httpServer, httpServerErr := httpapi.NewServer(httpapi.Config{
 			ListenAddr:          configuration.HTTPListenAddr,
-			StaticRoot:          configuration.HTTPStaticRoot,
 			AllowedOrigins:      configuration.HTTPAllowedOrigins,
 			SessionValidator:    sessionValidator,
 			NotificationService: notificationSvc,

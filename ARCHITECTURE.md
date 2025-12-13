@@ -1,7 +1,7 @@
 # Architecture
 
 ## System Overview
-- Pinguin exposes two surfaces inside a single Go process: a gRPC notification service (port `50051`) and a Gin HTTP server (default `:8080`) that serves both the REST-ish `/api` endpoints and the static `/web` bundle.
+- Pinguin exposes two surfaces inside a single Go process: a gRPC notification service (port `50051`) and a Gin HTTP server (default `:8080`) that serves the REST-ish `/api` endpoints plus `/runtime-config`; static assets are served by the ghttp container on `4173`.
 - Docker Compose runs Pinguin alongside two support services:
   - **TAuth** (`:8081`) issues Google-backed sessions and signs `app_session` cookies.
   - **ghttp** (`:4173`) serves the static front-end when developing locally. Browsers always load the UI from this host; API traffic targets the Pinguin HTTP server.
@@ -23,7 +23,7 @@
   - `GET /runtime-config` → `{ apiBaseUrl: "<scheme>://<host>/api" }`. The UI uses this to derive absolute API URLs when loaded from ghttp/other hosts.
   - `GET /healthz` – unauthenticated health probe.
   - Authenticated `/api/notifications` list/reschedule/cancel handlers guarded by the session middleware.
-- Static file serving uses `engine.NoRoute`: all unknown paths are mapped to files under `HTTP_STATIC_ROOT` (defaults to `/web`). This keeps `/api/**` routes free of wildcard conflicts.
+- Static assets do not come from the Gin stack anymore; ghttp serves `/web` while the Go HTTP server keeps `/api/**` and `/runtime-config` free of wildcard conflicts.
 - CORS defaults:
   - When `HTTP_ALLOWED_ORIGINS` is empty, requests are treated as same-origin only (credentials disabled while `AllowAllOrigins=true`).
   - When provided, Gin restricts origins to the explicit allowlist and enables credentials so browsers can send TAuth cookies.
