@@ -2,7 +2,7 @@
 
 In this file the entries (issues) record newly discovered requests or changes, with their outcomes. No instructive content lives here. Read @NOTES.md for the process to follow when fixing issues.
 
-Read @AGENTS.md, @ARCHITECTURE.md, @POLICY.md, PLANNING.md, @NOTES.md, @README.md and @ISSUES.md. Start working on open issues, prioritizing bug fixes. Work autonomously and stack up PRs.
+Read @AGENTS.md, @AGENT.GO.md, @AGENT.GIT.md, @POLICY.md, PLANNING.md, @NOTES.md, and @ISSUES.md under issues.md/. Read @ARCHITECTURE.md, @README.md in the root of the repo. Start working on open issues, prioritizing bug fixes. Work autonomously and stack up PRs.
 
 ## Features  (102–199)
 
