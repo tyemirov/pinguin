@@ -279,35 +279,18 @@ func TestCancelNotificationRejectsEmptyID(t *testing.T) {
 	}
 }
 
-func TestNewServerSupportsStaticRootAfterAPIRoutes(t *testing.T) {
+func TestUnknownPathReturnsNotFound(t *testing.T) {
 	t.Helper()
 
-	tempDir := t.TempDir()
-	assetPath := filepath.Join(tempDir, "app.js")
-	if writeErr := os.WriteFile(assetPath, []byte("console.log('ok');"), 0o644); writeErr != nil {
-		t.Fatalf("failed to write static file: %v", writeErr)
-	}
-
-	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
-	tenantRepo := newTestTenantRepository(t, []string{"user@example.com"})
-	server, err := NewServer(Config{
-		ListenAddr:          ":0",
-		StaticRoot:          tempDir,
-		NotificationService: &stubNotificationService{},
-		SessionValidator:    &stubValidator{},
-		TenantRepository:    tenantRepo,
-		Logger:              logger,
-	})
-	if err != nil {
-		t.Fatalf("server init error: %v", err)
-	}
+	server := newTestHTTPServer(t, &stubNotificationService{}, &stubValidator{}, []string{"user@example.com"})
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/app.js", nil)
+	request := httptest.NewRequest(http.MethodGet, "/favicon.ico", nil)
+	request.Host = "example.com"
 
 	server.httpServer.Handler.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected 200 when serving static content, got %d", recorder.Code)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for unknown path, got %d", recorder.Code)
 	}
 }
 
