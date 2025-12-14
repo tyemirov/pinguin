@@ -5,7 +5,7 @@ server:
   maxRetries: ${MAX_RETRIES}
   retryIntervalSec: ${RETRY_INTERVAL_SEC}
   masterEncryptionKey: ${MASTER_ENCRYPTION_KEY}
-  connectionTimeoutSec: ${MAX_RETRIES}
+  connectionTimeoutSec: ${CONNECTION_TIMEOUT_SEC}
   operationTimeoutSec: ${OPERATION_TIMEOUT_SEC}
 
 tenants:
