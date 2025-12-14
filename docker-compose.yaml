@@ -1,7 +1,6 @@
 x-pinguin-service: &pinguin-service
   restart: unless-stopped
   ports:
-    - "50051:50051"
     - "8080:8080"
   env_file:
     - ./configs/.env.pinguin
@@ -22,19 +21,18 @@ services:
     pull_policy: always
     volumes:
       - ./web:/web:ro
-    command: ["--directory", "/web", "8080"]
+    command: ["--directory", "/web", "4173"]
     ports:
-      - "4173:8080"
+      - "4173:4173"
 
   tauth:
+    image: ghcr.io/tyemirov/tauth:latest
+    container_name: tauth
+    restart: unless-stopped
+    pull_policy: always
     profiles:
       - dev
       - docker
-    build:
-      context: ./docker/tauth
-    image: tauth-local:latest
-    container_name: tauth
-    restart: unless-stopped
     ports:
       - "8081:8081"
     env_file:
