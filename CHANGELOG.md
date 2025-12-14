@@ -12,7 +12,7 @@
 - Removed the `third_party` directory and rely entirely on module-managed dependencies, simplifying Go workspace setup and proto regeneration (PG-402).
 - Gated the docker-build GitHub Actions workflow so it only runs after the Go Tests workflow completes successfully, while preserving manual dispatch for emergencies (PG-401).
 - Added `dev` and `docker` docker-compose profiles plus a regression test and README guidance so operators can choose between local builds and GHCR-hosted images (PG-400).
-- Fixed HTTP server startup by registering static assets after `/api` routes, eliminating the Gin catch-all panic when `HTTP_STATIC_ROOT` is configured (BF-306).
+- Documented that the Gin HTTP stack no longer serves `/web` and relies on ghttp for the static bundle, keeping the Go server focused on `/api`/`/runtime-config` (BF-306).
 - Disabled Playwright’s per-test parallelism so the shared mock dev server state is not mutated concurrently, stabilizing dashboard smoke tests (BF-305).
 - Hardened HTTP CORS defaults by disabling credentialed responses whenever `HTTP_ALLOWED_ORIGINS` is empty, preventing cross-site requests from reusing TAuth cookies (BF-304).
 - Added a “Docker quickstart” section to README so operators can boot the full orchestration (Pinguin + TAuth + ghttp) with timed commands on the documented ports (IM-200).

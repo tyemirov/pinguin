@@ -113,7 +113,6 @@ web:
 		},
 		WebInterfaceEnabled:  true,
 		HTTPListenAddr:       ":8080",
-		HTTPStaticRoot:       "web",
 		HTTPAllowedOrigins:   []string{"https://app.local", "https://alt.local"},
 		TAuthSigningKey:      "signing-key",
 		TAuthIssuer:          "tauth",
@@ -177,7 +176,7 @@ web:
 	if cfg.WebInterfaceEnabled {
 		t.Fatalf("expected web interface to be disabled")
 	}
-	if cfg.HTTPStaticRoot != "" || cfg.TAuthCookieName != "" || cfg.HTTPAllowedOrigins != nil {
+	if cfg.TAuthCookieName != "" || cfg.HTTPAllowedOrigins != nil {
 		t.Fatalf("expected web fields to be cleared when disabled")
 	}
 	if cfg.ConnectionTimeoutSec != 5 || cfg.OperationTimeoutSec != 10 {

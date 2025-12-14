@@ -9,7 +9,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const defaultHTTPStaticRoot = "/web"
 const defaultConfigPath = "configs/config.yml"
 
 type Config struct {
@@ -25,7 +24,6 @@ type Config struct {
 
 	WebInterfaceEnabled bool
 	HTTPListenAddr      string
-	HTTPStaticRoot      string
 	HTTPAllowedOrigins  []string
 
 	TAuthSigningKey string
@@ -67,7 +65,6 @@ type serverSection struct {
 type webSection struct {
 	Enabled        *bool        `yaml:"enabled"`
 	ListenAddr     string       `yaml:"listenAddr"`
-	StaticRoot     string       `yaml:"staticRoot"`
 	AllowedOrigins []string     `yaml:"allowedOrigins"`
 	TAuth          tauthSection `yaml:"tauth"`
 }
@@ -155,7 +152,6 @@ func LoadConfig(disableWebInterface bool) (Config, error) {
 		TenantConfigPath:     strings.TrimSpace(fileCfg.Tenants.ConfigPath),
 		WebInterfaceEnabled:  webEnabled,
 		HTTPListenAddr:       strings.TrimSpace(fileCfg.Web.ListenAddr),
-		HTTPStaticRoot:       strings.TrimSpace(fileCfg.Web.StaticRoot),
 		HTTPAllowedOrigins:   normalizeStrings(fileCfg.Web.AllowedOrigins),
 		TAuthSigningKey:      strings.TrimSpace(fileCfg.Web.TAuth.SigningKey),
 		TAuthIssuer:          strings.TrimSpace(fileCfg.Web.TAuth.Issuer),
@@ -168,14 +164,10 @@ func LoadConfig(disableWebInterface bool) (Config, error) {
 	}
 
 	if configuration.WebInterfaceEnabled {
-		if configuration.HTTPStaticRoot == "" {
-			configuration.HTTPStaticRoot = defaultHTTPStaticRoot
-		}
 		if configuration.TAuthCookieName == "" {
 			configuration.TAuthCookieName = "app_session"
 		}
 	} else {
-		configuration.HTTPStaticRoot = ""
 		configuration.HTTPAllowedOrigins = nil
 		configuration.TAuthSigningKey = ""
 		configuration.TAuthIssuer = ""

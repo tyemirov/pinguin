@@ -3,7 +3,9 @@ server:
   database_url: "${APP_DATABASE_URL}"
   enable_cors: "${APP_ENABLE_CORS}"
   cors_allowed_origins:
-    - "${APP_CORS_ALLOWED_ORIGINS}"
+    - "${APP_CORS_ALLOWED_ORIGIN_1}"
+    - "${APP_CORS_ALLOWED_ORIGIN_2}"
+    - "${APP_CORS_ALLOWED_ORIGIN_3}"
   enable_tenant_header_override: false
 
 tenants:

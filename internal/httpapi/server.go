@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -33,7 +31,6 @@ type SessionValidator interface {
 // Config captures all inputs required to construct the HTTP server.
 type Config struct {
 	ListenAddr           string
-	StaticRoot           string
 	AllowedOrigins       []string
 	SessionValidator     SessionValidator
 	NotificationService  service.NotificationService
@@ -79,7 +76,6 @@ func NewServer(cfg Config) (*Server, error) {
 	engine.GET("/healthz", func(contextGin *gin.Context) {
 		contextGin.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
-
 	protected := engine.Group("/api")
 	protected.Use(sessionMiddleware(cfg.SessionValidator))
 
@@ -87,44 +83,6 @@ func NewServer(cfg Config) (*Server, error) {
 	protected.GET("/notifications", handler.listNotifications)
 	protected.PATCH("/notifications/:id/schedule", handler.rescheduleNotification)
 	protected.POST("/notifications/:id/cancel", handler.cancelNotification)
-
-	if cfg.StaticRoot != "" {
-		staticDir := filepath.Clean(cfg.StaticRoot)
-		absoluteStaticDir, err := filepath.Abs(staticDir)
-		if err != nil {
-			return nil, fmt.Errorf("httpapi: resolve static root: %w", err)
-		}
-		engine.NoRoute(func(contextGin *gin.Context) {
-			requestPath := contextGin.Request.URL.Path
-			if requestPath == "" || requestPath == "/" {
-				requestPath = "/index.html"
-			}
-			contextGin.Request.URL.Path = requestPath
-			contextGin.Request.URL.RawPath = requestPath
-			cleaned := filepath.Clean(requestPath)
-			cleaned = strings.TrimPrefix(cleaned, string(filepath.Separator))
-			joined := filepath.Join(absoluteStaticDir, cleaned)
-			fullPath, err := filepath.Abs(joined)
-			if err != nil {
-				contextGin.Status(http.StatusNotFound)
-				return
-			}
-			if fullPath != absoluteStaticDir && !strings.HasPrefix(fullPath, absoluteStaticDir+string(filepath.Separator)) {
-				contextGin.Status(http.StatusNotFound)
-				return
-			}
-			info, err := os.Stat(fullPath)
-			if err != nil {
-				contextGin.Status(http.StatusNotFound)
-				return
-			}
-			if info.IsDir() {
-				contextGin.Status(http.StatusNotFound)
-				return
-			}
-			http.ServeFile(contextGin.Writer, contextGin.Request, fullPath)
-		})
-	}
 
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddr,
