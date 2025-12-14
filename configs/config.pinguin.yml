@@ -2,11 +2,11 @@ server:
   databasePath: ${DATABASE_PATH}
   grpcAuthToken: ${GRPC_AUTH_TOKEN}
   logLevel: ${LOG_LEVEL}
-  maxRetries: 3
-  retryIntervalSec: 30
+  maxRetries: ${MAX_RETRIES}
+  retryIntervalSec: ${RETRY_INTERVAL_SEC}
   masterEncryptionKey: ${MASTER_ENCRYPTION_KEY}
-  connectionTimeoutSec: 5
-  operationTimeoutSec: 30
+  connectionTimeoutSec: ${MAX_RETRIES}
+  operationTimeoutSec: ${OPERATION_TIMEOUT_SEC}
 
 tenants:
   - id: tenant-local
@@ -17,7 +17,8 @@ tenants:
       - ${TENANT_LOCAL_DOMAIN_PRIMARY}
       - ${TENANT_LOCAL_DOMAIN_SECONDARY}
     admins:
-      - ${TENANT_LOCAL_ADMIN_EMAIL}
+      - ${TENANT_LOCAL_ADMIN_EMAIL_1}
+      - ${TENANT_LOCAL_ADMIN_EMAIL_2}
     identity:
       googleClientId: ${TENANT_LOCAL_GOOGLE_CLIENT_ID}
       tauthBaseUrl: ${TENANT_LOCAL_TAUTH_BASE_URL}
