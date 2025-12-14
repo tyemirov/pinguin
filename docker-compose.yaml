@@ -4,12 +4,12 @@ x-pinguin-service: &pinguin-service
     - "50051:50051"
     - "8080:8080"
   env_file:
-    - .env.pinguin
+    - ./configs/.env.pinguin
   pull_policy: always
   volumes:
     - pinguin-data:/app/data
     - ./web:/web:ro
-    - ./configs/config.yml:/configs/config.yml:ro
+    - ./configs/config.pinguin.yml:/config/config.yml:ro
 
 services:
   ghttp:
@@ -38,10 +38,10 @@ services:
     ports:
       - "8081:8081"
     env_file:
-      - .env.tauth
+      - ./configs/.env.tauth
     volumes:
-      - tauth_data:/data
-      - ./configs/config.tauth.yaml:/configs/config.yaml:ro
+      - tauth-data:/data
+      - ./configs/config.tauth.yml:/config/config.yml:ro
 
   pinguin-dev:
     <<: *pinguin-service
@@ -65,4 +65,4 @@ services:
 
 volumes:
   pinguin-data:
-  tauth_data:
+  tauth-data:
