@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -35,16 +34,8 @@ type NotificationService interface {
 
 var (
 	ErrSMSDisabled             = errors.New("sms delivery disabled: missing Twilio credentials")
-	ErrScheduleInPast          = errors.New("notification schedule must be in the future")
 	ErrNotificationNotEditable = errors.New("notification must be queued before editing")
 	ErrMissingTenantContext    = errors.New("tenant context missing")
-)
-
-const (
-	maxAttachmentCount           = 10
-	maxAttachmentSizeBytes       = 5 * 1024 * 1024  // 5 MiB per file
-	maxTotalAttachmentSizeBytes  = 25 * 1024 * 1024 // 25 MiB aggregate cap
-	defaultAttachmentContentType = "application/octet-stream"
 )
 
 type notificationServiceImpl struct {
@@ -120,33 +111,19 @@ func (serviceInstance *notificationServiceImpl) SendNotification(ctx context.Con
 	if err != nil {
 		return model.NotificationResponse{}, err
 	}
-	request.TenantID = runtimeCfg.Tenant.ID
-	if request.Recipient == "" || request.Message == "" {
-		serviceInstance.logger.Error("Missing required fields", "recipient", request.Recipient, "message", request.Message)
-		return model.NotificationResponse{}, fmt.Errorf("missing required fields: recipient or message")
-	}
-
-	switch request.NotificationType {
-	case model.NotificationEmail, model.NotificationSMS:
-	default:
-		serviceInstance.logger.Error("Unsupported notification type", "type", request.NotificationType)
-		return model.NotificationResponse{}, fmt.Errorf("unsupported notification type: %s", request.NotificationType)
-	}
-
-	normalizedAttachments, attachmentsErr := normalizeAttachments(request.NotificationType, request.Attachments)
-	if attachmentsErr != nil {
-		serviceInstance.logger.Error("Attachment validation failed", "error", attachmentsErr)
-		return model.NotificationResponse{}, attachmentsErr
-	}
-	request.Attachments = normalizedAttachments
+	recipient := request.Recipient()
+	subject := request.Subject()
+	message := request.Message()
+	attachments := request.Attachments()
+	scheduledFor := request.ScheduledFor()
 
 	notificationID := fmt.Sprintf("notif-%d", time.Now().UnixNano())
-	newNotification := model.NewNotification(notificationID, request)
+	newNotification := model.NewNotification(notificationID, runtimeCfg.Tenant.ID, request)
 
 	currentTime := time.Now().UTC()
 
 	shouldAttemptImmediateSend := true
-	if request.ScheduledFor != nil && request.ScheduledFor.After(currentTime) {
+	if scheduledFor != nil && scheduledFor.After(currentTime) {
 		shouldAttemptImmediateSend = false
 	}
 
@@ -160,7 +137,7 @@ func (serviceInstance *notificationServiceImpl) SendNotification(ctx context.Con
 				serviceInstance.logger.Error("Email sender unavailable", "tenant_id", runtimeCfg.Tenant.ID, "error", err)
 				return model.NotificationResponse{}, err
 			}
-			dispatchError = emailSender.SendEmail(ctx, newNotification.Recipient, newNotification.Subject, newNotification.Message, request.Attachments)
+			dispatchError = emailSender.SendEmail(ctx, recipient, subject, message, attachments)
 			if dispatchError == nil {
 				newNotification.Status = model.StatusSent
 				newNotification.LastAttemptedAt = currentTime
@@ -174,7 +151,7 @@ func (serviceInstance *notificationServiceImpl) SendNotification(ctx context.Con
 				return model.NotificationResponse{}, err
 			}
 			var providerMessageID string
-			providerMessageID, dispatchError = smsSender.SendSms(ctx, newNotification.Recipient, newNotification.Message)
+			providerMessageID, dispatchError = smsSender.SendSms(ctx, recipient, message)
 			if dispatchError == nil {
 				newNotification.Status = model.StatusSent
 				newNotification.ProviderMessageID = providerMessageID
@@ -206,10 +183,6 @@ func (serviceInstance *notificationServiceImpl) GetNotificationStatus(ctx contex
 	if err != nil {
 		return model.NotificationResponse{}, err
 	}
-	if notificationID == "" {
-		serviceInstance.logger.Error("Missing notification_id")
-		return model.NotificationResponse{}, fmt.Errorf("missing notification_id")
-	}
 	notificationRecord, retrievalError := model.MustGetNotificationByID(ctx, serviceInstance.database, runtimeCfg.Tenant.ID, notificationID)
 	if retrievalError != nil {
 		serviceInstance.logger.Error("Failed to retrieve notification", "error", retrievalError)
@@ -240,29 +213,21 @@ func (serviceInstance *notificationServiceImpl) RescheduleNotification(ctx conte
 	if err != nil {
 		return model.NotificationResponse{}, err
 	}
-	trimmedID := strings.TrimSpace(notificationID)
-	if trimmedID == "" {
-		return model.NotificationResponse{}, fmt.Errorf("missing notification_id")
-	}
 	normalizedSchedule := scheduledFor.UTC()
-	if normalizedSchedule.Before(time.Now().UTC()) {
-		serviceInstance.logger.Warn("Rejecting reschedule because schedule is in the past", "notification_id", trimmedID, "scheduled_for", normalizedSchedule)
-		return model.NotificationResponse{}, ErrScheduleInPast
-	}
-	existingNotification, fetchErr := model.MustGetNotificationByID(ctx, serviceInstance.database, runtimeCfg.Tenant.ID, trimmedID)
+	existingNotification, fetchErr := model.MustGetNotificationByID(ctx, serviceInstance.database, runtimeCfg.Tenant.ID, notificationID)
 	if fetchErr != nil {
-		serviceInstance.logger.Error("Failed to fetch notification for reschedule", "notification_id", trimmedID, "error", fetchErr)
+		serviceInstance.logger.Error("Failed to fetch notification for reschedule", "notification_id", notificationID, "error", fetchErr)
 		return model.NotificationResponse{}, fetchErr
 	}
 	if existingNotification.Status != model.StatusQueued {
-		serviceInstance.logger.Warn("Rejecting reschedule because notification is not queued", "notification_id", trimmedID, "status", existingNotification.Status)
+		serviceInstance.logger.Warn("Rejecting reschedule because notification is not queued", "notification_id", notificationID, "status", existingNotification.Status)
 		return model.NotificationResponse{}, ErrNotificationNotEditable
 	}
 	scheduleCopy := normalizedSchedule
 	existingNotification.ScheduledFor = &scheduleCopy
 	existingNotification.UpdatedAt = time.Now().UTC()
 	if saveErr := model.SaveNotification(ctx, serviceInstance.database, existingNotification); saveErr != nil {
-		serviceInstance.logger.Error("Failed to reschedule notification", "notification_id", trimmedID, "error", saveErr)
+		serviceInstance.logger.Error("Failed to reschedule notification", "notification_id", notificationID, "error", saveErr)
 		return model.NotificationResponse{}, saveErr
 	}
 	return model.NewNotificationResponse(*existingNotification), nil
@@ -273,24 +238,20 @@ func (serviceInstance *notificationServiceImpl) CancelNotification(ctx context.C
 	if err != nil {
 		return model.NotificationResponse{}, err
 	}
-	trimmedID := strings.TrimSpace(notificationID)
-	if trimmedID == "" {
-		return model.NotificationResponse{}, fmt.Errorf("missing notification_id")
-	}
-	existingNotification, fetchErr := model.MustGetNotificationByID(ctx, serviceInstance.database, runtimeCfg.Tenant.ID, trimmedID)
+	existingNotification, fetchErr := model.MustGetNotificationByID(ctx, serviceInstance.database, runtimeCfg.Tenant.ID, notificationID)
 	if fetchErr != nil {
-		serviceInstance.logger.Error("Failed to fetch notification for cancellation", "notification_id", trimmedID, "error", fetchErr)
+		serviceInstance.logger.Error("Failed to fetch notification for cancellation", "notification_id", notificationID, "error", fetchErr)
 		return model.NotificationResponse{}, fetchErr
 	}
 	if existingNotification.Status != model.StatusQueued {
-		serviceInstance.logger.Warn("Rejecting cancellation because notification is not queued", "notification_id", trimmedID, "status", existingNotification.Status)
+		serviceInstance.logger.Warn("Rejecting cancellation because notification is not queued", "notification_id", notificationID, "status", existingNotification.Status)
 		return model.NotificationResponse{}, ErrNotificationNotEditable
 	}
 	existingNotification.Status = model.StatusCancelled
 	existingNotification.ScheduledFor = nil
 	existingNotification.UpdatedAt = time.Now().UTC()
 	if saveErr := model.SaveNotification(ctx, serviceInstance.database, existingNotification); saveErr != nil {
-		serviceInstance.logger.Error("Failed to cancel notification", "notification_id", trimmedID, "error", saveErr)
+		serviceInstance.logger.Error("Failed to cancel notification", "notification_id", notificationID, "error", saveErr)
 		return model.NotificationResponse{}, saveErr
 	}
 	return model.NewNotificationResponse(*existingNotification), nil
@@ -311,51 +272,6 @@ func (serviceInstance *notificationServiceImpl) StartRetryWorker(ctx context.Con
 		return
 	}
 	worker.Run(ctx)
-}
-
-func normalizeAttachments(notificationType model.NotificationType, attachments []model.EmailAttachment) ([]model.EmailAttachment, error) {
-	if len(attachments) == 0 {
-		return nil, nil
-	}
-	if notificationType != model.NotificationEmail {
-		return nil, fmt.Errorf("attachments supported only for email notifications")
-	}
-	if len(attachments) > maxAttachmentCount {
-		return nil, fmt.Errorf("too many attachments: max %d", maxAttachmentCount)
-	}
-
-	totalSize := 0
-	normalized := make([]model.EmailAttachment, 0, len(attachments))
-	for idx, attachment := range attachments {
-		filename := strings.TrimSpace(attachment.Filename)
-		if filename == "" {
-			return nil, fmt.Errorf("attachment %d missing filename", idx+1)
-		}
-		dataCopy := append([]byte(nil), attachment.Data...)
-		payloadSize := len(dataCopy)
-		if payloadSize == 0 {
-			return nil, fmt.Errorf("attachment %q has empty data", filename)
-		}
-		if payloadSize > maxAttachmentSizeBytes {
-			return nil, fmt.Errorf("attachment %q exceeds %d bytes", filename, maxAttachmentSizeBytes)
-		}
-		totalSize += payloadSize
-
-		contentType := strings.TrimSpace(attachment.ContentType)
-		if contentType == "" {
-			contentType = defaultAttachmentContentType
-		}
-		normalized = append(normalized, model.EmailAttachment{
-			Filename:    filename,
-			ContentType: contentType,
-			Data:        dataCopy,
-		})
-	}
-
-	if totalSize > maxTotalAttachmentSizeBytes {
-		return nil, fmt.Errorf("attachments exceed total limit of %d bytes", maxTotalAttachmentSizeBytes)
-	}
-	return normalized, nil
 }
 
 func (serviceInstance *notificationServiceImpl) requireTenant(ctx context.Context) (tenant.RuntimeConfig, error) {

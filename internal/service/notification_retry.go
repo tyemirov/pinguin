@@ -17,6 +17,14 @@ type notificationRetryStore struct {
 	tenantRepo *tenant.Repository
 }
 
+const (
+	pendingJobsStatusClause       = "(notifications.status = ? OR notifications.status = ? OR notifications.status = ?)"
+	pendingJobsScheduleClause     = "(notifications.scheduled_for IS NULL OR notifications.scheduled_for <= ?)"
+	pendingJobsFilterClause       = pendingJobsStatusClause + " AND notifications.retry_count < ? AND " + pendingJobsScheduleClause
+	pendingJobsTenantJoinClause   = "JOIN tenants ON tenants.id = notifications.tenant_id"
+	pendingJobsTenantStatusClause = "tenants.status = ?"
+)
+
 func newNotificationRetryStore(database *gorm.DB, tenantRepo *tenant.Repository) *notificationRetryStore {
 	return &notificationRetryStore{database: database, tenantRepo: tenantRepo}
 }
@@ -25,52 +33,48 @@ func (store *notificationRetryStore) PendingJobs(ctx context.Context, maxRetries
 	if store.tenantRepo == nil {
 		return store.pendingJobsAll(ctx, maxRetries, now)
 	}
-	tenants, err := store.tenantRepo.ListActiveTenants(ctx)
+	return store.pendingJobsForActiveTenants(ctx, maxRetries, now)
+}
+
+func (store *notificationRetryStore) pendingJobsForActiveTenants(ctx context.Context, maxRetries int, now time.Time) ([]scheduler.Job, error) {
+	var notifications []model.Notification
+	err := store.database.WithContext(ctx).
+		Preload("Attachments").
+		Joins(pendingJobsTenantJoinClause).
+		Where(pendingJobsTenantStatusClause, tenant.TenantStatusActive).
+		Where(pendingJobsFilterClause, model.StatusQueued, model.StatusErrored, model.StatusFailed, maxRetries, now).
+		Find(&notifications).Error
 	if err != nil {
 		return nil, err
 	}
-	var jobs []scheduler.Job
-	for _, tenantRecord := range tenants {
-		records, err := model.GetQueuedOrFailedNotifications(ctx, store.database, tenantRecord.ID, maxRetries, now)
-		if err != nil {
-			return nil, err
-		}
-		for index := range records {
-			record := records[index]
-			jobs = append(jobs, scheduler.Job{
-				ID:              record.NotificationID,
-				ScheduledFor:    record.ScheduledFor,
-				RetryCount:      record.RetryCount,
-				LastAttemptedAt: record.LastAttemptedAt,
-				Payload:         &records[index],
-			})
-		}
-	}
-	return jobs, nil
+	return store.jobsFromNotifications(notifications), nil
 }
 
 func (store *notificationRetryStore) pendingJobsAll(ctx context.Context, maxRetries int, now time.Time) ([]scheduler.Job, error) {
 	var notifications []model.Notification
 	err := store.database.WithContext(ctx).
 		Preload("Attachments").
-		Where("(status = ? OR status = ? OR status = ?) AND retry_count < ? AND (scheduled_for IS NULL OR scheduled_for <= ?)",
-			model.StatusQueued, model.StatusErrored, model.StatusFailed, maxRetries, now).
+		Where(pendingJobsFilterClause, model.StatusQueued, model.StatusErrored, model.StatusFailed, maxRetries, now).
 		Find(&notifications).Error
 	if err != nil {
 		return nil, err
 	}
-	jobs := make([]scheduler.Job, 0, len(notifications))
-	for index := range notifications {
-		record := notifications[index]
+	return store.jobsFromNotifications(notifications), nil
+}
+
+func (store *notificationRetryStore) jobsFromNotifications(records []model.Notification) []scheduler.Job {
+	jobs := make([]scheduler.Job, 0, len(records))
+	for index := range records {
+		record := records[index]
 		jobs = append(jobs, scheduler.Job{
 			ID:              record.NotificationID,
 			ScheduledFor:    record.ScheduledFor,
 			RetryCount:      record.RetryCount,
 			LastAttemptedAt: record.LastAttemptedAt,
-			Payload:         &notifications[index],
+			Payload:         &records[index],
 		})
 	}
-	return jobs, nil
+	return jobs
 }
 
 func (store *notificationRetryStore) ApplyAttemptResult(ctx context.Context, job scheduler.Job, update scheduler.AttemptUpdate) error {

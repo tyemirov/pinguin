@@ -4,15 +4,27 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/tyemirov/pinguin/internal/model"
+	"github.com/tyemirov/pinguin/internal/tenant"
 	"github.com/tyemirov/pinguin/pkg/grpcapi"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+)
+
+const (
+	testTenantID                       = "tenant-test"
+	missingTenantRuntimeMessage        = "missing tenant runtime"
+	expectedInterceptorSuccessTemplate = "expected interceptor success, got %v"
+	expectedTenantIDTemplate           = "expected tenant id %s, got %v"
+	expectedHandlerNotCalledMessage    = "expected handler not to be called"
 )
 
 func TestDigestForLogging(t *testing.T) {
@@ -163,4 +175,137 @@ func TestBuildAuthInterceptor(t *testing.T) {
 			t.Fatalf("expected unauthenticated for missing metadata, got %v", err)
 		}
 	})
+}
+
+func TestBuildTenantInterceptorAttachesRuntime(testHandle *testing.T) {
+	testHandle.Helper()
+	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
+	repo := newTestTenantRepository(testHandle, testTenantID)
+	interceptor := buildTenantInterceptor(logger, repo)
+	request := &grpcapi.NotificationRequest{TenantId: testTenantID}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		runtimeCfg, ok := tenant.RuntimeFromContext(ctx)
+		if !ok {
+			return nil, status.Error(codes.Internal, missingTenantRuntimeMessage)
+		}
+		return runtimeCfg.Tenant.ID, nil
+	}
+	response, err := interceptor(context.Background(), request, &grpc.UnaryServerInfo{}, handler)
+	if err != nil {
+		testHandle.Fatalf(expectedInterceptorSuccessTemplate, err)
+	}
+	if response != testTenantID {
+		testHandle.Fatalf(expectedTenantIDTemplate, testTenantID, response)
+	}
+}
+
+func TestBuildTenantInterceptorUsesMetadata(testHandle *testing.T) {
+	testHandle.Helper()
+	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
+	repo := newTestTenantRepository(testHandle, testTenantID)
+	interceptor := buildTenantInterceptor(logger, repo)
+	request := &grpcapi.GetNotificationStatusRequest{}
+	metadataContext := metadata.NewIncomingContext(context.Background(), metadata.Pairs(tenantMetadataKey, testTenantID))
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		runtimeCfg, ok := tenant.RuntimeFromContext(ctx)
+		if !ok {
+			return nil, status.Error(codes.Internal, missingTenantRuntimeMessage)
+		}
+		return runtimeCfg.Tenant.ID, nil
+	}
+	response, err := interceptor(metadataContext, request, &grpc.UnaryServerInfo{}, handler)
+	if err != nil {
+		testHandle.Fatalf(expectedInterceptorSuccessTemplate, err)
+	}
+	if response != testTenantID {
+		testHandle.Fatalf(expectedTenantIDTemplate, testTenantID, response)
+	}
+}
+
+func TestBuildTenantInterceptorRejectsMissingTenantID(testHandle *testing.T) {
+	testHandle.Helper()
+	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
+	repo := newTestTenantRepository(testHandle, testTenantID)
+	interceptor := buildTenantInterceptor(logger, repo)
+	handlerCalled := false
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		handlerCalled = true
+		return "ok", nil
+	}
+	_, err := interceptor(context.Background(), &grpcapi.ListNotificationsRequest{}, &grpc.UnaryServerInfo{}, handler)
+	if status.Code(err) != codes.InvalidArgument {
+		testHandle.Fatalf("expected invalid argument, got %v", err)
+	}
+	if handlerCalled {
+		testHandle.Fatal(expectedHandlerNotCalledMessage)
+	}
+}
+
+func TestBuildTenantInterceptorRejectsUnknownTenant(testHandle *testing.T) {
+	testHandle.Helper()
+	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
+	repo := newTestTenantRepository(testHandle, testTenantID)
+	interceptor := buildTenantInterceptor(logger, repo)
+	handlerCalled := false
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		handlerCalled = true
+		return "ok", nil
+	}
+	request := &grpcapi.CancelNotificationRequest{TenantId: "missing-tenant"}
+	_, err := interceptor(context.Background(), request, &grpc.UnaryServerInfo{}, handler)
+	if status.Code(err) != codes.NotFound {
+		testHandle.Fatalf("expected not found, got %v", err)
+	}
+	if handlerCalled {
+		testHandle.Fatal(expectedHandlerNotCalledMessage)
+	}
+}
+
+func newTestTenantRepository(testHandle *testing.T, tenantID string) *tenant.Repository {
+	testHandle.Helper()
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		testHandle.Fatalf("open database: %v", err)
+	}
+	if err := database.AutoMigrate(
+		&tenant.Tenant{},
+		&tenant.TenantDomain{},
+		&tenant.TenantMember{},
+		&tenant.TenantIdentity{},
+		&tenant.EmailProfile{},
+		&tenant.SMSProfile{},
+	); err != nil {
+		testHandle.Fatalf("auto migrate: %v", err)
+	}
+	secretKeeper, err := tenant.NewSecretKeeper(strings.Repeat("a", 64))
+	if err != nil {
+		testHandle.Fatalf("init secret keeper: %v", err)
+	}
+	enabled := true
+	bootstrapCfg := tenant.BootstrapConfig{
+		Tenants: []tenant.BootstrapTenant{
+			{
+				ID:          tenantID,
+				DisplayName: "Test Tenant",
+				Enabled:     &enabled,
+				Domains:     []string{"test.localhost"},
+				Admins:      tenant.BootstrapAdmins{"admin@example.com"},
+				Identity: tenant.BootstrapIdentity{
+					GoogleClientID: "client-id",
+					TAuthBaseURL:   "http://tauth.localhost",
+				},
+				EmailProfile: tenant.BootstrapEmailProfile{
+					Host:        "smtp.localhost",
+					Port:        587,
+					Username:    "smtp-user",
+					Password:    "smtp-pass",
+					FromAddress: "admin@example.com",
+				},
+			},
+		},
+	}
+	if err := tenant.Bootstrap(context.Background(), database, secretKeeper, bootstrapCfg); err != nil {
+		testHandle.Fatalf("bootstrap tenants: %v", err)
+	}
+	return tenant.NewRepository(database, secretKeeper)
 }

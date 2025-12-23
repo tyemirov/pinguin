@@ -194,6 +194,28 @@ func TestRescheduleNotificationRejectsEmptyID(t *testing.T) {
 	}
 }
 
+func TestRescheduleNotificationRejectsPastSchedule(t *testing.T) {
+	t.Helper()
+
+	stubSvc := &stubNotificationService{}
+	server := newTestHTTPServer(t, stubSvc, &stubValidator{}, []string{"user@example.com"})
+
+	recorder := httptest.NewRecorder()
+	pastTime := time.Now().UTC().Add(-1 * time.Minute).Format(time.RFC3339)
+	requestBody := fmt.Sprintf(`{"scheduled_time":"%s"}`, pastTime)
+	request := httptest.NewRequest(http.MethodPatch, "/api/notifications/notif-1/schedule", bytes.NewBufferString(requestBody))
+	request.Header.Set("Content-Type", "application/json")
+
+	server.httpServer.Handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", recorder.Code)
+	}
+	if stubSvc.rescheduleCalls != 0 {
+		t.Fatalf("expected no service invocation, got %d", stubSvc.rescheduleCalls)
+	}
+}
+
 func TestRescheduleNotificationMapsMissingIDErrorToBadRequest(t *testing.T) {
 	t.Helper()
 

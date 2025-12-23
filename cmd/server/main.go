@@ -35,15 +35,20 @@ import (
 type notificationServiceServer struct {
 	grpcapi.UnimplementedNotificationServiceServer
 	notificationService service.NotificationService
-	tenantRepo          *tenant.Repository
 	logger              *slog.Logger
 }
 
+const (
+	tenantMetadataKey                = "x-tenant-id"
+	tenantIDRequiredMessage          = "tenant_id is required"
+	tenantNotFoundMessage            = "tenant not found"
+	tenantRepositoryUnavailableError = "tenant repository unavailable"
+	notificationIDRequiredMessage    = "notification_id is required"
+	scheduledTimeRequiredMessage     = "scheduled_time is required"
+	scheduledTimeFutureMessage       = "scheduled_time must be in the future"
+)
+
 func (server *notificationServiceServer) SendNotification(ctx context.Context, req *grpcapi.NotificationRequest) (*grpcapi.NotificationResponse, error) {
-	ctxWithTenant, tenantErr := server.attachTenantRuntime(ctx, req.GetTenantId())
-	if tenantErr != nil {
-		return nil, tenantErr
-	}
 	var internalType model.NotificationType
 	switch req.NotificationType {
 	case grpcapi.NotificationType_EMAIL:
@@ -65,9 +70,22 @@ func (server *notificationServiceServer) SendNotification(ctx context.Context, r
 		scheduledFor = &normalizedScheduled
 	}
 
-	recipientDigest := digestForLogging(req.Recipient)
-	subjectDigest := digestForLogging(req.Subject)
 	attachments := mapGrpcAttachments(req.GetAttachments())
+	modelRequest, requestError := model.NewNotificationRequest(
+		internalType,
+		req.GetRecipient(),
+		req.GetSubject(),
+		req.GetMessage(),
+		scheduledFor,
+		attachments,
+	)
+	if requestError != nil {
+		server.logger.Error("Invalid notification request", "error", requestError)
+		return nil, status.Error(codes.InvalidArgument, requestError.Error())
+	}
+
+	recipientDigest := digestForLogging(modelRequest.Recipient())
+	subjectDigest := digestForLogging(modelRequest.Subject())
 	server.logger.Info(
 		"notification_request_received",
 		"notification_type", req.NotificationType.String(),
@@ -77,16 +95,7 @@ func (server *notificationServiceServer) SendNotification(ctx context.Context, r
 		"attachment_count", len(attachments),
 	)
 
-	modelRequest := model.NotificationRequest{
-		NotificationType: internalType,
-		Recipient:        req.Recipient,
-		Subject:          req.Subject,
-		Message:          req.Message,
-		ScheduledFor:     scheduledFor,
-		Attachments:      attachments,
-	}
-
-	modelResponse, err := server.notificationService.SendNotification(ctxWithTenant, modelRequest)
+	modelResponse, err := server.notificationService.SendNotification(ctx, modelRequest)
 	if err != nil {
 		server.logger.Error("Service SendNotification error", "error", err)
 		return nil, err
@@ -103,17 +112,13 @@ func (server *notificationServiceServer) SendNotification(ctx context.Context, r
 }
 
 func (server *notificationServiceServer) GetNotificationStatus(ctx context.Context, req *grpcapi.GetNotificationStatusRequest) (*grpcapi.NotificationResponse, error) {
-	if req.NotificationId == "" {
+	notificationID := strings.TrimSpace(req.GetNotificationId())
+	if notificationID == "" {
 		server.logger.Error("Missing notification ID")
-		return nil, fmt.Errorf("missing notification ID")
+		return nil, status.Error(codes.InvalidArgument, notificationIDRequiredMessage)
 	}
 
-	ctxWithTenant, tenantErr := server.attachTenantRuntime(ctx, req.GetTenantId())
-	if tenantErr != nil {
-		return nil, tenantErr
-	}
-
-	modelResponse, err := server.notificationService.GetNotificationStatus(ctxWithTenant, req.NotificationId)
+	modelResponse, err := server.notificationService.GetNotificationStatus(ctx, notificationID)
 	if err != nil {
 		server.logger.Error("Service GetNotificationStatus error", "error", err)
 		return nil, err
@@ -122,16 +127,12 @@ func (server *notificationServiceServer) GetNotificationStatus(ctx context.Conte
 }
 
 func (server *notificationServiceServer) ListNotifications(ctx context.Context, req *grpcapi.ListNotificationsRequest) (*grpcapi.ListNotificationsResponse, error) {
-	ctxWithTenant, tenantErr := server.attachTenantRuntime(ctx, req.GetTenantId())
-	if tenantErr != nil {
-		return nil, tenantErr
-	}
 	filters := model.NotificationListFilters{}
 	if req != nil {
 		filters.Statuses = mapGrpcStatuses(req.GetStatuses())
 	}
 
-	responses, err := server.notificationService.ListNotifications(ctxWithTenant, filters)
+	responses, err := server.notificationService.ListNotifications(ctx, filters)
 	if err != nil {
 		server.logger.Error("Service ListNotifications error", "error", err)
 		return nil, err
@@ -146,26 +147,26 @@ func (server *notificationServiceServer) ListNotifications(ctx context.Context, 
 }
 
 func (server *notificationServiceServer) RescheduleNotification(ctx context.Context, req *grpcapi.RescheduleNotificationRequest) (*grpcapi.NotificationResponse, error) {
-	if req.GetNotificationId() == "" {
+	notificationID := strings.TrimSpace(req.GetNotificationId())
+	if notificationID == "" {
 		server.logger.Error("Missing notification ID for reschedule")
-		return nil, status.Error(codes.InvalidArgument, "notification_id is required")
+		return nil, status.Error(codes.InvalidArgument, notificationIDRequiredMessage)
 	}
 	if req.ScheduledTime == nil {
 		server.logger.Error("Missing scheduled time for reschedule")
-		return nil, status.Error(codes.InvalidArgument, "scheduled_time is required")
+		return nil, status.Error(codes.InvalidArgument, scheduledTimeRequiredMessage)
 	}
 	if err := req.ScheduledTime.CheckValid(); err != nil {
 		server.logger.Error("Invalid scheduled timestamp", "error", err)
 		return nil, status.Errorf(codes.InvalidArgument, "invalid scheduled_time: %v", err)
 	}
 
-	ctxWithTenant, tenantErr := server.attachTenantRuntime(ctx, req.GetTenantId())
-	if tenantErr != nil {
-		return nil, tenantErr
-	}
-
 	scheduledFor := req.ScheduledTime.AsTime().UTC()
-	modelResponse, err := server.notificationService.RescheduleNotification(ctxWithTenant, req.GetNotificationId(), scheduledFor)
+	if scheduledFor.Before(time.Now().UTC()) {
+		server.logger.Error("Scheduled time is in the past", "notification_id", notificationID, "scheduled_for", scheduledFor)
+		return nil, status.Error(codes.InvalidArgument, scheduledTimeFutureMessage)
+	}
+	modelResponse, err := server.notificationService.RescheduleNotification(ctx, notificationID, scheduledFor)
 	if err != nil {
 		server.logger.Error("Service RescheduleNotification error", "error", err)
 		return nil, err
@@ -174,46 +175,18 @@ func (server *notificationServiceServer) RescheduleNotification(ctx context.Cont
 }
 
 func (server *notificationServiceServer) CancelNotification(ctx context.Context, req *grpcapi.CancelNotificationRequest) (*grpcapi.NotificationResponse, error) {
-	if req.GetNotificationId() == "" {
+	notificationID := strings.TrimSpace(req.GetNotificationId())
+	if notificationID == "" {
 		server.logger.Error("Missing notification ID for cancel")
-		return nil, status.Error(codes.InvalidArgument, "notification_id is required")
+		return nil, status.Error(codes.InvalidArgument, notificationIDRequiredMessage)
 	}
 
-	ctxWithTenant, tenantErr := server.attachTenantRuntime(ctx, req.GetTenantId())
-	if tenantErr != nil {
-		return nil, tenantErr
-	}
-
-	modelResponse, err := server.notificationService.CancelNotification(ctxWithTenant, req.GetNotificationId())
+	modelResponse, err := server.notificationService.CancelNotification(ctx, notificationID)
 	if err != nil {
 		server.logger.Error("Service CancelNotification error", "error", err)
 		return nil, err
 	}
 	return mapModelToGrpcResponse(modelResponse), nil
-}
-
-func (server *notificationServiceServer) attachTenantRuntime(ctx context.Context, explicitTenantID string) (context.Context, error) {
-	if server.tenantRepo == nil {
-		server.logger.Error("tenant repository unavailable")
-		return ctx, status.Error(codes.Internal, "tenant repository unavailable")
-	}
-	tenantID := strings.TrimSpace(explicitTenantID)
-	if tenantID == "" {
-		if metadataValues, ok := metadata.FromIncomingContext(ctx); ok {
-			if values := metadataValues.Get("x-tenant-id"); len(values) > 0 {
-				tenantID = strings.TrimSpace(values[0])
-			}
-		}
-	}
-	if tenantID == "" {
-		return ctx, status.Error(codes.InvalidArgument, "tenant_id is required")
-	}
-	runtimeCfg, err := server.tenantRepo.ResolveByID(ctx, tenantID)
-	if err != nil {
-		server.logger.Error("tenant_resolution_failed", "tenant_id", tenantID, "error", err)
-		return ctx, status.Error(codes.NotFound, "tenant not found")
-	}
-	return tenant.WithRuntime(ctx, runtimeCfg), nil
 }
 
 // mapModelToGrpcResponse converts a model.NotificationResponse to a grpcapi.NotificationResponse.
@@ -365,6 +338,40 @@ func buildAuthInterceptor(logger *slog.Logger, requiredToken string) grpc.UnaryS
 	}
 }
 
+type tenantIDGetter interface {
+	GetTenantId() string
+}
+
+func buildTenantInterceptor(logger *slog.Logger, repo *tenant.Repository) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		if repo == nil {
+			logger.Error(tenantRepositoryUnavailableError)
+			return nil, status.Error(codes.Internal, tenantRepositoryUnavailableError)
+		}
+		var tenantID string
+		if requestWithTenantID, ok := req.(tenantIDGetter); ok {
+			tenantID = strings.TrimSpace(requestWithTenantID.GetTenantId())
+		}
+		if tenantID == "" {
+			if metadataValues, ok := metadata.FromIncomingContext(ctx); ok {
+				if values := metadataValues.Get(tenantMetadataKey); len(values) > 0 {
+					tenantID = strings.TrimSpace(values[0])
+				}
+			}
+		}
+		if tenantID == "" {
+			return nil, status.Error(codes.InvalidArgument, tenantIDRequiredMessage)
+		}
+		runtimeCfg, err := repo.ResolveByID(ctx, tenantID)
+		if err != nil {
+			logger.Error("tenant_resolution_failed", "tenant_id", tenantID, "error", err)
+			return nil, status.Error(codes.NotFound, tenantNotFoundMessage)
+		}
+		ctxWithTenant := tenant.WithRuntime(ctx, runtimeCfg)
+		return handler(ctxWithTenant, req)
+	}
+}
+
 func main() {
 	disableWebFlag := flag.Bool("disable-web-interface", false, "disable the HTTP web interface and static asset server (env: DISABLE_WEB_INTERFACE)")
 	flag.Parse()
@@ -465,11 +472,13 @@ func main() {
 	grpcServer := grpc.NewServer(
 		grpc.MaxRecvMsgSize(grpcutil.MaxMessageSizeBytes),
 		grpc.MaxSendMsgSize(grpcutil.MaxMessageSizeBytes),
-		grpc.UnaryInterceptor(buildAuthInterceptor(mainLogger, configuration.GRPCAuthToken)),
+		grpc.ChainUnaryInterceptor(
+			buildAuthInterceptor(mainLogger, configuration.GRPCAuthToken),
+			buildTenantInterceptor(mainLogger, tenantRepo),
+		),
 	)
 	grpcapi.RegisterNotificationServiceServer(grpcServer, &notificationServiceServer{
 		notificationService: notificationSvc,
-		tenantRepo:          tenantRepo,
 		logger:              mainLogger,
 	})
 
