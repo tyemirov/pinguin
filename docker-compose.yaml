@@ -7,7 +7,7 @@ x-pinguin-service: &pinguin-service
   pull_policy: always
   volumes:
     - pinguin-data:/app/data
-    - ./web:/web:ro
+    - pinguin-web:/web:ro
     - ./configs/config.pinguin.yml:/config/config.yml:ro
 
 services:
@@ -20,7 +20,7 @@ services:
     restart: unless-stopped
     pull_policy: always
     volumes:
-      - ./web:/web:ro
+      - pinguin-web:/web:ro
     command: ["--directory", "/web", "4173"]
     ports:
       - "4173:4173"
@@ -64,3 +64,9 @@ services:
 volumes:
   pinguin-data:
   tauth-data:
+  pinguin-web:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/web
