@@ -106,15 +106,14 @@ type NotificationAttachment struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
-// NotificationRequest represents the incoming request payload (REST/gRPC).
+// NotificationRequest represents a validated request payload.
 type NotificationRequest struct {
-	TenantID         string            `json:"tenant_id"`
-	NotificationType NotificationType  `json:"notification_type"`
-	Recipient        string            `json:"recipient"`
-	Subject          string            `json:"subject,omitempty"`
-	Message          string            `json:"message"`
-	ScheduledFor     *time.Time        `json:"scheduled_for,omitempty"`
-	Attachments      []EmailAttachment `json:"attachments,omitempty"`
+	notificationType NotificationType
+	recipient        string
+	subject          string
+	message          string
+	scheduledFor     *time.Time
+	attachments      []EmailAttachment
 }
 
 // NotificationResponse is what you'll return to the client.
@@ -136,25 +135,25 @@ type NotificationResponse struct {
 }
 
 // NewNotification constructs a ready-to-insert DB Notification from a request, defaulting status=queued.
-func NewNotification(notificationID string, req NotificationRequest) Notification {
+func NewNotification(notificationID string, tenantID string, req NotificationRequest) Notification {
 	now := time.Now().UTC()
 	var scheduledFor *time.Time
-	if req.ScheduledFor != nil {
-		normalizedScheduled := req.ScheduledFor.UTC()
+	if req.scheduledFor != nil {
+		normalizedScheduled := req.scheduledFor.UTC()
 		scheduledFor = &normalizedScheduled
 	}
 	return Notification{
-		TenantID:         req.TenantID,
+		TenantID:         tenantID,
 		NotificationID:   notificationID,
-		NotificationType: req.NotificationType,
-		Recipient:        req.Recipient,
-		Subject:          req.Subject,
-		Message:          req.Message,
+		NotificationType: req.notificationType,
+		Recipient:        req.recipient,
+		Subject:          req.subject,
+		Message:          req.message,
 		Status:           StatusQueued,
 		ScheduledFor:     scheduledFor,
 		CreatedAt:        now,
 		UpdatedAt:        now,
-		Attachments:      convertEmailAttachments(req.TenantID, notificationID, req.Attachments),
+		Attachments:      convertEmailAttachments(tenantID, notificationID, req.attachments),
 	}
 }
 

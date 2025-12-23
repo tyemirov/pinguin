@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Moved notification request validation into model constructors and edge handlers, leaving service logic edge-validated (PG-204).
+- Optimized retry worker to query pending notifications across active tenants in a single join (PG-203).
 - Added a gRPC tenant-resolution interceptor and removed per-handler tenant lookups (PG-202).
 - Added the `--disable-web-interface` flag (and matching `DISABLE_WEB_INTERFACE` env var) so operators can run gRPC-only deployments without configuring ADMINS/TAuth/Google web settings (PG-103).
 - Documented the multitenancy technical plan (`docs/multitenancy-plan.md`) covering schema, config, auth, and rollout steps for serving multiple domains from one deployment (PG-104).

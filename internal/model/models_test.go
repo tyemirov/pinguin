@@ -53,16 +53,19 @@ func TestNewNotificationConstructsQueuedRecord(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Helper()
 
-			request := NotificationRequest{
-				TenantID:         modelTestTenantID,
-				NotificationType: NotificationEmail,
-				Recipient:        "user@example.com",
-				Subject:          "Greetings",
-				Message:          "Body",
-				ScheduledFor:     testCase.scheduledInput,
+			request, requestErr := NewNotificationRequest(
+				NotificationEmail,
+				"user@example.com",
+				"Greetings",
+				"Body",
+				testCase.scheduledInput,
+				nil,
+			)
+			if requestErr != nil {
+				t.Fatalf("notification request error: %v", requestErr)
 			}
 
-			record := NewNotification("notif-1", request)
+			record := NewNotification("notif-1", modelTestTenantID, request)
 			if record.Status != StatusQueued {
 				t.Fatalf("expected queued status, got %s", record.Status)
 			}
@@ -88,21 +91,25 @@ func TestNewNotificationConstructsQueuedRecord(t *testing.T) {
 func TestNewNotificationCopiesAttachments(t *testing.T) {
 	t.Helper()
 
-	request := NotificationRequest{
-		TenantID:         modelTestTenantID,
-		NotificationType: NotificationEmail,
-		Recipient:        "user@example.com",
-		Message:          "Body",
-		Attachments: []EmailAttachment{
+	request, requestErr := NewNotificationRequest(
+		NotificationEmail,
+		"user@example.com",
+		"",
+		"Body",
+		nil,
+		[]EmailAttachment{
 			{
 				Filename:    "report.pdf",
 				ContentType: "application/pdf",
 				Data:        []byte{0x01, 0x02},
 			},
 		},
+	)
+	if requestErr != nil {
+		t.Fatalf("notification request error: %v", requestErr)
 	}
 
-	record := NewNotification("notif-attachments", request)
+	record := NewNotification("notif-attachments", modelTestTenantID, request)
 	if len(record.Attachments) != 1 {
 		t.Fatalf("expected attachment to be copied")
 	}

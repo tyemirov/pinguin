@@ -9,8 +9,8 @@ Read @AGENTS.md, @ARCHITECTURE.md, @README.md, @issues.md/POLICY.md, @issues.md/
 ## Improvements (202–299)
 
 - [x] [PG-202] Refactor gRPC server to use an interceptor for tenant resolution instead of manual calls in every handler. Resolved with gRPC tenant interceptor + tests; `make ci` passes.
-- [ ] [PG-203] Optimize retry worker to avoid N+1 queries per tick (iterating all tenants).
-- [ ] [PG-204] Move validation logic from Service layer to Domain constructors/Edge handlers (POLICY.md).
+- [x] [PG-203] Optimize retry worker to avoid N+1 queries per tick (iterating all tenants). Resolved with single join query for active tenants; `make ci` passes.
+- [x] [PG-204] Move validation logic from Service layer to Domain constructors/Edge handlers (POLICY.md). Validation now lives in model constructors + HTTP/gRPC edges; service assumes validated requests; `make ci` passes.
 - [x] [PG-205] Support YAML tenant config (TENANT_CONFIG_PATH) and ship a YAML sample for docker/dev; JSON input no longer accepted.
 - [x] [PG-206] Use configs/config.yml as the canonical service config with env-variable expansion; remove direct env loading.
 - [x] [PG-207] Migrate `pkg/scheduler` to `github.com/tyemirov/utils/scheduler` (utils v0.1.1) and update Pinguin imports.

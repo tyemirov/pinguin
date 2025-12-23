@@ -43,6 +43,9 @@ const (
 	tenantIDRequiredMessage          = "tenant_id is required"
 	tenantNotFoundMessage            = "tenant not found"
 	tenantRepositoryUnavailableError = "tenant repository unavailable"
+	notificationIDRequiredMessage    = "notification_id is required"
+	scheduledTimeRequiredMessage     = "scheduled_time is required"
+	scheduledTimeFutureMessage       = "scheduled_time must be in the future"
 )
 
 func (server *notificationServiceServer) SendNotification(ctx context.Context, req *grpcapi.NotificationRequest) (*grpcapi.NotificationResponse, error) {
@@ -67,9 +70,22 @@ func (server *notificationServiceServer) SendNotification(ctx context.Context, r
 		scheduledFor = &normalizedScheduled
 	}
 
-	recipientDigest := digestForLogging(req.Recipient)
-	subjectDigest := digestForLogging(req.Subject)
 	attachments := mapGrpcAttachments(req.GetAttachments())
+	modelRequest, requestError := model.NewNotificationRequest(
+		internalType,
+		req.GetRecipient(),
+		req.GetSubject(),
+		req.GetMessage(),
+		scheduledFor,
+		attachments,
+	)
+	if requestError != nil {
+		server.logger.Error("Invalid notification request", "error", requestError)
+		return nil, status.Error(codes.InvalidArgument, requestError.Error())
+	}
+
+	recipientDigest := digestForLogging(modelRequest.Recipient())
+	subjectDigest := digestForLogging(modelRequest.Subject())
 	server.logger.Info(
 		"notification_request_received",
 		"notification_type", req.NotificationType.String(),
@@ -78,15 +94,6 @@ func (server *notificationServiceServer) SendNotification(ctx context.Context, r
 		"scheduled", scheduledFor != nil,
 		"attachment_count", len(attachments),
 	)
-
-	modelRequest := model.NotificationRequest{
-		NotificationType: internalType,
-		Recipient:        req.Recipient,
-		Subject:          req.Subject,
-		Message:          req.Message,
-		ScheduledFor:     scheduledFor,
-		Attachments:      attachments,
-	}
 
 	modelResponse, err := server.notificationService.SendNotification(ctx, modelRequest)
 	if err != nil {
@@ -105,12 +112,13 @@ func (server *notificationServiceServer) SendNotification(ctx context.Context, r
 }
 
 func (server *notificationServiceServer) GetNotificationStatus(ctx context.Context, req *grpcapi.GetNotificationStatusRequest) (*grpcapi.NotificationResponse, error) {
-	if req.NotificationId == "" {
+	notificationID := strings.TrimSpace(req.GetNotificationId())
+	if notificationID == "" {
 		server.logger.Error("Missing notification ID")
-		return nil, fmt.Errorf("missing notification ID")
+		return nil, status.Error(codes.InvalidArgument, notificationIDRequiredMessage)
 	}
 
-	modelResponse, err := server.notificationService.GetNotificationStatus(ctx, req.NotificationId)
+	modelResponse, err := server.notificationService.GetNotificationStatus(ctx, notificationID)
 	if err != nil {
 		server.logger.Error("Service GetNotificationStatus error", "error", err)
 		return nil, err
@@ -139,13 +147,14 @@ func (server *notificationServiceServer) ListNotifications(ctx context.Context, 
 }
 
 func (server *notificationServiceServer) RescheduleNotification(ctx context.Context, req *grpcapi.RescheduleNotificationRequest) (*grpcapi.NotificationResponse, error) {
-	if req.GetNotificationId() == "" {
+	notificationID := strings.TrimSpace(req.GetNotificationId())
+	if notificationID == "" {
 		server.logger.Error("Missing notification ID for reschedule")
-		return nil, status.Error(codes.InvalidArgument, "notification_id is required")
+		return nil, status.Error(codes.InvalidArgument, notificationIDRequiredMessage)
 	}
 	if req.ScheduledTime == nil {
 		server.logger.Error("Missing scheduled time for reschedule")
-		return nil, status.Error(codes.InvalidArgument, "scheduled_time is required")
+		return nil, status.Error(codes.InvalidArgument, scheduledTimeRequiredMessage)
 	}
 	if err := req.ScheduledTime.CheckValid(); err != nil {
 		server.logger.Error("Invalid scheduled timestamp", "error", err)
@@ -153,7 +162,11 @@ func (server *notificationServiceServer) RescheduleNotification(ctx context.Cont
 	}
 
 	scheduledFor := req.ScheduledTime.AsTime().UTC()
-	modelResponse, err := server.notificationService.RescheduleNotification(ctx, req.GetNotificationId(), scheduledFor)
+	if scheduledFor.Before(time.Now().UTC()) {
+		server.logger.Error("Scheduled time is in the past", "notification_id", notificationID, "scheduled_for", scheduledFor)
+		return nil, status.Error(codes.InvalidArgument, scheduledTimeFutureMessage)
+	}
+	modelResponse, err := server.notificationService.RescheduleNotification(ctx, notificationID, scheduledFor)
 	if err != nil {
 		server.logger.Error("Service RescheduleNotification error", "error", err)
 		return nil, err
@@ -162,12 +175,13 @@ func (server *notificationServiceServer) RescheduleNotification(ctx context.Cont
 }
 
 func (server *notificationServiceServer) CancelNotification(ctx context.Context, req *grpcapi.CancelNotificationRequest) (*grpcapi.NotificationResponse, error) {
-	if req.GetNotificationId() == "" {
+	notificationID := strings.TrimSpace(req.GetNotificationId())
+	if notificationID == "" {
 		server.logger.Error("Missing notification ID for cancel")
-		return nil, status.Error(codes.InvalidArgument, "notification_id is required")
+		return nil, status.Error(codes.InvalidArgument, notificationIDRequiredMessage)
 	}
 
-	modelResponse, err := server.notificationService.CancelNotification(ctx, req.GetNotificationId())
+	modelResponse, err := server.notificationService.CancelNotification(ctx, notificationID)
 	if err != nil {
 		server.logger.Error("Service CancelNotification error", "error", err)
 		return nil, err

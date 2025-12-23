@@ -66,11 +66,16 @@ func TestMultitenantIsolation(t *testing.T) {
 	}
 
 	// 4. Create Notification in Tenant A
-	reqA := model.NotificationRequest{
-		NotificationType: model.NotificationEmail,
-		Recipient:        "user@a.com",
-		Subject:          "Subject A",
-		Message:          "Message A",
+	reqA, requestErr := model.NewNotificationRequest(
+		model.NotificationEmail,
+		"user@a.com",
+		"Subject A",
+		"Message A",
+		nil,
+		nil,
+	)
+	if requestErr != nil {
+		t.Fatalf("notification request error: %v", requestErr)
 	}
 	respA, err := svc.SendNotification(ctxA, reqA)
 	if err != nil {

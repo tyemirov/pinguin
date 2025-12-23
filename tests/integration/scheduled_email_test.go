@@ -39,13 +39,18 @@ func TestScheduledEmailDispatchesAfterWorkerRuns(t *testing.T) {
 	notificationService := service.NewNotificationServiceWithSenders(database, logger, cfg, nil, emailSender, nil)
 	scheduledFor := time.Now().UTC().Add(2 * time.Second)
 
-	response, err := notificationService.SendNotification(integrationTenantContext(), model.NotificationRequest{
-		NotificationType: model.NotificationEmail,
-		Recipient:        "user@example.com",
-		Subject:          "Welcome",
-		Message:          "Hello from Pinguin",
-		ScheduledFor:     &scheduledFor,
-	})
+	request, requestErr := model.NewNotificationRequest(
+		model.NotificationEmail,
+		"user@example.com",
+		"Welcome",
+		"Hello from Pinguin",
+		&scheduledFor,
+		nil,
+	)
+	if requestErr != nil {
+		t.Fatalf("notification request error: %v", requestErr)
+	}
+	response, err := notificationService.SendNotification(integrationTenantContext(), request)
 	if err != nil {
 		t.Fatalf("send notification error: %v", err)
 	}

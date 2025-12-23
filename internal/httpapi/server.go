@@ -19,8 +19,9 @@ import (
 )
 
 const (
-	contextKeyClaims = "auth_claims"
-	defaultTimeout   = 5 * time.Second
+	contextKeyClaims         = "auth_claims"
+	defaultTimeout           = 5 * time.Second
+	scheduledTimeFutureError = "scheduled_time must be in the future"
 )
 
 // SessionValidator exposes the subset of validator behaviour we depend on.
@@ -230,7 +231,12 @@ func (handler *notificationHandler) rescheduleNotification(contextGin *gin.Conte
 		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "scheduled_time must be RFC3339"})
 		return
 	}
-	response, svcErr := handler.service.RescheduleNotification(contextGin.Request.Context(), notificationID, parsedTime)
+	normalizedTime := parsedTime.UTC()
+	if normalizedTime.Before(time.Now().UTC()) {
+		contextGin.JSON(http.StatusBadRequest, gin.H{"error": scheduledTimeFutureError})
+		return
+	}
+	response, svcErr := handler.service.RescheduleNotification(contextGin.Request.Context(), notificationID, normalizedTime)
 	if svcErr != nil {
 		handler.writeError(contextGin, svcErr)
 		return
@@ -258,8 +264,6 @@ func (handler *notificationHandler) writeError(contextGin *gin.Context, err erro
 		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "notification_id is required"})
 	case errors.Is(err, service.ErrNotificationNotEditable):
 		contextGin.JSON(http.StatusConflict, gin.H{"error": "notification can only be edited while queued"})
-	case errors.Is(err, service.ErrScheduleInPast):
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "scheduled_time must be in the future"})
 	case errors.Is(err, model.ErrNotificationNotFound), errors.Is(err, gorm.ErrRecordNotFound):
 		contextGin.JSON(http.StatusNotFound, gin.H{"error": "notification not found"})
 	default:
