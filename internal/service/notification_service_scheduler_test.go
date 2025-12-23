@@ -59,13 +59,15 @@ func TestSendNotificationRespectsSchedule(t *testing.T) {
 				scheduledFor = &scheduledTime
 			}
 
-			request := model.NotificationRequest{
-				NotificationType: model.NotificationEmail,
-				Recipient:        "user@example.com",
-				Subject:          "Subject",
-				Message:          "Body",
-				ScheduledFor:     scheduledFor,
-			}
+			request := mustNotificationRequest(
+				t,
+				model.NotificationEmail,
+				"user@example.com",
+				"Subject",
+				"Body",
+				scheduledFor,
+				nil,
+			)
 
 			response, responseError := serviceInstance.SendNotification(tenantContext(), request)
 			if responseError != nil {
@@ -90,69 +92,6 @@ func TestSendNotificationRespectsSchedule(t *testing.T) {
 				if response.ScheduledFor == nil {
 					t.Fatalf("expected scheduledFor value in response")
 				}
-			}
-		})
-	}
-}
-
-func TestSendNotificationRejectsUnsupportedTypes(t *testing.T) {
-	t.Helper()
-
-	testCases := []struct {
-		name            string
-		scheduledOffset *time.Duration
-	}{
-		{
-			name:            "ImmediateUnsupportedType",
-			scheduledOffset: nil,
-		},
-		{
-			name:            "ScheduledUnsupportedType",
-			scheduledOffset: durationPointer(2 * time.Minute),
-		},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			t.Helper()
-
-			database := openIsolatedDatabase(t)
-			emailSender := &stubEmailSender{}
-			smsSender := &stubSmsSender{}
-
-			serviceInstance := newNotificationServiceWithSendersForSchedulerTests(database, emailSender, smsSender)
-			serviceInstance.maxRetries = 5
-
-			var scheduledFor *time.Time
-			if testCase.scheduledOffset != nil {
-				scheduledTime := time.Now().UTC().Add(*testCase.scheduledOffset)
-				scheduledFor = &scheduledTime
-			}
-
-			_, responseError := serviceInstance.SendNotification(tenantContext(), model.NotificationRequest{
-				NotificationType: model.NotificationType("push"),
-				Recipient:        "user@example.com",
-				Subject:          "Subject",
-				Message:          "Body",
-				ScheduledFor:     scheduledFor,
-			})
-			if responseError == nil {
-				t.Fatalf("expected unsupported type error")
-			}
-
-			if emailSender.callCount != 0 {
-				t.Fatalf("unexpected email dispatch attempts")
-			}
-			if smsSender.callCount != 0 {
-				t.Fatalf("unexpected sms dispatch attempts")
-			}
-
-			pendingNotifications, pendingError := model.GetQueuedOrFailedNotifications(tenantContext(), database, testTenantID, 5, time.Now().UTC())
-			if pendingError != nil {
-				t.Fatalf("pending notifications error: %v", pendingError)
-			}
-			if len(pendingNotifications) != 0 {
-				t.Fatalf("unexpected stored notifications")
 			}
 		})
 	}
@@ -219,70 +158,6 @@ func TestRetryWorkerRespectsSchedule(t *testing.T) {
 	}
 }
 
-func TestSendNotificationValidatesRequiredFields(t *testing.T) {
-	t.Helper()
-
-	database := openIsolatedDatabase(t)
-	emailSender := &stubEmailSender{}
-	smsSender := &stubSmsSender{}
-
-	serviceInstance := newNotificationServiceWithSendersForSchedulerTests(database, emailSender, smsSender)
-	serviceInstance.maxRetries = 3
-
-	_, sendError := serviceInstance.SendNotification(tenantContext(), model.NotificationRequest{
-		NotificationType: model.NotificationSMS,
-		Recipient:        "",
-		Message:          "Body",
-	})
-	if sendError == nil {
-		t.Fatalf("expected validation error")
-	}
-
-	_, fetchError := model.GetQueuedOrFailedNotifications(tenantContext(), database, testTenantID, 3, time.Now().UTC())
-	if fetchError != nil {
-		t.Fatalf("fetch pending error: %v", fetchError)
-	}
-
-	if emailSender.callCount != 0 || smsSender.callCount != 0 {
-		t.Fatalf("unexpected dispatch attempts")
-	}
-}
-
-func TestSendNotificationRejectsUnsupportedTypeForScheduledRequests(t *testing.T) {
-	t.Helper()
-
-	database := openIsolatedDatabase(t)
-	emailSender := &stubEmailSender{}
-	smsSender := &stubSmsSender{}
-
-	serviceInstance := newNotificationServiceWithSendersForSchedulerTests(database, emailSender, smsSender)
-	serviceInstance.maxRetries = 3
-
-	scheduledFor := time.Now().UTC().Add(5 * time.Minute)
-	_, sendError := serviceInstance.SendNotification(tenantContext(), model.NotificationRequest{
-		NotificationType: model.NotificationType("push"),
-		Recipient:        "user@example.com",
-		Message:          "Body",
-		ScheduledFor:     &scheduledFor,
-	})
-
-	if sendError == nil {
-		t.Fatalf("expected unsupported type error")
-	}
-
-	if emailSender.callCount != 0 || smsSender.callCount != 0 {
-		t.Fatalf("unexpected dispatch attempts")
-	}
-
-	var notificationCount int64
-	if countError := database.WithContext(tenantContext()).Model(&model.Notification{}).Count(&notificationCount).Error; countError != nil {
-		t.Fatalf("count notifications error: %v", countError)
-	}
-	if notificationCount != 0 {
-		t.Fatalf("expected zero stored notifications, got %d", notificationCount)
-	}
-}
-
 func TestSendNotificationRejectsSmsWhenSenderDisabled(t *testing.T) {
 	t.Helper()
 
@@ -297,11 +172,16 @@ func TestSendNotificationRejectsSmsWhenSenderDisabled(t *testing.T) {
 		}
 	}()
 
-	_, sendError := serviceInstance.SendNotification(tenantContextWithoutSMS(), model.NotificationRequest{
-		NotificationType: model.NotificationSMS,
-		Recipient:        "+15555555555",
-		Message:          "Body",
-	})
+	request := mustNotificationRequest(
+		t,
+		model.NotificationSMS,
+		"+15555555555",
+		"",
+		"Body",
+		nil,
+		nil,
+	)
+	_, sendError := serviceInstance.SendNotification(tenantContextWithoutSMS(), request)
 	if sendError == nil {
 		t.Fatalf("expected error when sms sender is disabled")
 	}
@@ -312,30 +192,6 @@ func TestSendNotificationRejectsSmsWhenSenderDisabled(t *testing.T) {
 	}
 	if notificationCount != 0 {
 		t.Fatalf("expected zero notifications stored, got %d", notificationCount)
-	}
-}
-
-func TestSendNotificationRejectsAttachmentsForSms(t *testing.T) {
-	t.Helper()
-
-	database := openIsolatedDatabase(t)
-	serviceInstance := newNotificationServiceWithSendersForSchedulerTests(database, &stubEmailSender{}, &stubSmsSender{})
-	serviceInstance.maxRetries = 3
-
-	_, err := serviceInstance.SendNotification(tenantContext(), model.NotificationRequest{
-		NotificationType: model.NotificationSMS,
-		Recipient:        "+15555550100",
-		Message:          "Body",
-		Attachments: []model.EmailAttachment{
-			{
-				Filename:    "secret.txt",
-				ContentType: "text/plain",
-				Data:        []byte("data"),
-			},
-		},
-	})
-	if err == nil {
-		t.Fatalf("expected attachment rejection for sms")
 	}
 }
 
@@ -353,13 +209,16 @@ func TestSendNotificationPersistsAttachments(t *testing.T) {
 		Data:        []byte("hi"),
 	}
 
-	response, err := serviceInstance.SendNotification(tenantContext(), model.NotificationRequest{
-		NotificationType: model.NotificationEmail,
-		Recipient:        "user@example.com",
-		Subject:          "Subject",
-		Message:          "Body",
-		Attachments:      []model.EmailAttachment{attachment},
-	})
+	request := mustNotificationRequest(
+		t,
+		model.NotificationEmail,
+		"user@example.com",
+		"Subject",
+		"Body",
+		nil,
+		[]model.EmailAttachment{attachment},
+	)
+	response, err := serviceInstance.SendNotification(tenantContext(), request)
 	if err != nil {
 		t.Fatalf("send error: %v", err)
 	}
@@ -430,20 +289,22 @@ func TestRetryWorkerDispatchesStoredAttachments(t *testing.T) {
 	serviceInstance.maxRetries = 3
 
 	future := time.Now().UTC().Add(5 * time.Minute)
-	response, err := serviceInstance.SendNotification(tenantContext(), model.NotificationRequest{
-		NotificationType: model.NotificationEmail,
-		Recipient:        "user@example.com",
-		Subject:          "Subject",
-		Message:          "Body",
-		ScheduledFor:     &future,
-		Attachments: []model.EmailAttachment{
+	request := mustNotificationRequest(
+		t,
+		model.NotificationEmail,
+		"user@example.com",
+		"Subject",
+		"Body",
+		&future,
+		[]model.EmailAttachment{
 			{
 				Filename:    "data.txt",
 				ContentType: "text/plain",
 				Data:        []byte("content"),
 			},
 		},
-	})
+	)
+	response, err := serviceInstance.SendNotification(tenantContext(), request)
 	if err != nil {
 		t.Fatalf("send error: %v", err)
 	}
@@ -517,6 +378,31 @@ type stubSmsSender struct {
 func (sender *stubSmsSender) SendSms(_ context.Context, _ string, _ string) (string, error) {
 	sender.callCount++
 	return "queued", nil
+}
+
+func mustNotificationRequest(
+	testHandle *testing.T,
+	notificationType model.NotificationType,
+	recipient string,
+	subject string,
+	message string,
+	scheduledFor *time.Time,
+	attachments []model.EmailAttachment,
+) model.NotificationRequest {
+	testHandle.Helper()
+
+	request, requestErr := model.NewNotificationRequest(
+		notificationType,
+		recipient,
+		subject,
+		message,
+		scheduledFor,
+		attachments,
+	)
+	if requestErr != nil {
+		testHandle.Fatalf("notification request error: %v", requestErr)
+	}
+	return request
 }
 
 func openIsolatedDatabase(t *testing.T) *gorm.DB {
