@@ -13,10 +13,10 @@ Pinguin is a production‑quality notification service written in Go. It exposes
 ### Document Precedence
 
 - `AGENTS.md` (this file) defines repo-wide workflow, testing philosophy, and agent behavior; stack-specific AGENTS.* guides refine these rules for each technology.
-- `AGENTS.*.md` files never contradict `AGENTS.md` or `POLICY.md`; if guidance appears inconsistent, defer to `POLICY.md` first, then `AGENTS.md`, and treat the stack guide as a refinement.
-- `NOTES.md` is process-only and must not introduce rules that conflict with `POLICY.md` or any `AGENTS*.md` files.
-- `PLANNING.md` for planning stage.
-- `POLICY.md` defines binding validation, error-handling, and “confident programming” rules.
+- `issues.md/AGENTS.*.md` files never contradict `AGENTS.md` or `POLICY.md`; if guidance appears inconsistent, defer to `POLICY.md` first, then `AGENTS.md`, and treat the stack guide as a refinement.
+- `issues.md/NOTES.md` is process-only and must not introduce rules that conflict with `POLICY.md` or any `AGENTS*.md` files.
+- `issues.md/PLANNING.md` for planning stage.
+- `issues.md/POLICY.md` defines binding validation, error-handling, and “confident programming” rules.
 
 ### Issue Status Terms
 
@@ -52,8 +52,7 @@ All rules for validation, error handling, invariants, and “confident programmi
 
 Stack-specific instructions now live in dedicated files. Apply the relevant guide alongside the shared policies above.
 
-- Front-End (Browser ES Modules with Alpine.js): `AGENTS.FRONTEND.md`
-- Backend (Go): `AGENTS.GO.md`
-- Backend (Python): `AGENTS.PY.md`
-- Docker and containerization: `AGENTS.DOCKER.md`
-- Git and version control workflow: `AGENTS.GIT.md`
+- Front-End (Browser ES Modules with Alpine.js): `issues.md/AGENTS.FRONTEND.md`
+- Backend (Go): `issues.md/AGENTS.GO.md`
+- Docker and containerization: `issues.md/AGENTS.DOCKER.md`
+- Git and version control workflow: `issues.md/AGENTS.GIT.md`
