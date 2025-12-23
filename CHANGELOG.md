@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Declared `/web` as a Docker volume for the UI bundle and documented the mount expectations (PS-401).
 - Moved notification request validation into model constructors and edge handlers, leaving service logic edge-validated (PG-204).
 - Optimized retry worker to query pending notifications across active tenants in a single join (PG-203).
 - Added a gRPC tenant-resolution interceptor and removed per-handler tenant lookups (PG-202).
