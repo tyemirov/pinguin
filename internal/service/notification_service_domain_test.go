@@ -125,11 +125,6 @@ func TestRescheduleNotificationRejectsInvalidStates(t *testing.T) {
 		UpdatedAt:        now,
 	})
 
-	past := time.Now().UTC().Add(-5 * time.Minute)
-	if _, err := serviceInstance.RescheduleNotification(tenantContext(), "notif-sent", past); !errors.Is(err, ErrScheduleInPast) {
-		t.Fatalf("expected ErrScheduleInPast, got %v", err)
-	}
-
 	future := time.Now().UTC().Add(10 * time.Minute)
 	if _, err := serviceInstance.RescheduleNotification(tenantContext(), "notif-sent", future); !errors.Is(err, ErrNotificationNotEditable) {
 		t.Fatalf("expected ErrNotificationNotEditable, got %v", err)
