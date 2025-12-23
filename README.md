@@ -298,6 +298,8 @@ The repository ships with `docker-compose.yaml` to run Pinguin alongside TAuth a
 
 Open `http://localhost:4173` in your browser for the landing/dashboard UI. The HTTP API on `http://localhost:8080` remains available for CLI/grpcurl clients, but browsers should never point to that port directly.
 
+The Pinguin Docker image declares `/web` as a separate volume for the UI bundle; the compose workflow already bind-mounts `./web` to `/web` for you.
+
 1. Copy the sample environment files and update the placeholders. **Use the same signing key in both files** so TAuth and Pinguin agree on JWT validation.
 
    ```bash
