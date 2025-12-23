@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Added a gRPC tenant-resolution interceptor and removed per-handler tenant lookups (PG-202).
 - Added the `--disable-web-interface` flag (and matching `DISABLE_WEB_INTERFACE` env var) so operators can run gRPC-only deployments without configuring ADMINS/TAuth/Google web settings (PG-103).
 - Documented the multitenancy technical plan (`docs/multitenancy-plan.md`) covering schema, config, auth, and rollout steps for serving multiple domains from one deployment (PG-104).
 - Added a regression test that asserts the `third_party` directory stays absent so we continue relying solely on upstream modules for TAuth and google protos (PG-405).
