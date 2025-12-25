@@ -142,19 +142,25 @@ func Bootstrap(ctx context.Context, db *gorm.DB, keeper *SecretKeeper, cfg Boots
 	if err := validateBootstrapDomains(cfg.Tenants); err != nil {
 		return err
 	}
-	if err := resetTenantDomains(ctx, db); err != nil {
-		return err
-	}
-	for _, tenantSpec := range cfg.Tenants {
-		if err := upsertTenant(ctx, db, keeper, tenantSpec); err != nil {
+	transactionErr := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := resetTenantDomains(tx); err != nil {
 			return err
 		}
+		for _, tenantSpec := range cfg.Tenants {
+			if err := upsertTenant(ctx, tx, keeper, tenantSpec); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if transactionErr != nil {
+		return transactionErr
 	}
 	invalidateRegisteredRepositories()
 	return nil
 }
 
-func upsertTenant(ctx context.Context, db *gorm.DB, keeper *SecretKeeper, spec BootstrapTenant) error {
+func upsertTenant(ctx context.Context, tx *gorm.DB, keeper *SecretKeeper, spec BootstrapTenant) error {
 	if strings.TrimSpace(spec.ID) == "" {
 		spec.ID = uuid.NewString()
 	}
@@ -165,111 +171,109 @@ func upsertTenant(ctx context.Context, db *gorm.DB, keeper *SecretKeeper, spec B
 	if spec.Enabled != nil && !*spec.Enabled {
 		status = string(TenantStatusSuspended)
 	}
-	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		tenantModel := Tenant{
-			ID:           spec.ID,
-			DisplayName:  spec.DisplayName,
-			SupportEmail: spec.SupportEmail,
-			Status:       TenantStatus(status),
-		}
-		if err := tx.Clauses(clauseOnConflictUpdateAll()).
-			Create(&tenantModel).Error; err != nil {
-			return fmt.Errorf("tenant bootstrap: upsert tenant %s: %w", spec.ID, err)
-		}
+	tenantModel := Tenant{
+		ID:           spec.ID,
+		DisplayName:  spec.DisplayName,
+		SupportEmail: spec.SupportEmail,
+		Status:       TenantStatus(status),
+	}
+	if err := tx.WithContext(ctx).Clauses(clauseOnConflictUpdateAll()).
+		Create(&tenantModel).Error; err != nil {
+		return fmt.Errorf("tenant bootstrap: upsert tenant %s: %w", spec.ID, err)
+	}
 
-		normalizedDomains := normalizeDomainHosts(spec.Domains)
-		for domainIndex, host := range normalizedDomains {
-			domain := TenantDomain{
-				TenantID:  spec.ID,
-				Host:      host,
-				IsDefault: domainIndex == 0,
-			}
-			if err := tx.Create(&domain).Error; err != nil {
-				return fmt.Errorf("tenant bootstrap: domain %s: %w", host, err)
-			}
+	normalizedDomains := normalizeDomainHosts(spec.Domains)
+	for domainIndex, host := range normalizedDomains {
+		domain := TenantDomain{
+			TenantID:  spec.ID,
+			Host:      host,
+			IsDefault: domainIndex == 0,
 		}
+		if err := tx.Create(&domain).Error; err != nil {
+			return fmt.Errorf("tenant bootstrap: domain %s: %w", host, err)
+		}
+	}
 
-		identity := TenantIdentity{
-			TenantID:       spec.ID,
-			GoogleClientID: spec.Identity.GoogleClientID,
-			TAuthBaseURL:   spec.Identity.TAuthBaseURL,
-		}
-		if err := tx.Clauses(clauseOnConflictUpdateAll()).Create(&identity).Error; err != nil {
-			return fmt.Errorf("tenant bootstrap: identity: %w", err)
-		}
+	identity := TenantIdentity{
+		TenantID:       spec.ID,
+		GoogleClientID: spec.Identity.GoogleClientID,
+		TAuthBaseURL:   spec.Identity.TAuthBaseURL,
+	}
+	if err := tx.Clauses(clauseOnConflictUpdateAll()).Create(&identity).Error; err != nil {
+		return fmt.Errorf("tenant bootstrap: identity: %w", err)
+	}
 
-		if err := tx.Where("tenant_id = ?", spec.ID).Delete(&TenantMember{}).Error; err != nil {
-			return err
+	if err := tx.Where("tenant_id = ?", spec.ID).Delete(&TenantMember{}).Error; err != nil {
+		return err
+	}
+	for _, adminEmail := range spec.Admins {
+		member := TenantMember{
+			TenantID: spec.ID,
+			Email:    strings.ToLower(strings.TrimSpace(adminEmail)),
 		}
-		for _, adminEmail := range spec.Admins {
-			member := TenantMember{
-				TenantID: spec.ID,
-				Email:    strings.ToLower(strings.TrimSpace(adminEmail)),
-			}
-			if member.Email == "" {
-				continue
-			}
-			if err := tx.Create(&member).Error; err != nil {
-				return fmt.Errorf("tenant bootstrap: member %s: %w", member.Email, err)
-			}
+		if member.Email == "" {
+			continue
 		}
+		if err := tx.Create(&member).Error; err != nil {
+			return fmt.Errorf("tenant bootstrap: member %s: %w", member.Email, err)
+		}
+	}
 
-		usernameCipher, err := keeper.Encrypt(spec.EmailProfile.Username)
+	usernameCipher, err := keeper.Encrypt(spec.EmailProfile.Username)
+	if err != nil {
+		return err
+	}
+	passwordCipher, err := keeper.Encrypt(spec.EmailProfile.Password)
+	if err != nil {
+		return err
+	}
+	emailProfile := EmailProfile{
+		ID:             uuid.NewString(),
+		TenantID:       spec.ID,
+		Host:           spec.EmailProfile.Host,
+		Port:           spec.EmailProfile.Port,
+		UsernameCipher: usernameCipher,
+		PasswordCipher: passwordCipher,
+		FromAddress:    spec.EmailProfile.FromAddress,
+		IsDefault:      true,
+	}
+	if err := tx.Where("tenant_id = ?", spec.ID).Delete(&EmailProfile{}).Error; err != nil {
+		return err
+	}
+	if err := tx.Create(&emailProfile).Error; err != nil {
+		return fmt.Errorf("tenant bootstrap: email profile: %w", err)
+	}
+
+	if spec.SMSProfile != nil {
+		accountCipher, err := keeper.Encrypt(spec.SMSProfile.AccountSID)
 		if err != nil {
 			return err
 		}
-		passwordCipher, err := keeper.Encrypt(spec.EmailProfile.Password)
+		tokenCipher, err := keeper.Encrypt(spec.SMSProfile.AuthToken)
 		if err != nil {
 			return err
 		}
-		emailProfile := EmailProfile{
-			ID:             uuid.NewString(),
-			TenantID:       spec.ID,
-			Host:           spec.EmailProfile.Host,
-			Port:           spec.EmailProfile.Port,
-			UsernameCipher: usernameCipher,
-			PasswordCipher: passwordCipher,
-			FromAddress:    spec.EmailProfile.FromAddress,
-			IsDefault:      true,
+		smsProfile := SMSProfile{
+			ID:               uuid.NewString(),
+			TenantID:         spec.ID,
+			AccountSIDCipher: accountCipher,
+			AuthTokenCipher:  tokenCipher,
+			FromNumber:       spec.SMSProfile.FromNumber,
+			IsDefault:        true,
 		}
-		if err := tx.Where("tenant_id = ?", spec.ID).Delete(&EmailProfile{}).Error; err != nil {
+		if err := tx.Where("tenant_id = ?", spec.ID).Delete(&SMSProfile{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Create(&emailProfile).Error; err != nil {
-			return fmt.Errorf("tenant bootstrap: email profile: %w", err)
+		if err := tx.Create(&smsProfile).Error; err != nil {
+			return fmt.Errorf("tenant bootstrap: sms profile: %w", err)
 		}
-
-		if spec.SMSProfile != nil {
-			accountCipher, err := keeper.Encrypt(spec.SMSProfile.AccountSID)
-			if err != nil {
-				return err
-			}
-			tokenCipher, err := keeper.Encrypt(spec.SMSProfile.AuthToken)
-			if err != nil {
-				return err
-			}
-			smsProfile := SMSProfile{
-				ID:               uuid.NewString(),
-				TenantID:         spec.ID,
-				AccountSIDCipher: accountCipher,
-				AuthTokenCipher:  tokenCipher,
-				FromNumber:       spec.SMSProfile.FromNumber,
-				IsDefault:        true,
-			}
-			if err := tx.Where("tenant_id = ?", spec.ID).Delete(&SMSProfile{}).Error; err != nil {
-				return err
-			}
-			if err := tx.Create(&smsProfile).Error; err != nil {
-				return fmt.Errorf("tenant bootstrap: sms profile: %w", err)
-			}
-		} else {
-			if err := tx.Where("tenant_id = ?", spec.ID).Delete(&SMSProfile{}).Error; err != nil {
-				return err
-			}
+	} else {
+		if err := tx.Where("tenant_id = ?", spec.ID).Delete(&SMSProfile{}).Error; err != nil {
+			return err
 		}
+	}
 
-		return nil
-	})
+	return nil
 }
 
 const (
@@ -300,8 +304,8 @@ func validateBootstrapDomains(tenantSpecs []BootstrapTenant) error {
 	return nil
 }
 
-func resetTenantDomains(ctx context.Context, db *gorm.DB) error {
-	session := db.WithContext(ctx).Session(&gorm.Session{AllowGlobalUpdate: true})
+func resetTenantDomains(db *gorm.DB) error {
+	session := db.Session(&gorm.Session{AllowGlobalUpdate: true})
 	if err := session.Delete(&TenantDomain{}).Error; err != nil {
 		return fmt.Errorf("tenant bootstrap: %s: reset tenant domains: %w", bootstrapDomainResetCode, err)
 	}
