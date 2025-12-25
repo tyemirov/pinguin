@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-check
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -13,6 +14,45 @@ const runtimeConfig = {
     process.env.PLAYWRIGHT_TAUTH_BASE_URL || `http://${HOST}:${PORT}`,
   apiBaseUrl: `http://${HOST}:${PORT}/api`,
 };
+
+const shouldLog = process.env.PLAYWRIGHT_DEVSERVER_LOGS === '1';
+const log = (...args) => {
+  if (shouldLog) {
+    console.log(...args);
+  }
+};
+
+const swallowEpipe = (stream) => {
+  if (!stream) {
+    return;
+  }
+  stream.on('error', (error) => {
+    if (error && error.code === 'EPIPE') {
+      return;
+    }
+    throw error;
+  });
+};
+
+swallowEpipe(process.stdout);
+swallowEpipe(process.stderr);
+
+const handleFatal = (label, error) => {
+  if (error instanceof Error) {
+    console.error(label, error.stack || error.message);
+  } else {
+    console.error(label, error);
+  }
+  process.exit(1);
+};
+
+process.on('uncaughtException', (error) => {
+  handleFatal('devServer uncaughtException', error);
+});
+
+process.on('unhandledRejection', (error) => {
+  handleFatal('devServer unhandledRejection', error);
+});
 
 let serverState = createDefaultState();
 const nonceStore = new Map();
@@ -107,9 +147,9 @@ function serveStatic(filePath, res) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
-  console.log('devServer request', req.method, url.pathname);
+  log('devServer request', req.method, url.pathname);
   if (req.method === 'GET' && url.pathname === '/runtime-config') {
-    console.log('devServer: served runtime config');
+    log('devServer: served runtime config');
     sendJson(res, 200, runtimeConfig);
     return;
   }
@@ -213,6 +253,10 @@ const server = http.createServer(async (req, res) => {
   serveStatic(filePath, res);
 });
 
+server.on('error', (error) => {
+  handleFatal('devServer listen error', error);
+});
+
 function issueNonce() {
   const token = crypto.randomBytes(16).toString('hex');
   nonceStore.set(token, Date.now() + NONCE_TTL_MS);
@@ -261,5 +305,5 @@ function filterNotifications(source, statuses) {
 }
 
 server.listen(PORT, HOST, () => {
-  console.log(`Playwright test server listening on http://${HOST}:${PORT}`);
+  log(`Playwright test server listening on http://${HOST}:${PORT}`);
 });

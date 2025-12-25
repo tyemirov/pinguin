@@ -139,6 +139,12 @@ func Bootstrap(ctx context.Context, db *gorm.DB, keeper *SecretKeeper, cfg Boots
 	if enabledCount == 0 {
 		return fmt.Errorf("tenant bootstrap: no enabled tenants configured")
 	}
+	if err := validateBootstrapDomains(cfg.Tenants); err != nil {
+		return err
+	}
+	if err := resetTenantDomains(ctx, db); err != nil {
+		return err
+	}
 	for _, tenantSpec := range cfg.Tenants {
 		if err := upsertTenant(ctx, db, keeper, tenantSpec); err != nil {
 			return err
@@ -171,14 +177,12 @@ func upsertTenant(ctx context.Context, db *gorm.DB, keeper *SecretKeeper, spec B
 			return fmt.Errorf("tenant bootstrap: upsert tenant %s: %w", spec.ID, err)
 		}
 
-		if err := tx.Where("tenant_id = ?", spec.ID).Delete(&TenantDomain{}).Error; err != nil {
-			return err
-		}
-		for idx, host := range spec.Domains {
+		normalizedDomains := normalizeDomainHosts(spec.Domains)
+		for domainIndex, host := range normalizedDomains {
 			domain := TenantDomain{
 				TenantID:  spec.ID,
-				Host:      strings.ToLower(host),
-				IsDefault: idx == 0,
+				Host:      host,
+				IsDefault: domainIndex == 0,
 			}
 			if err := tx.Create(&domain).Error; err != nil {
 				return fmt.Errorf("tenant bootstrap: domain %s: %w", host, err)
@@ -266,6 +270,58 @@ func upsertTenant(ctx context.Context, db *gorm.DB, keeper *SecretKeeper, spec B
 
 		return nil
 	})
+}
+
+const (
+	bootstrapDuplicateDomainCode = "tenant.bootstrap.domain.duplicate"
+	bootstrapMissingDomainCode   = "tenant.bootstrap.domain.missing"
+	bootstrapDomainResetCode     = "tenant.bootstrap.domain.reset_failed"
+)
+
+func validateBootstrapDomains(tenantSpecs []BootstrapTenant) error {
+	normalizedHosts := make(map[string]int, len(tenantSpecs))
+	for tenantIndex, tenantSpec := range tenantSpecs {
+		domainCount := 0
+		for _, host := range tenantSpec.Domains {
+			normalizedHost := normalizeDomainHost(host)
+			if normalizedHost == "" {
+				continue
+			}
+			domainCount++
+			if existingIndex, exists := normalizedHosts[normalizedHost]; exists {
+				return fmt.Errorf("tenant bootstrap: %s: duplicate domain %s between tenants[%d] and tenants[%d]", bootstrapDuplicateDomainCode, normalizedHost, existingIndex, tenantIndex)
+			}
+			normalizedHosts[normalizedHost] = tenantIndex
+		}
+		if domainCount == 0 {
+			return fmt.Errorf("tenant bootstrap: %s: tenants[%d] has no domains", bootstrapMissingDomainCode, tenantIndex)
+		}
+	}
+	return nil
+}
+
+func resetTenantDomains(ctx context.Context, db *gorm.DB) error {
+	session := db.WithContext(ctx).Session(&gorm.Session{AllowGlobalUpdate: true})
+	if err := session.Delete(&TenantDomain{}).Error; err != nil {
+		return fmt.Errorf("tenant bootstrap: %s: reset tenant domains: %w", bootstrapDomainResetCode, err)
+	}
+	return nil
+}
+
+func normalizeDomainHosts(domains []string) []string {
+	normalizedDomains := make([]string, 0, len(domains))
+	for _, host := range domains {
+		normalizedHost := normalizeDomainHost(host)
+		if normalizedHost == "" {
+			continue
+		}
+		normalizedDomains = append(normalizedDomains, normalizedHost)
+	}
+	return normalizedDomains
+}
+
+func normalizeDomainHost(host string) string {
+	return strings.ToLower(strings.TrimSpace(host))
 }
 
 func clauseOnConflictUpdateAll() clause.Expression {

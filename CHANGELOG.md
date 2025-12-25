@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Made tenant bootstrap domains authoritative by resetting domain mappings and validating duplicates, plus stabilized the Playwright dev server logging for CI (PG-315).
 - Switched docker-compose to mount `/web` via the named `pinguin-web` volume bound to `./web` (PS-402).
 - Declared `/web` as a Docker volume for the UI bundle and documented the mount expectations (PS-401).
 - Moved notification request validation into model constructors and edge handlers, leaving service logic edge-validated (PG-204).
