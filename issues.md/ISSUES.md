@@ -55,6 +55,7 @@ make: *** [test-frontend] Error 1
 - [x] [PG-314] Add YAML config file for TAuth in dev orchestration: introduce `configs/tauth/config.yaml`, add `tauth-dev` service that builds TAuth from a pinned upstream commit via `docker/tauth/Dockerfile` and uses `TAUTH_CONFIG_FILE`, keep `docker` profile on the prebuilt TAuth image. `make ci` passes.
 - [x] [PG-314] Follow-up: remove `tauth-dev` and run TAuth from `docker/tauth/Dockerfile` in both `dev` and `docker` compose profiles so `configs/tauth/config.yaml` is used consistently. `make ci` passes.
 - [x] [PG-315] Make tenant bootstrap domains authoritative (reset all `tenant_domains` before insert, validate missing/duplicate hosts), add coverage for reassignment, and stabilize Playwright dev server logging; `make ci` passes.
+- [x] [PG-317] Replace CGO-dependent SQLite driver with pure-Go GORM sqlite driver to support CGO-disabled builds; `make ci` passes.
 
 ## Maintenance (400–499)
 

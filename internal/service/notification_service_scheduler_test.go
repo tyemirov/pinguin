@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/glebarez/sqlite"
 	"github.com/tyemirov/pinguin/internal/model"
 	"github.com/tyemirov/utils/scheduler"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"log/slog"
 )
