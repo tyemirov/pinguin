@@ -189,8 +189,19 @@ func upsertTenant(ctx context.Context, tx *gorm.DB, keeper *SecretKeeper, spec B
 			Host:      host,
 			IsDefault: domainIndex == 0,
 		}
-		if err := tx.Create(&domain).Error; err != nil {
-			return fmt.Errorf("tenant bootstrap: domain %s: %w", host, err)
+		createResult := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "host"}},
+			DoNothing: true,
+		}).Create(&domain)
+		if createResult.Error != nil {
+			return fmt.Errorf(bootstrapDomainErrorFormat, host, createResult.Error)
+		}
+		var existingDomain TenantDomain
+		if err := tx.Where(&TenantDomain{Host: host}).Take(&existingDomain).Error; err != nil {
+			return fmt.Errorf(bootstrapDomainErrorFormat, host, err)
+		}
+		if existingDomain.TenantID != spec.ID || existingDomain.IsDefault != domain.IsDefault {
+			return fmt.Errorf("tenant bootstrap: %s: domain %s already assigned to tenant %s", bootstrapDomainConflictCode, host, existingDomain.TenantID)
 		}
 	}
 
@@ -280,6 +291,8 @@ const (
 	bootstrapDuplicateDomainCode = "tenant.bootstrap.domain.duplicate"
 	bootstrapMissingDomainCode   = "tenant.bootstrap.domain.missing"
 	bootstrapDomainResetCode     = "tenant.bootstrap.domain.reset_failed"
+	bootstrapDomainConflictCode  = "tenant.bootstrap.domain.conflict"
+	bootstrapDomainErrorFormat   = "tenant bootstrap: domain %s: %w"
 )
 
 func validateBootstrapDomains(tenantSpecs []BootstrapTenant) error {
