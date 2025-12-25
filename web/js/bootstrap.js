@@ -5,6 +5,7 @@ const DEFAULT_CONFIG = Object.freeze({
   landingUrl: '/index.html',
   dashboardUrl: '/dashboard.html',
 });
+const AUTH_CLIENT_SCRIPT_ATTRIBUTE = 'data-pinguin-auth-client';
 const TAUTH_CONFIG = typeof window.PINGUIN_TAUTH_CONFIG === 'object' && window.PINGUIN_TAUTH_CONFIG
   ? window.PINGUIN_TAUTH_CONFIG
   : {};
@@ -84,6 +85,39 @@ function mergeConfig(base, overrides) {
   return { ...base, ...overrides };
 }
 
+function buildAuthClientUrl(baseUrl) {
+  if (typeof baseUrl !== 'string') {
+    return '';
+  }
+  const trimmed = baseUrl.trim().replace(/\/+$/, '');
+  if (!trimmed) {
+    return '';
+  }
+  return `${trimmed}/static/auth-client.js`;
+}
+
+function ensureAuthClientScript(baseUrl) {
+  if (typeof document === 'undefined') {
+    return;
+  }
+  if (typeof window.initAuthClient === 'function') {
+    return;
+  }
+  if (document.querySelector(`script[${AUTH_CLIENT_SCRIPT_ATTRIBUTE}]`)) {
+    return;
+  }
+  const authClientUrl = buildAuthClientUrl(baseUrl);
+  if (!authClientUrl) {
+    return;
+  }
+  const script = document.createElement('script');
+  script.defer = true;
+  script.src = authClientUrl;
+  script.crossOrigin = 'anonymous';
+  script.setAttribute(AUTH_CLIENT_SCRIPT_ATTRIBUTE, 'true');
+  document.head.appendChild(script);
+}
+
 (async function bootstrap() {
   const preloaded = window.__PINGUIN_CONFIG__ || {};
   const skipRemote = Boolean(preloaded && preloaded.skipRemoteConfig);
@@ -131,6 +165,7 @@ function mergeConfig(base, overrides) {
     tenant: effectiveConfig.tenant || null,
   };
   window.__PINGUIN_CONFIG__ = finalConfig;
+  ensureAuthClientScript(finalConfig.tauthBaseUrl);
   window.dispatchEvent(new CustomEvent('pinguin:config-updated', { detail: finalConfig }));
   if (finalConfig.tenant) {
     applyTenantBranding(finalConfig.tenant);
