@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/glebarez/sqlite"
 	"github.com/tyemirov/pinguin/internal/config"
 	"github.com/tyemirov/pinguin/internal/model"
 	"github.com/tyemirov/pinguin/internal/service"
 	"github.com/tyemirov/pinguin/internal/tenant"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"log/slog"
 )

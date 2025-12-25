@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/glebarez/sqlite"
 	"github.com/tyemirov/pinguin/internal/model"
 	"github.com/tyemirov/pinguin/internal/tenant"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
