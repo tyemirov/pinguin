@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // NotificationType enumerations: "email" or "sms".
@@ -33,6 +34,14 @@ const (
 	StatusCancelled NotificationStatus = "cancelled"
 	StatusUnknown   NotificationStatus = "unknown"
 	StatusFailed    NotificationStatus = "failed" // legacy value kept for previously persisted rows
+)
+
+const (
+	notificationTenantIDColumn     = "tenant_id"
+	notificationStatusColumn       = "status"
+	notificationRetryCountColumn   = "retry_count"
+	notificationScheduledForColumn = "scheduled_for"
+	notificationCreatedAtColumn    = "created_at"
 )
 
 var ErrNotificationNotFound = errors.New("notification not found")
@@ -195,7 +204,7 @@ func GetNotificationByID(ctx context.Context, db *gorm.DB, tenantID string, noti
 	var notif Notification
 	err := db.WithContext(ctx).
 		Preload("Attachments").
-		Where("tenant_id = ? AND notification_id = ?", tenantID, notificationID).
+		Where(&Notification{TenantID: tenantID, NotificationID: notificationID}).
 		First(&notif).Error
 	if err != nil {
 		return nil, err
@@ -209,10 +218,22 @@ func SaveNotification(ctx context.Context, db *gorm.DB, n *Notification) error {
 
 func GetQueuedOrFailedNotifications(ctx context.Context, db *gorm.DB, tenantID string, maxRetries int, currentTime time.Time) ([]Notification, error) {
 	var notifications []Notification
+	tenantIDColumn := clause.Column{Name: notificationTenantIDColumn}
+	statusColumn := clause.Column{Name: notificationStatusColumn}
+	retryCountColumn := clause.Column{Name: notificationRetryCountColumn}
+	scheduledForColumn := clause.Column{Name: notificationScheduledForColumn}
+	statusValues := []interface{}{StatusQueued, StatusErrored, StatusFailed}
 	err := db.WithContext(ctx).
 		Preload("Attachments").
-		Where("tenant_id = ? AND (status = ? OR status = ? OR status = ?) AND retry_count < ? AND (scheduled_for IS NULL OR scheduled_for <= ?)",
-			tenantID, StatusQueued, StatusErrored, StatusFailed, maxRetries, currentTime).
+		Where(clause.And(
+			clause.Eq{Column: tenantIDColumn, Value: tenantID},
+			clause.IN{Column: statusColumn, Values: statusValues},
+			clause.Lt{Column: retryCountColumn, Value: maxRetries},
+			clause.Or(
+				clause.Eq{Column: scheduledForColumn, Value: nil},
+				clause.Lte{Column: scheduledForColumn, Value: currentTime},
+			),
+		)).
 		Find(&notifications).Error
 	if err != nil {
 		return nil, err
@@ -221,17 +242,20 @@ func GetQueuedOrFailedNotifications(ctx context.Context, db *gorm.DB, tenantID s
 }
 
 func ListNotifications(ctx context.Context, db *gorm.DB, tenantID string, filters NotificationListFilters) ([]Notification, error) {
-	query := db.WithContext(ctx).Preload("Attachments").Order("created_at DESC").Where("tenant_id = ?", tenantID)
+	query := db.WithContext(ctx).
+		Preload("Attachments").
+		Order(clause.OrderByColumn{Column: clause.Column{Name: notificationCreatedAtColumn}, Desc: true}).
+		Where(&Notification{TenantID: tenantID})
 	statuses := filters.NormalizedStatuses()
 	if len(statuses) > 0 {
-		statusStrings := make([]string, 0, len(statuses))
+		statusValues := make([]interface{}, 0, len(statuses))
 		for _, status := range statuses {
-			statusStrings = append(statusStrings, string(status))
+			statusValues = append(statusValues, status)
 			if status == StatusErrored {
-				statusStrings = append(statusStrings, string(StatusFailed))
+				statusValues = append(statusValues, StatusFailed)
 			}
 		}
-		query = query.Where("status IN ?", statusStrings)
+		query = query.Where(clause.IN{Column: clause.Column{Name: notificationStatusColumn}, Values: statusValues})
 	}
 	var notifications []Notification
 	if err := query.Find(&notifications).Error; err != nil {

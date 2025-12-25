@@ -16,6 +16,7 @@ Read @AGENTS.md, @ARCHITECTURE.md, @README.md, @issues.md/POLICY.md, @issues.md/
 - [x] [PG-207] Migrate `pkg/scheduler` to `github.com/tyemirov/utils/scheduler` (utils v0.1.1) and update Pinguin imports.
 - [x] [PG-320] Document tenant configuration schema: add a key-by-key reference for `tenants` (id, enabled, domains, admins, identity, emailProfile, smsProfile) in `README.md`.
 - [x] [PG-321] Remove `tests/clientcli` and make `cmd/client` the single CLI for manual usage + test harnesses; `--help` works without env, `--to` is supported, and unprefixed env vars are accepted.
+- [x] [PG-316] Replace string-based GORM query fragments with struct/clause expressions so SQL is generated entirely by GORM; `make ci` passes.
 
 ## BugFixes (308–399)
 

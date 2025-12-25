@@ -214,7 +214,7 @@ func upsertTenant(ctx context.Context, tx *gorm.DB, keeper *SecretKeeper, spec B
 		return fmt.Errorf("tenant bootstrap: identity: %w", err)
 	}
 
-	if err := tx.Where("tenant_id = ?", spec.ID).Delete(&TenantMember{}).Error; err != nil {
+	if err := tx.Where(&TenantMember{TenantID: spec.ID}).Delete(&TenantMember{}).Error; err != nil {
 		return err
 	}
 	for _, adminEmail := range spec.Admins {
@@ -248,7 +248,7 @@ func upsertTenant(ctx context.Context, tx *gorm.DB, keeper *SecretKeeper, spec B
 		FromAddress:    spec.EmailProfile.FromAddress,
 		IsDefault:      true,
 	}
-	if err := tx.Where("tenant_id = ?", spec.ID).Delete(&EmailProfile{}).Error; err != nil {
+	if err := tx.Where(&EmailProfile{TenantID: spec.ID}).Delete(&EmailProfile{}).Error; err != nil {
 		return err
 	}
 	if err := tx.Create(&emailProfile).Error; err != nil {
@@ -272,14 +272,14 @@ func upsertTenant(ctx context.Context, tx *gorm.DB, keeper *SecretKeeper, spec B
 			FromNumber:       spec.SMSProfile.FromNumber,
 			IsDefault:        true,
 		}
-		if err := tx.Where("tenant_id = ?", spec.ID).Delete(&SMSProfile{}).Error; err != nil {
+		if err := tx.Where(&SMSProfile{TenantID: spec.ID}).Delete(&SMSProfile{}).Error; err != nil {
 			return err
 		}
 		if err := tx.Create(&smsProfile).Error; err != nil {
 			return fmt.Errorf("tenant bootstrap: sms profile: %w", err)
 		}
 	} else {
-		if err := tx.Where("tenant_id = ?", spec.ID).Delete(&SMSProfile{}).Error; err != nil {
+		if err := tx.Where(&SMSProfile{TenantID: spec.ID}).Delete(&SMSProfile{}).Error; err != nil {
 			return err
 		}
 	}
@@ -318,7 +318,7 @@ func validateBootstrapDomains(tenantSpecs []BootstrapTenant) error {
 }
 
 func resetTenantDomains(db *gorm.DB) error {
-	if err := db.Where("1 = 1").Delete(&TenantDomain{}).Error; err != nil {
+	if err := db.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&TenantDomain{}).Error; err != nil {
 		return fmt.Errorf("tenant bootstrap: %s: reset tenant domains: %w", bootstrapDomainResetCode, err)
 	}
 	return nil
