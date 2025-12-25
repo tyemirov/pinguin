@@ -78,7 +78,7 @@ func (repo *Repository) ResolveByHost(ctx context.Context, host string) (Runtime
 		return repo.runtimeConfig(ctx, cachedTenantID)
 	}
 	var domain TenantDomain
-	if err := repo.db.WithContext(ctx).Where("host = ?", normalized).First(&domain).Error; err != nil {
+	if err := repo.db.WithContext(ctx).Where(&TenantDomain{Host: normalized}).First(&domain).Error; err != nil {
 		return RuntimeConfig{}, fmt.Errorf("tenant resolve: domain %s: %w", normalized, err)
 	}
 	runtimeCfg, err := repo.runtimeConfig(ctx, domain.TenantID)
@@ -102,7 +102,7 @@ func (repo *Repository) ResolveByID(ctx context.Context, tenantID string) (Runti
 func (repo *Repository) ListActiveTenants(ctx context.Context) ([]Tenant, error) {
 	var tenants []Tenant
 	if err := repo.db.WithContext(ctx).
-		Where("status = ?", TenantStatusActive).
+		Where(&Tenant{Status: TenantStatusActive}).
 		Find(&tenants).Error; err != nil {
 		return nil, fmt.Errorf("tenant list: %w", err)
 	}
@@ -123,22 +123,23 @@ func (repo *Repository) runtimeConfig(ctx context.Context, tenantID string) (Run
 
 func (repo *Repository) loadRuntimeConfig(ctx context.Context, tenantID string) (RuntimeConfig, error) {
 	var tenantModel Tenant
-	if err := repo.db.WithContext(ctx).Where("id = ?", tenantID).First(&tenantModel).Error; err != nil {
+	if err := repo.db.WithContext(ctx).Where(&Tenant{ID: tenantID}).First(&tenantModel).Error; err != nil {
 		return RuntimeConfig{}, fmt.Errorf("tenant runtime: tenant %s: %w", tenantID, err)
 	}
 	var identity TenantIdentity
-	if err := repo.db.WithContext(ctx).Where("tenant_id = ?", tenantID).First(&identity).Error; err != nil {
+	if err := repo.db.WithContext(ctx).Where(&TenantIdentity{TenantID: tenantID}).First(&identity).Error; err != nil {
 		return RuntimeConfig{}, fmt.Errorf("tenant runtime: identity: %w", err)
 	}
 	var emailProfile EmailProfile
-	if err := repo.db.WithContext(ctx).Where("tenant_id = ?", tenantID).Where("is_default = ?", true).First(&emailProfile).Error; err != nil {
+	if err := repo.db.WithContext(ctx).
+		Where(&EmailProfile{TenantID: tenantID, IsDefault: true}).
+		First(&emailProfile).Error; err != nil {
 		return RuntimeConfig{}, fmt.Errorf("tenant runtime: email profile: %w", err)
 	}
 	var smsPtr *SMSCredentials
 	var smsProfile SMSProfile
 	if err := repo.db.WithContext(ctx).
-		Where("tenant_id = ?", tenantID).
-		Where("is_default = ?", true).
+		Where(&SMSProfile{TenantID: tenantID, IsDefault: true}).
 		First(&smsProfile).Error; err == nil {
 		accountSID, err := repo.keeper.Decrypt(smsProfile.AccountSIDCipher)
 		if err != nil {
@@ -158,7 +159,7 @@ func (repo *Repository) loadRuntimeConfig(ctx context.Context, tenantID string) 
 	}
 	admins := make(map[string]struct{})
 	var members []TenantMember
-	if err := repo.db.WithContext(ctx).Where("tenant_id = ?", tenantID).Find(&members).Error; err != nil {
+	if err := repo.db.WithContext(ctx).Where(&TenantMember{TenantID: tenantID}).Find(&members).Error; err != nil {
 		return RuntimeConfig{}, fmt.Errorf("tenant runtime: members: %w", err)
 	}
 	for _, member := range members {
