@@ -305,8 +305,7 @@ func validateBootstrapDomains(tenantSpecs []BootstrapTenant) error {
 }
 
 func resetTenantDomains(db *gorm.DB) error {
-	session := db.Session(&gorm.Session{AllowGlobalUpdate: true})
-	if err := session.Delete(&TenantDomain{}).Error; err != nil {
+	if err := db.Where("1 = 1").Delete(&TenantDomain{}).Error; err != nil {
 		return fmt.Errorf("tenant bootstrap: %s: reset tenant domains: %w", bootstrapDomainResetCode, err)
 	}
 	return nil
