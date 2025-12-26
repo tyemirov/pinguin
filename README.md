@@ -137,17 +137,17 @@ Export the referenced environment variables before starting the server. The defa
 - **OPERATION_TIMEOUT_SEC:**  
   Maximum number of seconds to wait for a send attempt before treating it as failed. Set this to `30` seconds unless your provider requires longer operations.
 - **HTTP_LISTEN_ADDR:**  
-  Address used by the Gin HTTP server that exposes runtime config and the JSON `/api/*` endpoints (e.g. `:8080`). The HTTP stack no longer serves static assets directly—use a separate host such as ghttp (`http://localhost:4173`) for `/web`.
+  Address used by the Gin HTTP server that exposes runtime config and the JSON `/api/*` endpoints (e.g. `:8080`). The HTTP stack no longer serves static assets directly—use a separate host such as GitHub Pages at `https://pinguin.mprlab.com` (production) or ghttp (`http://localhost:4173`) for `/web`.
 - **HTTP_ALLOWED_ORIGINS:**  
-  Comma-separated list of origins allowed to call the JSON API when running cross-origin (leave empty to allow same-origin only). The docker-compose workflow serves the UI via ghttp on `http://localhost:4173`, so keep that origin in the list unless you host the web bundle elsewhere.
+  Comma-separated list of origins allowed to call the JSON API when running cross-origin (leave empty to allow same-origin only). The docker-compose workflow serves the UI via ghttp on `http://localhost:4173`, and production uses `https://pinguin.mprlab.com`, so include the relevant UI origins here.
 - **DISABLE_WEB_INTERFACE:**  
   Set to `true`, `1`, `yes`, or `on` (or start the server with `--disable-web-interface`) to skip booting the Gin/HTML stack entirely. When disabled, Pinguin runs the gRPC service only and skips Google Identity/TAuth/HTTP configuration checks, which is useful for backends that never expose the dashboard.
 - **MASTER_ENCRYPTION_KEY:**  
   Hex-encoded 32-byte key used to encrypt SMTP/Twilio secrets stored in the tenant config. Generate one with `openssl rand -hex 32` and keep it secret.
 - **TAuth CORS allowlist:**  
-  When you serve the UI from a different origin (ghttp on `http://localhost:4173`, a CDN, etc.), TAuth must enable CORS and allow both the UI origin *and* `https://accounts.google.com`. Google Identity Services performs the nonce/login exchange from the `accounts.google.com` origin, so omitting it results in `auth.login.nonce_mismatch` errors. The sample `.env.tauth.example` includes `APP_CORS_ALLOWED_ORIGINS="http://localhost:4173,https://accounts.google.com"` for this reason—extend the list with any additional UI origins you deploy.
+  When you serve the UI from a different origin (ghttp on `http://localhost:4173`, GitHub Pages on `https://pinguin.mprlab.com`, a CDN, etc.), TAuth must enable CORS and allow both the UI origin *and* `https://accounts.google.com`. Google Identity Services performs the nonce/login exchange from the `accounts.google.com` origin, so omitting it results in `auth.login.nonce_mismatch` errors. The sample `.env.tauth.example` includes `APP_CORS_ALLOWED_ORIGINS="http://localhost:4173,https://accounts.google.com"` for this reason—extend the list with any additional UI origins you deploy.
 - **Front-end TAuth config:**  
-  The web bundle reads `/js/tauth-config.js` (see the file for the default values) to learn the TAuth base URL + Google client ID. Update that file—or serve a different version per environment—to point the UI at your TAuth deployment. Pinguin itself does not need to know this URL; only the shared signing key matters to the backend.
+  The web bundle reads `/js/tauth-config.js` (see the file for the default values) to learn the TAuth base URL + Google client ID, and it now defaults runtime config + API calls to `https://pinguin-api.mprlab.com` when served from `.mprlab.com`. Update that file—or serve a different version per environment—to point the UI at your TAuth deployment. Pinguin itself does not need to know this URL; only the shared signing key matters to the backend.
 - **Web authentication flow:**  
   The browser UI relies on `<mpr-header>` and `<mpr-login-button>` from the `mpr-ui` package. Both components expect a Google OAuth Web Client ID (`site-id`) plus the TAuth endpoints noted above. Update the attributes in `web/index.html` / `web/dashboard.html` when deploying to a new TAuth instance. See `docs/mprui-integration-guide.md` for the header wiring details and `docs/tauth-usage.md` for the TAuth helper/nonce contract.
 - **Google Identity Client ID:**  
@@ -510,7 +510,7 @@ grpcurl -d '{
 
 The gRPC server now ships with a sibling Gin HTTP server that:
 
-- Serves runtime configuration (`/runtime-config`) and the REST-ish JSON `/api/*` endpoints the browser UI consumes. Static assets under `/web` are hosted separately (the Compose workflow runs ghttp on `http://localhost:4173`).
+- Serves runtime configuration (`/runtime-config`) and the REST-ish JSON `/api/*` endpoints the browser UI consumes. Static assets under `/web` are hosted separately (GitHub Pages at `https://pinguin.mprlab.com` in production; ghttp on `http://localhost:4173` during local dev).
 - Validates every authenticated request by reading the TAuth `app_session` cookie (via `TAUTH_*` settings and the shared signing key).
 - Exposes JSON endpoints for the UI:
   - `GET /api/notifications?status=queued&status=errored` – lists stored notifications filtered by status.
@@ -522,7 +522,7 @@ All endpoints emit structured JSON errors (`401` for auth failures, `400` for in
 
 ### Browser UI (beta)
 
-- Static assets live under `/web` and are served by the dedicated ghttp host on `http://localhost:4173` (the Go HTTP server keeps `/api`/`/runtime-config` in this arrangement). `index.html` provides the marketing + Google Sign-In landing experience, and `dashboard.html` renders the authenticated notifications table.
+- Static assets live under `/web` and are served by GitHub Pages at `https://pinguin.mprlab.com` in production, with ghttp on `http://localhost:4173` for local development (the Go HTTP server keeps `/api`/`/runtime-config` in this arrangement). `index.html` provides the marketing + Google Sign-In landing experience, and `dashboard.html` renders the authenticated notifications table.
 - The UI follows AGENTS.md: Alpine components per section, mpr-ui header/footer, DOM-scoped events (`notifications:*`) for toasts + table refreshes, and all strings centralized in `js/constants.js`.
 - `js/app.js` bootstraps Alpine, hydrates the TAuth session (`auth-client.js`), and guards routes. Components interact with the new `/api/notifications` endpoints via the shared `apiClient`.
 - Authentication state is broadcast across tabs via TAuth’s `BroadcastChannel("auth")`, so signing out in one tab logs out the others automatically.

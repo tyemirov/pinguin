@@ -17,6 +17,7 @@ Read @AGENTS.md, @ARCHITECTURE.md, @README.md, @issues.md/POLICY.md, @issues.md/
 - [x] [PG-320] Document tenant configuration schema: add a key-by-key reference for `tenants` (id, enabled, domains, admins, identity, emailProfile, smsProfile) in `README.md`.
 - [x] [PG-321] Remove `tests/clientcli` and make `cmd/client` the single CLI for manual usage + test harnesses; `--help` works without env, `--to` is supported, and unprefixed env vars are accepted.
 - [x] [PG-316] Replace string-based GORM query fragments with struct/clause expressions so SQL is generated entirely by GORM; `make ci` passes.
+- [x] [PG-324] Split frontend and backend hosting: deploy `/web` to GitHub Pages at `pinguin.mprlab.com`, point runtime config + API calls at `pinguin-api.mprlab.com`, and update docs/config for the new domains. Resolved with GitHub Pages workflow + CNAME, runtime config defaults, and doc updates; `make ci` passes.
 
 ## BugFixes (308–399)
 

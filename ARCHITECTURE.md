@@ -1,7 +1,7 @@
 # Architecture
 
 ## System Overview
-- Pinguin exposes two surfaces inside a single Go process: a gRPC notification service (port `50051`) and a Gin HTTP server (default `:8080`) that serves the REST-ish `/api` endpoints plus `/runtime-config`; static assets are served by the ghttp container on `4173`.
+- Pinguin exposes two surfaces inside a single Go process: a gRPC notification service (port `50051`) and a Gin HTTP server (default `:8080`) that serves the REST-ish `/api` endpoints plus `/runtime-config`; static assets are hosted separately (GitHub Pages at `https://pinguin.mprlab.com` in production, or the ghttp container on `4173` for local dev).
 - Docker Compose runs Pinguin alongside two support services:
   - **TAuth** (`:8081`) issues Google-backed sessions and signs `app_session` cookies.
   - **ghttp** (`:4173`) serves the static front-end when developing locally. Browsers always load the UI from this host; API traffic targets the Pinguin HTTP server.
@@ -11,7 +11,7 @@
 - The browser UI never talks directly to Pinguin for authentication. Instead, the `<mpr-header>` component (from `mpr-ui`) coordinates Google Identity Services (GIS) and TAuth:
   1. `web/js/tauth-config.js` defines `PINGUIN_TAUTH_CONFIG` with the TAuth base URL and Google OAuth Web Client ID. Environment-specific variants of this file are shipped with deployments.
   2. `web/js/tauth-config-apply.js` copies those values into `window.__PINGUIN_CONFIG__` and mirrors them onto every `<mpr-header>` instance (`site-id`, `base-url`, `login-path`, `logout-path`, `nonce-path`).
-  3. During bootstrap, `web/js/bootstrap.js` loads `/runtime-config` to learn the API origin and then injects `tauthBaseUrl/static/auth-client.js`, which initializes the GIS + TAuth handshake.
+  3. During bootstrap, `web/js/bootstrap.js` loads `/runtime-config` (from `pinguin-api.mprlab.com` when served from `.mprlab.com`) to learn the API origin and then injects `tauthBaseUrl/static/auth-client.js`, which initializes the GIS + TAuth handshake.
   4. Successful sign-in yields an HttpOnly `app_session` cookie issued by TAuth; Pinguin validates that cookie on every `/api` request.
 - The Go backend only needs the shared signing key (`TAUTH_SIGNING_KEY`), expected issuer, and optional cookie name override. There is **no** backend environment variable for the TAuth base URL or Google client ID.
 - Admin gating:
@@ -20,7 +20,7 @@
 
 ## HTTP Server Responsibilities
 - Routes defined in `internal/httpapi`:
-  - `GET /runtime-config` → `{ apiBaseUrl: "<scheme>://<host>/api" }`. The UI uses this to derive absolute API URLs when loaded from ghttp/other hosts.
+  - `GET /runtime-config` → `{ apiBaseUrl: "<scheme>://<host>/api" }`. The UI uses this to derive absolute API URLs when loaded from GitHub Pages or ghttp.
   - `GET /healthz` – unauthenticated health probe.
   - Authenticated `/api/notifications` list/reschedule/cancel handlers guarded by the session middleware.
 - Static assets do not come from the Gin stack anymore; ghttp serves `/web` while the Go HTTP server keeps `/api/**` and `/runtime-config` free of wildcard conflicts.
@@ -33,6 +33,7 @@
   - `index.html` (landing page) and `dashboard.html` both import `mpr-ui` CSS/JS via CDN, load the TAuth config scripts, and bootstrap via `/js/app.js`.
   - `/js/bootstrap.js` centralizes runtime config resolution, GIS script injection, and lazy loading of the main app module.
   - Alpine factories live under `/js/ui/` and `/js/core/`. Notifications table logic dispatches DOM-scoped events for toast updates and API refreshes.
+- GitHub Pages publishes `/web` via `.github/workflows/frontend-deploy.yml`, and `web/CNAME` maps the site to `pinguin.mprlab.com`.
 - `<mpr-header>` renders the Google Sign-In button inside its own shadow tree. Playwright tests assert that the header shows exactly one visible “Google” button so UI regressions are caught early (`tests/e2e/landing.spec.ts`, `tests/e2e/utils.ts::expectHeaderGoogleButton`).
 
 ## Testing Strategy
@@ -46,7 +47,7 @@
 
 ## Configuration Files
 - `.env.pinguin.example`: defines the environment variables referenced by `configs/config.yml` (database path, master encryption key, tenant bootstrap values, shared TAuth signing key, optional Twilio credentials).
-- `.env.tauth.example`: holds the Google OAuth client ID, signing key, cookie domain, and CORS allowlist (must include both the UI origin e.g. `http://localhost:4173` and `https://accounts.google.com` so GIS nonce exchanges succeed).
+- `.env.tauth.example`: holds the Google OAuth client ID, signing key, cookie domain, and CORS allowlist (must include the UI origin such as `http://localhost:4173` or `https://pinguin.mprlab.com`, plus `https://accounts.google.com`, so GIS nonce exchanges succeed).
 - Front-end TAuth details (base URL + Google client ID) live in `web/js/tauth-config.js`; deployments swap this file per environment rather than injecting env vars at runtime.
 
 ## Docker Compose Topology
