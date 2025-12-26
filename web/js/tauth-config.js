@@ -1,9 +1,15 @@
+// @ts-check
+
 const PRODUCTION_TAUTH_BASE_URL = 'https://tauth.mprlab.com';
 const LOCAL_TAUTH_BASE_URL = 'http://localhost:8081';
+const PRODUCTION_API_ORIGIN = 'https://pinguin-api.mprlab.com';
+const LOCAL_API_ORIGIN = 'http://localhost:8080';
 const currentHostname = window.location.hostname || '';
-const resolvedBaseUrl = currentHostname.endsWith('.mprlab.com')
-  ? PRODUCTION_TAUTH_BASE_URL
-  : LOCAL_TAUTH_BASE_URL;
+const isProductionHost = currentHostname.endsWith('.mprlab.com');
+const resolvedBaseUrl = isProductionHost ? PRODUCTION_TAUTH_BASE_URL : LOCAL_TAUTH_BASE_URL;
+const resolvedApiOrigin = isProductionHost ? PRODUCTION_API_ORIGIN : LOCAL_API_ORIGIN;
+const resolvedRuntimeConfigUrl = `${resolvedApiOrigin}/runtime-config`;
+const resolvedApiBaseUrl = `${resolvedApiOrigin}/api`;
 
 window.PINGUIN_TAUTH_CONFIG =
   window.PINGUIN_TAUTH_CONFIG ||
@@ -17,9 +23,9 @@ if (!window.__PINGUIN_CONFIG__) {
 }
 
 if (!window.__PINGUIN_CONFIG__.runtimeConfigUrl) {
-  window.__PINGUIN_CONFIG__.runtimeConfigUrl = 'http://localhost:8080/runtime-config';
+  window.__PINGUIN_CONFIG__.runtimeConfigUrl = resolvedRuntimeConfigUrl;
 }
 
 if (!window.__PINGUIN_CONFIG__.apiBaseUrl) {
-  window.__PINGUIN_CONFIG__.apiBaseUrl = 'http://localhost:8080/api';
+  window.__PINGUIN_CONFIG__.apiBaseUrl = resolvedApiBaseUrl;
 }
