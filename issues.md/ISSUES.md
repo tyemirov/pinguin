@@ -18,6 +18,7 @@ Read @AGENTS.md, @ARCHITECTURE.md, @README.md, @issues.md/POLICY.md, @issues.md/
 - [x] [PG-321] Remove `tests/clientcli` and make `cmd/client` the single CLI for manual usage + test harnesses; `--help` works without env, `--to` is supported, and unprefixed env vars are accepted.
 - [x] [PG-316] Replace string-based GORM query fragments with struct/clause expressions so SQL is generated entirely by GORM; `make ci` passes.
 - [x] [PG-324] Split frontend and backend hosting: deploy `/web` to GitHub Pages at `pinguin.mprlab.com`, point runtime config + API calls at `pinguin-api.mprlab.com`, and update docs/config for the new domains. Resolved with GitHub Pages workflow + CNAME, runtime config defaults, and doc updates; `make ci` passes.
+- [x] [PG-325] Align mprlab-gateway production orchestration with split Pinguin hosting: add `pinguin-api.mprlab.com` routing, update CORS/env config, and document the new DNS expectations. Resolved with Caddy routing, env/template updates, and gateway docs refresh; `make ci` passes.
 
 ## BugFixes (308–399)
 
