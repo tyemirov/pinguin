@@ -5,6 +5,10 @@
     const runtime = window.__PINGUIN_CONFIG__ || {};
     const base = runtime.tauthBaseUrl || fallback.baseUrl || '';
     const googleClientId = runtime.googleClientId || fallback.googleClientId || '';
+    const tenant =
+      runtime && typeof runtime.tenant === 'object' ? runtime.tenant : null;
+    const tenantId =
+      tenant && typeof tenant.id === 'string' ? tenant.id.trim() : '';
     if (!runtime.tauthBaseUrl && base) {
       runtime.tauthBaseUrl = base;
     }
@@ -14,6 +18,7 @@
     return {
       baseUrl: typeof base === 'string' ? base.replace(/\/$/, '') : '',
       googleClientId: typeof googleClientId === 'string' ? googleClientId.trim() : '',
+      tenantId,
     };
   }
 
@@ -22,32 +27,50 @@
     const headers = document.querySelectorAll('mpr-header');
     headers.forEach((header) => {
       if (config.googleClientId) {
-        header.setAttribute('site-id', config.googleClientId);
+        header.setAttribute('google-site-id', config.googleClientId);
+      } else {
+        header.removeAttribute('google-site-id');
       }
       if (config.baseUrl) {
-        header.setAttribute('base-url', config.baseUrl);
+        header.setAttribute('tauth-url', config.baseUrl);
+      } else {
+        header.removeAttribute('tauth-url');
       }
-      if (!header.getAttribute('login-path')) {
-        header.setAttribute('login-path', '/auth/google');
+      if (config.tenantId) {
+        header.setAttribute('tauth-tenant-id', config.tenantId);
+      } else {
+        header.removeAttribute('tauth-tenant-id');
       }
-      if (!header.getAttribute('logout-path')) {
-        header.setAttribute('logout-path', '/auth/logout');
+      if (!header.getAttribute('tauth-login-path')) {
+        header.setAttribute('tauth-login-path', '/auth/google');
       }
-      if (!header.getAttribute('nonce-path')) {
-        header.setAttribute('nonce-path', '/auth/nonce');
+      if (!header.getAttribute('tauth-logout-path')) {
+        header.setAttribute('tauth-logout-path', '/auth/logout');
+      }
+      if (!header.getAttribute('tauth-nonce-path')) {
+        header.setAttribute('tauth-nonce-path', '/auth/nonce');
       }
     });
     const loginButtons = document.querySelectorAll('mpr-login-button');
     loginButtons.forEach((button) => {
       if (config.googleClientId) {
         button.setAttribute('site-id', config.googleClientId);
+      } else {
+        button.removeAttribute('site-id');
       }
       if (config.baseUrl) {
-        button.setAttribute('base-url', config.baseUrl);
+        button.setAttribute('tauth-url', config.baseUrl);
+      } else {
+        button.removeAttribute('tauth-url');
       }
-      button.setAttribute('login-path', '/auth/google');
-      button.setAttribute('logout-path', '/auth/logout');
-      button.setAttribute('nonce-path', '/auth/nonce');
+      if (config.tenantId) {
+        button.setAttribute('tauth-tenant-id', config.tenantId);
+      } else {
+        button.removeAttribute('tauth-tenant-id');
+      }
+      button.setAttribute('tauth-login-path', '/auth/google');
+      button.setAttribute('tauth-logout-path', '/auth/logout');
+      button.setAttribute('tauth-nonce-path', '/auth/nonce');
     });
   }
 

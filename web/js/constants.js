@@ -40,7 +40,9 @@ const deriveGoogleClientId = () => {
   try {
     const host = document.querySelector("mpr-header");
     const siteId =
-      host && typeof host.getAttribute === "function" ? host.getAttribute("site-id") : "";
+      host && typeof host.getAttribute === "function"
+        ? host.getAttribute("google-site-id") || host.getAttribute("site-id")
+        : "";
     if (siteId && siteId.trim()) {
       return siteId.trim();
     }
