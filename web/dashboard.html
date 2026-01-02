@@ -11,12 +11,11 @@
     <link rel="stylesheet" href="/assets/css/base.css" />
     <script defer src="/js/tauth-config.js"></script>
     <script defer src="/js/tauth-config-apply.js"></script>
-    <script defer src="/js/tauth-helper.js"></script>
     <script
       id="mpr-ui-bundle"
-      defer
-      src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js"
+      data-mpr-ui-src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js"
     ></script>
+    <script defer src="/js/tauth-helper.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
   </head>
   <body
@@ -31,20 +30,17 @@
       brand-href="/"
       nav-links='[{ "label": "Docs", "href": "https://github.com/tyemirov/pinguin" }]'
       google-site-id="991677581607-r0dj8q6irjagipali0jpca7nfp8sfj9r.apps.googleusercontent.com"
-      tauth-login-path="/auth/google"
-      tauth-logout-path="/auth/logout"
-      tauth-nonce-path="/auth/nonce"
       settings-label="Account"
       settings="true"
     >
       <div slot="nav-right" class="profile-chip" data-testid="profile-chip">
         <template
-          x-if="$store.auth.profile && $store.auth.profile.user_avatar_url"
+          x-if="$store.auth.profile && ($store.auth.profile.avatar_url || $store.auth.profile.user_avatar_url)"
         >
-          <img :src="$store.auth.profile.user_avatar_url" alt="User avatar" />
+          <img :src="$store.auth.profile.avatar_url || $store.auth.profile.user_avatar_url" alt="User avatar" />
         </template>
         <span
-          x-text="$store.auth.profile?.user_display_name || $store.auth.profile?.user_email || 'Guest'"
+          x-text="$store.auth.profile?.display || $store.auth.profile?.user_display_name || $store.auth.profile?.user_email || 'Guest'"
         ></span>
       </div>
     </mpr-header>

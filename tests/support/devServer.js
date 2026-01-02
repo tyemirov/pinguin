@@ -13,6 +13,15 @@ const runtimeConfig = {
   tauthBaseUrl:
     process.env.PLAYWRIGHT_TAUTH_BASE_URL || `http://${HOST}:${PORT}`,
   apiBaseUrl: `http://${HOST}:${PORT}/api`,
+  tenant: {
+    id: 'tenant-devserver',
+    displayName: 'Dev Server Tenant',
+    identity: {
+      googleClientId: 'playwright-client',
+      tauthBaseUrl: process.env.PLAYWRIGHT_TAUTH_BASE_URL || `http://${HOST}:${PORT}`,
+      tauthTenantId: 'tauth-devserver',
+    },
+  },
 };
 
 const shouldLog = process.env.PLAYWRIGHT_DEVSERVER_LOGS === '1';

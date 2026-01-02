@@ -61,7 +61,8 @@
          "displayName": "Acme Corp",
          "identity": {
            "googleClientId": "xxx.apps.googleusercontent.com",
-           "tauthBaseUrl": "https://auth.acme.example"
+           "tauthBaseUrl": "https://auth.acme.example",
+           "tauthTenantId": "acme-auth"
          }
        }
      }

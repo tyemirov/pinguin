@@ -395,6 +395,7 @@ func TestRuntimeConfigEndpointReturnsValues(t *testing.T) {
 			Identity    struct {
 				GoogleClientID string `json:"googleClientId"`
 				TAuthBaseURL   string `json:"tauthBaseUrl"`
+				TAuthTenantID  string `json:"tauthTenantId"`
 			} `json:"identity"`
 		} `json:"tenant"`
 	}
@@ -513,6 +514,7 @@ func newTestTenantRepository(t *testing.T, admins []string) *tenant.Repository {
 				Identity: tenant.BootstrapIdentity{
 					GoogleClientID: "client-id",
 					TAuthBaseURL:   "https://tauth.example.com",
+					TAuthTenantID:  "tauth-test",
 				},
 				EmailProfile: tenant.BootstrapEmailProfile{
 					Host:        "smtp.example.com",
@@ -541,6 +543,7 @@ func newMultiTenantRepository(t *testing.T) *tenant.Repository {
 				Identity: tenant.BootstrapIdentity{
 					GoogleClientID: "alpha-google",
 					TAuthBaseURL:   "https://auth.alpha.localhost",
+					TAuthTenantID:  "tauth-alpha",
 				},
 				EmailProfile: tenant.BootstrapEmailProfile{
 					Host:        "smtp.alpha.localhost",
@@ -560,6 +563,7 @@ func newMultiTenantRepository(t *testing.T) *tenant.Repository {
 				Identity: tenant.BootstrapIdentity{
 					GoogleClientID: "bravo-google",
 					TAuthBaseURL:   "https://auth.bravo.localhost",
+					TAuthTenantID:  "tauth-bravo",
 				},
 				EmailProfile: tenant.BootstrapEmailProfile{
 					Host:        "smtp.bravo.localhost",

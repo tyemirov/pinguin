@@ -22,6 +22,7 @@ tenants:
     identity:
       googleClientId: ${TENANT_LOCAL_GOOGLE_CLIENT_ID}
       tauthBaseUrl: ${TENANT_LOCAL_TAUTH_BASE_URL}
+      tauthTenantId: ${TENANT_LOCAL_TAUTH_TENANT_ID}
     emailProfile:
       host: ${TENANT_LOCAL_SMTP_HOST}
       port: ${TENANT_LOCAL_SMTP_PORT}
@@ -43,4 +44,4 @@ web:
   tauth:
     signingKey: ${TAUTH_SIGNING_KEY}
     issuer: tauth
-    cookieName: app_session
+    cookieName: app_session_pinguin

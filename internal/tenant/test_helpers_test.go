@@ -65,6 +65,7 @@ func sampleBootstrapConfig() BootstrapConfig {
 				Identity: BootstrapIdentity{
 					GoogleClientID: "google-alpha",
 					TAuthBaseURL:   "https://tauth.alpha.example",
+					TAuthTenantID:  "tauth-alpha",
 				},
 				EmailProfile: BootstrapEmailProfile{
 					Host:        "smtp.alpha.example",

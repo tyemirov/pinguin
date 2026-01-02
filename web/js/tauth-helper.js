@@ -3,40 +3,99 @@
   if (typeof document === 'undefined') {
     return;
   }
-  const runtime = window.__PINGUIN_CONFIG__ || {};
-  const fallback = window.PINGUIN_TAUTH_CONFIG || {};
-  const base =
-    typeof runtime.tauthBaseUrl === 'string' && runtime.tauthBaseUrl.trim()
-      ? runtime.tauthBaseUrl
-      : fallback.baseUrl || '';
-  const baseUrl = typeof base === 'string' ? base.trim().replace(/\/+$/, '') : '';
-  const tenant =
-    runtime && typeof runtime.tenant === 'object' ? runtime.tenant : null;
-  const tenantId =
-    tenant && typeof tenant.id === 'string' ? tenant.id.trim() : '';
-  if (tenantId) {
+  if (document.querySelector('script[data-pinguin-auth-helper]')) {
+    return;
+  }
+  const bundlePlaceholder = document.querySelector('script[data-mpr-ui-src]');
+  const bundleUrl = bundlePlaceholder?.getAttribute('data-mpr-ui-src') || '';
+  if (bundlePlaceholder) {
+    bundlePlaceholder.remove();
+  }
+  const getRuntimeConfig = () => {
+    const runtime = window.__PINGUIN_CONFIG__;
+    return runtime && typeof runtime === 'object' ? runtime : null;
+  };
+
+  const requireString = (value, code) => {
+    const normalized = typeof value === 'string' ? value.trim() : '';
+    if (!normalized) {
+      throw new Error(code);
+    }
+    return normalized;
+  };
+
+  const resolveConfig = () => {
+    const runtime = getRuntimeConfig();
+    if (!runtime) {
+      throw new Error('tauth.config.runtime_missing');
+    }
+    const tenant =
+      runtime && typeof runtime.tenant === 'object' ? runtime.tenant : null;
+    if (!tenant) {
+      throw new Error('tauth.config.tenant_missing');
+    }
+    const identity =
+      tenant && typeof tenant.identity === 'object' ? tenant.identity : null;
+    if (!identity) {
+      throw new Error('tauth.config.identity_missing');
+    }
+    const tenantId = requireString(
+      identity.tauthTenantId,
+      'tauth.config.tenant_id_missing',
+    );
+    const baseUrl = requireString(runtime.tauthBaseUrl, 'tauth.config.base_url_missing').replace(/\/+$/, '');
+    return { baseUrl, tenantId };
+  };
+
+  const loadScript = (src, attrs = {}) =>
+    new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.defer = true;
+      script.async = false;
+      script.crossOrigin = 'anonymous';
+      Object.entries(attrs).forEach(([key, value]) => {
+        if (value) {
+          script.setAttribute(key, value);
+        }
+      });
+      script.addEventListener('load', () => resolve(true));
+      script.addEventListener('error', () => reject(new Error(`load_failed:${src}`)));
+      document.head.appendChild(script);
+    });
+
+  const setTenantId = (tenantId) => {
     window.__TAUTH_TENANT_ID__ = tenantId;
     if (document.documentElement) {
       document.documentElement.setAttribute('data-tauth-tenant-id', tenantId);
     }
-  }
-  if (!baseUrl) {
-    return;
-  }
-  if (typeof window.initAuthClient === 'function') {
-    return;
-  }
-  if (document.querySelector('script[data-pinguin-auth-helper]')) {
-    return;
-  }
-  const script = document.createElement('script');
-  script.defer = true;
-  script.async = false;
-  script.src = `${baseUrl}/tauth.js`;
-  script.crossOrigin = 'anonymous';
-  script.setAttribute('data-pinguin-auth-helper', 'true');
-  if (tenantId) {
-    script.setAttribute('data-tenant-id', tenantId);
-  }
-  document.head.appendChild(script);
+  };
+
+  let started = false;
+  const start = async () => {
+    if (started) {
+      return;
+    }
+    const { baseUrl, tenantId } = resolveConfig();
+    started = true;
+    setTenantId(tenantId);
+    await loadScript(`${baseUrl}/tauth.js`, {
+      'data-pinguin-auth-helper': 'true',
+      'data-tenant-id': tenantId,
+    });
+    if (bundleUrl) {
+      await loadScript(bundleUrl, { id: 'mpr-ui-bundle' });
+    }
+  };
+
+  const startWhenReady = () => {
+    const runtime = getRuntimeConfig();
+    if (!runtime || !runtime.tenant) {
+      return;
+    }
+    void start();
+  };
+
+  startWhenReady();
+  window.addEventListener('pinguin:config-updated', () => requestAnimationFrame(startWhenReady));
 })();

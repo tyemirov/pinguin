@@ -240,6 +240,7 @@ func validateConfig(cfg Config) error {
 			if cfg.WebInterfaceEnabled {
 				requireString(strings.TrimSpace(tenantSpec.Identity.GoogleClientID), tenantPrefix+".identity.googleClientId", &errors)
 				requireString(strings.TrimSpace(tenantSpec.Identity.TAuthBaseURL), tenantPrefix+".identity.tauthBaseUrl", &errors)
+				requireString(strings.TrimSpace(tenantSpec.Identity.TAuthTenantID), tenantPrefix+".identity.tauthTenantId", &errors)
 				if countNonEmptyAdminEmails(tenantSpec.Admins) == 0 {
 					errors = append(errors, fmt.Sprintf("missing %s.admins", tenantPrefix))
 				}

@@ -11,7 +11,7 @@
 - The browser UI never talks directly to Pinguin for authentication. Instead, the `<mpr-header>` component (from `mpr-ui`) coordinates Google Identity Services (GIS) and TAuth:
   1. `web/js/tauth-config.js` defines `PINGUIN_TAUTH_CONFIG` with the TAuth base URL and Google OAuth Web Client ID. Environment-specific variants of this file are shipped with deployments.
   2. `web/js/tauth-config-apply.js` copies those values into `window.__PINGUIN_CONFIG__`, sets the TAuth tenant id hints, and mirrors them onto every `<mpr-header>` instance (`google-site-id`, `tauth-url`, `tauth-login-path`, `tauth-logout-path`, `tauth-nonce-path`, `tauth-tenant-id`).
-  3. `web/js/tauth-helper.js` loads `tauthBaseUrl/tauth.js` ahead of the `mpr-ui` bundle so the helper is ready for auth flows; `web/js/bootstrap.js` still fetches `/runtime-config` (from `pinguin-api.mprlab.com` when served from `.mprlab.com`) and ensures the helper exists before booting the app.
+  3. `web/js/tauth-helper.js` loads `tauthBaseUrl/tauth.js` and then injects the `mpr-ui` bundle so the helper is ready before the header boots; `web/js/bootstrap.js` still fetches `/runtime-config` (from `pinguin-api.mprlab.com` when served from `.mprlab.com`) and then boots the app, which listens for `mpr-ui:auth:*` events.
   4. Successful sign-in yields an HttpOnly `app_session` cookie issued by TAuth; Pinguin validates that cookie on every `/api` request.
 - The Go backend only needs the shared signing key (`TAUTH_SIGNING_KEY`), expected issuer, and optional cookie name override. There is **no** backend environment variable for the TAuth base URL or Google client ID.
 - Admin gating:
@@ -30,7 +30,7 @@
 
 ## Front-End Structure
 - `/web` hosts an Alpine.js-based bundle that follows `AGENTS.md` guidelines:
-  - `index.html` (landing page) and `dashboard.html` both import `mpr-ui` CSS/JS via CDN, load the TAuth config + helper scripts, and bootstrap via `/js/app.js`.
+  - `index.html` (landing page) and `dashboard.html` both import `mpr-ui` CSS via CDN, load the TAuth config + helper scripts (which inject the `mpr-ui` bundle), and bootstrap via `/js/app.js`.
   - `/js/bootstrap.js` centralizes runtime config resolution, GIS script injection, and lazy loading of the main app module.
   - Alpine factories live under `/js/ui/` and `/js/core/`. Notifications table logic dispatches DOM-scoped events for toast updates and API refreshes.
 - GitHub Pages publishes `/web` via `.github/workflows/frontend-deploy.yml`, and `web/CNAME` maps the site to `pinguin.mprlab.com`.
