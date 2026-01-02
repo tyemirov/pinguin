@@ -24,6 +24,17 @@
 
   function applyAttributes() {
     const config = resolveConfig();
+    if (config.tenantId) {
+      window.__TAUTH_TENANT_ID__ = config.tenantId;
+      if (document.documentElement) {
+        document.documentElement.setAttribute('data-tauth-tenant-id', config.tenantId);
+      }
+    } else {
+      delete window.__TAUTH_TENANT_ID__;
+      if (document.documentElement) {
+        document.documentElement.removeAttribute('data-tauth-tenant-id');
+      }
+    }
     const headers = document.querySelectorAll('mpr-header');
     headers.forEach((header) => {
       if (config.googleClientId) {

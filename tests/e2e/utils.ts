@@ -177,7 +177,7 @@ export async function stubExternalAssets(page: Page) {
       body: googleStub,
     });
   });
-  await page.route('**/static/auth-client.js', (route) =>
+  await page.route('**/tauth.js', (route) =>
     route.fulfill({ contentType: 'text/javascript', body: authClientStub }),
   );
 }

@@ -234,8 +234,16 @@ function createSessionBridge(config) {
     setStatus('hydrating');
     try {
       await waitFor(() => typeof window.initAuthClient === 'function');
+      const tenantId =
+        config.tenant && typeof config.tenant.id === 'string'
+          ? config.tenant.id.trim()
+          : '';
+      if (tenantId && typeof window.setAuthTenantId === 'function') {
+        window.setAuthTenantId(tenantId);
+      }
       const result = await window.initAuthClient({
         baseUrl: config.tauthBaseUrl,
+        tenantId: tenantId || undefined,
         onAuthenticated(profile) {
           applyProfile(profile);
           invokeCallback('onAuthenticated', profile);
