@@ -9,7 +9,7 @@ import { createToastCenter } from './ui/toastCenter.js';
 window.Alpine = Alpine;
 
 const apiClient = createApiClient(RUNTIME_CONFIG.apiBaseUrl);
-const sessionBridge = createSessionBridge(RUNTIME_CONFIG);
+const sessionBridge = createSessionBridge();
 
 Alpine.store('auth', createAuthStore());
 
@@ -147,38 +147,85 @@ function createDashboardShell(bridge) {
 function bootstrapPage(controller) {
   const pageId = document.body.dataset.page || 'landing';
   let redirected = false;
-  controller
-    .hydrate({
-      onAuthenticated(profile) {
-        const store = Alpine.store('auth');
-        store.setProfile(profile);
-        if (pageId === 'landing' && !redirected) {
-          redirected = true;
-          window.location.assign(RUNTIME_CONFIG.dashboardUrl);
-        }
-      },
-      onUnauthenticated() {
-        const store = Alpine.store('auth');
-        store.clear();
-        if (pageId === 'dashboard' && !redirected) {
-          redirected = true;
-          window.location.assign(RUNTIME_CONFIG.landingUrl);
-        }
-      },
-    })
-    .catch((error) => {
-      console.error('auth bootstrap failed', error);
-    });
+  controller.start({
+    onAuthenticated(profile) {
+      const store = Alpine.store('auth');
+      store.setProfile(profile);
+      if (pageId === 'landing' && !redirected) {
+        redirected = true;
+        window.location.assign(RUNTIME_CONFIG.dashboardUrl);
+      }
+    },
+    onUnauthenticated() {
+      const store = Alpine.store('auth');
+      store.clear();
+      if (pageId === 'dashboard' && !redirected) {
+        redirected = true;
+        window.location.assign(RUNTIME_CONFIG.landingUrl);
+      }
+    },
+  });
 }
 
-function createSessionBridge(config) {
+function normalizeProfile(profile) {
+  if (!profile || typeof profile !== 'object') {
+    return null;
+  }
+  const display =
+    typeof profile.display === 'string' && profile.display.trim()
+      ? profile.display.trim()
+      : typeof profile.user_display_name === 'string'
+        ? profile.user_display_name.trim()
+        : '';
+  const avatarUrl =
+    typeof profile.avatar_url === 'string' && profile.avatar_url.trim()
+      ? profile.avatar_url.trim()
+      : typeof profile.user_avatar_url === 'string'
+        ? profile.user_avatar_url.trim()
+        : '';
+  return {
+    ...profile,
+    display,
+    avatar_url: avatarUrl,
+    user_display_name: display || profile.user_display_name || '',
+    user_avatar_url: avatarUrl || profile.user_avatar_url || '',
+  };
+}
+
+function readProfileFromHeader() {
+  if (typeof document === 'undefined') {
+    return null;
+  }
+  const header = document.querySelector('mpr-header');
+  if (!header || typeof header.getAttribute !== 'function') {
+    return null;
+  }
+  const email = header.getAttribute('data-user-email') || '';
+  const display = header.getAttribute('data-user-display') || '';
+  const avatarUrl = header.getAttribute('data-user-avatar-url') || '';
+  if (!email && !display && !avatarUrl) {
+    return null;
+  }
+  return normalizeProfile({
+    user_email: email,
+    display,
+    avatar_url: avatarUrl,
+  });
+}
+
+function createSessionBridge() {
   let lastCallbacks = { onAuthenticated: undefined, onUnauthenticated: undefined };
   const statusListeners = new Set();
+  let statusTimer = null;
+  let bootstrapFallbackTimer = null;
+  let bootstrapDeadline = 0;
+  let hasResolved = false;
 
   const applyProfile = (profile) => {
     const store = Alpine.store('auth');
-    if (profile) {
-      store.setProfile(profile);
+    const normalized = normalizeProfile(profile);
+    if (normalized) {
+      store.setProfile(normalized);
     } else {
       store.clear();
     }
@@ -195,6 +242,55 @@ function createSessionBridge(config) {
     statusListeners.forEach((listener) => listener(status));
   };
 
+  const clearStatusTimer = () => {
+    if (statusTimer) {
+      clearTimeout(statusTimer);
+      statusTimer = null;
+    }
+  };
+
+  const clearBootstrapFallback = () => {
+    if (bootstrapFallbackTimer) {
+      clearTimeout(bootstrapFallbackTimer);
+      bootstrapFallbackTimer = null;
+    }
+  };
+
+  const scheduleBootstrapFallback = () => {
+    clearBootstrapFallback();
+    bootstrapFallbackTimer = setTimeout(() => {
+      if (hasResolved) {
+        return;
+      }
+      const helperReady = typeof window.getCurrentUser === 'function';
+      const refreshedProfile = helperReady ? window.getCurrentUser() : null;
+      const headerProfile = readProfileFromHeader();
+      const resolvedProfile = refreshedProfile || headerProfile;
+      if (resolvedProfile) {
+        handleHeaderAuthenticated({ detail: { profile: resolvedProfile } });
+        return;
+      }
+      if (!helperReady && Date.now() < bootstrapDeadline) {
+        scheduleBootstrapFallback();
+        return;
+      }
+      if (helperReady && Date.now() < bootstrapDeadline) {
+        scheduleBootstrapFallback();
+        return;
+      }
+      handleHeaderUnauthenticated();
+    }, 100);
+  };
+
+  const startStatusTimer = () => {
+    clearStatusTimer();
+    statusTimer = setTimeout(() => {
+      if (!hasResolved) {
+        setStatus('error');
+      }
+    }, 12000);
+  };
+
   const sessionChannel =
     typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('auth') : null;
   if (sessionChannel) {
@@ -204,61 +300,64 @@ function createSessionBridge(config) {
         invokeCallback('onUnauthenticated');
       }
       if (event.data === 'refreshed') {
-        hydrate(lastCallbacks).catch((error) => {
-          console.error('hydrate after refresh failed', error);
-        });
+        if (typeof window.getCurrentUser === 'function') {
+          const refreshedProfile = window.getCurrentUser();
+          if (refreshedProfile) {
+            applyProfile(refreshedProfile);
+            invokeCallback('onAuthenticated', refreshedProfile);
+          }
+        }
       }
     });
   }
 
   const handleHeaderAuthenticated = (event) => {
     const profile = event?.detail?.profile || null;
-    setStatus('ready');
+    hasResolved = true;
+    clearStatusTimer();
+    clearBootstrapFallback();
     applyProfile(profile);
+    setStatus('ready');
     invokeCallback('onAuthenticated', profile);
   };
 
   const handleHeaderUnauthenticated = () => {
-    setStatus('ready');
+    hasResolved = true;
+    clearStatusTimer();
+    clearBootstrapFallback();
     applyProfile(null);
+    setStatus('ready');
     invokeCallback('onUnauthenticated');
   };
 
   if (typeof document !== 'undefined') {
     document.addEventListener('mpr-ui:auth:authenticated', handleHeaderAuthenticated);
     document.addEventListener('mpr-ui:auth:unauthenticated', handleHeaderUnauthenticated);
+    document.addEventListener('mpr-ui:auth:error', () => {
+      if (!hasResolved) {
+        setStatus('error');
+        clearStatusTimer();
+      }
+    });
   }
 
-  async function hydrate(callbacks = {}) {
+  function start(callbacks = {}) {
     lastCallbacks = callbacks;
     setStatus('hydrating');
-    try {
-      await waitFor(() => typeof window.initAuthClient === 'function');
-      const tenantId =
-        config.tenant && typeof config.tenant.id === 'string'
-          ? config.tenant.id.trim()
-          : '';
-      if (tenantId && typeof window.setAuthTenantId === 'function') {
-        window.setAuthTenantId(tenantId);
-      }
-      const result = await window.initAuthClient({
-        baseUrl: config.tauthBaseUrl,
-        tenantId: tenantId || undefined,
-        onAuthenticated(profile) {
-          applyProfile(profile);
-          invokeCallback('onAuthenticated', profile);
-        },
-        onUnauthenticated() {
-          applyProfile(null);
-          invokeCallback('onUnauthenticated');
-        },
-      });
-      setStatus('ready');
-      return result;
-    } catch (error) {
-      setStatus('error');
-      throw error;
+    startStatusTimer();
+    const seededProfile =
+      typeof window.getCurrentUser === 'function' ? window.getCurrentUser() : null;
+    if (seededProfile) {
+      handleHeaderAuthenticated({ detail: { profile: seededProfile } });
+      return;
     }
+    const initialProfile = readProfileFromHeader();
+    if (initialProfile) {
+      handleHeaderAuthenticated({ detail: { profile: initialProfile } });
+      return;
+    }
+    bootstrapDeadline = Date.now() + 1500;
+    scheduleBootstrapFallback();
   }
 
   async function logout() {
@@ -273,24 +372,5 @@ function createSessionBridge(config) {
     return () => statusListeners.delete(listener);
   }
 
-  return { hydrate, logout, onStatusChange };
-}
-
-function waitFor(checkFn, timeout = 12000) {
-  return new Promise((resolve, reject) => {
-    const start = Date.now();
-    const tick = () => {
-      const result = checkFn();
-      if (result) {
-        resolve(result);
-        return;
-      }
-      if (Date.now() - start > timeout) {
-        reject(new Error('timeout'));
-        return;
-      }
-      setTimeout(tick, 80);
-    };
-    tick();
-  });
+  return { start, logout, onStatusChange };
 }

@@ -1,3 +1,4 @@
+// @ts-check
 (function () {
   const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('auth') : null;
   function getSession() {
@@ -11,6 +12,20 @@
       channel.postMessage(eventName);
     }
   }
+  window.getCurrentUser = function getCurrentUser() {
+    const session = getSession();
+    if (!session.authenticated) {
+      return null;
+    }
+    return (
+      session.profile || {
+        user_email: 'playwright@example.com',
+        user_display_name: 'Playwright User',
+        user_avatar_url: '',
+      }
+    );
+  };
+  window.setAuthTenantId = function setAuthTenantId() {};
   window.initAuthClient = async function initAuthClient(options) {
     const session = getSession();
     const profile =

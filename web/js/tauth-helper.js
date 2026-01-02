@@ -20,23 +20,46 @@
       document.documentElement.setAttribute('data-tauth-tenant-id', tenantId);
     }
   }
-  if (!baseUrl) {
-    return;
-  }
-  if (typeof window.initAuthClient === 'function') {
-    return;
+  const bundlePlaceholder = document.querySelector('script[data-mpr-ui-src]');
+  const bundleUrl = bundlePlaceholder?.getAttribute('data-mpr-ui-src') || '';
+  if (bundlePlaceholder) {
+    bundlePlaceholder.remove();
   }
   if (document.querySelector('script[data-pinguin-auth-helper]')) {
     return;
   }
-  const script = document.createElement('script');
-  script.defer = true;
-  script.async = false;
-  script.src = `${baseUrl}/tauth.js`;
-  script.crossOrigin = 'anonymous';
-  script.setAttribute('data-pinguin-auth-helper', 'true');
-  if (tenantId) {
-    script.setAttribute('data-tenant-id', tenantId);
-  }
-  document.head.appendChild(script);
+
+  const loadScript = (src, attrs = {}) =>
+    new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.defer = true;
+      script.async = false;
+      script.crossOrigin = 'anonymous';
+      Object.entries(attrs).forEach(([key, value]) => {
+        if (value) {
+          script.setAttribute(key, value);
+        }
+      });
+      script.addEventListener('load', () => resolve(true));
+      script.addEventListener('error', () => reject(new Error(`load_failed:${src}`)));
+      document.head.appendChild(script);
+    });
+
+  const tauthPromise = baseUrl
+    ? loadScript(`${baseUrl}/tauth.js`, {
+        'data-pinguin-auth-helper': 'true',
+        'data-tenant-id': tenantId,
+      })
+    : Promise.resolve();
+
+  tauthPromise
+    .catch(() => null)
+    .then(() => {
+      if (bundleUrl) {
+        return loadScript(bundleUrl, { id: 'mpr-ui-bundle' });
+      }
+      return Promise.resolve();
+    })
+    .catch(() => {});
 })();

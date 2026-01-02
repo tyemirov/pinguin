@@ -5,7 +5,6 @@ const DEFAULT_CONFIG = Object.freeze({
   landingUrl: '/index.html',
   dashboardUrl: '/dashboard.html',
 });
-const AUTH_HELPER_SCRIPT_ATTRIBUTE = 'data-pinguin-auth-helper';
 const TAUTH_CONFIG = typeof window.PINGUIN_TAUTH_CONFIG === 'object' && window.PINGUIN_TAUTH_CONFIG
   ? window.PINGUIN_TAUTH_CONFIG
   : {};
@@ -85,38 +84,6 @@ function mergeConfig(base, overrides) {
   return { ...base, ...overrides };
 }
 
-function buildAuthHelperUrl(baseUrl) {
-  if (typeof baseUrl !== 'string') {
-    return '';
-  }
-  const trimmed = baseUrl.trim().replace(/\/+$/, '');
-  if (!trimmed) {
-    return '';
-  }
-  return `${trimmed}/tauth.js`;
-}
-
-function ensureAuthHelperScript(baseUrl) {
-  if (typeof document === 'undefined') {
-    return;
-  }
-  if (typeof window.initAuthClient === 'function') {
-    return;
-  }
-  if (document.querySelector(`script[${AUTH_HELPER_SCRIPT_ATTRIBUTE}]`)) {
-    return;
-  }
-  const authHelperUrl = buildAuthHelperUrl(baseUrl);
-  if (!authHelperUrl) {
-    return;
-  }
-  const script = document.createElement('script');
-  script.defer = true;
-  script.src = authHelperUrl;
-  script.crossOrigin = 'anonymous';
-  script.setAttribute(AUTH_HELPER_SCRIPT_ATTRIBUTE, 'true');
-  document.head.appendChild(script);
-}
 
 (async function bootstrap() {
   const preloaded = window.__PINGUIN_CONFIG__ || {};
@@ -165,13 +132,9 @@ function ensureAuthHelperScript(baseUrl) {
     tenant: effectiveConfig.tenant || null,
   };
   window.__PINGUIN_CONFIG__ = finalConfig;
-  ensureAuthHelperScript(finalConfig.tauthBaseUrl);
   window.dispatchEvent(new CustomEvent('pinguin:config-updated', { detail: finalConfig }));
   if (finalConfig.tenant) {
     applyTenantBranding(finalConfig.tenant);
-  }
-  if (typeof window.initAuthClient !== 'function') {
-    console.warn('tauth.js has not finished loading; authentication may be delayed.');
   }
   await import('./app.js');
 })();
