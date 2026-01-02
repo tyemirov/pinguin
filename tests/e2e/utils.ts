@@ -271,9 +271,14 @@ async function getHeaderButtonMetrics(page: Page) {
 export async function expectHeaderGoogleButton(page: Page) {
   const header = page.locator('mpr-header').first();
   await expect(header).toBeVisible();
-  const siteId = (await header.getAttribute('site-id')) || '';
-  expect(siteId.trim(), 'login button missing site-id').not.toBe('');
   await waitForHeaderLoginButton(page);
+  const siteId =
+    (await header.getAttribute('google-site-id')) ||
+    (await header.getAttribute('site-id')) ||
+    '';
+  expect(siteId.trim(), 'login button missing google-site-id').not.toBe('');
+  const tenantId = (await header.getAttribute('tauth-tenant-id')) || '';
+  expect(tenantId.trim(), 'login button missing tauth-tenant-id').not.toBe('');
   const metrics = await getHeaderButtonMetrics(page);
   if (!metrics) {
     throw new Error('Unable to locate Google button inside mpr-header');

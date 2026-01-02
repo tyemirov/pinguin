@@ -39,10 +39,10 @@ test.describe('Landing page auth flow', () => {
     if (normalizedRuntimeBase) {
       await page.waitForFunction((expected) => {
         const header = document.querySelector('mpr-header');
-        return header && header.getAttribute('base-url') === expected;
+        return header && header.getAttribute('tauth-url') === expected;
       }, normalizedRuntimeBase);
     }
-    const headerBase = (await page.locator('mpr-header').first().getAttribute('base-url')) || '';
+    const headerBase = (await page.locator('mpr-header').first().getAttribute('tauth-url')) || '';
     if (normalizedRuntimeBase) {
       expect(headerBase).toBe(normalizedRuntimeBase);
     } else {
@@ -83,7 +83,7 @@ test.describe('Landing page auth flow', () => {
       }, 'Bravo Labs');
       await expect(
         page.locator('mpr-header').first(),
-      ).toHaveAttribute('site-id', 'bravo-google-client');
+      ).toHaveAttribute('google-site-id', 'bravo-google-client');
       const id = await page.evaluate(() => (window as any).__PINGUIN_CONFIG__?.tenant?.id || '');
       expect(id).toBe('tenant-bravo');
     });

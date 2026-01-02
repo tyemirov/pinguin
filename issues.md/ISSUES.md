@@ -60,6 +60,7 @@ make: *** [test-frontend] Error 1
 - [x] [PG-317] Replace CGO-dependent SQLite driver with pure-Go GORM sqlite driver to support CGO-disabled builds; `make ci` passes.
 - [x] [PG-322] Ensure the web UI loads `auth-client.js` from the resolved TAuth base URL, defaulting to `https://tauth.mprlab.com` on hosted domains and removing hardcoded localhost script tags; `make ci` passes.
 - [x] [PG-323] Trigger the Docker image build on frontend-only merges by expanding Go Tests path filters to include web assets, Playwright config, and frontend dependencies; `make ci` passes.
+- [x] [PG-326] Align mpr-ui auth attributes with the latest Web Component API so the header renders the Google login button after dependency upgrades; `make ci` passes.
 
 ## Maintenance (400–499)
 
