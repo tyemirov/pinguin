@@ -143,6 +143,7 @@ func bootstrapTenantSpec(tenantID string, domainHosts []string) BootstrapTenant 
 		Identity: BootstrapIdentity{
 			GoogleClientID: "google-" + tenantID,
 			TAuthBaseURL:   "https://tauth." + tenantID + ".example",
+			TAuthTenantID:  "tauth-" + tenantID,
 		},
 		EmailProfile: BootstrapEmailProfile{
 			Host:        "smtp." + tenantID + ".example",

@@ -70,6 +70,7 @@ test.describe('Landing page auth flow', () => {
           identity: {
             googleClientId: 'bravo-google-client',
             tauthBaseUrl: 'https://auth.bravo.test',
+            tauthTenantId: 'tauth-bravo',
           },
         },
       });

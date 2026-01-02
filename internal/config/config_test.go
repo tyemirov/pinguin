@@ -37,6 +37,7 @@ tenants:
     identity:
       googleClientId: google-one
       tauthBaseUrl: https://auth.one.test
+      tauthTenantId: tauth-one
     emailProfile:
       host: smtp.one.test
       port: 587
@@ -95,6 +96,7 @@ web:
 					Identity: tenant.BootstrapIdentity{
 						GoogleClientID: "google-one",
 						TAuthBaseURL:   "https://auth.one.test",
+						TAuthTenantID:  "tauth-one",
 					},
 					EmailProfile: tenant.BootstrapEmailProfile{
 						Host:        "smtp.one.test",
@@ -151,6 +153,7 @@ tenants:
     identity:
       googleClientId: google-one
       tauthBaseUrl: https://auth.one.test
+      tauthTenantId: tauth-one
     emailProfile:
       host: smtp.one.test
       port: 587
@@ -206,6 +209,7 @@ tenants:
     identity:
       googleClientId: google-one
       tauthBaseUrl: https://auth.one.test
+      tauthTenantId: tauth-one
     emailProfile:
       host: smtp.one.test
       port: 587

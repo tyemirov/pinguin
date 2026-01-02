@@ -321,6 +321,7 @@ type runtimeConfigTenant struct {
 type runtimeConfigTenantIdentity struct {
 	GoogleClientID string `json:"googleClientId"`
 	TAuthBaseURL   string `json:"tauthBaseUrl"`
+	TAuthTenantID  string `json:"tauthTenantId"`
 }
 
 func serveRuntimeConfig() gin.HandlerFunc {
@@ -338,6 +339,7 @@ func serveRuntimeConfig() gin.HandlerFunc {
 				Identity: runtimeConfigTenantIdentity{
 					GoogleClientID: runtimeCfg.Identity.GoogleClientID,
 					TAuthBaseURL:   runtimeCfg.Identity.TAuthBaseURL,
+					TAuthTenantID:  runtimeCfg.Identity.TAuthTenantID,
 				},
 			},
 		}

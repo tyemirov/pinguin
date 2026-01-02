@@ -14,6 +14,7 @@ type TenantConfig = {
   identity?: {
     googleClientId?: string;
     tauthBaseUrl?: string;
+    tauthTenantId?: string;
   };
 };
 
@@ -30,6 +31,7 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
     identity: {
       googleClientId: 'playwright-client',
       tauthBaseUrl: baseUrl,
+      tauthTenantId: 'tauth-playwright',
     },
   };
   await page.addInitScript(

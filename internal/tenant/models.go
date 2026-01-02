@@ -48,6 +48,7 @@ type TenantIdentity struct {
 	TenantID       string `gorm:"primaryKey"`
 	GoogleClientID string
 	TAuthBaseURL   string
+	TAuthTenantID  string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }

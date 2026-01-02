@@ -103,6 +103,7 @@ tenants:
     identity:
       googleClientId: ${TENANT_LOCAL_GOOGLE_CLIENT_ID}
       tauthBaseUrl: ${TENANT_LOCAL_TAUTH_BASE_URL}
+      tauthTenantId: ${TENANT_LOCAL_TAUTH_TENANT_ID}
     emailProfile:
       host: ${TENANT_LOCAL_SMTP_HOST}
       port: ${TENANT_LOCAL_SMTP_PORT}
@@ -214,6 +215,7 @@ tenants:
     identity:
       googleClientId: google-client-id.apps.googleusercontent.com
       tauthBaseUrl: https://auth.acme.example
+      tauthTenantId: acme-auth
     emailProfile:
       host: smtp.acme.example
       port: 587
@@ -250,6 +252,7 @@ See `configs/config.yml` for a ready-to-use sample. `MASTER_ENCRYPTION_KEY` encr
   - Required when `web.enabled: true`.
   - `googleClientId` (string): Google OAuth client id for the tenant.
   - `tauthBaseUrl` (string): base URL for the tenant’s TAuth instance (used by the UI header).
+  - `tauthTenantId` (string): TAuth tenant identifier sent with `X-TAuth-Tenant`.
 - `tenants[].emailProfile` (required): tenant SMTP settings.
   - `host` (string), `port` (int), `username` (string), `password` (string), `fromAddress` (string).
   - `username` and `password` are encrypted with `MASTER_ENCRYPTION_KEY` before storing in SQLite.
