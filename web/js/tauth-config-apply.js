@@ -1,14 +1,40 @@
 // @ts-check
 (function applyTauthConfig() {
   const fallback = window.PINGUIN_TAUTH_CONFIG || {};
+  function resolveTenantId(runtime, fallbackConfig) {
+    const runtimeOverride =
+      typeof runtime.tauthTenantId === 'string' ? runtime.tauthTenantId.trim() : '';
+    if (runtimeOverride) {
+      return runtimeOverride;
+    }
+    const tenant =
+      runtime && typeof runtime.tenant === 'object' ? runtime.tenant : null;
+    const identity =
+      tenant && typeof tenant.identity === 'object' ? tenant.identity : null;
+    const identityOverride =
+      identity && typeof identity.tauthTenantId === 'string' ? identity.tauthTenantId.trim() : '';
+    if (identityOverride) {
+      return identityOverride;
+    }
+    const fallbackOverride =
+      typeof fallbackConfig.tenantId === 'string' ? fallbackConfig.tenantId.trim() : '';
+    if (fallbackOverride) {
+      return fallbackOverride;
+    }
+    const origin =
+      typeof window.location === 'object' && typeof window.location.origin === 'string'
+        ? window.location.origin.trim()
+        : '';
+    if (origin && origin !== 'null') {
+      return origin;
+    }
+    return tenant && typeof tenant.id === 'string' ? tenant.id.trim() : '';
+  }
   function resolveConfig() {
     const runtime = window.__PINGUIN_CONFIG__ || {};
     const base = runtime.tauthBaseUrl || fallback.baseUrl || '';
     const googleClientId = runtime.googleClientId || fallback.googleClientId || '';
-    const tenant =
-      runtime && typeof runtime.tenant === 'object' ? runtime.tenant : null;
-    const tenantId =
-      tenant && typeof tenant.id === 'string' ? tenant.id.trim() : '';
+    const tenantId = resolveTenantId(runtime, fallback);
     if (!runtime.tauthBaseUrl && base) {
       runtime.tauthBaseUrl = base;
     }

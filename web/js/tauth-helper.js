@@ -10,10 +10,42 @@
       ? runtime.tauthBaseUrl
       : fallback.baseUrl || '';
   const baseUrl = typeof base === 'string' ? base.trim().replace(/\/+$/, '') : '';
-  const tenant =
-    runtime && typeof runtime.tenant === 'object' ? runtime.tenant : null;
-  const tenantId =
-    tenant && typeof tenant.id === 'string' ? tenant.id.trim() : '';
+  const resolveTenantId = (runtimeConfig, fallbackConfig) => {
+    const runtimeOverride =
+      typeof runtimeConfig.tauthTenantId === 'string'
+        ? runtimeConfig.tauthTenantId.trim()
+        : '';
+    if (runtimeOverride) {
+      return runtimeOverride;
+    }
+    const tenant =
+      runtimeConfig && typeof runtimeConfig.tenant === 'object'
+        ? runtimeConfig.tenant
+        : null;
+    const identity =
+      tenant && typeof tenant.identity === 'object' ? tenant.identity : null;
+    const identityOverride =
+      identity && typeof identity.tauthTenantId === 'string'
+        ? identity.tauthTenantId.trim()
+        : '';
+    if (identityOverride) {
+      return identityOverride;
+    }
+    const fallbackOverride =
+      typeof fallbackConfig.tenantId === 'string' ? fallbackConfig.tenantId.trim() : '';
+    if (fallbackOverride) {
+      return fallbackOverride;
+    }
+    const origin =
+      typeof window.location === 'object' && typeof window.location.origin === 'string'
+        ? window.location.origin.trim()
+        : '';
+    if (origin && origin !== 'null') {
+      return origin;
+    }
+    return tenant && typeof tenant.id === 'string' ? tenant.id.trim() : '';
+  };
+  const tenantId = resolveTenantId(runtime, fallback);
   if (tenantId) {
     window.__TAUTH_TENANT_ID__ = tenantId;
     if (document.documentElement) {
