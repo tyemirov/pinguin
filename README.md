@@ -524,7 +524,7 @@ All endpoints emit structured JSON errors (`401` for auth failures, `400` for in
 
 - Static assets live under `/web` and are served by GitHub Pages at `https://pinguin.mprlab.com` in production, with ghttp on `http://localhost:4173` for local development (the Go HTTP server keeps `/api`/`/runtime-config` in this arrangement). `index.html` provides the marketing + Google Sign-In landing experience, and `dashboard.html` renders the authenticated notifications table.
 - The UI follows AGENTS.md: Alpine components per section, mpr-ui header/footer, DOM-scoped events (`notifications:*`) for toasts + table refreshes, and all strings centralized in `js/constants.js`.
-- `js/app.js` bootstraps Alpine, hydrates the TAuth session (`auth-client.js`), and guards routes. Components interact with the new `/api/notifications` endpoints via the shared `apiClient`.
+- `js/app.js` bootstraps Alpine, hydrates the TAuth session (`tauth.js`), and guards routes. Components interact with the new `/api/notifications` endpoints via the shared `apiClient`.
 - Authentication state is broadcast across tabs via TAuth’s `BroadcastChannel("auth")`, so signing out in one tab logs out the others automatically.
 - Handy for local testing: start the Compose stack so ghttp (`http://localhost:4173`) serves the `/web` bundle while the Go server handles `/api`/`/runtime-config`, then visit the ghttp host to exercise the landing and dashboard flows without needing an external client.
 

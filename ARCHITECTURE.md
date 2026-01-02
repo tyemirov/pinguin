@@ -11,7 +11,7 @@
 - The browser UI never talks directly to Pinguin for authentication. Instead, the `<mpr-header>` component (from `mpr-ui`) coordinates Google Identity Services (GIS) and TAuth:
   1. `web/js/tauth-config.js` defines `PINGUIN_TAUTH_CONFIG` with the TAuth base URL and Google OAuth Web Client ID. Environment-specific variants of this file are shipped with deployments.
   2. `web/js/tauth-config-apply.js` copies those values into `window.__PINGUIN_CONFIG__` and mirrors them onto every `<mpr-header>` instance (`site-id`, `base-url`, `login-path`, `logout-path`, `nonce-path`).
-  3. During bootstrap, `web/js/bootstrap.js` loads `/runtime-config` (from `pinguin-api.mprlab.com` when served from `.mprlab.com`) to learn the API origin and then injects `tauthBaseUrl/static/auth-client.js`, which initializes the GIS + TAuth handshake.
+  3. During bootstrap, `web/js/bootstrap.js` loads `/runtime-config` (from `pinguin-api.mprlab.com` when served from `.mprlab.com`) to learn the API origin and then injects `tauthBaseUrl/tauth.js`, which initializes the GIS + TAuth handshake.
   4. Successful sign-in yields an HttpOnly `app_session` cookie issued by TAuth; Pinguin validates that cookie on every `/api` request.
 - The Go backend only needs the shared signing key (`TAUTH_SIGNING_KEY`), expected issuer, and optional cookie name override. There is **no** backend environment variable for the TAuth base URL or Google client ID.
 - Admin gating:

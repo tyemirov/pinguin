@@ -8,7 +8,7 @@ const crypto = require('crypto');
 const HOST = '127.0.0.1';
 const PORT = process.env.PLAYWRIGHT_PORT ? Number(process.env.PLAYWRIGHT_PORT) : 4174;
 const WEB_ROOT = path.resolve(__dirname, '../../web');
-const AUTH_CLIENT_PATH = path.resolve(__dirname, './stubs/auth-client.js');
+const TAUTH_HELPER_PATH = path.resolve(__dirname, './stubs/auth-client.js');
 const runtimeConfig = {
   tauthBaseUrl:
     process.env.PLAYWRIGHT_TAUTH_BASE_URL || `http://${HOST}:${PORT}`,
@@ -238,8 +238,8 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (url.pathname === '/static/auth-client.js') {
-    serveStatic(AUTH_CLIENT_PATH, res);
+  if (url.pathname === '/tauth.js') {
+    serveStatic(TAUTH_HELPER_PATH, res);
     return;
   }
 
