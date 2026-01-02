@@ -67,6 +67,7 @@ make: *** [test-frontend] Error 1
 - [x] [PS-400] Replace the placeholders with real values. generate the new keys when needed. Look up in .emv files under tools/{tauth} or in ../loopaware or .env to find the actual production values. Verified configs/.env.pinguin + configs/.env.tauth already contain production values from tools/TAuth/.env and `.env`.
 - [x] [PS-401] Declare `/web` as a dedicated Docker volume for the UI bundle and document the mount expectations; `make ci` passes.
 - [x] [PS-402] Switch docker-compose to use a named `pinguin-web` volume (bound to `./web`) for `/web` mounts; `make ci` passes.
+- [x] [PS-403] Use `alpine:latest` as the runtime base image in `Dockerfile`; `make ci` passes.
 
 • Placeholders in .env.pinguin
 
