@@ -27,7 +27,12 @@
   if (!window[AUTH_LISTENER_KEY]) {
     window[AUTH_LISTENER_KEY] = true;
     document.addEventListener('mpr-ui:auth:authenticated', (event) => {
-      recordAuthState('authenticated', event?.detail?.profile || null);
+      const profile = event?.detail?.profile || null;
+      // Only cache authenticated state if we have a valid profile object
+      // to prevent redirect loops when profile is missing
+      if (profile && typeof profile === 'object') {
+        recordAuthState('authenticated', profile);
+      }
     });
     document.addEventListener('mpr-ui:auth:unauthenticated', () => {
       recordAuthState('unauthenticated', null);
