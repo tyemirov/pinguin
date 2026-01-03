@@ -8,6 +8,7 @@ Read @AGENTS.md, @ARCHITECTURE.md, @README.md, @issues.md/POLICY.md, @issues.md/
 
 ## Improvements (202–299)
 
+- [x] [PG-331] Add a declarative mpr-ui init object for TAuth DSL wiring and route runtime config through `MPRUI.init`; `make ci` passes.
 - [x] [PG-329] Move TAuth config to server scope, add global view default for web UI, and gate access by allowed user list. Resolved with server.tauth config, global/tenant view scope handling, and updated UI/auth flows; `make ci` passes.
 - [x] [PG-329] Follow-up: remove Pinguin allowed-user gating; TAuth now owns user access control via `configs/config.tauth.yml`.
 - [x] [PG-329] Follow-up: remove tenant admin lists; any valid TAuth session is treated as admin for the web UI.

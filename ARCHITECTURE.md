@@ -10,8 +10,9 @@
 ## Authentication & Session Flow
 - The browser UI never talks directly to Pinguin for authentication. Instead, the `<mpr-header>` component (from `mpr-ui`) coordinates Google Identity Services (GIS) and TAuth:
   1. `web/js/bootstrap.js` fetches `/runtime-config` (from `pinguin-api.mprlab.com` when served from `.mprlab.com`) to learn the TAuth base URL, tenant id, and Google client id supplied by `server.tauth`.
-  2. `web/js/tauth-config-apply.js` mirrors those runtime values onto every `<mpr-header>` / `<mpr-login-button>` (`google-site-id`, `tauth-url`, `tauth-login-path`, `tauth-logout-path`, `tauth-nonce-path`, `tauth-tenant-id`).
-  3. `web/js/tauth-helper.js` loads `tauthBaseUrl/tauth.js` and then injects the `mpr-ui` bundle so the helper is ready before the header boots; the app listens for `mpr-ui:auth:*` events.
+  2. `web/js/mpr-ui-init.js` registers `MPRUI.init`, which applies a declarative init object onto the DSL attributes for `<mpr-header>` / `<mpr-login-button>`.
+  3. `web/js/tauth-config-apply.js` builds the init object from runtime config (auth endpoints + tenant) and passes it to `MPRUI.init`; it also stamps `data-tauth-tenant-id` for the helper.
+  4. `web/js/tauth-helper.js` loads `tauthBaseUrl/tauth.js` and then injects the `mpr-ui` bundle so the helper is ready before the header boots; the app listens for `mpr-ui:auth:*` events.
   4. Successful sign-in yields an HttpOnly `app_session` cookie issued by TAuth; Pinguin validates that cookie on every `/api` request.
 - The Go backend needs the shared signing key (`TAUTH_SIGNING_KEY`) and optional cookie name override. TAuth issuer is handled inside the session validator; Pinguin should not configure it directly.
 - Pinguin assumes any valid TAuth session is an admin; configure access control in `configs/config.tauth.yml`.

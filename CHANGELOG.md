@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Added a declarative `MPRUI.init` configuration bridge so runtime TAuth settings are applied as mpr-ui DSL attributes (PG-331).
 - Enforced the `/api/me` session endpoint in the tauth.js bootstrap and validated required helper globals before mpr-ui loads (PG-330).
 - Migrated TAuth config to `server.tauth`, removed Pinguin-side access allowlists and tenant admins, defaulted the UI to global view, and aligned the UI/auth tests with `tauth.js` + mpr-ui DSL (PG-329).
 - Simplified the TAuth client integration to load `tauth.js` before `mpr-ui` and rely on declarative auth events for UI state (PG-328).
