@@ -26,6 +26,7 @@ Read @AGENTS.md, @ARCHITECTURE.md, @README.md, @issues.md/POLICY.md, @issues.md/
 
 ## BugFixes (308–399)
 
+- [x] [PG-332] Stop the auth bootstrap loop by waiting for tauth.js/mpr-ui readiness, removing fallback redirects, and expanding TAuth CORS allowlist defaults for the UI + GIS origins; `make ci` passes.
 - [x] [PG-330] Update the TAuth client wiring to use `/api/me` and hard-fail when the helper is missing so the auth bootstrap matches current TAuth endpoints; `make ci` passes.
 - [x] [PG-310] Fix critical performance bottleneck in `internal/tenant/repository.go`: implement caching for tenant runtime config to avoid ~5 DB queries + decryption per request. Added in-memory host→tenant and runtime caches with defensive cloning plus tests; Go lint/test pass, frontend CI still blocked by Playwright issue PG-312.
 - [x] [PG-311] Fix potential null reference/crash in `ResolveByID` if `tenantID` is empty or invalid (missing edge validation). Added tenant ID validation + sentinel error; tests added. Go checks pass; `make ci` still blocked at Playwright (PG-312).

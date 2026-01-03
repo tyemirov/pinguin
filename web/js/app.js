@@ -147,24 +147,52 @@ function createDashboardShell(bridge) {
 function bootstrapPage(controller) {
   const pageId = document.body.dataset.page || 'landing';
   let redirected = false;
-  controller.start({
-    onAuthenticated(profile) {
-      const store = Alpine.store('auth');
-      store.setProfile(profile);
-      if (pageId === 'landing' && !redirected) {
-        redirected = true;
-        window.location.assign(RUNTIME_CONFIG.dashboardUrl);
-      }
-    },
-    onUnauthenticated() {
-      const store = Alpine.store('auth');
-      store.clear();
-      if (pageId === 'dashboard' && !redirected) {
-        redirected = true;
-        window.location.assign(RUNTIME_CONFIG.landingUrl);
-      }
-    },
-  });
+  let started = false;
+
+  const handleAuthenticated = (profile) => {
+    const store = Alpine.store('auth');
+    store.setProfile(profile);
+    if (pageId === 'landing' && !redirected) {
+      redirected = true;
+      window.location.assign(RUNTIME_CONFIG.dashboardUrl);
+    }
+  };
+
+  const handleUnauthenticated = () => {
+    const store = Alpine.store('auth');
+    store.clear();
+    if (pageId === 'dashboard' && !redirected) {
+      redirected = true;
+      window.location.assign(RUNTIME_CONFIG.landingUrl);
+    }
+  };
+
+  const startSession = () => {
+    if (started) {
+      return;
+    }
+    started = true;
+    controller.start({
+      onAuthenticated: handleAuthenticated,
+      onUnauthenticated: handleUnauthenticated,
+    });
+  };
+
+  const handleAuthError = () => {
+    if (started) {
+      return;
+    }
+    started = true;
+    controller.fail();
+    handleUnauthenticated();
+  };
+
+  if (window.__PINGUIN_AUTH_READY__) {
+    startSession();
+    return;
+  }
+  window.addEventListener('pinguin:auth-ready', startSession, { once: true });
+  window.addEventListener('pinguin:auth-error', handleAuthError, { once: true });
 }
 
 function normalizeProfile(profile) {
@@ -192,33 +220,10 @@ function normalizeProfile(profile) {
   };
 }
 
-function readProfileFromHeader() {
-  if (typeof document === 'undefined') {
-    return null;
-  }
-  const header = document.querySelector('mpr-header');
-  if (!header || typeof header.getAttribute !== 'function') {
-    return null;
-  }
-  const email = header.getAttribute('data-user-email') || '';
-  const display = header.getAttribute('data-user-display') || '';
-  const avatarUrl = header.getAttribute('data-user-avatar-url') || '';
-  if (!email && !display && !avatarUrl) {
-    return null;
-  }
-  return normalizeProfile({
-    user_email: email,
-    display,
-    avatar_url: avatarUrl,
-  });
-}
-
 function createSessionBridge() {
   let lastCallbacks = { onAuthenticated: undefined, onUnauthenticated: undefined };
   const statusListeners = new Set();
   let statusTimer = null;
-  let bootstrapFallbackTimer = null;
-  let bootstrapDeadline = 0;
   let hasResolved = false;
 
   const applyProfile = (profile) => {
@@ -247,39 +252,6 @@ function createSessionBridge() {
       clearTimeout(statusTimer);
       statusTimer = null;
     }
-  };
-
-  const clearBootstrapFallback = () => {
-    if (bootstrapFallbackTimer) {
-      clearTimeout(bootstrapFallbackTimer);
-      bootstrapFallbackTimer = null;
-    }
-  };
-
-  const scheduleBootstrapFallback = () => {
-    clearBootstrapFallback();
-    bootstrapFallbackTimer = setTimeout(() => {
-      if (hasResolved) {
-        return;
-      }
-      const helperReady = typeof window.getCurrentUser === 'function';
-      const refreshedProfile = helperReady ? window.getCurrentUser() : null;
-      const headerProfile = readProfileFromHeader();
-      const resolvedProfile = refreshedProfile || headerProfile;
-      if (resolvedProfile) {
-        handleHeaderAuthenticated({ detail: { profile: resolvedProfile } });
-        return;
-      }
-      if (!helperReady && Date.now() < bootstrapDeadline) {
-        scheduleBootstrapFallback();
-        return;
-      }
-      if (helperReady && Date.now() < bootstrapDeadline) {
-        scheduleBootstrapFallback();
-        return;
-      }
-      handleHeaderUnauthenticated();
-    }, 100);
   };
 
   const startStatusTimer = () => {
@@ -315,7 +287,6 @@ function createSessionBridge() {
     const profile = event?.detail?.profile || null;
     hasResolved = true;
     clearStatusTimer();
-    clearBootstrapFallback();
     applyProfile(profile);
     setStatus('ready');
     invokeCallback('onAuthenticated', profile);
@@ -324,7 +295,6 @@ function createSessionBridge() {
   const handleHeaderUnauthenticated = () => {
     hasResolved = true;
     clearStatusTimer();
-    clearBootstrapFallback();
     applyProfile(null);
     setStatus('ready');
     invokeCallback('onUnauthenticated');
@@ -343,21 +313,26 @@ function createSessionBridge() {
 
   function start(callbacks = {}) {
     lastCallbacks = callbacks;
+    if (hasResolved) {
+      const store = Alpine.store('auth');
+      if (store && store.profile) {
+        invokeCallback('onAuthenticated', store.profile);
+      } else {
+        invokeCallback('onUnauthenticated');
+      }
+      setStatus('ready');
+      return;
+    }
     setStatus('hydrating');
     startStatusTimer();
-    const seededProfile =
-      typeof window.getCurrentUser === 'function' ? window.getCurrentUser() : null;
+    if (typeof window.getCurrentUser !== 'function') {
+      fail();
+      throw new Error('auth.helper.missing');
+    }
+    const seededProfile = window.getCurrentUser();
     if (seededProfile) {
       handleHeaderAuthenticated({ detail: { profile: seededProfile } });
-      return;
     }
-    const initialProfile = readProfileFromHeader();
-    if (initialProfile) {
-      handleHeaderAuthenticated({ detail: { profile: initialProfile } });
-      return;
-    }
-    bootstrapDeadline = Date.now() + 1500;
-    scheduleBootstrapFallback();
   }
 
   async function logout() {
@@ -367,10 +342,17 @@ function createSessionBridge() {
     applyProfile(null);
   }
 
+  function fail() {
+    hasResolved = true;
+    clearStatusTimer();
+    applyProfile(null);
+    setStatus('error');
+  }
+
   function onStatusChange(listener) {
     statusListeners.add(listener);
     return () => statusListeners.delete(listener);
   }
 
-  return { start, logout, onStatusChange };
+  return { start, logout, onStatusChange, fail };
 }

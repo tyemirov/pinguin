@@ -65,7 +65,7 @@
   window.getAuthEndpoints = function getAuthEndpoints() {
     const baseUrl = authState.baseUrl ? authState.baseUrl.replace(/\/$/, '') : '';
     const origin = baseUrl || (window.location && window.location.origin) || '';
-    const meEndpoint = authState.meEndpoint || '/api/me';
+    const meEndpoint = authState.meEndpoint || '/me';
     return {
       baseUrl: origin,
       nonce: `${origin}/auth/nonce`,
