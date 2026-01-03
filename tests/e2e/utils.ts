@@ -11,9 +11,6 @@ const authClientStub = fs.readFileSync(
 type TenantConfig = {
   id: string;
   displayName: string;
-  identity?: {
-    viewScope?: string;
-  };
 };
 
 type ConfigureRuntimeOptions = {
@@ -31,9 +28,6 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
   const tenant: TenantConfig = options.tenant || {
     id: 'tenant-playwright',
     displayName: 'Playwright Tenant',
-    identity: {
-      viewScope: 'global',
-    },
   };
   const tauthConfig = {
     baseUrl,

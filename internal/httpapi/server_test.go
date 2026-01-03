@@ -103,14 +103,13 @@ func TestListNotificationsReturnsData(t *testing.T) {
 	}
 }
 
-func TestListNotificationsGlobalScopeUsesAll(t *testing.T) {
+func TestListNotificationsUsesAll(t *testing.T) {
 	t.Helper()
 
-	repo := newTestTenantRepositoryWithViewScope(t, []string{"user@example.com"}, "global")
 	stubSvc := &stubNotificationService{
 		listResponse: []model.NotificationResponse{},
 	}
-	server := newTestHTTPServerWithRepo(t, stubSvc, &stubValidator{}, repo, []string{"user@example.com"})
+	server := newTestHTTPServer(t, stubSvc, &stubValidator{}, []string{"user@example.com"})
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/notifications", nil)
@@ -141,9 +140,6 @@ func TestListNotificationsScopesByTenantHost(t *testing.T) {
 	if alphaRec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for alpha, got %d", alphaRec.Code)
 	}
-	if stubSvc.lastTenantID != "tenant-alpha" {
-		t.Fatalf("expected tenant-alpha, got %s", stubSvc.lastTenantID)
-	}
 
 	bravoReq := httptest.NewRequest(http.MethodGet, "/api/notifications", nil)
 	bravoReq.Host = "bravo.localhost"
@@ -151,9 +147,6 @@ func TestListNotificationsScopesByTenantHost(t *testing.T) {
 	server.httpServer.Handler.ServeHTTP(bravoRec, bravoReq)
 	if bravoRec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for bravo, got %d", bravoRec.Code)
-	}
-	if stubSvc.lastTenantID != "tenant-bravo" {
-		t.Fatalf("expected tenant-bravo, got %s", stubSvc.lastTenantID)
 	}
 
 	unknownReq := httptest.NewRequest(http.MethodGet, "/api/notifications", nil)
@@ -242,17 +235,15 @@ func TestRescheduleNotificationRejectsPastSchedule(t *testing.T) {
 	}
 }
 
-func TestRescheduleNotificationRequiresTenantIDForGlobalView(t *testing.T) {
+func TestRescheduleNotificationRequiresTenantID(t *testing.T) {
 	t.Helper()
 
-	repo := newTestTenantRepositoryWithViewScope(t, []string{"user@example.com"}, "global")
 	stubSvc := &stubNotificationService{}
-	server := newTestHTTPServerWithRepo(t, stubSvc, &stubValidator{}, repo, []string{"user@example.com"})
+	server := newTestHTTPServer(t, stubSvc, &stubValidator{}, []string{"user@example.com"})
 
 	requestBody := fmt.Sprintf(`{"scheduled_time":"%s"}`, time.Now().UTC().Add(5*time.Minute).Format(time.RFC3339))
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPatch, "/api/notifications/notif-1/schedule", bytes.NewBufferString(requestBody))
-	request.Host = "example.com"
 	request.Header.Set("Content-Type", "application/json")
 
 	server.httpServer.Handler.ServeHTTP(recorder, request)
@@ -264,10 +255,10 @@ func TestRescheduleNotificationRequiresTenantIDForGlobalView(t *testing.T) {
 	}
 }
 
-func TestRescheduleNotificationUsesTenantIDForGlobalView(t *testing.T) {
+func TestRescheduleNotificationUsesTenantID(t *testing.T) {
 	t.Helper()
 
-	repo := newMultiTenantRepositoryWithViewScope(t, "global")
+	repo := newMultiTenantRepository(t)
 	stubSvc := &stubNotificationService{}
 	server := newTestHTTPServerWithRepo(t, stubSvc, &stubValidator{}, repo, []string{"user@example.com"})
 
@@ -286,27 +277,6 @@ func TestRescheduleNotificationUsesTenantIDForGlobalView(t *testing.T) {
 	}
 }
 
-func TestRescheduleNotificationRejectsTenantIDForTenantView(t *testing.T) {
-	t.Helper()
-
-	stubSvc := &stubNotificationService{}
-	server := newTestHTTPServer(t, stubSvc, &stubValidator{}, []string{"user@example.com"})
-
-	requestBody := fmt.Sprintf(`{"scheduled_time":"%s"}`, time.Now().UTC().Add(5*time.Minute).Format(time.RFC3339))
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPatch, "/api/notifications/notif-1/schedule?tenant_id=tenant-test", bytes.NewBufferString(requestBody))
-	request.Host = "example.com"
-	request.Header.Set("Content-Type", "application/json")
-
-	server.httpServer.Handler.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", recorder.Code)
-	}
-	if stubSvc.rescheduleCalls != 0 {
-		t.Fatalf("expected no service invocation, got %d", stubSvc.rescheduleCalls)
-	}
-}
-
 func TestRescheduleNotificationMapsMissingIDErrorToBadRequest(t *testing.T) {
 	t.Helper()
 
@@ -315,7 +285,7 @@ func TestRescheduleNotificationMapsMissingIDErrorToBadRequest(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	requestBody := `{"scheduled_time":"2024-01-02T15:04:05Z"}`
-	request := httptest.NewRequest(http.MethodPatch, "/api/notifications/notif-1/schedule", bytes.NewBufferString(requestBody))
+	request := httptest.NewRequest(http.MethodPatch, "/api/notifications/notif-1/schedule?tenant_id=tenant-test", bytes.NewBufferString(requestBody))
 	request.Header.Set("Content-Type", "application/json")
 
 	server.httpServer.Handler.ServeHTTP(recorder, request)
@@ -363,7 +333,7 @@ func TestCancelNotificationErrorMapping(t *testing.T) {
 			server := newTestHTTPServer(t, stubSvc, &stubValidator{}, []string{"user@example.com"})
 
 			recorder := httptest.NewRecorder()
-			request := httptest.NewRequest(http.MethodPost, "/api/notifications/notif-1/cancel", nil)
+			request := httptest.NewRequest(http.MethodPost, "/api/notifications/notif-1/cancel?tenant_id=tenant-test", nil)
 
 			server.httpServer.Handler.ServeHTTP(recorder, request)
 			if recorder.Code != testCase.expectedCode {
@@ -490,9 +460,6 @@ func TestRuntimeConfigEndpointReturnsValues(t *testing.T) {
 		Tenant         struct {
 			ID          string `json:"id"`
 			DisplayName string `json:"displayName"`
-			Identity    struct {
-				ViewScope string `json:"viewScope"`
-			} `json:"identity"`
 		} `json:"tenant"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
@@ -501,7 +468,7 @@ func TestRuntimeConfigEndpointReturnsValues(t *testing.T) {
 	if payload.APIBaseURL != "http://example.com/api" {
 		t.Fatalf("unexpected api base %q", payload.APIBaseURL)
 	}
-	if payload.Tenant.ID != "tenant-test" || payload.Tenant.Identity.ViewScope == "" {
+	if payload.Tenant.ID != "tenant-test" {
 		t.Fatalf("unexpected tenant payload %+v", payload.Tenant)
 	}
 	if payload.TAuthBaseURL != "https://tauth.example.com" || payload.TAuthTenantID != "tauth-test" || payload.GoogleClientID != "client-id" {
@@ -612,11 +579,6 @@ func newTestHTTPServerWithRepo(t *testing.T, svc service.NotificationService, va
 
 func newTestTenantRepository(t *testing.T, admins []string) *tenant.Repository {
 	t.Helper()
-	return newTestTenantRepositoryWithViewScope(t, admins, "tenant")
-}
-
-func newTestTenantRepositoryWithViewScope(t *testing.T, admins []string, viewScope string) *tenant.Repository {
-	t.Helper()
 	members := tenant.BootstrapAdmins(admins)
 	cfg := tenant.BootstrapConfig{
 		Tenants: []tenant.BootstrapTenant{
@@ -627,7 +589,6 @@ func newTestTenantRepositoryWithViewScope(t *testing.T, admins []string, viewSco
 				Enabled:      ptrBool(true),
 				Domains:      []string{"example.com"},
 				Admins:       members,
-				Identity:     tenant.BootstrapIdentity{ViewScope: viewScope},
 				EmailProfile: tenant.BootstrapEmailProfile{
 					Host:        "smtp.example.com",
 					Port:        587,
@@ -643,11 +604,6 @@ func newTestTenantRepositoryWithViewScope(t *testing.T, admins []string, viewSco
 
 func newMultiTenantRepository(t *testing.T) *tenant.Repository {
 	t.Helper()
-	return newMultiTenantRepositoryWithViewScope(t, "tenant")
-}
-
-func newMultiTenantRepositoryWithViewScope(t *testing.T, viewScope string) *tenant.Repository {
-	t.Helper()
 	cfg := tenant.BootstrapConfig{
 		Tenants: []tenant.BootstrapTenant{
 			{
@@ -657,7 +613,6 @@ func newMultiTenantRepositoryWithViewScope(t *testing.T, viewScope string) *tena
 				Enabled:      ptrBool(true),
 				Domains:      []string{"alpha.localhost"},
 				Admins:       tenant.BootstrapAdmins{"admin-alpha@example.com", "user@example.com"},
-				Identity:     tenant.BootstrapIdentity{ViewScope: viewScope},
 				EmailProfile: tenant.BootstrapEmailProfile{
 					Host:        "smtp.alpha.localhost",
 					Port:        587,
@@ -673,7 +628,6 @@ func newMultiTenantRepositoryWithViewScope(t *testing.T, viewScope string) *tena
 				Enabled:      ptrBool(true),
 				Domains:      []string{"bravo.localhost"},
 				Admins:       tenant.BootstrapAdmins{"admin-bravo@example.com", "user@example.com"},
-				Identity:     tenant.BootstrapIdentity{ViewScope: viewScope},
 				EmailProfile: tenant.BootstrapEmailProfile{
 					Host:        "smtp.bravo.localhost",
 					Port:        2525,
@@ -701,7 +655,6 @@ func bootstrapTenantRepository(t *testing.T, cfg tenant.BootstrapConfig) *tenant
 		&tenant.Tenant{},
 		&tenant.TenantDomain{},
 		&tenant.TenantMember{},
-		&tenant.TenantIdentity{},
 		&tenant.EmailProfile{},
 		&tenant.SMSProfile{},
 	); err != nil {

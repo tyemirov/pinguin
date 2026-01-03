@@ -26,7 +26,6 @@ type BootstrapTenant struct {
 	Status       string                `json:"status" yaml:"status"`
 	Domains      []string              `json:"domains" yaml:"domains"`
 	Admins       BootstrapAdmins       `json:"admins" yaml:"admins"`
-	Identity     BootstrapIdentity     `json:"identity" yaml:"identity"`
 	EmailProfile BootstrapEmailProfile `json:"emailProfile" yaml:"emailProfile"`
 	SMSProfile   *BootstrapSMSProfile  `json:"smsProfile" yaml:"smsProfile"`
 }
@@ -87,11 +86,6 @@ func (admins *BootstrapAdmins) UnmarshalYAML(value *yaml.Node) error {
 	default:
 		return fmt.Errorf("tenant bootstrap: admins must be a sequence")
 	}
-}
-
-// BootstrapIdentity holds UI scope metadata.
-type BootstrapIdentity struct {
-	ViewScope string `json:"viewScope" yaml:"viewScope"`
 }
 
 // BootstrapEmailProfile defines SMTP credentials.
@@ -202,22 +196,6 @@ func upsertTenant(ctx context.Context, tx *gorm.DB, keeper *SecretKeeper, spec B
 		if existingDomain.TenantID != spec.ID || existingDomain.IsDefault != domain.IsDefault {
 			return fmt.Errorf("tenant bootstrap: %s: domain %s already assigned to tenant %s", bootstrapDomainConflictCode, host, existingDomain.TenantID)
 		}
-	}
-
-	viewScope := DefaultViewScope()
-	if strings.TrimSpace(spec.Identity.ViewScope) != "" {
-		parsedScope, err := ParseViewScope(spec.Identity.ViewScope)
-		if err != nil {
-			return fmt.Errorf("tenant bootstrap: identity.viewScope: %w", err)
-		}
-		viewScope = parsedScope
-	}
-	identity := TenantIdentity{
-		TenantID:  spec.ID,
-		ViewScope: viewScope,
-	}
-	if err := tx.Clauses(clauseOnConflictUpdateAll()).Create(&identity).Error; err != nil {
-		return fmt.Errorf("tenant bootstrap: identity: %w", err)
 	}
 
 	if err := tx.Where(&TenantMember{TenantID: spec.ID}).Delete(&TenantMember{}).Error; err != nil {

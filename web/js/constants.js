@@ -53,17 +53,6 @@ const normalizeOptionalString = (value) => {
   return value.trim();
 };
 
-const resolveViewScope = (value) => {
-  const normalized = normalizeOptionalString(value).toLowerCase();
-  if (!normalized) {
-    return "global";
-  }
-  if (normalized === "global" || normalized === "tenant") {
-    return normalized;
-  }
-  return "";
-};
-
 export const RUNTIME_CONFIG = Object.freeze({
   apiBaseUrl: normalizeUrl(rawConfig.apiBaseUrl) || deriveDefaultApiBaseUrl(),
   tauthBaseUrl: normalizeUrl(rawConfig.tauthBaseUrl),
@@ -72,7 +61,6 @@ export const RUNTIME_CONFIG = Object.freeze({
   landingUrl: String(rawConfig.landingUrl || "/index.html"),
   dashboardUrl: String(rawConfig.dashboardUrl || "/dashboard.html"),
   tenant: tenantConfig,
-  viewScope: resolveViewScope(tenantConfig?.identity?.viewScope),
 });
 
 const tenantDisplayName =

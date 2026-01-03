@@ -140,9 +140,6 @@ func bootstrapTenantSpec(tenantID string, domainHosts []string) BootstrapTenant 
 		Enabled:      ptrBool(true),
 		Domains:      domainHosts,
 		Admins:       BootstrapAdmins{"admin@" + tenantID + ".example"},
-		Identity: BootstrapIdentity{
-			ViewScope: "tenant",
-		},
 		EmailProfile: BootstrapEmailProfile{
 			Host:        "smtp." + tenantID + ".example",
 			Port:        587,

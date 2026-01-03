@@ -297,11 +297,6 @@ func validateConfig(cfg Config) error {
 			if countNonEmptyStrings(tenantSpec.Domains) == 0 {
 				errors = append(errors, fmt.Sprintf("missing %s.domains", tenantPrefix))
 			}
-			if cfg.WebInterfaceEnabled && strings.TrimSpace(tenantSpec.Identity.ViewScope) != "" {
-				if _, err := tenant.ParseViewScope(tenantSpec.Identity.ViewScope); err != nil {
-					errors = append(errors, fmt.Sprintf("invalid %s.identity.viewScope", tenantPrefix))
-				}
-			}
 		}
 	}
 

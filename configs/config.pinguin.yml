@@ -26,8 +26,6 @@ tenants:
     admins:
       - ${TENANT_LOCAL_ADMIN_EMAIL_1}
       - ${TENANT_LOCAL_ADMIN_EMAIL_2}
-    identity:
-      viewScope: global
     emailProfile:
       host: ${TENANT_LOCAL_SMTP_HOST}
       port: ${TENANT_LOCAL_SMTP_PORT}

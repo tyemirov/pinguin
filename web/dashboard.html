@@ -93,7 +93,7 @@
             <thead>
               <tr>
                 <th>Notification</th>
-                <th x-show="viewScope === 'global'">Tenant</th>
+                <th>Tenant</th>
                 <th>Status</th>
                 <th>Recipient</th>
                 <th>Scheduled for</th>
@@ -128,7 +128,7 @@
                       <span x-text="formatTimestamp(item.createdAt)"></span>
                     </p>
                   </td>
-                  <td x-show="viewScope === 'global'" x-text="item.tenantId || '—'"></td>
+                  <td x-text="item.tenantId || '—'"></td>
                   <td>
                     <span
                       class="status-badge"

@@ -108,8 +108,6 @@ tenants:
     admins:
       - ${TENANT_LOCAL_ADMIN_EMAIL_1}
       - ${TENANT_LOCAL_ADMIN_EMAIL_2}
-    identity:
-      viewScope: global
     emailProfile:
       host: ${TENANT_LOCAL_SMTP_HOST}
       port: ${TENANT_LOCAL_SMTP_PORT}
@@ -222,8 +220,6 @@ tenants:
     admins:
       - admin@acme.example
       - viewer@acme.example
-    identity:
-      viewScope: tenant
     emailProfile:
       host: smtp.acme.example
       port: 587
@@ -255,9 +251,6 @@ See `configs/config.yml` for a ready-to-use sample. `MASTER_ENCRYPTION_KEY` encr
   - Matching is case-insensitive; ports are ignored (e.g. `localhost:8080` matches `localhost`).
 - `tenants[].admins` (list of emails):
   - Optional list of tenant-specific admins (reserved for future per-tenant roles).
-- `tenants[].identity`:
-  - Optional identity metadata for UI scoping.
-  - `viewScope` (string): `global` (default) or `tenant`. `global` lets the web UI list notifications across all tenants on the host.
 - `tenants[].emailProfile` (required): tenant SMTP settings.
   - `host` (string), `port` (int), `username` (string), `password` (string), `fromAddress` (string).
   - `username` and `password` are encrypted with `MASTER_ENCRYPTION_KEY` before storing in SQLite.

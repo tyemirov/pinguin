@@ -41,8 +41,6 @@ tenants:
     enabled: true
     domains: [one.test]
     admins: [admin@one.test]
-    identity:
-      viewScope: tenant
     emailProfile:
       host: smtp.one.test
       port: 587
@@ -98,9 +96,6 @@ web:
 					Enabled:      ptrBool(true),
 					Domains:      []string{"one.test"},
 					Admins:       tenant.BootstrapAdmins{"admin@one.test"},
-					Identity: tenant.BootstrapIdentity{
-						ViewScope: "tenant",
-					},
 					EmailProfile: tenant.BootstrapEmailProfile{
 						Host:        "smtp.one.test",
 						Port:        587,
@@ -162,8 +157,6 @@ tenants:
     enabled: true
     domains: [one.test]
     admins: [admin@one.test]
-    identity:
-      viewScope: tenant
     emailProfile:
       host: smtp.one.test
       port: 587
@@ -225,8 +218,6 @@ tenants:
     enabled: true
     domains: [one.test]
     admins: [admin@one.test]
-    identity:
-      viewScope: tenant
     emailProfile:
       host: smtp.one.test
       port: 587

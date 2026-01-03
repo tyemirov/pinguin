@@ -26,8 +26,7 @@ const (
 )
 
 var (
-	errTenantIDRequired   = errors.New("tenant_id is required")
-	errTenantIDNotAllowed = errors.New("tenant_id is not allowed")
+	errTenantIDRequired = errors.New("tenant_id is required")
 )
 
 // SessionValidator exposes the subset of validator behaviour we depend on.
@@ -219,8 +218,7 @@ func newNotificationHandler(svc service.NotificationService, repo *tenant.Reposi
 }
 
 func (handler *notificationHandler) listNotifications(contextGin *gin.Context) {
-	runtimeCfg, ok := tenant.RuntimeFromContext(contextGin.Request.Context())
-	if !ok {
+	if _, ok := tenant.RuntimeFromContext(contextGin.Request.Context()); !ok {
 		contextGin.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
@@ -228,19 +226,7 @@ func (handler *notificationHandler) listNotifications(contextGin *gin.Context) {
 	filter := model.NotificationListFilters{
 		Statuses: parseStatusFilters(statusFilters),
 	}
-	var (
-		responses []model.NotificationResponse
-		err       error
-	)
-	switch runtimeCfg.Identity.ViewScope {
-	case tenant.ViewScopeGlobal:
-		responses, err = handler.service.ListNotificationsAll(contextGin.Request.Context(), filter)
-	case tenant.ViewScopeTenant:
-		responses, err = handler.service.ListNotifications(contextGin.Request.Context(), filter)
-	default:
-		contextGin.AbortWithStatus(http.StatusInternalServerError)
-		return
-	}
+	responses, err := handler.service.ListNotificationsAll(contextGin.Request.Context(), filter)
 	if err != nil {
 		handler.writeError(contextGin, err)
 		return
@@ -322,34 +308,23 @@ func (handler *notificationHandler) writeError(contextGin *gin.Context, err erro
 }
 
 func (handler *notificationHandler) resolveNotificationContext(contextGin *gin.Context) (context.Context, error) {
-	runtimeCfg, ok := tenant.RuntimeFromContext(contextGin.Request.Context())
-	if !ok {
+	if _, ok := tenant.RuntimeFromContext(contextGin.Request.Context()); !ok {
 		return nil, errors.New("tenant runtime missing")
 	}
-	switch runtimeCfg.Identity.ViewScope {
-	case tenant.ViewScopeGlobal:
-		tenantID := strings.TrimSpace(contextGin.Query(tenantIDQueryParam))
-		if tenantID == "" {
-			return nil, errTenantIDRequired
-		}
-		targetCfg, err := handler.repository.ResolveByID(contextGin.Request.Context(), tenantID)
-		if err != nil {
-			return nil, err
-		}
-		return tenant.WithRuntime(contextGin.Request.Context(), targetCfg), nil
-	case tenant.ViewScopeTenant:
-		if strings.TrimSpace(contextGin.Query(tenantIDQueryParam)) != "" {
-			return nil, errTenantIDNotAllowed
-		}
-		return contextGin.Request.Context(), nil
-	default:
-		return nil, tenant.ErrInvalidViewScope
+	tenantID := strings.TrimSpace(contextGin.Query(tenantIDQueryParam))
+	if tenantID == "" {
+		return nil, errTenantIDRequired
 	}
+	targetCfg, err := handler.repository.ResolveByID(contextGin.Request.Context(), tenantID)
+	if err != nil {
+		return nil, err
+	}
+	return tenant.WithRuntime(contextGin.Request.Context(), targetCfg), nil
 }
 
 func (handler *notificationHandler) writeTenantResolutionError(contextGin *gin.Context, err error) {
 	switch {
-	case errors.Is(err, errTenantIDRequired), errors.Is(err, errTenantIDNotAllowed):
+	case errors.Is(err, errTenantIDRequired):
 		contextGin.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	case errors.Is(err, tenant.ErrInvalidTenantID), errors.Is(err, gorm.ErrRecordNotFound):
 		contextGin.JSON(http.StatusNotFound, gin.H{"error": "tenant not found"})
@@ -403,13 +378,8 @@ type runtimeConfigPayload struct {
 }
 
 type runtimeConfigTenant struct {
-	ID          string                      `json:"id"`
-	DisplayName string                      `json:"displayName"`
-	Identity    runtimeConfigTenantIdentity `json:"identity"`
-}
-
-type runtimeConfigTenantIdentity struct {
-	ViewScope string `json:"viewScope"`
+	ID          string `json:"id"`
+	DisplayName string `json:"displayName"`
 }
 
 type runtimeConfigTAuth struct {
@@ -433,9 +403,6 @@ func serveRuntimeConfig(tauthConfig runtimeConfigTAuth) gin.HandlerFunc {
 			Tenant: runtimeConfigTenant{
 				ID:          runtimeCfg.Tenant.ID,
 				DisplayName: runtimeCfg.Tenant.DisplayName,
-				Identity: runtimeConfigTenantIdentity{
-					ViewScope: string(runtimeCfg.Identity.ViewScope),
-				},
 			},
 		}
 		contextGin.JSON(http.StatusOK, payload)

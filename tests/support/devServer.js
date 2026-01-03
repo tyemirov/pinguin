@@ -18,9 +18,6 @@ const runtimeConfig = {
   tenant: {
     id: 'tenant-devserver',
     displayName: 'Dev Server Tenant',
-    identity: {
-      viewScope: 'global',
-    },
   },
 };
 
@@ -184,9 +181,8 @@ const server = http.createServer(async (req, res) => {
 
   const scheduleMatch = url.pathname.match(/^\/api\/notifications\/([^/]+)\/schedule$/);
   if (scheduleMatch && req.method === 'PATCH') {
-    const requiresTenantId = runtimeConfig?.tenant?.identity?.viewScope === 'global';
     const tenantId = url.searchParams.get('tenant_id') || '';
-    if (requiresTenantId && !tenantId.trim()) {
+    if (!tenantId.trim()) {
       sendJson(res, 400, { error: 'tenant_id is required' });
       return;
     }
@@ -209,9 +205,8 @@ const server = http.createServer(async (req, res) => {
 
   const cancelMatch = url.pathname.match(/^\/api\/notifications\/([^/]+)\/cancel$/);
   if (cancelMatch && req.method === 'POST') {
-    const requiresTenantId = runtimeConfig?.tenant?.identity?.viewScope === 'global';
     const tenantId = url.searchParams.get('tenant_id') || '';
-    if (requiresTenantId && !tenantId.trim()) {
+    if (!tenantId.trim()) {
       sendJson(res, 400, { error: 'tenant_id is required' });
       return;
     }

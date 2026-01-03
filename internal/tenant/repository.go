@@ -12,11 +12,10 @@ import (
 
 // RuntimeConfig aggregates tenant data required at runtime.
 type RuntimeConfig struct {
-	Tenant   Tenant
-	Identity TenantIdentity
-	Admins   map[string]struct{}
-	Email    EmailCredentials
-	SMS      *SMSCredentials
+	Tenant Tenant
+	Admins map[string]struct{}
+	Email  EmailCredentials
+	SMS    *SMSCredentials
 }
 
 // EmailCredentials exposes decrypted SMTP settings.
@@ -126,17 +125,6 @@ func (repo *Repository) loadRuntimeConfig(ctx context.Context, tenantID string) 
 	if err := repo.db.WithContext(ctx).Where(&Tenant{ID: tenantID}).First(&tenantModel).Error; err != nil {
 		return RuntimeConfig{}, fmt.Errorf("tenant runtime: tenant %s: %w", tenantID, err)
 	}
-	var identity TenantIdentity
-	if err := repo.db.WithContext(ctx).Where(&TenantIdentity{TenantID: tenantID}).First(&identity).Error; err != nil {
-		return RuntimeConfig{}, fmt.Errorf("tenant runtime: identity: %w", err)
-	}
-	switch identity.ViewScope {
-	case "":
-		identity.ViewScope = DefaultViewScope()
-	case ViewScopeGlobal, ViewScopeTenant:
-	default:
-		return RuntimeConfig{}, fmt.Errorf("tenant runtime: identity view scope: %w", ErrInvalidViewScope)
-	}
 	var emailProfile EmailProfile
 	if err := repo.db.WithContext(ctx).
 		Where(&EmailProfile{TenantID: tenantID, IsDefault: true}).
@@ -181,9 +169,8 @@ func (repo *Repository) loadRuntimeConfig(ctx context.Context, tenantID string) 
 		return RuntimeConfig{}, err
 	}
 	return RuntimeConfig{
-		Tenant:   tenantModel,
-		Identity: identity,
-		Admins:   admins,
+		Tenant: tenantModel,
+		Admins: admins,
 		Email: EmailCredentials{
 			Host:        emailProfile.Host,
 			Port:        emailProfile.Port,

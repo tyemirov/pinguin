@@ -271,7 +271,6 @@ func newTestTenantRepository(testHandle *testing.T, tenantID string) *tenant.Rep
 		&tenant.Tenant{},
 		&tenant.TenantDomain{},
 		&tenant.TenantMember{},
-		&tenant.TenantIdentity{},
 		&tenant.EmailProfile{},
 		&tenant.SMSProfile{},
 	); err != nil {
@@ -290,9 +289,6 @@ func newTestTenantRepository(testHandle *testing.T, tenantID string) *tenant.Rep
 				Enabled:     &enabled,
 				Domains:     []string{"test.localhost"},
 				Admins:      tenant.BootstrapAdmins{"admin@example.com"},
-				Identity: tenant.BootstrapIdentity{
-					ViewScope: "tenant",
-				},
 				EmailProfile: tenant.BootstrapEmailProfile{
 					Host:        "smtp.localhost",
 					Port:        587,

@@ -239,9 +239,6 @@ func TestRepositoryListActiveTenants(t *testing.T) {
 		Enabled:      ptrBool(false),
 		Domains:      []string{"beta.example"},
 		Admins:       BootstrapAdmins{},
-		Identity: BootstrapIdentity{
-			ViewScope: "tenant",
-		},
 		EmailProfile: BootstrapEmailProfile{
 			Host:        "smtp.beta.example",
 			Port:        25,

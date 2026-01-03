@@ -67,9 +67,6 @@ test.describe('Landing page auth flow', () => {
         tenant: {
           id: 'tenant-bravo',
           displayName: 'Bravo Labs',
-          identity: {
-            viewScope: 'global',
-          },
         },
         tauth: {
           baseUrl: 'https://auth.bravo.test',

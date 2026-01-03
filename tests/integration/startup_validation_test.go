@@ -43,8 +43,6 @@ tenants:
     enabled: false
     domains: [disabled.localhost]
     admins: [admin@example.com]
-    identity:
-      viewScope: tenant
     emailProfile:
       host: smtp.example.com
       port: 587

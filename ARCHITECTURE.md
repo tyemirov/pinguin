@@ -20,7 +20,7 @@
 
 ## HTTP Server Responsibilities
 - Routes defined in `internal/httpapi`:
-- `GET /runtime-config` → `{ apiBaseUrl, tauthBaseUrl, tauthTenantId, googleClientId, tenant.identity.viewScope }`. The UI uses this to derive absolute API URLs and configure `mpr-ui` auth attributes.
+- `GET /runtime-config` → `{ apiBaseUrl, tauthBaseUrl, tauthTenantId, googleClientId, tenant }`. The UI uses this to derive absolute API URLs and configure `mpr-ui` auth attributes.
   - `GET /healthz` – unauthenticated health probe.
   - Authenticated `/api/notifications` list/reschedule/cancel handlers guarded by the session middleware.
 - Static assets do not come from the Gin stack anymore; ghttp serves `/web` while the Go HTTP server keeps `/api/**` and `/runtime-config` free of wildcard conflicts.
