@@ -323,6 +323,18 @@ function createSessionBridge() {
       setStatus('ready');
       return;
     }
+    const cachedState =
+      typeof window !== 'undefined' ? window.__PINGUIN_AUTH_STATE__ : null;
+    if (cachedState && typeof cachedState === 'object') {
+      if (cachedState.status === 'authenticated') {
+        handleHeaderAuthenticated({ detail: { profile: cachedState.profile } });
+        return;
+      }
+      if (cachedState.status === 'unauthenticated') {
+        handleHeaderUnauthenticated();
+        return;
+      }
+    }
     setStatus('hydrating');
     startStatusTimer();
     if (typeof window.getCurrentUser !== 'function') {
