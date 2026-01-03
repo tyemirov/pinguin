@@ -264,6 +264,28 @@ func ListNotifications(ctx context.Context, db *gorm.DB, tenantID string, filter
 	return notifications, nil
 }
 
+func ListNotificationsAll(ctx context.Context, db *gorm.DB, filters NotificationListFilters) ([]Notification, error) {
+	query := db.WithContext(ctx).
+		Preload("Attachments").
+		Order(clause.OrderByColumn{Column: clause.Column{Name: notificationCreatedAtColumn}, Desc: true})
+	statuses := filters.NormalizedStatuses()
+	if len(statuses) > 0 {
+		statusValues := make([]interface{}, 0, len(statuses))
+		for _, status := range statuses {
+			statusValues = append(statusValues, status)
+			if status == StatusErrored {
+				statusValues = append(statusValues, StatusFailed)
+			}
+		}
+		query = query.Where(clause.IN{Column: clause.Column{Name: notificationStatusColumn}, Values: statusValues})
+	}
+	var notifications []Notification
+	if err := query.Find(&notifications).Error; err != nil {
+		return nil, err
+	}
+	return notifications, nil
+}
+
 func MustGetNotificationByID(ctx context.Context, db *gorm.DB, tenantID string, notificationID string) (*Notification, error) {
 	n, err := GetNotificationByID(ctx, db, tenantID, notificationID)
 	if err != nil {

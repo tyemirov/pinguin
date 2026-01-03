@@ -270,8 +270,6 @@ func newTestTenantRepository(testHandle *testing.T, tenantID string) *tenant.Rep
 	if err := database.AutoMigrate(
 		&tenant.Tenant{},
 		&tenant.TenantDomain{},
-		&tenant.TenantMember{},
-		&tenant.TenantIdentity{},
 		&tenant.EmailProfile{},
 		&tenant.SMSProfile{},
 	); err != nil {
@@ -289,11 +287,6 @@ func newTestTenantRepository(testHandle *testing.T, tenantID string) *tenant.Rep
 				DisplayName: "Test Tenant",
 				Enabled:     &enabled,
 				Domains:     []string{"test.localhost"},
-				Admins:      tenant.BootstrapAdmins{"admin@example.com"},
-				Identity: tenant.BootstrapIdentity{
-					GoogleClientID: "client-id",
-					TAuthBaseURL:   "http://tauth.localhost",
-				},
 				EmailProfile: tenant.BootstrapEmailProfile{
 					Host:        "smtp.localhost",
 					Port:        587,

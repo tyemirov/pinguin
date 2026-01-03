@@ -26,9 +26,11 @@ type Config struct {
 	HTTPListenAddr      string
 	HTTPAllowedOrigins  []string
 
-	TAuthSigningKey string
-	TAuthIssuer     string
-	TAuthCookieName string
+	TAuthSigningKey     string
+	TAuthCookieName     string
+	TAuthBaseURL        string
+	TAuthTenantID       string
+	TAuthGoogleClientID string
 
 	SMTPUsername string
 	SMTPPassword string
@@ -52,27 +54,29 @@ type fileConfig struct {
 }
 
 type serverSection struct {
-	DatabasePath        string `yaml:"databasePath"`
-	GRPCAuthToken       string `yaml:"grpcAuthToken"`
-	LogLevel            string `yaml:"logLevel"`
-	MaxRetries          int    `yaml:"maxRetries"`
-	RetryIntervalSec    int    `yaml:"retryIntervalSec"`
-	MasterEncryptionKey string `yaml:"masterEncryptionKey"`
-	ConnectionTimeout   int    `yaml:"connectionTimeoutSec"`
-	OperationTimeout    int    `yaml:"operationTimeoutSec"`
+	DatabasePath        string       `yaml:"databasePath"`
+	GRPCAuthToken       string       `yaml:"grpcAuthToken"`
+	LogLevel            string       `yaml:"logLevel"`
+	MaxRetries          int          `yaml:"maxRetries"`
+	RetryIntervalSec    int          `yaml:"retryIntervalSec"`
+	MasterEncryptionKey string       `yaml:"masterEncryptionKey"`
+	ConnectionTimeout   int          `yaml:"connectionTimeoutSec"`
+	OperationTimeout    int          `yaml:"operationTimeoutSec"`
+	TAuth               tauthSection `yaml:"tauth"`
 }
 
 type webSection struct {
-	Enabled        *bool        `yaml:"enabled"`
-	ListenAddr     string       `yaml:"listenAddr"`
-	AllowedOrigins []string     `yaml:"allowedOrigins"`
-	TAuth          tauthSection `yaml:"tauth"`
+	Enabled        *bool    `yaml:"enabled"`
+	ListenAddr     string   `yaml:"listenAddr"`
+	AllowedOrigins []string `yaml:"allowedOrigins"`
 }
 
 type tauthSection struct {
-	SigningKey string `yaml:"signingKey"`
-	Issuer     string `yaml:"issuer"`
-	CookieName string `yaml:"cookieName"`
+	SigningKey     string `yaml:"signingKey"`
+	CookieName     string `yaml:"cookieName"`
+	GoogleClientID string `yaml:"googleClientId"`
+	TAuthBaseURL   string `yaml:"tauthBaseUrl"`
+	TAuthTenantID  string `yaml:"tauthTenantId"`
 }
 
 type tenantConfig struct {
@@ -153,9 +157,11 @@ func LoadConfig(disableWebInterface bool) (Config, error) {
 		WebInterfaceEnabled:  webEnabled,
 		HTTPListenAddr:       strings.TrimSpace(fileCfg.Web.ListenAddr),
 		HTTPAllowedOrigins:   normalizeStrings(fileCfg.Web.AllowedOrigins),
-		TAuthSigningKey:      strings.TrimSpace(fileCfg.Web.TAuth.SigningKey),
-		TAuthIssuer:          strings.TrimSpace(fileCfg.Web.TAuth.Issuer),
-		TAuthCookieName:      strings.TrimSpace(fileCfg.Web.TAuth.CookieName),
+		TAuthSigningKey:      strings.TrimSpace(fileCfg.Server.TAuth.SigningKey),
+		TAuthCookieName:      strings.TrimSpace(fileCfg.Server.TAuth.CookieName),
+		TAuthBaseURL:         strings.TrimSpace(fileCfg.Server.TAuth.TAuthBaseURL),
+		TAuthTenantID:        strings.TrimSpace(fileCfg.Server.TAuth.TAuthTenantID),
+		TAuthGoogleClientID:  strings.TrimSpace(fileCfg.Server.TAuth.GoogleClientID),
 		ConnectionTimeoutSec: fileCfg.Server.ConnectionTimeout,
 		OperationTimeoutSec:  fileCfg.Server.OperationTimeout,
 		TenantBootstrap: tenant.BootstrapConfig{
@@ -170,8 +176,10 @@ func LoadConfig(disableWebInterface bool) (Config, error) {
 	} else {
 		configuration.HTTPAllowedOrigins = nil
 		configuration.TAuthSigningKey = ""
-		configuration.TAuthIssuer = ""
 		configuration.TAuthCookieName = ""
+		configuration.TAuthBaseURL = ""
+		configuration.TAuthTenantID = ""
+		configuration.TAuthGoogleClientID = ""
 	}
 
 	if err := validateConfig(configuration); err != nil {
@@ -226,8 +234,10 @@ func validateConfig(cfg Config) error {
 
 	if cfg.WebInterfaceEnabled {
 		requireString(cfg.HTTPListenAddr, "web.listenAddr", &errors)
-		requireString(cfg.TAuthSigningKey, "web.tauth.signingKey", &errors)
-		requireString(cfg.TAuthIssuer, "web.tauth.issuer", &errors)
+		requireString(cfg.TAuthSigningKey, "server.tauth.signingKey", &errors)
+		requireString(cfg.TAuthBaseURL, "server.tauth.tauthBaseUrl", &errors)
+		requireString(cfg.TAuthTenantID, "server.tauth.tauthTenantId", &errors)
+		requireString(cfg.TAuthGoogleClientID, "server.tauth.googleClientId", &errors)
 	}
 
 	if len(cfg.TenantBootstrap.Tenants) > 0 {
@@ -236,14 +246,6 @@ func validateConfig(cfg Config) error {
 			requireString(strings.TrimSpace(tenantSpec.DisplayName), tenantPrefix+".displayName", &errors)
 			if countNonEmptyStrings(tenantSpec.Domains) == 0 {
 				errors = append(errors, fmt.Sprintf("missing %s.domains", tenantPrefix))
-			}
-			if cfg.WebInterfaceEnabled {
-				requireString(strings.TrimSpace(tenantSpec.Identity.GoogleClientID), tenantPrefix+".identity.googleClientId", &errors)
-				requireString(strings.TrimSpace(tenantSpec.Identity.TAuthBaseURL), tenantPrefix+".identity.tauthBaseUrl", &errors)
-				requireString(strings.TrimSpace(tenantSpec.Identity.TAuthTenantID), tenantPrefix+".identity.tauthTenantId", &errors)
-				if countNonEmptyAdminEmails(tenantSpec.Admins) == 0 {
-					errors = append(errors, fmt.Sprintf("missing %s.admins", tenantPrefix))
-				}
 			}
 		}
 	}
@@ -267,17 +269,6 @@ func requirePositive(value int, name string, errors *[]string) {
 }
 
 func countNonEmptyStrings(values []string) int {
-	count := 0
-	for _, value := range values {
-		if strings.TrimSpace(value) == "" {
-			continue
-		}
-		count++
-	}
-	return count
-}
-
-func countNonEmptyAdminEmails(values tenant.BootstrapAdmins) int {
 	count := 0
 	for _, value := range values {
 		if strings.TrimSpace(value) == "" {

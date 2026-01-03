@@ -38,3 +38,5 @@ qodana.yaml
 docs/ledger-integration.md
 docs/mprui-integration-guide.md
 docs/tauth-usage.md
+
+client_secret*.json

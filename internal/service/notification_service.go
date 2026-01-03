@@ -24,6 +24,8 @@ type NotificationService interface {
 	GetNotificationStatus(ctx context.Context, notificationID string) (model.NotificationResponse, error)
 	// ListNotifications returns stored notifications honoring the provided filters.
 	ListNotifications(ctx context.Context, filters model.NotificationListFilters) ([]model.NotificationResponse, error)
+	// ListNotificationsAll returns notifications across all tenants.
+	ListNotificationsAll(ctx context.Context, filters model.NotificationListFilters) ([]model.NotificationResponse, error)
 	// RescheduleNotification updates the scheduled send time for a queued notification.
 	RescheduleNotification(ctx context.Context, notificationID string, scheduledFor time.Time) (model.NotificationResponse, error)
 	// CancelNotification transitions a queued notification to cancelled so workers skip it.
@@ -197,6 +199,19 @@ func (serviceInstance *notificationServiceImpl) ListNotifications(ctx context.Co
 		return nil, err
 	}
 	records, err := model.ListNotifications(ctx, serviceInstance.database, runtimeCfg.Tenant.ID, filters)
+	if err != nil {
+		serviceInstance.logger.Error("Failed to list notifications", "error", err)
+		return nil, err
+	}
+	responses := make([]model.NotificationResponse, 0, len(records))
+	for _, record := range records {
+		responses = append(responses, model.NewNotificationResponse(record))
+	}
+	return responses, nil
+}
+
+func (serviceInstance *notificationServiceImpl) ListNotificationsAll(ctx context.Context, filters model.NotificationListFilters) ([]model.NotificationResponse, error) {
+	records, err := model.ListNotificationsAll(ctx, serviceInstance.database, filters)
 	if err != nil {
 		serviceInstance.logger.Error("Failed to list notifications", "error", err)
 		return nil, err

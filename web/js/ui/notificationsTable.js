@@ -51,6 +51,7 @@ export function createNotificationsTable(options) {
     scheduleDialogVisible: false,
     scheduleForm: {
       id: '',
+      tenantId: '',
       scheduledTime: '',
     },
     stopListening: null,
@@ -109,6 +110,7 @@ export function createNotificationsTable(options) {
     },
     openScheduleDialog(notification) {
       this.scheduleForm.id = notification.id;
+      this.scheduleForm.tenantId = notification.tenantId || '';
       this.scheduleForm.scheduledTime = inputFormatter.toControlValue(notification.scheduledFor);
       this.scheduleDialogVisible = true;
       const dialog = this.$refs.scheduleDialog;
@@ -131,8 +133,14 @@ export function createNotificationsTable(options) {
         dispatchToast({ variant: 'error', message: this.errorMessage });
         return;
       }
+      if (!this.scheduleForm.tenantId) {
+        this.errorMessage = this.strings.rescheduleError;
+        dispatchToast({ variant: 'error', message: this.errorMessage });
+        return;
+      }
       try {
-        await apiClient.rescheduleNotification(this.scheduleForm.id, isoValue);
+        const targetTenantId = this.scheduleForm.tenantId;
+        await apiClient.rescheduleNotification(this.scheduleForm.id, isoValue, targetTenantId);
         await this.loadNotifications();
         dispatchToast({ variant: 'success', message: this.strings.scheduleSuccess });
         this.closeScheduleDialog();
@@ -141,7 +149,7 @@ export function createNotificationsTable(options) {
         dispatchToast({ variant: 'error', message: this.errorMessage });
       }
     },
-    async cancelNotification(notificationId) {
+    async cancelNotification(notification) {
       if (!authStore().isAuthenticated) {
         return;
       }
@@ -150,7 +158,11 @@ export function createNotificationsTable(options) {
       }
       this.isLoading = true;
       try {
-        await apiClient.cancelNotification(notificationId);
+        if (!notification.tenantId) {
+          throw new Error('missing_tenant_id');
+        }
+        const targetTenantId = notification.tenantId;
+        await apiClient.cancelNotification(notification.id, targetTenantId);
         await this.loadNotifications();
         dispatchToast({ variant: 'success', message: this.strings.cancelSuccess });
       } catch (error) {

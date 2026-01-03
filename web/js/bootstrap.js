@@ -1,13 +1,9 @@
 // @ts-check
 
 const DEFAULT_CONFIG = Object.freeze({
-  tauthBaseUrl: 'http://localhost:8081',
   landingUrl: '/index.html',
   dashboardUrl: '/dashboard.html',
 });
-const TAUTH_CONFIG = typeof window.PINGUIN_TAUTH_CONFIG === 'object' && window.PINGUIN_TAUTH_CONFIG
-  ? window.PINGUIN_TAUTH_CONFIG
-  : {};
 const RUNTIME_CONFIG_URL_HINT =
   typeof window.__PINGUIN_RUNTIME_CONFIG_URL === 'string'
     ? window.__PINGUIN_RUNTIME_CONFIG_URL.trim()
@@ -90,14 +86,7 @@ function mergeConfig(base, overrides) {
   const skipRemote = Boolean(preloaded && preloaded.skipRemoteConfig);
   const preloadedTenant =
     preloaded && typeof preloaded.tenant === 'object' ? preloaded.tenant : null;
-  const tauthSeed = {};
-  if (typeof TAUTH_CONFIG.baseUrl === 'string') {
-    tauthSeed.tauthBaseUrl = TAUTH_CONFIG.baseUrl;
-  }
-  if (typeof TAUTH_CONFIG.googleClientId === 'string') {
-    tauthSeed.googleClientId = TAUTH_CONFIG.googleClientId;
-  }
-  let effectiveConfig = mergeConfig(DEFAULT_CONFIG, tauthSeed);
+  let effectiveConfig = mergeConfig(DEFAULT_CONFIG, null);
   effectiveConfig = mergeConfig(effectiveConfig, preloaded);
   let resolvedTenant = preloadedTenant;
   if (!skipRemote) {
@@ -108,24 +97,29 @@ function mergeConfig(base, overrides) {
       }
       const apiOverride =
         remote && typeof remote.apiBaseUrl === 'string' ? { apiBaseUrl: remote.apiBaseUrl } : {};
+      const tauthOverrides = {};
+      if (remote && typeof remote.tauthBaseUrl === 'string') {
+        tauthOverrides.tauthBaseUrl = remote.tauthBaseUrl;
+      }
+      if (remote && typeof remote.googleClientId === 'string') {
+        tauthOverrides.googleClientId = remote.googleClientId;
+      }
+      if (remote && typeof remote.tauthTenantId === 'string') {
+        tauthOverrides.tauthTenantId = remote.tauthTenantId;
+      }
       effectiveConfig = mergeConfig(effectiveConfig, apiOverride);
+      effectiveConfig = mergeConfig(effectiveConfig, tauthOverrides);
     } catch (error) {
       console.warn('runtime config fetch failed', error);
     }
   }
   if (resolvedTenant) {
     effectiveConfig.tenant = resolvedTenant;
-    const identity = resolvedTenant.identity || {};
-    if (typeof identity.googleClientId === 'string' && identity.googleClientId.trim()) {
-      effectiveConfig.googleClientId = identity.googleClientId.trim();
-    }
-    if (typeof identity.tauthBaseUrl === 'string' && identity.tauthBaseUrl.trim()) {
-      effectiveConfig.tauthBaseUrl = identity.tauthBaseUrl.trim();
-    }
   }
   const finalConfig = {
     apiBaseUrl: effectiveConfig.apiBaseUrl,
-    tauthBaseUrl: effectiveConfig.tauthBaseUrl || DEFAULT_CONFIG.tauthBaseUrl,
+    tauthBaseUrl: effectiveConfig.tauthBaseUrl,
+    tauthTenantId: effectiveConfig.tauthTenantId,
     googleClientId: effectiveConfig.googleClientId,
     landingUrl: effectiveConfig.landingUrl || DEFAULT_CONFIG.landingUrl,
     dashboardUrl: effectiveConfig.dashboardUrl || DEFAULT_CONFIG.dashboardUrl,

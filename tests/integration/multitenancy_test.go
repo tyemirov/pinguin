@@ -145,6 +145,9 @@ func TestHTTPMultitenantIsolation(t *testing.T) {
 		SessionValidator:    &mockSessionValidator{},
 		NotificationService: svc,
 		TenantRepository:    repo,
+		TAuthBaseURL:        "https://tauth.example.com",
+		TAuthTenantID:       "tauth-test",
+		TAuthGoogleClientID: "client-id",
 		Logger:              logger,
 	})
 	if err != nil {
@@ -221,7 +224,7 @@ func setupTestDB(t *testing.T) (*gorm.DB, *tenant.SecretKeeper) {
 		t.Fatalf("gorm.Open failed: %v", err)
 	}
 
-	err = db.AutoMigrate(&model.Notification{}, &model.NotificationAttachment{}, &tenant.Tenant{}, &tenant.TenantDomain{}, &tenant.TenantIdentity{}, &tenant.TenantMember{}, &tenant.EmailProfile{}, &tenant.SMSProfile{})
+	err = db.AutoMigrate(&model.Notification{}, &model.NotificationAttachment{}, &tenant.Tenant{}, &tenant.TenantDomain{}, &tenant.EmailProfile{}, &tenant.SMSProfile{})
 	if err != nil {
 		t.Fatalf("AutoMigrate failed: %v", err)
 	}
@@ -245,7 +248,6 @@ func setupTenantConfig(t *testing.T) string {
 				EmailProfile: tenant.BootstrapEmailProfile{
 					Host: "smtp.a.com", Port: 587, Username: "userA", Password: "passA", FromAddress: "no@a.com",
 				},
-				Identity: tenant.BootstrapIdentity{GoogleClientID: "gc-a", TAuthBaseURL: "https://auth.a.com"},
 			},
 			{
 				ID: "tenant-b", DisplayName: "Tenant B", Enabled: boolPtr(true),
@@ -253,7 +255,6 @@ func setupTenantConfig(t *testing.T) string {
 				EmailProfile: tenant.BootstrapEmailProfile{
 					Host: "smtp.b.com", Port: 587, Username: "userB", Password: "passB", FromAddress: "no@b.com",
 				},
-				Identity: tenant.BootstrapIdentity{GoogleClientID: "gc-b", TAuthBaseURL: "https://auth.b.com"},
 			},
 		},
 	}
