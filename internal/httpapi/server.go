@@ -44,7 +44,6 @@ type Config struct {
 	TAuthBaseURL         string
 	TAuthTenantID        string
 	TAuthGoogleClientID  string
-	AllowedUserEmails    map[string]struct{}
 	Logger               *slog.Logger
 	ReadHeaderTimeout    time.Duration
 	ShutdownGraceTimeout time.Duration
@@ -80,9 +79,6 @@ func NewServer(cfg Config) (*Server, error) {
 	if strings.TrimSpace(cfg.TAuthGoogleClientID) == "" {
 		return nil, errors.New("httpapi: google client id is required")
 	}
-	if len(cfg.AllowedUserEmails) == 0 {
-		return nil, errors.New("httpapi: allowed users are required")
-	}
 	if cfg.Logger == nil {
 		return nil, errors.New("httpapi: logger is required")
 	}
@@ -103,7 +99,7 @@ func NewServer(cfg Config) (*Server, error) {
 		contextGin.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 	protected := engine.Group("/api")
-	protected.Use(sessionMiddleware(cfg.SessionValidator, cfg.AllowedUserEmails))
+	protected.Use(sessionMiddleware(cfg.SessionValidator))
 
 	handler := newNotificationHandler(cfg.NotificationService, cfg.TenantRepository, cfg.Logger)
 	protected.GET("/notifications", handler.listNotifications)
@@ -190,16 +186,11 @@ func tenantMiddleware(repo *tenant.Repository) gin.HandlerFunc {
 	}
 }
 
-func sessionMiddleware(validator SessionValidator, allowedUsers map[string]struct{}) gin.HandlerFunc {
+func sessionMiddleware(validator SessionValidator) gin.HandlerFunc {
 	return func(contextGin *gin.Context) {
 		claims, err := validator.ValidateRequest(contextGin.Request)
 		if err != nil {
 			contextGin.AbortWithStatus(http.StatusUnauthorized)
-			return
-		}
-		email := strings.ToLower(strings.TrimSpace(claims.GetUserEmail()))
-		if _, ok := allowedUsers[email]; !ok {
-			contextGin.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "access denied"})
 			return
 		}
 		contextGin.Set(contextKeyClaims, claims)

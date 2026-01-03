@@ -270,7 +270,6 @@ func newTestTenantRepository(testHandle *testing.T, tenantID string) *tenant.Rep
 	if err := database.AutoMigrate(
 		&tenant.Tenant{},
 		&tenant.TenantDomain{},
-		&tenant.TenantMember{},
 		&tenant.EmailProfile{},
 		&tenant.SMSProfile{},
 	); err != nil {
@@ -288,7 +287,6 @@ func newTestTenantRepository(testHandle *testing.T, tenantID string) *tenant.Rep
 				DisplayName: "Test Tenant",
 				Enabled:     &enabled,
 				Domains:     []string{"test.localhost"},
-				Admins:      tenant.BootstrapAdmins{"admin@example.com"},
 				EmailProfile: tenant.BootstrapEmailProfile{
 					Host:        "smtp.localhost",
 					Port:        587,

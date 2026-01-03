@@ -33,14 +33,12 @@ server:
     googleClientId: ${TAUTH_GOOGLE_CLIENT_ID}
     tauthBaseUrl: ${TAUTH_BASE_URL}
     tauthTenantId: ${TAUTH_TENANT_ID}
-    allowedUsers: ${TAUTH_ALLOWED_USERS}
 tenants:
   - id: tenant-one
     displayName: One Corp
     supportEmail: support@one.test
     enabled: true
     domains: [one.test]
-    admins: [admin@one.test]
     emailProfile:
       host: smtp.one.test
       port: 587
@@ -68,7 +66,6 @@ web:
 	t.Setenv("TAUTH_GOOGLE_CLIENT_ID", "google-one")
 	t.Setenv("TAUTH_BASE_URL", "https://auth.one.test")
 	t.Setenv("TAUTH_TENANT_ID", "tauth-one")
-	t.Setenv("TAUTH_ALLOWED_USERS", "admin@one.test,viewer@one.test")
 	t.Setenv("SMTP_USERNAME", "apikey")
 	t.Setenv("SMTP_PASSWORD", "secret")
 	t.Setenv("TWILIO_ACCOUNT_SID", "sid")
@@ -95,7 +92,6 @@ web:
 					SupportEmail: "support@one.test",
 					Enabled:      ptrBool(true),
 					Domains:      []string{"one.test"},
-					Admins:       tenant.BootstrapAdmins{"admin@one.test"},
 					EmailProfile: tenant.BootstrapEmailProfile{
 						Host:        "smtp.one.test",
 						Port:        587,
@@ -119,7 +115,6 @@ web:
 		TAuthBaseURL:         "https://auth.one.test",
 		TAuthTenantID:        "tauth-one",
 		TAuthGoogleClientID:  "google-one",
-		TAuthAllowedUsers:    []string{"admin@one.test", "viewer@one.test"},
 		ConnectionTimeoutSec: 3,
 		OperationTimeoutSec:  7,
 	}
@@ -149,14 +144,12 @@ server:
     googleClientId: google-one
     tauthBaseUrl: https://auth.one.test
     tauthTenantId: tauth-one
-    allowedUsers: admin@one.test
 tenants:
   - id: tenant-one
     displayName: One Corp
     supportEmail: support@one.test
     enabled: true
     domains: [one.test]
-    admins: [admin@one.test]
     emailProfile:
       host: smtp.one.test
       port: 587
@@ -185,9 +178,6 @@ web:
 	if cfg.TAuthBaseURL != "" || cfg.TAuthTenantID != "" || cfg.TAuthGoogleClientID != "" {
 		t.Fatalf("expected tauth fields to be cleared when disabled")
 	}
-	if cfg.TAuthAllowedUsers != nil {
-		t.Fatalf("expected tauth allowed users to be cleared when disabled")
-	}
 	if cfg.ConnectionTimeoutSec != 5 || cfg.OperationTimeoutSec != 10 {
 		t.Fatalf("expected timeout values to be set from config")
 	}
@@ -210,14 +200,12 @@ server:
     googleClientId: google-one
     tauthBaseUrl: https://auth.one.test
     tauthTenantId: tauth-one
-    allowedUsers: admin@one.test
 tenants:
   - id: tenant-one
     displayName: One Corp
     supportEmail: support@one.test
     enabled: true
     domains: [one.test]
-    admins: [admin@one.test]
     emailProfile:
       host: smtp.one.test
       port: 587

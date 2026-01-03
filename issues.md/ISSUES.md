@@ -9,6 +9,8 @@ Read @AGENTS.md, @ARCHITECTURE.md, @README.md, @issues.md/POLICY.md, @issues.md/
 ## Improvements (202–299)
 
 - [x] [PG-329] Move TAuth config to server scope, add global view default for web UI, and gate access by allowed user list. Resolved with server.tauth config, global/tenant view scope handling, and updated UI/auth flows; `make ci` passes.
+- [x] [PG-329] Follow-up: remove Pinguin allowed-user gating; TAuth now owns user access control via `configs/config.tauth.yml`.
+- [x] [PG-329] Follow-up: remove tenant admin lists; any valid TAuth session is treated as admin for the web UI.
 - [x] [PG-202] Refactor gRPC server to use an interceptor for tenant resolution instead of manual calls in every handler. Resolved with gRPC tenant interceptor + tests; `make ci` passes.
 - [x] [PG-203] Optimize retry worker to avoid N+1 queries per tick (iterating all tenants). Resolved with single join query for active tenants; `make ci` passes.
 - [x] [PG-204] Move validation logic from Service layer to Domain constructors/Edge handlers (POLICY.md). Validation now lives in model constructors + HTTP/gRPC edges; service assumes validated requests; `make ci` passes.

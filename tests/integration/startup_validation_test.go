@@ -42,7 +42,6 @@ tenants:
     supportEmail: support@example.com
     enabled: false
     domains: [disabled.localhost]
-    admins: [admin@example.com]
     emailProfile:
       host: smtp.example.com
       port: 587

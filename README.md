@@ -99,15 +99,10 @@ server:
     googleClientId: ${TAUTH_GOOGLE_CLIENT_ID}
     tauthBaseUrl: ${TAUTH_BASE_URL}
     tauthTenantId: ${TAUTH_TENANT_ID}
-    allowedUsers:
-      - ${TAUTH_ALLOWED_USERS}
 tenants:
   - id: tenant-local
     displayName: Local Sandbox
     domains: [${TENANT_LOCAL_DOMAIN_PRIMARY}, ${TENANT_LOCAL_DOMAIN_SECONDARY}]
-    admins:
-      - ${TENANT_LOCAL_ADMIN_EMAIL_1}
-      - ${TENANT_LOCAL_ADMIN_EMAIL_2}
     emailProfile:
       host: ${TENANT_LOCAL_SMTP_HOST}
       port: ${TENANT_LOCAL_SMTP_PORT}
@@ -165,8 +160,8 @@ Export the referenced environment variables before starting the server. The defa
   Tenant identifier configured in TAuth (sent in `X-TAuth-Tenant`).
 - **TAUTH_GOOGLE_CLIENT_ID:**  
   Google OAuth Web Client ID that TAuth validates and `mpr-ui` uses for GIS.
-- **TAUTH_ALLOWED_USERS:**  
-  Comma-separated list of email addresses allowed to access the web UI.
+- **Authorization:**  
+  The dashboard treats any valid TAuth session as an admin. Restrict who can sign in via `configs/config.tauth.yml`.
 
 - **MAX_RETRIES:**  
   Maximum number of times the background worker will retry sending a failed notification.
@@ -202,7 +197,7 @@ Export the referenced environment variables before starting the server. The defa
 
 ### Tenant configuration (single YAML)
 
-Pinguin keeps all configuration—including tenants—in a single YAML file (`configs/config.yml` by default). The `tenants` section defines which tenants exist, which domains map to each tenant, who can access the web UI, and what delivery credentials each tenant uses.
+Pinguin keeps all configuration—including tenants—in a single YAML file (`configs/config.yml` by default). The `tenants` section defines which tenants exist, which domains map to each tenant, and what delivery credentials each tenant uses.
 
 `tenants[].status` is not supported. Use `tenants[].enabled: true|false`.
 
@@ -217,9 +212,6 @@ tenants:
     domains:
       - acme.example
       - portal.acme.example
-    admins:
-      - admin@acme.example
-      - viewer@acme.example
     emailProfile:
       host: smtp.acme.example
       port: 587
@@ -249,8 +241,6 @@ See `configs/config.yml` for a ready-to-use sample. `MASTER_ENCRYPTION_KEY` encr
 - `tenants[].domains` (list of strings, required): hostnames that map HTTP requests to this tenant.
   - The first domain is treated as the tenant’s default domain.
   - Matching is case-insensitive; ports are ignored (e.g. `localhost:8080` matches `localhost`).
-- `tenants[].admins` (list of emails):
-  - Optional list of tenant-specific admins (reserved for future per-tenant roles).
 - `tenants[].emailProfile` (required): tenant SMTP settings.
   - `host` (string), `port` (int), `username` (string), `password` (string), `fromAddress` (string).
   - `username` and `password` are encrypted with `MASTER_ENCRYPTION_KEY` before storing in SQLite.
@@ -309,7 +299,7 @@ The Pinguin Docker image declares `/web` as a separate volume for the UI bundle;
    ${EDITOR:-vi} .env.pinguin .env.tauth
    ```
 
-   - `.env.pinguin` configures the environment variables referenced by `configs/config.yml` (including `PINGUIN_CONFIG_PATH=/configs/config.yml`, tenant domains/admins, SMTP/Twilio credentials, and `TAUTH_SIGNING_KEY`).
+  - `.env.pinguin` configures the environment variables referenced by `configs/config.yml` (including `PINGUIN_CONFIG_PATH=/configs/config.yml`, tenant domains, SMTP/Twilio credentials, and `TAUTH_SIGNING_KEY`).
    - If `GET http://localhost:8080/runtime-config` returns `{"error":"tenant_not_found"}`, the tenant domain env vars (`TENANT_LOCAL_DOMAIN_PRIMARY` / `TENANT_LOCAL_DOMAIN_SECONDARY`) are missing/mismatched.
    - `.env.tauth` configures the Google OAuth client, signing key, and CORS settings for local development. In both compose profiles, these values are expanded into `configs/tauth/config.yaml` and passed to TAuth via `TAUTH_CONFIG_FILE`.
    - Keep `TAUTH_SIGNING_KEY` (Pinguin) identical to `APP_JWT_SIGNING_KEY` (TAuth) so cookie validation succeeds.

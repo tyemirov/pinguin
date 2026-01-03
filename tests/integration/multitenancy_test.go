@@ -148,10 +148,7 @@ func TestHTTPMultitenantIsolation(t *testing.T) {
 		TAuthBaseURL:        "https://tauth.example.com",
 		TAuthTenantID:       "tauth-test",
 		TAuthGoogleClientID: "client-id",
-		AllowedUserEmails: map[string]struct{}{
-			"user@example.com": {},
-		},
-		Logger: logger,
+		Logger:              logger,
 	})
 	if err != nil {
 		t.Fatalf("NewServer failed: %v", err)
@@ -227,7 +224,7 @@ func setupTestDB(t *testing.T) (*gorm.DB, *tenant.SecretKeeper) {
 		t.Fatalf("gorm.Open failed: %v", err)
 	}
 
-	err = db.AutoMigrate(&model.Notification{}, &model.NotificationAttachment{}, &tenant.Tenant{}, &tenant.TenantDomain{}, &tenant.TenantMember{}, &tenant.EmailProfile{}, &tenant.SMSProfile{})
+	err = db.AutoMigrate(&model.Notification{}, &model.NotificationAttachment{}, &tenant.Tenant{}, &tenant.TenantDomain{}, &tenant.EmailProfile{}, &tenant.SMSProfile{})
 	if err != nil {
 		t.Fatalf("AutoMigrate failed: %v", err)
 	}

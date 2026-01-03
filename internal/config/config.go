@@ -31,7 +31,6 @@ type Config struct {
 	TAuthBaseURL        string
 	TAuthTenantID       string
 	TAuthGoogleClientID string
-	TAuthAllowedUsers   []string
 
 	SMTPUsername string
 	SMTPPassword string
@@ -73,41 +72,11 @@ type webSection struct {
 }
 
 type tauthSection struct {
-	SigningKey     string     `yaml:"signingKey"`
-	CookieName     string     `yaml:"cookieName"`
-	GoogleClientID string     `yaml:"googleClientId"`
-	TAuthBaseURL   string     `yaml:"tauthBaseUrl"`
-	TAuthTenantID  string     `yaml:"tauthTenantId"`
-	AllowedUsers   stringList `yaml:"allowedUsers"`
-}
-
-type stringList []string
-
-func (values *stringList) UnmarshalYAML(value *yaml.Node) error {
-	if value == nil {
-		*values = nil
-		return nil
-	}
-	switch value.Kind {
-	case yaml.SequenceNode:
-		var decoded []string
-		for _, entry := range value.Content {
-			if entry == nil {
-				continue
-			}
-			if entry.Kind != yaml.ScalarNode {
-				return fmt.Errorf("configuration: list entries must be strings")
-			}
-			decoded = append(decoded, strings.TrimSpace(entry.Value))
-		}
-		*values = decoded
-		return nil
-	case yaml.ScalarNode:
-		*values = stringList{strings.TrimSpace(value.Value)}
-		return nil
-	default:
-		return fmt.Errorf("configuration: list must be a sequence or string")
-	}
+	SigningKey     string `yaml:"signingKey"`
+	CookieName     string `yaml:"cookieName"`
+	GoogleClientID string `yaml:"googleClientId"`
+	TAuthBaseURL   string `yaml:"tauthBaseUrl"`
+	TAuthTenantID  string `yaml:"tauthTenantId"`
 }
 
 type tenantConfig struct {
@@ -193,7 +162,6 @@ func LoadConfig(disableWebInterface bool) (Config, error) {
 		TAuthBaseURL:         strings.TrimSpace(fileCfg.Server.TAuth.TAuthBaseURL),
 		TAuthTenantID:        strings.TrimSpace(fileCfg.Server.TAuth.TAuthTenantID),
 		TAuthGoogleClientID:  strings.TrimSpace(fileCfg.Server.TAuth.GoogleClientID),
-		TAuthAllowedUsers:    normalizeEmails(fileCfg.Server.TAuth.AllowedUsers),
 		ConnectionTimeoutSec: fileCfg.Server.ConnectionTimeout,
 		OperationTimeoutSec:  fileCfg.Server.OperationTimeout,
 		TenantBootstrap: tenant.BootstrapConfig{
@@ -212,7 +180,6 @@ func LoadConfig(disableWebInterface bool) (Config, error) {
 		configuration.TAuthBaseURL = ""
 		configuration.TAuthTenantID = ""
 		configuration.TAuthGoogleClientID = ""
-		configuration.TAuthAllowedUsers = nil
 	}
 
 	if err := validateConfig(configuration); err != nil {
@@ -251,20 +218,6 @@ func normalizeStrings(values []string) []string {
 	return normalized
 }
 
-func normalizeEmails(values []string) []string {
-	var normalized []string
-	for _, value := range values {
-		for _, entry := range strings.Split(value, ",") {
-			candidate := strings.ToLower(strings.TrimSpace(entry))
-			if candidate == "" {
-				continue
-			}
-			normalized = append(normalized, candidate)
-		}
-	}
-	return normalized
-}
-
 func validateConfig(cfg Config) error {
 	var errors []string
 	requireString(cfg.DatabasePath, "server.databasePath", &errors)
@@ -285,9 +238,6 @@ func validateConfig(cfg Config) error {
 		requireString(cfg.TAuthBaseURL, "server.tauth.tauthBaseUrl", &errors)
 		requireString(cfg.TAuthTenantID, "server.tauth.tauthTenantId", &errors)
 		requireString(cfg.TAuthGoogleClientID, "server.tauth.googleClientId", &errors)
-		if len(cfg.TAuthAllowedUsers) == 0 {
-			errors = append(errors, "missing server.tauth.allowedUsers")
-		}
 	}
 
 	if len(cfg.TenantBootstrap.Tenants) > 0 {

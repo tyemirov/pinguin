@@ -53,7 +53,6 @@ func TestInitDBCreatesSchema(t *testing.T) {
 	tables := []interface{}{
 		&tenant.Tenant{},
 		&tenant.TenantDomain{},
-		&tenant.TenantMember{},
 		&tenant.EmailProfile{},
 		&tenant.SMSProfile{},
 	}

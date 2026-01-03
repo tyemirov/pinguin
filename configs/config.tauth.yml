@@ -22,3 +22,5 @@ tenants:
     refresh_ttl: "720h"
     nonce_ttl: "5m"
     allow_insecure_http: "${TAUTH_ALLOW_INSECURE_HTTP}"
+    allowed_users:
+    

@@ -38,7 +38,6 @@ func InitDB(dbPath string, logger *slog.Logger) (*gorm.DB, error) {
 		&model.NotificationAttachment{},
 		&tenant.Tenant{},
 		&tenant.TenantDomain{},
-		&tenant.TenantMember{},
 		&tenant.EmailProfile{},
 		&tenant.SMSProfile{},
 	); err != nil {

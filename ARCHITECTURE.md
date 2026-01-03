@@ -14,9 +14,7 @@
   3. `web/js/tauth-helper.js` loads `tauthBaseUrl/tauth.js` and then injects the `mpr-ui` bundle so the helper is ready before the header boots; the app listens for `mpr-ui:auth:*` events.
   4. Successful sign-in yields an HttpOnly `app_session` cookie issued by TAuth; Pinguin validates that cookie on every `/api` request.
 - The Go backend needs the shared signing key (`TAUTH_SIGNING_KEY`) and optional cookie name override. TAuth issuer is handled inside the session validator; Pinguin should not configure it directly.
-- Admin gating:
-  - Allowed users are provisioned via `server.tauth.allowedUsers` in the YAML config.
-  - `internal/httpapi/sessionMiddleware` rejects any request whose claims email is not on that list (HTTP 403).
+- Pinguin assumes any valid TAuth session is an admin; configure access control in `configs/config.tauth.yml`.
 
 ## HTTP Server Responsibilities
 - Routes defined in `internal/httpapi`:

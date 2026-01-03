@@ -25,67 +25,8 @@ type BootstrapTenant struct {
 	Enabled      *bool                 `json:"enabled" yaml:"enabled"`
 	Status       string                `json:"status" yaml:"status"`
 	Domains      []string              `json:"domains" yaml:"domains"`
-	Admins       BootstrapAdmins       `json:"admins" yaml:"admins"`
 	EmailProfile BootstrapEmailProfile `json:"emailProfile" yaml:"emailProfile"`
 	SMSProfile   *BootstrapSMSProfile  `json:"smsProfile" yaml:"smsProfile"`
-}
-
-// BootstrapAdmins lists admin emails.
-//
-// For backward-compatibility, it accepts both:
-// - a YAML sequence of strings: ["admin@example.com"]
-// - a YAML sequence of objects: [{email: admin@example.com, role: owner}]
-type BootstrapAdmins []string
-
-func (admins *BootstrapAdmins) UnmarshalYAML(value *yaml.Node) error {
-	if value == nil {
-		*admins = nil
-		return nil
-	}
-
-	switch value.Kind {
-	case yaml.SequenceNode:
-		var decoded []string
-		for _, entry := range value.Content {
-			if entry == nil {
-				continue
-			}
-			switch entry.Kind {
-			case yaml.ScalarNode:
-				decoded = append(decoded, strings.TrimSpace(entry.Value))
-			case yaml.MappingNode:
-				var (
-					email    string
-					hasEmail bool
-				)
-				for idx := 0; idx+1 < len(entry.Content); idx += 2 {
-					key := entry.Content[idx]
-					val := entry.Content[idx+1]
-					if key == nil || val == nil {
-						continue
-					}
-					if strings.EqualFold(strings.TrimSpace(key.Value), "email") {
-						email = strings.TrimSpace(val.Value)
-						hasEmail = true
-						break
-					}
-				}
-				if !hasEmail {
-					return fmt.Errorf("tenant bootstrap: admin entry missing email")
-				}
-				decoded = append(decoded, email)
-			default:
-				return fmt.Errorf("tenant bootstrap: admins entry must be string or {email: ...}")
-			}
-		}
-		*admins = decoded
-		return nil
-	case yaml.ScalarNode:
-		*admins = BootstrapAdmins{strings.TrimSpace(value.Value)}
-		return nil
-	default:
-		return fmt.Errorf("tenant bootstrap: admins must be a sequence")
-	}
 }
 
 // BootstrapEmailProfile defines SMTP credentials.
@@ -195,22 +136,6 @@ func upsertTenant(ctx context.Context, tx *gorm.DB, keeper *SecretKeeper, spec B
 		}
 		if existingDomain.TenantID != spec.ID || existingDomain.IsDefault != domain.IsDefault {
 			return fmt.Errorf("tenant bootstrap: %s: domain %s already assigned to tenant %s", bootstrapDomainConflictCode, host, existingDomain.TenantID)
-		}
-	}
-
-	if err := tx.Where(&TenantMember{TenantID: spec.ID}).Delete(&TenantMember{}).Error; err != nil {
-		return err
-	}
-	for _, adminEmail := range spec.Admins {
-		member := TenantMember{
-			TenantID: spec.ID,
-			Email:    strings.ToLower(strings.TrimSpace(adminEmail)),
-		}
-		if member.Email == "" {
-			continue
-		}
-		if err := tx.Create(&member).Error; err != nil {
-			return fmt.Errorf("tenant bootstrap: member %s: %w", member.Email, err)
 		}
 	}
 

@@ -34,15 +34,6 @@ type TenantDomain struct {
 	UpdatedAt time.Time
 }
 
-// TenantMember declares per-tenant admin membership and roles.
-type TenantMember struct {
-	ID        uint   `gorm:"primaryKey"`
-	TenantID  string `gorm:"index"`
-	Email     string `gorm:"index"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
-}
-
 // EmailProfile describes SMTP delivery credentials for a tenant.
 type EmailProfile struct {
 	ID             string `gorm:"primaryKey"`

@@ -36,10 +36,7 @@ func TestHealthzBypassesTenantResolution(t *testing.T) {
 		TAuthBaseURL:        "https://tauth.example.com",
 		TAuthTenantID:       "tauth-test",
 		TAuthGoogleClientID: "client-id",
-		AllowedUserEmails: map[string]struct{}{
-			"user@example.com": {},
-		},
-		Logger: logger,
+		Logger:              logger,
 	})
 	if err != nil {
 		t.Fatalf("server init error: %v", err)
