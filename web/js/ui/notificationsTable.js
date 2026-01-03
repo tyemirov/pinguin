@@ -1,5 +1,5 @@
 // @ts-check
-import { STATUS_LABELS, STATUS_OPTIONS } from '../constants.js';
+import { RUNTIME_CONFIG, STATUS_LABELS, STATUS_OPTIONS } from '../constants.js';
 import { DOM_EVENTS, dispatchToast, listen } from '../core/events.js';
 
 /** @typedef {import('../types.d.js').NotificationItem} NotificationItem */
@@ -40,10 +40,12 @@ const inputFormatter = {
 export function createNotificationsTable(options) {
   const { apiClient, strings, actions } = options;
   const authStore = () => window.Alpine.store('auth');
+  const isGlobalView = () => RUNTIME_CONFIG.viewScope === 'global';
 
   return {
     strings,
     actions,
+    viewScope: RUNTIME_CONFIG.viewScope,
     notifications: /** @type {NotificationItem[]} */ ([]),
     statusFilter: 'all',
     isLoading: false,
@@ -51,6 +53,7 @@ export function createNotificationsTable(options) {
     scheduleDialogVisible: false,
     scheduleForm: {
       id: '',
+      tenantId: '',
       scheduledTime: '',
     },
     stopListening: null,
@@ -109,6 +112,7 @@ export function createNotificationsTable(options) {
     },
     openScheduleDialog(notification) {
       this.scheduleForm.id = notification.id;
+      this.scheduleForm.tenantId = notification.tenantId || '';
       this.scheduleForm.scheduledTime = inputFormatter.toControlValue(notification.scheduledFor);
       this.scheduleDialogVisible = true;
       const dialog = this.$refs.scheduleDialog;
@@ -131,8 +135,14 @@ export function createNotificationsTable(options) {
         dispatchToast({ variant: 'error', message: this.errorMessage });
         return;
       }
+      if (isGlobalView() && !this.scheduleForm.tenantId) {
+        this.errorMessage = this.strings.rescheduleError;
+        dispatchToast({ variant: 'error', message: this.errorMessage });
+        return;
+      }
       try {
-        await apiClient.rescheduleNotification(this.scheduleForm.id, isoValue);
+        const targetTenantId = isGlobalView() ? this.scheduleForm.tenantId : '';
+        await apiClient.rescheduleNotification(this.scheduleForm.id, isoValue, targetTenantId);
         await this.loadNotifications();
         dispatchToast({ variant: 'success', message: this.strings.scheduleSuccess });
         this.closeScheduleDialog();
@@ -141,7 +151,7 @@ export function createNotificationsTable(options) {
         dispatchToast({ variant: 'error', message: this.errorMessage });
       }
     },
-    async cancelNotification(notificationId) {
+    async cancelNotification(notification) {
       if (!authStore().isAuthenticated) {
         return;
       }
@@ -150,7 +160,11 @@ export function createNotificationsTable(options) {
       }
       this.isLoading = true;
       try {
-        await apiClient.cancelNotification(notificationId);
+        if (isGlobalView() && !notification.tenantId) {
+          throw new Error('missing_tenant_id');
+        }
+        const targetTenantId = isGlobalView() ? notification.tenantId : '';
+        await apiClient.cancelNotification(notification.id, targetTenantId);
         await this.loadNotifications();
         dispatchToast({ variant: 'success', message: this.strings.cancelSuccess });
       } catch (error) {

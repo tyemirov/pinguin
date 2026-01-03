@@ -428,7 +428,6 @@ func main() {
 	if configuration.WebInterfaceEnabled {
 		sessionValidator, validatorErr := sessionvalidator.New(sessionvalidator.Config{
 			SigningKey: []byte(configuration.TAuthSigningKey),
-			Issuer:     configuration.TAuthIssuer,
 			CookieName: configuration.TAuthCookieName,
 		})
 		if validatorErr != nil {
@@ -442,6 +441,10 @@ func main() {
 			SessionValidator:    sessionValidator,
 			NotificationService: notificationSvc,
 			TenantRepository:    tenantRepo,
+			TAuthBaseURL:        configuration.TAuthBaseURL,
+			TAuthTenantID:       configuration.TAuthTenantID,
+			TAuthGoogleClientID: configuration.TAuthGoogleClientID,
+			AllowedUserEmails:   buildAllowedUserSet(configuration.TAuthAllowedUsers),
 			Logger:              mainLogger,
 		})
 		if httpServerErr != nil {
@@ -493,4 +496,15 @@ func main() {
 		mainLogger.Error("gRPC server crashed", "error", serveErr)
 		os.Exit(1)
 	}
+}
+
+func buildAllowedUserSet(emails []string) map[string]struct{} {
+	allowed := make(map[string]struct{}, len(emails))
+	for _, emailValue := range emails {
+		if emailValue == "" {
+			continue
+		}
+		allowed[emailValue] = struct{}{}
+	}
+	return allowed
 }

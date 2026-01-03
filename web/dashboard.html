@@ -29,7 +29,6 @@
       brand-label="Pinguin"
       brand-href="/"
       nav-links='[{ "label": "Docs", "href": "https://github.com/tyemirov/pinguin" }]'
-      google-site-id="991677581607-r0dj8q6irjagipali0jpca7nfp8sfj9r.apps.googleusercontent.com"
       settings-label="Account"
       settings="true"
     >
@@ -94,6 +93,7 @@
             <thead>
               <tr>
                 <th>Notification</th>
+                <th x-show="viewScope === 'global'">Tenant</th>
                 <th>Status</th>
                 <th>Recipient</th>
                 <th>Scheduled for</th>
@@ -103,7 +103,7 @@
             <tbody>
               <template x-if="isLoading">
                 <tr>
-                  <td colspan="5" class="empty-state">
+                  <td colspan="6" class="empty-state">
                     Loading notifications…
                   </td>
                 </tr>
@@ -111,7 +111,7 @@
               <template x-if="!isLoading && notifications.length === 0">
                 <tr>
                   <td
-                    colspan="5"
+                    colspan="6"
                     class="empty-state"
                     x-text="strings.emptyState"
                   ></td>
@@ -128,6 +128,7 @@
                       <span x-text="formatTimestamp(item.createdAt)"></span>
                     </p>
                   </td>
+                  <td x-show="viewScope === 'global'" x-text="item.tenantId || '—'"></td>
                   <td>
                     <span
                       class="status-badge"
@@ -151,7 +152,7 @@
                       <button
                         class="button danger"
                         type="button"
-                        x-on:click="cancelNotification(item.id)"
+                        x-on:click="cancelNotification(item)"
                         :disabled="item.status !== 'queued'"
                         x-text="actions.cancel"
                       ></button>

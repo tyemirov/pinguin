@@ -34,13 +34,8 @@
     if (!tenant) {
       throw new Error('tauth.config.tenant_missing');
     }
-    const identity =
-      tenant && typeof tenant.identity === 'object' ? tenant.identity : null;
-    if (!identity) {
-      throw new Error('tauth.config.identity_missing');
-    }
     const tenantId = requireString(
-      identity.tauthTenantId,
+      runtime.tauthTenantId,
       'tauth.config.tenant_id_missing',
     );
     const baseUrl = requireString(runtime.tauthBaseUrl, 'tauth.config.base_url_missing').replace(/\/+$/, '');

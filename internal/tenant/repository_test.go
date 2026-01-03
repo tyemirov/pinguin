@@ -240,9 +240,7 @@ func TestRepositoryListActiveTenants(t *testing.T) {
 		Domains:      []string{"beta.example"},
 		Admins:       BootstrapAdmins{},
 		Identity: BootstrapIdentity{
-			GoogleClientID: "google-beta",
-			TAuthBaseURL:   "https://tauth.beta.example",
-			TAuthTenantID:  "tauth-beta",
+			ViewScope: "tenant",
 		},
 		EmailProfile: BootstrapEmailProfile{
 			Host:        "smtp.beta.example",

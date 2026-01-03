@@ -44,8 +44,7 @@ tenants:
     domains: [disabled.localhost]
     admins: [admin@example.com]
     identity:
-      googleClientId: test-client
-      tauthBaseUrl: https://auth.example.com
+      viewScope: tenant
     emailProfile:
       host: smtp.example.com
       port: 587

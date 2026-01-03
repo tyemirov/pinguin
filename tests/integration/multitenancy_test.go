@@ -145,7 +145,13 @@ func TestHTTPMultitenantIsolation(t *testing.T) {
 		SessionValidator:    &mockSessionValidator{},
 		NotificationService: svc,
 		TenantRepository:    repo,
-		Logger:              logger,
+		TAuthBaseURL:        "https://tauth.example.com",
+		TAuthTenantID:       "tauth-test",
+		TAuthGoogleClientID: "client-id",
+		AllowedUserEmails: map[string]struct{}{
+			"user@example.com": {},
+		},
+		Logger: logger,
 	})
 	if err != nil {
 		t.Fatalf("NewServer failed: %v", err)
@@ -245,7 +251,7 @@ func setupTenantConfig(t *testing.T) string {
 				EmailProfile: tenant.BootstrapEmailProfile{
 					Host: "smtp.a.com", Port: 587, Username: "userA", Password: "passA", FromAddress: "no@a.com",
 				},
-				Identity: tenant.BootstrapIdentity{GoogleClientID: "gc-a", TAuthBaseURL: "https://auth.a.com"},
+				Identity: tenant.BootstrapIdentity{ViewScope: "tenant"},
 			},
 			{
 				ID: "tenant-b", DisplayName: "Tenant B", Enabled: boolPtr(true),
@@ -253,7 +259,7 @@ func setupTenantConfig(t *testing.T) string {
 				EmailProfile: tenant.BootstrapEmailProfile{
 					Host: "smtp.b.com", Port: 587, Username: "userB", Password: "passB", FromAddress: "no@b.com",
 				},
-				Identity: tenant.BootstrapIdentity{GoogleClientID: "gc-b", TAuthBaseURL: "https://auth.b.com"},
+				Identity: tenant.BootstrapIdentity{ViewScope: "tenant"},
 			},
 		},
 	}

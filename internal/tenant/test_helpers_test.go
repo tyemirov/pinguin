@@ -63,9 +63,7 @@ func sampleBootstrapConfig() BootstrapConfig {
 				Domains:      []string{"alpha.example", "portal.alpha.example"},
 				Admins:       BootstrapAdmins{"admin@alpha.example", "viewer@alpha.example"},
 				Identity: BootstrapIdentity{
-					GoogleClientID: "google-alpha",
-					TAuthBaseURL:   "https://tauth.alpha.example",
-					TAuthTenantID:  "tauth-alpha",
+					ViewScope: "tenant",
 				},
 				EmailProfile: BootstrapEmailProfile{
 					Host:        "smtp.alpha.example",

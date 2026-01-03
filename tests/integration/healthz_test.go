@@ -33,7 +33,13 @@ func TestHealthzBypassesTenantResolution(t *testing.T) {
 		SessionValidator:    &mockSessionValidator{},
 		NotificationService: svc,
 		TenantRepository:    repo,
-		Logger:              logger,
+		TAuthBaseURL:        "https://tauth.example.com",
+		TAuthTenantID:       "tauth-test",
+		TAuthGoogleClientID: "client-id",
+		AllowedUserEmails: map[string]struct{}{
+			"user@example.com": {},
+		},
+		Logger: logger,
 	})
 	if err != nil {
 		t.Fatalf("server init error: %v", err)

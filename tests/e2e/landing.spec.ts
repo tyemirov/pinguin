@@ -68,10 +68,13 @@ test.describe('Landing page auth flow', () => {
           id: 'tenant-bravo',
           displayName: 'Bravo Labs',
           identity: {
-            googleClientId: 'bravo-google-client',
-            tauthBaseUrl: 'https://auth.bravo.test',
-            tauthTenantId: 'tauth-bravo',
+            viewScope: 'global',
           },
+        },
+        tauth: {
+          baseUrl: 'https://auth.bravo.test',
+          googleClientId: 'bravo-google-client',
+          tenantId: 'tauth-bravo',
         },
       });
     });

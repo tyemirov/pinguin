@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Migrated TAuth config to `server.tauth`, enforced allowed-user gating, defaulted tenant identity view scope to global, and aligned the UI/auth tests with `tauth.js` + mpr-ui DSL (PG-329).
 - Simplified the TAuth client integration to load `tauth.js` before `mpr-ui` and rely on declarative auth events for UI state (PG-328).
 - Aligned mprlab-gateway production orchestration with `pinguin-api.mprlab.com` routing, GitHub Pages UI hosting, and updated CORS/env templates (PG-325).
 - Added GitHub Pages deployment for the `/web` bundle with `pinguin.mprlab.com` CNAME and production API/runtime defaults for `pinguin-api.mprlab.com` (PG-324).

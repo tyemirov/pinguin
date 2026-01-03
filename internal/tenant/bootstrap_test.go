@@ -141,9 +141,7 @@ func bootstrapTenantSpec(tenantID string, domainHosts []string) BootstrapTenant 
 		Domains:      domainHosts,
 		Admins:       BootstrapAdmins{"admin@" + tenantID + ".example"},
 		Identity: BootstrapIdentity{
-			GoogleClientID: "google-" + tenantID,
-			TAuthBaseURL:   "https://tauth." + tenantID + ".example",
-			TAuthTenantID:  "tauth-" + tenantID,
+			ViewScope: "tenant",
 		},
 		EmailProfile: BootstrapEmailProfile{
 			Host:        "smtp." + tenantID + ".example",

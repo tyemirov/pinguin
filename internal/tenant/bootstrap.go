@@ -89,11 +89,9 @@ func (admins *BootstrapAdmins) UnmarshalYAML(value *yaml.Node) error {
 	}
 }
 
-// BootstrapIdentity holds GIS/TAuth metadata.
+// BootstrapIdentity holds UI scope metadata.
 type BootstrapIdentity struct {
-	GoogleClientID string `json:"googleClientId" yaml:"googleClientId"`
-	TAuthBaseURL   string `json:"tauthBaseUrl" yaml:"tauthBaseUrl"`
-	TAuthTenantID  string `json:"tauthTenantId" yaml:"tauthTenantId"`
+	ViewScope string `json:"viewScope" yaml:"viewScope"`
 }
 
 // BootstrapEmailProfile defines SMTP credentials.
@@ -206,11 +204,17 @@ func upsertTenant(ctx context.Context, tx *gorm.DB, keeper *SecretKeeper, spec B
 		}
 	}
 
+	viewScope := DefaultViewScope()
+	if strings.TrimSpace(spec.Identity.ViewScope) != "" {
+		parsedScope, err := ParseViewScope(spec.Identity.ViewScope)
+		if err != nil {
+			return fmt.Errorf("tenant bootstrap: identity.viewScope: %w", err)
+		}
+		viewScope = parsedScope
+	}
 	identity := TenantIdentity{
-		TenantID:       spec.ID,
-		GoogleClientID: spec.Identity.GoogleClientID,
-		TAuthBaseURL:   spec.Identity.TAuthBaseURL,
-		TAuthTenantID:  spec.Identity.TAuthTenantID,
+		TenantID:  spec.ID,
+		ViewScope: viewScope,
 	}
 	if err := tx.Clauses(clauseOnConflictUpdateAll()).Create(&identity).Error; err != nil {
 		return fmt.Errorf("tenant bootstrap: identity: %w", err)

@@ -14,6 +14,16 @@ const (
 	TenantStatusSuspended TenantStatus = "suspended"
 )
 
+// ViewScope determines whether the UI can access all tenants or only the active tenant.
+type ViewScope string
+
+const (
+	// ViewScopeGlobal allows viewing notifications across all tenants.
+	ViewScopeGlobal ViewScope = "global"
+	// ViewScopeTenant restricts views to the resolved tenant only.
+	ViewScopeTenant ViewScope = "tenant"
+)
+
 // Tenant represents a logical customer served by the deployment.
 type Tenant struct {
 	ID           string `gorm:"primaryKey"`
@@ -43,14 +53,12 @@ type TenantMember struct {
 	UpdatedAt time.Time
 }
 
-// TenantIdentity stores per-tenant Google/TAuth metadata used by the UI header.
+// TenantIdentity stores per-tenant view scope metadata used by the UI.
 type TenantIdentity struct {
-	TenantID       string `gorm:"primaryKey"`
-	GoogleClientID string
-	TAuthBaseURL   string
-	TAuthTenantID  string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	TenantID  string `gorm:"primaryKey"`
+	ViewScope ViewScope
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // EmailProfile describes SMTP delivery credentials for a tenant.

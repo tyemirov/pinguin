@@ -291,8 +291,7 @@ func newTestTenantRepository(testHandle *testing.T, tenantID string) *tenant.Rep
 				Domains:     []string{"test.localhost"},
 				Admins:      tenant.BootstrapAdmins{"admin@example.com"},
 				Identity: tenant.BootstrapIdentity{
-					GoogleClientID: "client-id",
-					TAuthBaseURL:   "http://tauth.localhost",
+					ViewScope: "tenant",
 				},
 				EmailProfile: tenant.BootstrapEmailProfile{
 					Host:        "smtp.localhost",

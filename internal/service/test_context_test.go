@@ -23,6 +23,9 @@ func baseRuntimeConfig() tenant.RuntimeConfig {
 		Tenant: tenant.Tenant{
 			ID: testTenantID,
 		},
+		Identity: tenant.TenantIdentity{
+			ViewScope: tenant.ViewScopeTenant,
+		},
 		Email: tenant.EmailCredentials{
 			Host:        "smtp.test",
 			Port:        587,
