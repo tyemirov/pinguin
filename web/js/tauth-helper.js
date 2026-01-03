@@ -11,6 +11,15 @@
   if (bundlePlaceholder) {
     bundlePlaceholder.remove();
   }
+  const TAUTH_ME_ENDPOINT = '/api/me';
+  const REQUIRED_HELPERS = [
+    'initAuthClient',
+    'requestNonce',
+    'exchangeGoogleCredential',
+    'logout',
+    'getCurrentUser',
+    'setAuthTenantId',
+  ];
   const getRuntimeConfig = () => {
     const runtime = window.__PINGUIN_CONFIG__;
     return runtime && typeof runtime === 'object' ? runtime : null;
@@ -66,6 +75,23 @@
     }
   };
 
+  const requireTauthHelper = () => {
+    const missing = REQUIRED_HELPERS.filter((key) => typeof window[key] !== 'function');
+    if (missing.length > 0) {
+      throw new Error(`tauth.helper.missing:${missing.join(',')}`);
+    }
+  };
+
+  const wrapInitAuthClient = () => {
+    if (window.__PinguinTauthInitWrapped) {
+      return;
+    }
+    const original = window.initAuthClient;
+    window.initAuthClient = (options = {}) =>
+      original({ ...options, meEndpoint: TAUTH_ME_ENDPOINT });
+    window.__PinguinTauthInitWrapped = true;
+  };
+
   let started = false;
   const start = async () => {
     if (started) {
@@ -78,6 +104,8 @@
       'data-pinguin-auth-helper': 'true',
       'data-tenant-id': tenantId,
     });
+    requireTauthHelper();
+    wrapInitAuthClient();
     if (bundleUrl) {
       await loadScript(bundleUrl, { id: 'mpr-ui-bundle' });
     }

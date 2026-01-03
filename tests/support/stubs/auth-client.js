@@ -4,6 +4,7 @@
   const authState = {
     baseUrl: '',
     tenantId: '',
+    meEndpoint: '',
   };
   function getSession() {
     if (!window.__mockAuth) {
@@ -48,6 +49,9 @@
     if (options?.tenantId) {
       authState.tenantId = options.tenantId;
     }
+    if (options?.meEndpoint) {
+      authState.meEndpoint = options.meEndpoint;
+    }
     const session = getSession();
     const profile = ensureProfile();
     if (session.authenticated) {
@@ -61,13 +65,14 @@
   window.getAuthEndpoints = function getAuthEndpoints() {
     const baseUrl = authState.baseUrl ? authState.baseUrl.replace(/\/$/, '') : '';
     const origin = baseUrl || (window.location && window.location.origin) || '';
+    const meEndpoint = authState.meEndpoint || '/api/me';
     return {
       baseUrl: origin,
       nonce: `${origin}/auth/nonce`,
       login: `${origin}/auth/google`,
       refresh: `${origin}/auth/refresh`,
       logout: `${origin}/auth/logout`,
-      me: `${origin}/me`,
+      me: `${origin}${meEndpoint}`,
     };
   };
   window.requestNonce = async function requestNonce() {
