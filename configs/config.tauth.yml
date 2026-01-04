@@ -12,7 +12,7 @@ tenants:
   - id: ${TAUTH_TENANT_ID_PINGUIN}
     display_name: ${TAUTH_TENANT_DISPLAY_NAME_PINGUIN}
     tenant_origins:
-      - ${TAUTH_CORS_ORIGIN_1}
+      - ${TAUTH_TENANT_ORIGIN_PINGUIN}
     google_web_client_id: "${TAUTH_TENANT_GOOGLE_WEB_CLIENT_ID_PINGUIN}"
     jwt_signing_key: "${TAUTH_TENANT_JWT_SIGNING_KEY_PINGUIN}"
     cookie_domain: "${TAUTH_COOKIE_DOMAIN}"
@@ -22,5 +22,4 @@ tenants:
     refresh_ttl: "720h"
     nonce_ttl: "5m"
     allow_insecure_http: "${TAUTH_ALLOW_INSECURE_HTTP}"
-    allowed_users:
     

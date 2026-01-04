@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Cached early mpr-ui auth events in `tauth-helper` and seed the session bridge from the cached state to avoid missed auth transitions when the UI loads before the app bootstrap (PG-332 follow-up).
+- Fixed auth bootstrap loops by waiting on tauth.js/mpr-ui readiness, removing fallback redirects, and broadening the TAuth CORS allowlist defaults for UI + GIS origins (PG-332).
 - Added a declarative `MPRUI.init` configuration bridge so runtime TAuth settings are applied as mpr-ui DSL attributes (PG-331).
 - Enforced the `/api/me` session endpoint in the tauth.js bootstrap and validated required helper globals before mpr-ui loads (PG-330).
 - Migrated TAuth config to `server.tauth`, removed Pinguin-side access allowlists and tenant admins, defaulted the UI to global view, and aligned the UI/auth tests with `tauth.js` + mpr-ui DSL (PG-329).
