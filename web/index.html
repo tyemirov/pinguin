@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light" data-mpr-theme="light">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -31,14 +31,12 @@
     <script defer src="/js/tauth-helper.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
   </head>
-  <body data-page="landing" class="theme-light" data-palette="sunrise">
+  <body data-page="landing" class="theme-light">
     <mpr-header
       id="pinguin-header"
       brand-label="Pinguin"
       brand-href="/"
       nav-links='[{ "label": "Docs", "href": "https://github.com/tyemirov/pinguin" }]'
-      settings-label="Account"
-      settings="true"
     ></mpr-header>
     <main>
       <section class="anchor-section hero" x-data="landingAuthPanel()" x-init="init()">
@@ -89,8 +87,8 @@
         <p>We do not sell or share notification content with third parties, and you may remove queued items from the dashboard at any time.</p>
       "
       links-collection='{"style":"drop-up","text":"Explore","links":[{ "label": "Repository", "url": "https://github.com/tyemirov/pinguin" },{ "label": "mpr-ui docs", "url": "https://github.com/MarcoPoloResearchLab/mpr-ui" }]}'
-      theme-switcher="square"
-      theme-config='{"attribute":"data-palette","targets":["body"],"initialMode":"light","modes":[{"value":"sunrise","attributeValue":"light","classList":["theme-light"],"dataset":{"palette":"sunrise"}},{"value":"midnight","attributeValue":"dark","classList":["theme-dark"],"dataset":{"palette":"midnight"}}]}'
+      theme-switcher="toggle"
+      theme-config='{"attribute":"data-theme","targets":["body"],"modes":[{"value":"light","attributeValue":"light","classList":["theme-light"]},{"value":"dark","attributeValue":"dark","classList":["theme-dark"]}]}'
     ></mpr-footer>
   </body>
 </html>

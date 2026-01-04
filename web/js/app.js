@@ -24,6 +24,7 @@ Alpine.data('notificationsTable', () =>
 );
 Alpine.data('toastCenter', () => createToastCenter());
 
+registerThemePersistence();
 Alpine.start();
 
 function startApp() {
@@ -49,6 +50,24 @@ function createAuthStore() {
       this.isAuthenticated = false;
     },
   };
+}
+
+function registerThemePersistence() {
+  if (typeof document === 'undefined') {
+    return;
+  }
+  const THEME_STORAGE_KEY = 'pinguin.theme';
+  document.addEventListener('mpr-ui:theme-change', (event) => {
+    const mode = event?.detail?.mode;
+    if (mode !== 'light' && mode !== 'dark') {
+      return;
+    }
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, mode);
+    } catch {
+      // Storage might be unavailable in private sessions.
+    }
+  });
 }
 
 function createLandingAuthPanel(controller) {
@@ -125,6 +144,29 @@ function createDashboardShell(bridge) {
     async handleLogout() {
       await bridge.logout();
       this.redirectToLanding();
+    },
+    getAvatarUrl() {
+      const profile = Alpine.store('auth').profile;
+      if (!profile || typeof profile !== 'object') {
+        return '';
+      }
+      if (typeof profile.avatar_url === 'string' && profile.avatar_url.trim()) {
+        return profile.avatar_url.trim();
+      }
+      if (
+        typeof profile.user_avatar_url === 'string' &&
+        profile.user_avatar_url.trim()
+      ) {
+        return profile.user_avatar_url.trim();
+      }
+      return '';
+    },
+    profileMenuStyle() {
+      const avatarUrl = this.getAvatarUrl();
+      if (!avatarUrl) {
+        return {};
+      }
+      return { '--profile-avatar-url': `url("${avatarUrl}")` };
     },
     redirectToLanding() {
       if (this.hasRedirected) {

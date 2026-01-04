@@ -19,3 +19,19 @@ if (!window.__PINGUIN_CONFIG__.runtimeConfigUrl) {
 if (!window.__PINGUIN_CONFIG__.apiBaseUrl) {
   window.__PINGUIN_CONFIG__.apiBaseUrl = resolvedApiBaseUrl;
 }
+
+const THEME_STORAGE_KEY = 'pinguin.theme';
+const resolveStoredTheme = () => {
+  try {
+    return window.localStorage.getItem(THEME_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+};
+const storedTheme = resolveStoredTheme();
+if (storedTheme === 'light' || storedTheme === 'dark') {
+  if (document && document.documentElement) {
+    document.documentElement.setAttribute('data-theme', storedTheme);
+    document.documentElement.setAttribute('data-mpr-theme', storedTheme);
+  }
+}

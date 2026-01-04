@@ -89,4 +89,65 @@ test.describe('Landing page auth flow', () => {
       expect(id).toBe('tenant-bravo');
     });
   });
+
+  const themePersistenceCases = [
+    { label: 'light-to-dark', seed: 'light', expected: 'dark' },
+    { label: 'dark-to-light', seed: 'dark', expected: 'light' },
+  ];
+
+  for (const scenario of themePersistenceCases) {
+    test(`persists theme from landing to dashboard (${scenario.label})`, async ({ page }) => {
+      await page.addInitScript((theme) => {
+        if (!theme) {
+          return;
+        }
+        const key = 'pinguin.theme';
+        if (!window.localStorage.getItem(key)) {
+          window.localStorage.setItem(key, theme);
+        }
+      }, scenario.seed);
+      await page.goto('/index.html');
+      const themeToggle = page.locator(
+        '[data-mpr-footer="theme-toggle"] [data-mpr-theme-toggle="control"]',
+      );
+      await expect(themeToggle).toBeVisible();
+      await page.waitForFunction((expected) => {
+        const activeTheme =
+          document.body.getAttribute('data-theme') ||
+          document.documentElement.getAttribute('data-theme') ||
+          '';
+        return activeTheme === expected;
+      }, scenario.seed);
+
+      await themeToggle.click();
+      await page.waitForFunction((expected) => {
+        const activeTheme =
+          document.body.getAttribute('data-theme') ||
+          document.documentElement.getAttribute('data-theme') ||
+          '';
+        return activeTheme === expected;
+      }, scenario.expected);
+
+      const storedTheme = await page.evaluate(
+        () => window.localStorage.getItem('pinguin.theme') || '',
+      );
+      expect(storedTheme).toBe(scenario.expected);
+
+      await page.evaluate(() => {
+        if (window.__mockAuth) {
+          window.__mockAuth.authenticated = true;
+          window.__persistMockAuth && window.__persistMockAuth();
+        }
+      });
+      await page.goto('/dashboard.html');
+      await expect(page.getByTestId('notifications-table')).toBeVisible();
+      await page.waitForFunction((expected) => {
+        const activeTheme =
+          document.body.getAttribute('data-theme') ||
+          document.documentElement.getAttribute('data-theme') ||
+          '';
+        return activeTheme === expected;
+      }, scenario.expected);
+    });
+  }
 });
