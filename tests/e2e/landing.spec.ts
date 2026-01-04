@@ -32,6 +32,18 @@ test.describe('Landing page auth flow', () => {
     await expect(page.getByTestId('notifications-table')).toBeVisible();
   });
 
+  test('shows avatar menu and hides header sign-out pill after login', async ({ page }) => {
+    await page.goto('/index.html');
+    await completeHeaderLogin(page);
+    const avatarTrigger = page
+      .getByTestId('profile-chip')
+      .locator('[data-mpr-settings="toggle"]');
+    await expect(avatarTrigger).toBeVisible();
+    await expect(
+      page.locator('mpr-header [data-mpr-header="sign-out-button"]'),
+    ).toBeHidden();
+  });
+
   test('mpr-header attributes mirror runtime TAuth base URL', async ({ page }) => {
     await page.goto('/index.html');
     const runtimeBase = await page.evaluate(() => (window as any).__PINGUIN_CONFIG__?.tauthBaseUrl || '');
