@@ -287,13 +287,9 @@ function createSessionBridge() {
     const profile = event?.detail?.profile || null;
     hasResolved = true;
     clearStatusTimer();
-    // Only update auth state if we have a valid profile
-    // to prevent accidentally clearing auth on malformed events
-    if (profile && typeof profile === 'object') {
-      applyProfile(profile);
-      invokeCallback('onAuthenticated', profile);
-    }
+    applyProfile(profile);
     setStatus('ready');
+    invokeCallback('onAuthenticated', profile);
   };
 
   const handleHeaderUnauthenticated = () => {
@@ -330,13 +326,7 @@ function createSessionBridge() {
     const cachedState =
       typeof window !== 'undefined' ? window.__PINGUIN_AUTH_STATE__ : null;
     if (cachedState && typeof cachedState === 'object') {
-      // Only trust cached authenticated state if profile is a valid object
-      // to prevent redirect loops when profile is missing
-      if (
-        cachedState.status === 'authenticated' &&
-        cachedState.profile &&
-        typeof cachedState.profile === 'object'
-      ) {
+      if (cachedState.status === 'authenticated') {
         handleHeaderAuthenticated({ detail: { profile: cachedState.profile } });
         return;
       }

@@ -70,7 +70,38 @@ make: *** [test-frontend] Error 1
 - [x] [PG-328] Simplify the TAuth client integration to load `tauth.js` before `mpr-ui` and rely on the declarative DSL + auth events for state; `make ci` passes.
 - [x] [PG-327] Load the TAuth helper from `/tauth.js` (via `/js/tauth-helper.js` and runtime config hints) so auth bootstrap succeeds after TAuth upgrades; `make ci` passes.
 - [x] [PG-326] Align mpr-ui auth attributes with the latest Web Component API so the header renders the Google login button after dependency upgrades; `make ci` passes.
-- [x] [PG-333] Post-login UI loop persists: app oscillates between landing and dashboard even though TAuth `/me` returns 200 and Pinguin `/api/notifications` returns 200. Resolved by validating profile object in auth state cache: tauth-helper now only caches authenticated state when profile is a valid object, session bridge only trusts cached state with valid profile, and handleHeaderAuthenticated ignores malformed events with null profile to prevent accidentally clearing auth store; `make ci` passes.
+- [ ] [PG-333] Post-login UI loop persists: app oscillates between landing and dashboard even though TAuth `/me` returns 200 and Pinguin `/api/notifications` returns 200. Observed in dev stack after PG-332 + follow-up (PR #115), with latest `mpr-ui` and `tauth.js` integration in place. Impact: user cannot stay on dashboard after sign-in; app repeatedly redirects.
+
+  Environment and context:
+  - docker-compose `dev` profile (ghttp on `:4173`, pinguin on `:8080`, tauth on `:8081`).
+  - `.env.pinguin` uses `TAUTH_BASE_URL=http://localhost:8081`, `TAUTH_TENANT_ID=pinguin`, `TAUTH_COOKIE_NAME=app_session_pinguin`, `HTTP_ALLOWED_ORIGIN1=http://localhost:4173`.
+  - `.env.tauth` uses `TAUTH_TENANT_ID_PINGUIN=pinguin`, `TAUTH_TENANT_ORIGIN_PINGUIN=http://localhost:4173`, `TAUTH_ENABLE_TENANT_HEADER_OVERRIDE=true`, `TAUTH_ENABLE_CORS=true`.
+  - UI loads `tauth.js` then `mpr-ui.js`, runtime config applied via `web/js/tauth-config-apply.js`, session bridge in `web/js/app.js`.
+
+  Observed behavior:
+  - Login completes; Google button visible and interactive.
+  - Requests to TAuth `/me` return 200 repeatedly; `/auth/nonce` also 200.
+  - Pinguin `/api/notifications` returns 200, but UI redirects between `/index.html` and `/dashboard.html` in a loop.
+  - Loop persists after PG-332 and PG-332 follow-up (auth-ready gating + auth-state cache).
+
+  Logs captured during loop:
+  ```
+  tauth        | {"level":"info","ts":1767482798.9392948,"caller":"server/main.go:364","msg":"http","method":"GET","path":"/me","status":200,"ip":"172.217.78.95","elapsed":0.000146538}
+  pinguin-dev  | time=2026-01-03T23:26:38.942Z level=INFO msg=http_request_completed method=GET path=/api/notifications status=200 duration_ms=0
+  pinguin-dev  | time=2026-01-03T23:26:40.561Z level=INFO msg=http_request_completed method=GET path=/runtime-config status=200 duration_ms=0
+  tauth        | {"level":"info","ts":1767482800.6470726,"caller":"server/main.go:364","msg":"http","method":"GET","path":"/me","status":200,"ip":"172.217.78.95","elapsed":0.000096896}
+  tauth        | {"level":"info","ts":1767482800.6690543,"caller":"server/main.go:364","msg":"http","method":"POST","path":"/auth/nonce","status":200,"ip":"172.217.78.95","elapsed":0.009870132}
+  tauth        | {"level":"info","ts":1767482800.747536,"caller":"server/main.go:364","msg":"http","method":"GET","path":"/me","status":200,"ip":"172.217.78.95","elapsed":0.00018573}
+  pinguin-dev  | time=2026-01-03T23:26:42.457Z level=INFO msg=http_request_completed method=GET path=/runtime-config status=200 duration_ms=0
+  tauth        | {"level":"info","ts":1767482802.6402583,"caller":"server/main.go:364","msg":"http","method":"GET","path":"/me","status":200,"ip":"172.217.78.95","elapsed":0.000128605}
+  tauth        | {"level":"info","ts":1767482802.6599674,"caller":"server/main.go:364","msg":"http","method":"POST","path":"/auth/nonce","status":200,"ip":"172.217.78.95","elapsed":0.004950285}
+  pinguin-dev  | time=2026-01-03T23:26:42.680Z level=INFO msg=http_request_completed method=GET path=/api/notifications status=200 duration_ms=0
+  tauth        | {"level":"info","ts":1767482802.6906724,"caller":"server/main.go:364","msg":"http","method":"GET","path":"/me","status":200,"ip":"172.217.78.95","elapsed":0.00022068}
+  pinguin-dev  | time=2026-01-03T23:26:44.361Z level=INFO msg=http_request_completed method=GET path=/runtime-config status=200 duration_ms=0
+  tauth        | {"level":"info","ts":1767482804.4472177,"caller":"server/main.go:364","msg":"http","method":"GET","path":"/me","status":200,"ip":"172.217.78.95","elapsed":0.000106704}
+  tauth        | {"level":"info","ts":1767482804.4681065,"caller":"server/main.go:364","msg":"http","method":"POST","path":"/auth/nonce","status":200,"ip":"172.217.78.95","elapsed":0.008144772}
+  tauth        | {"level":"info","ts":1767482804.4876297,"caller":"server/main.go:364","msg":"http","method":"GET","path":"/me","status":200,"ip":"172.217.78.95","elapsed":0.000222615}
+  ```
 
 ## Maintenance (400–499)
 
