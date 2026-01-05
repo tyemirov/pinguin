@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light" data-mpr-theme="light">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -21,28 +21,34 @@
   </head>
   <body
     data-page="dashboard"
-    x-data="dashboardShell()"
+    x-data="appShell()"
     class="theme-light"
-    data-palette="sunrise"
   >
     <mpr-header
       id="pinguin-dashboard-header"
       brand-label="Pinguin"
       brand-href="/"
       nav-links='[{ "label": "Docs", "href": "https://github.com/tyemirov/pinguin" }]'
-      settings-label="Account"
-      settings="true"
     >
-      <div slot="nav-right" class="profile-chip" data-testid="profile-chip">
-        <template
-          x-if="$store.auth.profile && ($store.auth.profile.avatar_url || $store.auth.profile.user_avatar_url)"
-        >
-          <img :src="$store.auth.profile.avatar_url || $store.auth.profile.user_avatar_url" alt="User avatar" />
-        </template>
-        <span
-          x-text="$store.auth.profile?.display || $store.auth.profile?.user_display_name || $store.auth.profile?.user_email || 'Guest'"
-        ></span>
-      </div>
+      <mpr-settings
+        slot="aux"
+        class="profile-menu"
+        data-testid="profile-chip"
+        :label="strings.profileMenuLabel"
+        button-class="mpr-settings__button profile-menu__trigger"
+        panel-class="mpr-settings__panel profile-menu__panel"
+        x-show="$store.auth.isAuthenticated"
+        x-cloak
+        :style="profileMenuStyle()"
+      >
+        <button
+          slot="panel"
+          class="profile-menu__action"
+          type="button"
+          x-on:click="handleLogout()"
+          x-text="actions.logout"
+        ></button>
+      </mpr-settings>
     </mpr-header>
     <main class="anchor-section">
       <header class="dashboard-header">
@@ -56,12 +62,6 @@
             type="button"
             x-on:click="refreshNotifications()"
             x-text="actions.refresh"
-          ></button>
-          <button
-            class="button secondary"
-            type="button"
-            x-on:click="handleLogout()"
-            x-text="actions.logout"
           ></button>
         </div>
       </header>
@@ -226,8 +226,8 @@
         <p>We do not sell or share notification content with third parties, and you may remove queued items from the dashboard at any time.</p>
       "
       links-collection='{"style":"drop-up","text":"Explore","links":[{ "label": "Repository", "url": "https://github.com/tyemirov/pinguin" },{ "label": "mpr-ui docs", "url": "https://github.com/MarcoPoloResearchLab/mpr-ui" }]}'
-      theme-switcher="square"
-      theme-config='{"attribute":"data-palette","targets":["body"],"initialMode":"light","modes":[{"value":"sunrise","attributeValue":"light","classList":["theme-light"],"dataset":{"palette":"sunrise"}},{"value":"midnight","attributeValue":"dark","classList":["theme-dark"],"dataset":{"palette":"midnight"}}]}'
+      theme-switcher="toggle"
+      theme-config='{"attribute":"data-theme","targets":["body"],"modes":[{"value":"light","attributeValue":"light","classList":["theme-light"]},{"value":"dark","attributeValue":"dark","classList":["theme-dark"]}]}'
     ></mpr-footer>
   </body>
 </html>

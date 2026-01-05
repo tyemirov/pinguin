@@ -81,6 +81,7 @@ export const STRINGS = Object.freeze({
   dashboard: {
     title: "Scheduled notifications",
     subtitle: "Review delivery status, adjust schedules, or cancel queued jobs in a single view.",
+    profileMenuLabel: "User menu",
     emptyState: "No notifications yet. Start by sending one via the CLI or gRPC client.",
     scheduleDialogTitle: "Reschedule notification",
     scheduleDialogDescription: "Select a new delivery time. Notifications can only be edited while queued.",
@@ -103,7 +104,7 @@ export const STRINGS = Object.freeze({
     cancel: "Cancel",
     saveChanges: "Save changes",
     close: "Close",
-    logout: "Log out",
+    logout: "Sign out",
   },
 });
 

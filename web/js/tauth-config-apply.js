@@ -68,6 +68,11 @@
     if (displayName) {
       initConfig.header = {
         brandLabel: displayName,
+        showProfile: false,
+      };
+    } else {
+      initConfig.header = {
+        showProfile: false,
       };
     }
     return initConfig;

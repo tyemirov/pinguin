@@ -11,7 +11,6 @@
   if (bundlePlaceholder) {
     bundlePlaceholder.remove();
   }
-  const TAUTH_ME_ENDPOINT = '/api/me';
   const REQUIRED_HELPERS = [
     'initAuthClient',
     'requestNonce',
@@ -20,6 +19,20 @@
     'getCurrentUser',
     'setAuthTenantId',
   ];
+  const AUTH_STATE_KEY = '__PINGUIN_AUTH_STATE__';
+  const AUTH_LISTENER_KEY = '__PINGUIN_AUTH_LISTENING__';
+  const recordAuthState = (status, profile) => {
+    window[AUTH_STATE_KEY] = { status, profile: profile || null };
+  };
+  if (!window[AUTH_LISTENER_KEY]) {
+    window[AUTH_LISTENER_KEY] = true;
+    document.addEventListener('mpr-ui:auth:authenticated', (event) => {
+      recordAuthState('authenticated', event?.detail?.profile || null);
+    });
+    document.addEventListener('mpr-ui:auth:unauthenticated', () => {
+      recordAuthState('unauthenticated', null);
+    });
+  }
   const getRuntimeConfig = () => {
     const runtime = window.__PINGUIN_CONFIG__;
     return runtime && typeof runtime === 'object' ? runtime : null;
@@ -75,21 +88,21 @@
     }
   };
 
+  const dispatchAuthReady = (detail) => {
+    window.__PINGUIN_AUTH_READY__ = true;
+    window.dispatchEvent(new CustomEvent('pinguin:auth-ready', { detail }));
+  };
+
+  const dispatchAuthError = (error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    window.dispatchEvent(new CustomEvent('pinguin:auth-error', { detail: { message } }));
+  };
+
   const requireTauthHelper = () => {
     const missing = REQUIRED_HELPERS.filter((key) => typeof window[key] !== 'function');
     if (missing.length > 0) {
       throw new Error(`tauth.helper.missing:${missing.join(',')}`);
     }
-  };
-
-  const wrapInitAuthClient = () => {
-    if (window.__PinguinTauthInitWrapped) {
-      return;
-    }
-    const original = window.initAuthClient;
-    window.initAuthClient = (options = {}) =>
-      original({ ...options, meEndpoint: TAUTH_ME_ENDPOINT });
-    window.__PinguinTauthInitWrapped = true;
   };
 
   let started = false;
@@ -105,10 +118,10 @@
       'data-tenant-id': tenantId,
     });
     requireTauthHelper();
-    wrapInitAuthClient();
     if (bundleUrl) {
       await loadScript(bundleUrl, { id: 'mpr-ui-bundle' });
     }
+    dispatchAuthReady({ baseUrl, tenantId });
   };
 
   const startWhenReady = () => {
@@ -116,7 +129,7 @@
     if (!runtime || !runtime.tenant) {
       return;
     }
-    void start();
+    start().catch(dispatchAuthError);
   };
 
   startWhenReady();
