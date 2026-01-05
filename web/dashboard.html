@@ -21,7 +21,7 @@
   </head>
   <body
     data-page="dashboard"
-    x-data="dashboardShell()"
+    x-data="appShell()"
     class="theme-light"
   >
     <mpr-header
@@ -38,6 +38,7 @@
         button-class="mpr-settings__button profile-menu__trigger"
         panel-class="mpr-settings__panel profile-menu__panel"
         x-show="$store.auth.isAuthenticated"
+        x-cloak
         :style="profileMenuStyle()"
       >
         <button

@@ -14,7 +14,7 @@ const sessionBridge = createSessionBridge();
 Alpine.store('auth', createAuthStore());
 
 Alpine.data('landingAuthPanel', () => createLandingAuthPanel(sessionBridge));
-Alpine.data('dashboardShell', () => createDashboardShell(sessionBridge));
+Alpine.data('appShell', () => createAppShell(sessionBridge));
 Alpine.data('notificationsTable', () =>
   createNotificationsTable({
     apiClient,
@@ -104,7 +104,7 @@ function createLandingAuthPanel(controller) {
   };
 }
 
-function createDashboardShell(bridge) {
+function createAppShell(bridge) {
   return {
     strings: STRINGS.dashboard,
     actions: STRINGS.actions,
@@ -115,6 +115,7 @@ function createDashboardShell(bridge) {
     previousAuthState: false,
     init() {
       const authStore = window.Alpine.store('auth');
+      const pageId = document.body.dataset.page || 'landing';
       this.previousAuthState = authStore.isAuthenticated;
       this.hasHydrated = false;
       this.hasRedirected = false;
@@ -122,7 +123,7 @@ function createDashboardShell(bridge) {
         () => authStore.isAuthenticated,
         (isAuthenticated) => {
           const shouldRedirect =
-            !isAuthenticated && (this.previousAuthState || this.hasHydrated);
+            !isAuthenticated && (this.previousAuthState || this.hasHydrated) && pageId === 'dashboard';
           this.previousAuthState = isAuthenticated;
           if (shouldRedirect) {
             this.redirectToLanding();
@@ -132,7 +133,7 @@ function createDashboardShell(bridge) {
       this.stopStatusWatcher = bridge.onStatusChange((status) => {
         if (status === 'ready' || status === 'error') {
           this.hasHydrated = true;
-          if (!authStore.isAuthenticated) {
+          if (!authStore.isAuthenticated && pageId === 'dashboard') {
             this.redirectToLanding();
           }
         }
@@ -143,23 +144,23 @@ function createDashboardShell(bridge) {
     },
     async handleLogout() {
       await bridge.logout();
-      this.redirectToLanding();
+      const pageId = document.body.dataset.page || 'landing';
+      if (pageId === 'dashboard') {
+        this.redirectToLanding();
+      } else {
+        window.location.reload();
+      }
     },
     getAvatarUrl() {
       const profile = Alpine.store('auth').profile;
       if (!profile || typeof profile !== 'object') {
-        return '';
+        return null;
       }
-      if (typeof profile.avatar_url === 'string' && profile.avatar_url.trim()) {
-        return profile.avatar_url.trim();
-      }
-      if (
-        typeof profile.user_avatar_url === 'string' &&
-        profile.user_avatar_url.trim()
-      ) {
-        return profile.user_avatar_url.trim();
-      }
-      return '';
+      const url =
+        (typeof profile.avatar_url === 'string' && profile.avatar_url.trim()) ||
+        (typeof profile.user_avatar_url === 'string' &&
+          profile.user_avatar_url.trim());
+      return url || null;
     },
     profileMenuStyle() {
       const avatarUrl = this.getAvatarUrl();

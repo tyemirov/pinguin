@@ -1,3 +1,7 @@
+[x-cloak] {
+  display: none !important;
+}
+
 :root {
   color-scheme: light dark;
   --font-family-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
@@ -296,8 +300,18 @@ mpr-header [data-mpr-header="google-signin"] button {
   min-height: 40px;
 }
 
-body[data-page="dashboard"] mpr-header [data-mpr-header="profile"] {
+body[data-page="dashboard"] mpr-header [data-mpr-header="profile"],
+body[data-page="dashboard"] mpr-header [data-mpr-header="settings-button"],
+body[data-page="dashboard"] mpr-header .mpr-header__chip[data-mpr-header="profile"],
+body[data-page="dashboard"] mpr-header .mpr-header__button[data-mpr-header="settings-button"] {
   display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
 .dashboard-header {
@@ -320,7 +334,7 @@ body[data-page="dashboard"] mpr-header [data-mpr-header="profile"] {
   font-size: 1.2rem;
 }
 
-.profile-menu.mpr-settings {
+.profile-menu {
   position: relative;
   display: inline-flex;
   align-items: center;
