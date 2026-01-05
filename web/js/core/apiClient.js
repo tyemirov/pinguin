@@ -23,6 +23,7 @@ function mapNotification(raw) {
   }
   return {
     id: raw.notification_id,
+    tenantId: raw.tenant_id,
     type: raw.notification_type,
     recipient: raw.recipient,
     subject: raw.subject,
@@ -33,6 +34,17 @@ function mapNotification(raw) {
     scheduledFor: raw.scheduled_for || raw.scheduled_time || null,
     retryCount: raw.retry_count ?? 0,
   };
+}
+
+function buildTenantQuery(tenantId) {
+  if (!tenantId || typeof tenantId !== 'string') {
+    return '';
+  }
+  const normalized = tenantId.trim();
+  if (!normalized) {
+    return '';
+  }
+  return `?tenant_id=${encodeURIComponent(normalized)}`;
 }
 
 export function createApiClient(baseUrl = RUNTIME_CONFIG.apiBaseUrl) {
@@ -71,9 +83,9 @@ export function createApiClient(baseUrl = RUNTIME_CONFIG.apiBaseUrl) {
         items.map(mapNotification).filter(Boolean)
       );
     },
-    async rescheduleNotification(notificationId, scheduledIsoString) {
+    async rescheduleNotification(notificationId, scheduledIsoString, tenantId) {
       const payload = await request(
-        `/notifications/${encodeURIComponent(notificationId)}/schedule`,
+        `/notifications/${encodeURIComponent(notificationId)}/schedule${buildTenantQuery(tenantId)}`,
         {
           method: 'PATCH',
           body: JSON.stringify({ scheduled_time: scheduledIsoString }),
@@ -81,10 +93,13 @@ export function createApiClient(baseUrl = RUNTIME_CONFIG.apiBaseUrl) {
       );
       return mapNotification(payload);
     },
-    async cancelNotification(notificationId) {
-      const payload = await request(`/notifications/${encodeURIComponent(notificationId)}/cancel`, {
-        method: 'POST',
-      });
+    async cancelNotification(notificationId, tenantId) {
+      const payload = await request(
+        `/notifications/${encodeURIComponent(notificationId)}/cancel${buildTenantQuery(tenantId)}`,
+        {
+          method: 'POST',
+        },
+      );
       return mapNotification(payload);
     },
   };

@@ -8,6 +8,10 @@ Read @AGENTS.md, @ARCHITECTURE.md, @README.md, @issues.md/POLICY.md, @issues.md/
 
 ## Improvements (202–299)
 
+- [x] [PG-331] Add a declarative mpr-ui init object for TAuth DSL wiring and route runtime config through `MPRUI.init`; `make ci` passes.
+- [x] [PG-329] Move TAuth config to server scope, add global view default for web UI, and gate access by allowed user list. Resolved with server.tauth config, global/tenant view scope handling, and updated UI/auth flows; `make ci` passes.
+- [x] [PG-329] Follow-up: remove Pinguin allowed-user gating; TAuth now owns user access control via `configs/config.tauth.yml`.
+- [x] [PG-329] Follow-up: remove tenant admin lists; any valid TAuth session is treated as admin for the web UI.
 - [x] [PG-202] Refactor gRPC server to use an interceptor for tenant resolution instead of manual calls in every handler. Resolved with gRPC tenant interceptor + tests; `make ci` passes.
 - [x] [PG-203] Optimize retry worker to avoid N+1 queries per tick (iterating all tenants). Resolved with single join query for active tenants; `make ci` passes.
 - [x] [PG-204] Move validation logic from Service layer to Domain constructors/Edge handlers (POLICY.md). Validation now lives in model constructors + HTTP/gRPC edges; service assumes validated requests; `make ci` passes.
@@ -19,9 +23,13 @@ Read @AGENTS.md, @ARCHITECTURE.md, @README.md, @issues.md/POLICY.md, @issues.md/
 - [x] [PG-316] Replace string-based GORM query fragments with struct/clause expressions so SQL is generated entirely by GORM; `make ci` passes.
 - [x] [PG-324] Split frontend and backend hosting: deploy `/web` to GitHub Pages at `pinguin.mprlab.com`, point runtime config + API calls at `pinguin-api.mprlab.com`, and update docs/config for the new domains. Resolved with GitHub Pages workflow + CNAME, runtime config defaults, and doc updates; `make ci` passes.
 - [x] [PG-325] Align mprlab-gateway production orchestration with split Pinguin hosting: add `pinguin-api.mprlab.com` routing, update CORS/env config, and document the new DNS expectations. Resolved with Caddy routing, env/template updates, and gateway docs refresh; `make ci` passes.
+- [x] [PG-208] Replace the settings icon with a user avatar and dropdown menu for logout. Kept the mpr-settings profile menu, refined avatar/dropdown styling to align with mpr-ui semantics, and added integration coverage for avatar + logout; all tests pass.
 
 ## BugFixes (308–399)
 
+- [x] [PG-332] Stop the auth bootstrap loop by waiting for tauth.js/mpr-ui readiness, removing fallback redirects, and expanding TAuth CORS allowlist defaults for the UI + GIS origins; `make ci` passes.
+- [x] [PG-332] Follow-up: cache early mpr-ui auth events in `tauth-helper` and hydrate the session bridge from cached state to prevent missed auth transitions when mpr-ui loads before app bootstrap; `make ci` passes.
+- [x] [PG-330] Update the TAuth client wiring to use `/api/me` and hard-fail when the helper is missing so the auth bootstrap matches current TAuth endpoints; `make ci` passes.
 - [x] [PG-310] Fix critical performance bottleneck in `internal/tenant/repository.go`: implement caching for tenant runtime config to avoid ~5 DB queries + decryption per request. Added in-memory host→tenant and runtime caches with defensive cloning plus tests; Go lint/test pass, frontend CI still blocked by Playwright issue PG-312.
 - [x] [PG-311] Fix potential null reference/crash in `ResolveByID` if `tenantID` is empty or invalid (missing edge validation). Added tenant ID validation + sentinel error; tests added. Go checks pass; `make ci` still blocked at Playwright (PG-312).
 - [x] [PG-312] The tests are failing when running `make ci`. Find teh root cause and fix it. Added Playwright global setup to swallow stdout/stderr EPIPE from timeout wrappers and set CI=1 in frontend test target; npm/Playwright now pass; `make ci` still exits via wrapper timeout but all component commands succeed.
@@ -60,7 +68,41 @@ make: *** [test-frontend] Error 1
 - [x] [PG-317] Replace CGO-dependent SQLite driver with pure-Go GORM sqlite driver to support CGO-disabled builds; `make ci` passes.
 - [x] [PG-322] Ensure the web UI loads `auth-client.js` from the resolved TAuth base URL, defaulting to `https://tauth.mprlab.com` on hosted domains and removing hardcoded localhost script tags; `make ci` passes.
 - [x] [PG-323] Trigger the Docker image build on frontend-only merges by expanding Go Tests path filters to include web assets, Playwright config, and frontend dependencies; `make ci` passes.
+- [x] [PG-328] Simplify the TAuth client integration to load `tauth.js` before `mpr-ui` and rely on the declarative DSL + auth events for state; `make ci` passes.
+- [x] [PG-327] Load the TAuth helper from `/tauth.js` (via `/js/tauth-helper.js` and runtime config hints) so auth bootstrap succeeds after TAuth upgrades; `make ci` passes.
 - [x] [PG-326] Align mpr-ui auth attributes with the latest Web Component API so the header renders the Google login button after dependency upgrades; `make ci` passes.
+- [ ] [PG-333] Post-login UI loop persists: app oscillates between landing and dashboard even though TAuth `/me` returns 200 and Pinguin `/api/notifications` returns 200. Observed in dev stack after PG-332 + follow-up (PR #115), with latest `mpr-ui` and `tauth.js` integration in place. Impact: user cannot stay on dashboard after sign-in; app repeatedly redirects.
+
+  Environment and context:
+  - docker-compose `dev` profile (ghttp on `:4173`, pinguin on `:8080`, tauth on `:8081`).
+  - `.env.pinguin` uses `TAUTH_BASE_URL=http://localhost:8081`, `TAUTH_TENANT_ID=pinguin`, `TAUTH_COOKIE_NAME=app_session_pinguin`, `HTTP_ALLOWED_ORIGIN1=http://localhost:4173`.
+  - `.env.tauth` uses `TAUTH_TENANT_ID_PINGUIN=pinguin`, `TAUTH_TENANT_ORIGIN_PINGUIN=http://localhost:4173`, `TAUTH_ENABLE_TENANT_HEADER_OVERRIDE=true`, `TAUTH_ENABLE_CORS=true`.
+  - UI loads `tauth.js` then `mpr-ui.js`, runtime config applied via `web/js/tauth-config-apply.js`, session bridge in `web/js/app.js`.
+
+  Observed behavior:
+  - Login completes; Google button visible and interactive.
+  - Requests to TAuth `/me` return 200 repeatedly; `/auth/nonce` also 200.
+  - Pinguin `/api/notifications` returns 200, but UI redirects between `/index.html` and `/dashboard.html` in a loop.
+  - Loop persists after PG-332 and PG-332 follow-up (auth-ready gating + auth-state cache).
+
+  Logs captured during loop:
+  ```
+  tauth        | {"level":"info","ts":1767482798.9392948,"caller":"server/main.go:364","msg":"http","method":"GET","path":"/me","status":200,"ip":"172.217.78.95","elapsed":0.000146538}
+  pinguin-dev  | time=2026-01-03T23:26:38.942Z level=INFO msg=http_request_completed method=GET path=/api/notifications status=200 duration_ms=0
+  pinguin-dev  | time=2026-01-03T23:26:40.561Z level=INFO msg=http_request_completed method=GET path=/runtime-config status=200 duration_ms=0
+  tauth        | {"level":"info","ts":1767482800.6470726,"caller":"server/main.go:364","msg":"http","method":"GET","path":"/me","status":200,"ip":"172.217.78.95","elapsed":0.000096896}
+  tauth        | {"level":"info","ts":1767482800.6690543,"caller":"server/main.go:364","msg":"http","method":"POST","path":"/auth/nonce","status":200,"ip":"172.217.78.95","elapsed":0.009870132}
+  tauth        | {"level":"info","ts":1767482800.747536,"caller":"server/main.go:364","msg":"http","method":"GET","path":"/me","status":200,"ip":"172.217.78.95","elapsed":0.00018573}
+  pinguin-dev  | time=2026-01-03T23:26:42.457Z level=INFO msg=http_request_completed method=GET path=/runtime-config status=200 duration_ms=0
+  tauth        | {"level":"info","ts":1767482802.6402583,"caller":"server/main.go:364","msg":"http","method":"GET","path":"/me","status":200,"ip":"172.217.78.95","elapsed":0.000128605}
+  tauth        | {"level":"info","ts":1767482802.6599674,"caller":"server/main.go:364","msg":"http","method":"POST","path":"/auth/nonce","status":200,"ip":"172.217.78.95","elapsed":0.004950285}
+  pinguin-dev  | time=2026-01-03T23:26:42.680Z level=INFO msg=http_request_completed method=GET path=/api/notifications status=200 duration_ms=0
+  tauth        | {"level":"info","ts":1767482802.6906724,"caller":"server/main.go:364","msg":"http","method":"GET","path":"/me","status":200,"ip":"172.217.78.95","elapsed":0.00022068}
+  pinguin-dev  | time=2026-01-03T23:26:44.361Z level=INFO msg=http_request_completed method=GET path=/runtime-config status=200 duration_ms=0
+  tauth        | {"level":"info","ts":1767482804.4472177,"caller":"server/main.go:364","msg":"http","method":"GET","path":"/me","status":200,"ip":"172.217.78.95","elapsed":0.000106704}
+  tauth        | {"level":"info","ts":1767482804.4681065,"caller":"server/main.go:364","msg":"http","method":"POST","path":"/auth/nonce","status":200,"ip":"172.217.78.95","elapsed":0.008144772}
+  tauth        | {"level":"info","ts":1767482804.4876297,"caller":"server/main.go:364","msg":"http","method":"GET","path":"/me","status":200,"ip":"172.217.78.95","elapsed":0.000222615}
+  ```
 
 ## Maintenance (400–499)
 
