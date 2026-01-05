@@ -385,6 +385,36 @@ By default, the server listens on port `50051`. The server initializes the SQLit
 
 ---
 
+## Validating Configurations with `pinguin-doctor`
+
+The `pinguin-doctor` command validates Pinguin configurations and reports issues. Use it to verify your configuration before deployment or to audit multiple project configurations:
+
+```bash
+# Build the doctor command
+go build -o pinguin-doctor ./cmd/doctor
+
+# Validate a single configuration
+./pinguin-doctor config.yml
+
+# Validate multiple configurations with cross-config checks
+./pinguin-doctor config.yml other-config.yml --cross-validate
+
+# Output as JSON for CI/CD pipelines
+./pinguin-doctor config.yml --json
+
+# Expand environment variables in config before validation
+./pinguin-doctor config.yml --expand-env
+```
+
+The doctor command performs comprehensive validation including:
+- Configuration file syntax and structure
+- Server requirements (database path, gRPC auth token, encryption key)
+- Web interface configuration (when enabled)
+- Tenant requirements (domains, identity settings, admins)
+- Cross-config validation (conflicting domains, shared client IDs)
+
+---
+
 ## Using the gRPC API
 
 ### Pinguin CLI
