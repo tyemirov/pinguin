@@ -33,39 +33,13 @@ func ptrBool(value bool) *bool {
 func TestListNotificationsRequiresAuth(t *testing.T) {
 	t.Helper()
 
-	server := newTestHTTPServer(t, &stubNotificationService{}, &stubValidator{err: errors.New("unauthorized")}, []string{"user@example.com"})
+	server := newTestHTTPServer(t, &stubNotificationService{}, &stubValidator{err: errors.New("unauthorized")})
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/notifications", nil)
 
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", recorder.Code)
-	}
-}
-
-func TestSessionMiddlewareRejectsNonAdmins(t *testing.T) {
-	t.Helper()
-
-	stubSvc := &stubNotificationService{}
-	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
-	repo := newTestTenantRepository(t, []string{"admin@example.com"})
-	server, err := NewServer(Config{
-		ListenAddr:          ":0",
-		NotificationService: stubSvc,
-		SessionValidator:    &stubValidator{email: "guest@example.com"},
-		TenantRepository:    repo,
-		Logger:              logger,
-	})
-	if err != nil {
-		t.Fatalf("server init error: %v", err)
-	}
-
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/notifications", nil)
-
-	server.httpServer.Handler.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 for non-admin, got %d", recorder.Code)
 	}
 }
 
@@ -78,7 +52,7 @@ func TestListNotificationsReturnsData(t *testing.T) {
 			{NotificationID: "errored", Status: model.StatusErrored},
 		},
 	}
-	server := newTestHTTPServer(t, stubSvc, &stubValidator{}, []string{"user@example.com"})
+	server := newTestHTTPServer(t, stubSvc, &stubValidator{})
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/notifications?status=queued&status=errored", nil)
@@ -99,6 +73,27 @@ func TestListNotificationsReturnsData(t *testing.T) {
 	}
 }
 
+func TestListNotificationsUsesAll(t *testing.T) {
+	t.Helper()
+
+	stubSvc := &stubNotificationService{
+		listResponse: []model.NotificationResponse{},
+	}
+	server := newTestHTTPServer(t, stubSvc, &stubValidator{})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/notifications", nil)
+	request.Host = "example.com"
+
+	server.httpServer.Handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+	if stubSvc.listAllCalls != 1 {
+		t.Fatalf("expected list all to be used, got %d", stubSvc.listAllCalls)
+	}
+}
+
 func TestListNotificationsScopesByTenantHost(t *testing.T) {
 	t.Helper()
 
@@ -115,9 +110,6 @@ func TestListNotificationsScopesByTenantHost(t *testing.T) {
 	if alphaRec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for alpha, got %d", alphaRec.Code)
 	}
-	if stubSvc.lastTenantID != "tenant-alpha" {
-		t.Fatalf("expected tenant-alpha, got %s", stubSvc.lastTenantID)
-	}
 
 	bravoReq := httptest.NewRequest(http.MethodGet, "/api/notifications", nil)
 	bravoReq.Host = "bravo.localhost"
@@ -125,9 +117,6 @@ func TestListNotificationsScopesByTenantHost(t *testing.T) {
 	server.httpServer.Handler.ServeHTTP(bravoRec, bravoReq)
 	if bravoRec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for bravo, got %d", bravoRec.Code)
-	}
-	if stubSvc.lastTenantID != "tenant-bravo" {
-		t.Fatalf("expected tenant-bravo, got %s", stubSvc.lastTenantID)
 	}
 
 	unknownReq := httptest.NewRequest(http.MethodGet, "/api/notifications", nil)
@@ -145,7 +134,7 @@ func TestListNotificationsScopesByTenantHost(t *testing.T) {
 
 func TestHealthzBypassesTenantLookup(t *testing.T) {
 	t.Helper()
-	repo := newTestTenantRepository(t, []string{"admin@example.com"})
+	repo := newTestTenantRepository(t)
 	server := newTestHTTPServerWithRepo(t, &stubNotificationService{}, &stubValidator{}, repo)
 
 	recorder := httptest.NewRecorder()
@@ -161,7 +150,7 @@ func TestHealthzBypassesTenantLookup(t *testing.T) {
 func TestRescheduleValidation(t *testing.T) {
 	t.Helper()
 
-	server := newTestHTTPServer(t, &stubNotificationService{}, &stubValidator{}, []string{"user@example.com"})
+	server := newTestHTTPServer(t, &stubNotificationService{}, &stubValidator{})
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPatch, "/api/notifications/notif-1/schedule", bytes.NewBufferString(`{}`))
@@ -177,7 +166,7 @@ func TestRescheduleNotificationRejectsEmptyID(t *testing.T) {
 	t.Helper()
 
 	stubSvc := &stubNotificationService{}
-	server := newTestHTTPServer(t, stubSvc, &stubValidator{}, []string{"user@example.com"})
+	server := newTestHTTPServer(t, stubSvc, &stubValidator{})
 
 	recorder := httptest.NewRecorder()
 	requestBody := `{"scheduled_time":"2024-01-02T15:04:05Z"}`
@@ -198,7 +187,7 @@ func TestRescheduleNotificationRejectsPastSchedule(t *testing.T) {
 	t.Helper()
 
 	stubSvc := &stubNotificationService{}
-	server := newTestHTTPServer(t, stubSvc, &stubValidator{}, []string{"user@example.com"})
+	server := newTestHTTPServer(t, stubSvc, &stubValidator{})
 
 	recorder := httptest.NewRecorder()
 	pastTime := time.Now().UTC().Add(-1 * time.Minute).Format(time.RFC3339)
@@ -216,15 +205,57 @@ func TestRescheduleNotificationRejectsPastSchedule(t *testing.T) {
 	}
 }
 
+func TestRescheduleNotificationRequiresTenantID(t *testing.T) {
+	t.Helper()
+
+	stubSvc := &stubNotificationService{}
+	server := newTestHTTPServer(t, stubSvc, &stubValidator{})
+
+	requestBody := fmt.Sprintf(`{"scheduled_time":"%s"}`, time.Now().UTC().Add(5*time.Minute).Format(time.RFC3339))
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPatch, "/api/notifications/notif-1/schedule", bytes.NewBufferString(requestBody))
+	request.Header.Set("Content-Type", "application/json")
+
+	server.httpServer.Handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", recorder.Code)
+	}
+	if stubSvc.rescheduleCalls != 0 {
+		t.Fatalf("expected no service invocation, got %d", stubSvc.rescheduleCalls)
+	}
+}
+
+func TestRescheduleNotificationUsesTenantID(t *testing.T) {
+	t.Helper()
+
+	repo := newMultiTenantRepository(t)
+	stubSvc := &stubNotificationService{}
+	server := newTestHTTPServerWithRepo(t, stubSvc, &stubValidator{}, repo)
+
+	requestBody := fmt.Sprintf(`{"scheduled_time":"%s"}`, time.Now().UTC().Add(5*time.Minute).Format(time.RFC3339))
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPatch, "/api/notifications/notif-1/schedule?tenant_id=tenant-bravo", bytes.NewBufferString(requestBody))
+	request.Host = "alpha.localhost"
+	request.Header.Set("Content-Type", "application/json")
+
+	server.httpServer.Handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+	if stubSvc.lastTenantID != "tenant-bravo" {
+		t.Fatalf("expected tenant-bravo, got %s", stubSvc.lastTenantID)
+	}
+}
+
 func TestRescheduleNotificationMapsMissingIDErrorToBadRequest(t *testing.T) {
 	t.Helper()
 
 	stubSvc := &stubNotificationService{rescheduleErr: fmt.Errorf("missing notification_id")}
-	server := newTestHTTPServer(t, stubSvc, &stubValidator{}, []string{"user@example.com"})
+	server := newTestHTTPServer(t, stubSvc, &stubValidator{})
 
 	recorder := httptest.NewRecorder()
 	requestBody := `{"scheduled_time":"2024-01-02T15:04:05Z"}`
-	request := httptest.NewRequest(http.MethodPatch, "/api/notifications/notif-1/schedule", bytes.NewBufferString(requestBody))
+	request := httptest.NewRequest(http.MethodPatch, "/api/notifications/notif-1/schedule?tenant_id=tenant-test", bytes.NewBufferString(requestBody))
 	request.Header.Set("Content-Type", "application/json")
 
 	server.httpServer.Handler.ServeHTTP(recorder, request)
@@ -269,10 +300,10 @@ func TestCancelNotificationErrorMapping(t *testing.T) {
 			t.Helper()
 
 			stubSvc := &stubNotificationService{cancelErr: testCase.cancelError}
-			server := newTestHTTPServer(t, stubSvc, &stubValidator{}, []string{"user@example.com"})
+			server := newTestHTTPServer(t, stubSvc, &stubValidator{})
 
 			recorder := httptest.NewRecorder()
-			request := httptest.NewRequest(http.MethodPost, "/api/notifications/notif-1/cancel", nil)
+			request := httptest.NewRequest(http.MethodPost, "/api/notifications/notif-1/cancel?tenant_id=tenant-test", nil)
 
 			server.httpServer.Handler.ServeHTTP(recorder, request)
 			if recorder.Code != testCase.expectedCode {
@@ -286,7 +317,7 @@ func TestCancelNotificationRejectsEmptyID(t *testing.T) {
 	t.Helper()
 
 	stubSvc := &stubNotificationService{}
-	server := newTestHTTPServer(t, stubSvc, &stubValidator{}, []string{"user@example.com"})
+	server := newTestHTTPServer(t, stubSvc, &stubValidator{})
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/notifications/%20/cancel", nil)
@@ -304,7 +335,7 @@ func TestCancelNotificationRejectsEmptyID(t *testing.T) {
 func TestUnknownPathReturnsNotFound(t *testing.T) {
 	t.Helper()
 
-	server := newTestHTTPServer(t, &stubNotificationService{}, &stubValidator{}, []string{"user@example.com"})
+	server := newTestHTTPServer(t, &stubNotificationService{}, &stubValidator{})
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/favicon.ico", nil)
@@ -368,12 +399,15 @@ func TestRuntimeConfigEndpointReturnsValues(t *testing.T) {
 	t.Helper()
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
-	tenantRepo := newTestTenantRepository(t, []string{"user@example.com"})
+	tenantRepo := newTestTenantRepository(t)
 	server, err := NewServer(Config{
 		ListenAddr:          ":0",
 		NotificationService: &stubNotificationService{},
 		SessionValidator:    &stubValidator{},
 		TenantRepository:    tenantRepo,
+		TAuthBaseURL:        "https://tauth.example.com",
+		TAuthTenantID:       "tauth-test",
+		TAuthGoogleClientID: "client-id",
 		Logger:              logger,
 	})
 	if err != nil {
@@ -388,14 +422,13 @@ func TestRuntimeConfigEndpointReturnsValues(t *testing.T) {
 		t.Fatalf("expected 200, got %d", recorder.Code)
 	}
 	var payload struct {
-		APIBaseURL string `json:"apiBaseUrl"`
-		Tenant     struct {
+		APIBaseURL     string `json:"apiBaseUrl"`
+		TAuthBaseURL   string `json:"tauthBaseUrl"`
+		TAuthTenantID  string `json:"tauthTenantId"`
+		GoogleClientID string `json:"googleClientId"`
+		Tenant         struct {
 			ID          string `json:"id"`
 			DisplayName string `json:"displayName"`
-			Identity    struct {
-				GoogleClientID string `json:"googleClientId"`
-				TAuthBaseURL   string `json:"tauthBaseUrl"`
-			} `json:"identity"`
 		} `json:"tenant"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
@@ -404,8 +437,11 @@ func TestRuntimeConfigEndpointReturnsValues(t *testing.T) {
 	if payload.APIBaseURL != "http://example.com/api" {
 		t.Fatalf("unexpected api base %q", payload.APIBaseURL)
 	}
-	if payload.Tenant.ID != "tenant-test" || payload.Tenant.Identity.GoogleClientID == "" {
+	if payload.Tenant.ID != "tenant-test" {
 		t.Fatalf("unexpected tenant payload %+v", payload.Tenant)
+	}
+	if payload.TAuthBaseURL != "https://tauth.example.com" || payload.TAuthTenantID != "tauth-test" || payload.GoogleClientID != "client-id" {
+		t.Fatalf("unexpected tauth payload %+v", payload)
 	}
 }
 
@@ -419,6 +455,9 @@ func TestRuntimeConfigResolvesPerHost(t *testing.T) {
 		NotificationService: &stubNotificationService{},
 		SessionValidator:    &stubValidator{},
 		TenantRepository:    repo,
+		TAuthBaseURL:        "https://tauth.example.com",
+		TAuthTenantID:       "tauth-test",
+		TAuthGoogleClientID: "client-id",
 		Logger:              logger,
 	})
 	if err != nil {
@@ -460,6 +499,9 @@ func TestRuntimeConfigRejectsUnknownHost(t *testing.T) {
 		NotificationService: &stubNotificationService{},
 		SessionValidator:    &stubValidator{},
 		TenantRepository:    repo,
+		TAuthBaseURL:        "https://tauth.example.com",
+		TAuthTenantID:       "tauth-test",
+		TAuthGoogleClientID: "client-id",
 		Logger:              logger,
 	})
 	if err != nil {
@@ -475,9 +517,9 @@ func TestRuntimeConfigRejectsUnknownHost(t *testing.T) {
 	}
 }
 
-func newTestHTTPServer(t *testing.T, svc service.NotificationService, validator SessionValidator, admins []string) *Server {
+func newTestHTTPServer(t *testing.T, svc service.NotificationService, validator SessionValidator) *Server {
 	t.Helper()
-	repo := newTestTenantRepository(t, admins)
+	repo := newTestTenantRepository(t)
 	return newTestHTTPServerWithRepo(t, svc, validator, repo)
 }
 
@@ -490,6 +532,9 @@ func newTestHTTPServerWithRepo(t *testing.T, svc service.NotificationService, va
 		NotificationService: svc,
 		SessionValidator:    validator,
 		TenantRepository:    repo,
+		TAuthBaseURL:        "https://tauth.example.com",
+		TAuthTenantID:       "tauth-test",
+		TAuthGoogleClientID: "client-id",
 		Logger:              logger,
 	})
 	if err != nil {
@@ -498,9 +543,8 @@ func newTestHTTPServerWithRepo(t *testing.T, svc service.NotificationService, va
 	return server
 }
 
-func newTestTenantRepository(t *testing.T, admins []string) *tenant.Repository {
+func newTestTenantRepository(t *testing.T) *tenant.Repository {
 	t.Helper()
-	members := tenant.BootstrapAdmins(admins)
 	cfg := tenant.BootstrapConfig{
 		Tenants: []tenant.BootstrapTenant{
 			{
@@ -509,11 +553,6 @@ func newTestTenantRepository(t *testing.T, admins []string) *tenant.Repository {
 				SupportEmail: "support@example.com",
 				Enabled:      ptrBool(true),
 				Domains:      []string{"example.com"},
-				Admins:       members,
-				Identity: tenant.BootstrapIdentity{
-					GoogleClientID: "client-id",
-					TAuthBaseURL:   "https://tauth.example.com",
-				},
 				EmailProfile: tenant.BootstrapEmailProfile{
 					Host:        "smtp.example.com",
 					Port:        587,
@@ -537,11 +576,6 @@ func newMultiTenantRepository(t *testing.T) *tenant.Repository {
 				SupportEmail: "alpha@example.com",
 				Enabled:      ptrBool(true),
 				Domains:      []string{"alpha.localhost"},
-				Admins:       tenant.BootstrapAdmins{"admin-alpha@example.com", "user@example.com"},
-				Identity: tenant.BootstrapIdentity{
-					GoogleClientID: "alpha-google",
-					TAuthBaseURL:   "https://auth.alpha.localhost",
-				},
 				EmailProfile: tenant.BootstrapEmailProfile{
 					Host:        "smtp.alpha.localhost",
 					Port:        587,
@@ -556,11 +590,6 @@ func newMultiTenantRepository(t *testing.T) *tenant.Repository {
 				SupportEmail: "bravo@example.com",
 				Enabled:      ptrBool(true),
 				Domains:      []string{"bravo.localhost"},
-				Admins:       tenant.BootstrapAdmins{"admin-bravo@example.com", "user@example.com"},
-				Identity: tenant.BootstrapIdentity{
-					GoogleClientID: "bravo-google",
-					TAuthBaseURL:   "https://auth.bravo.localhost",
-				},
 				EmailProfile: tenant.BootstrapEmailProfile{
 					Host:        "smtp.bravo.localhost",
 					Port:        2525,
@@ -587,8 +616,6 @@ func bootstrapTenantRepository(t *testing.T, cfg tenant.BootstrapConfig) *tenant
 	if err := dbInstance.AutoMigrate(
 		&tenant.Tenant{},
 		&tenant.TenantDomain{},
-		&tenant.TenantMember{},
-		&tenant.TenantIdentity{},
 		&tenant.EmailProfile{},
 		&tenant.SMSProfile{},
 	); err != nil {
@@ -637,6 +664,7 @@ type stubNotificationService struct {
 	lastCancelID       string
 	lastTenantID       string
 	listCalls          int
+	listAllCalls       int
 }
 
 func (stub *stubNotificationService) SendNotification(context.Context, model.NotificationRequest) (model.NotificationResponse, error) {
@@ -655,19 +683,31 @@ func (stub *stubNotificationService) ListNotifications(ctx context.Context, _ mo
 	return stub.listResponse, stub.listErr
 }
 
-func (stub *stubNotificationService) RescheduleNotification(_ context.Context, notificationID string, scheduledFor time.Time) (model.NotificationResponse, error) {
+func (stub *stubNotificationService) ListNotificationsAll(_ context.Context, _ model.NotificationListFilters) ([]model.NotificationResponse, error) {
+	stub.listCalls++
+	stub.listAllCalls++
+	return stub.listResponse, stub.listErr
+}
+
+func (stub *stubNotificationService) RescheduleNotification(requestContext context.Context, notificationID string, scheduledFor time.Time) (model.NotificationResponse, error) {
 	stub.rescheduleCalls++
 	stub.lastRescheduleID = notificationID
 	_ = scheduledFor
+	if runtimeCfg, ok := tenant.RuntimeFromContext(requestContext); ok {
+		stub.lastTenantID = runtimeCfg.Tenant.ID
+	}
 	if stub.rescheduleErr != nil {
 		return model.NotificationResponse{}, stub.rescheduleErr
 	}
 	return stub.rescheduleResponse, nil
 }
 
-func (stub *stubNotificationService) CancelNotification(_ context.Context, notificationID string) (model.NotificationResponse, error) {
+func (stub *stubNotificationService) CancelNotification(requestContext context.Context, notificationID string) (model.NotificationResponse, error) {
 	stub.cancelCalls++
 	stub.lastCancelID = notificationID
+	if runtimeCfg, ok := tenant.RuntimeFromContext(requestContext); ok {
+		stub.lastTenantID = runtimeCfg.Tenant.ID
+	}
 	if stub.cancelErr != nil {
 		return model.NotificationResponse{}, stub.cancelErr
 	}

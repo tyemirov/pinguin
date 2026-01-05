@@ -15,7 +15,7 @@
      - `sms_profiles (id, tenant_id, account_sid, auth_token, from_number, is_default)`
    - Allow multiple profiles per tenant to support future per-channel overrides. Store encrypted credentials (using env-supplied AES key).
 3. **Tenant membership**  
-   - Replace the global `ADMINS` list with `tenant_members (tenant_id, email, role)`.  
+   - Introduce `tenant_members (tenant_id, email, role)` if we add per-tenant roles in Pinguin.  
      Roles: `owner`, `admin`, `viewer`, `integration` (for API tokens if needed).
 
 ## Context Propagation
@@ -61,7 +61,8 @@
          "displayName": "Acme Corp",
          "identity": {
            "googleClientId": "xxx.apps.googleusercontent.com",
-           "tauthBaseUrl": "https://auth.acme.example"
+           "tauthBaseUrl": "https://auth.acme.example",
+           "tauthTenantId": "acme-auth"
          }
        }
      }
@@ -116,7 +117,7 @@
    - Ship `pinguin migrate single-tenant --tenant-slug=default --domain=notifications.example` command that:
      - Creates tenant row.
      - Moves env SMTP/Twilio settings into delivery profile rows.
-     - Imports `ADMINS` values as tenant members.
+     - Imports any existing TAuth allowlist entries as tenant members (if per-tenant roles are introduced).
 3. **Rollout**  
    - Deploy feature flags: `MULTITENANCY_ENABLED`.  
    - Stage 1: support tenant ID but default to single tenant when unspecified (backward compatibility).  

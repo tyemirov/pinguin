@@ -13,7 +13,9 @@ ENV CGO_ENABLED=0
 RUN --mount=type=cache,target=/root/.cache/go-build \
     go build -o /workspace/bin/pinguin ./cmd/server
 
-FROM gcr.io/distroless/base-debian12
+FROM alpine:latest
+
+RUN apk add --no-cache ca-certificates
 
 COPY --from=builder /workspace/bin/pinguin /usr/local/bin/pinguin
 

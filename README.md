@@ -93,16 +93,16 @@ Pinguin loads settings from `configs/config.yml` (override with `PINGUIN_CONFIG_
 server:
   databasePath: ${DATABASE_PATH}
   masterEncryptionKey: ${MASTER_ENCRYPTION_KEY}
+  tauth:
+    signingKey: ${TAUTH_SIGNING_KEY}
+    cookieName: app_session
+    googleClientId: ${TAUTH_GOOGLE_CLIENT_ID}
+    tauthBaseUrl: ${TAUTH_BASE_URL}
+    tauthTenantId: ${TAUTH_TENANT_ID}
 tenants:
   - id: tenant-local
     displayName: Local Sandbox
     domains: [${TENANT_LOCAL_DOMAIN_PRIMARY}, ${TENANT_LOCAL_DOMAIN_SECONDARY}]
-    admins:
-      - ${TENANT_LOCAL_ADMIN_EMAIL}
-      - ${TENANT_LOCAL_ADMIN_EMAIL_2}
-    identity:
-      googleClientId: ${TENANT_LOCAL_GOOGLE_CLIENT_ID}
-      tauthBaseUrl: ${TENANT_LOCAL_TAUTH_BASE_URL}
     emailProfile:
       host: ${TENANT_LOCAL_SMTP_HOST}
       port: ${TENANT_LOCAL_SMTP_PORT}
@@ -147,17 +147,21 @@ Export the referenced environment variables before starting the server. The defa
 - **TAuth CORS allowlist:**  
   When you serve the UI from a different origin (ghttp on `http://localhost:4173`, GitHub Pages on `https://pinguin.mprlab.com`, a CDN, etc.), TAuth must enable CORS and allow both the UI origin *and* `https://accounts.google.com`. Google Identity Services performs the nonce/login exchange from the `accounts.google.com` origin, so omitting it results in `auth.login.nonce_mismatch` errors. The sample `.env.tauth.example` includes `APP_CORS_ALLOWED_ORIGINS="http://localhost:4173,https://accounts.google.com"` for this reason—extend the list with any additional UI origins you deploy.
 - **Front-end TAuth config:**  
-  The web bundle reads `/js/tauth-config.js` (see the file for the default values) to learn the TAuth base URL + Google client ID, and it now defaults runtime config + API calls to `https://pinguin-api.mprlab.com` when served from `.mprlab.com`. Update that file—or serve a different version per environment—to point the UI at your TAuth deployment. Pinguin itself does not need to know this URL; only the shared signing key matters to the backend.
+  The web bundle reads TAuth settings from `/runtime-config`, which is populated from `server.tauth` in `configs/config.yml`. `web/js/tauth-config.js` now only supplies the runtime-config URL + API base for hosted deployments; `/js/tauth-helper.js` loads `tauth.js` before the `mpr-ui` bundle runs, and `<mpr-header>` consumes the resolved TAuth attributes.
 - **Web authentication flow:**  
-  The browser UI relies on `<mpr-header>` and `<mpr-login-button>` from the `mpr-ui` package. Both components expect a Google OAuth Web Client ID (`site-id`) plus the TAuth endpoints noted above. Update the attributes in `web/index.html` / `web/dashboard.html` when deploying to a new TAuth instance. See `docs/mprui-integration-guide.md` for the header wiring details and `docs/tauth-usage.md` for the TAuth helper/nonce contract.
+  The browser UI relies on `<mpr-header>` and `<mpr-login-button>` from the `mpr-ui` package. Both components expect a Google OAuth Web Client ID (`google-site-id`) plus the TAuth endpoints noted above; `tauth.js` is loaded ahead of `mpr-ui` via `/js/tauth-helper.js`, and the app listens for `mpr-ui:auth:*` events to drive redirects and profile state. See `docs/mprui-integration-guide.md` for the header wiring details and `docs/tauth-usage.md` for the TAuth helper/nonce contract.
 - **Google Identity Client ID:**  
-  The default Google OAuth client ID lives alongside the TAuth config in `web/js/tauth-config.js`. Update that file (and your TAuth environment) when running against a different Google project; the backend only needs the shared signing key.
+  The Google OAuth client ID is defined under `server.tauth.googleClientId` and is supplied to the UI through `/runtime-config`.
 - **TAUTH_SIGNING_KEY:**  
   HS256 signing key shared with the TAuth deployment. Used to validate the `app_session` cookie.
-- **TAUTH_ISSUER:**  
-  Expected JWT issuer written by TAuth (usually `tauth`).
-- **TAUTH_COOKIE_NAME:**  
-  Optional override for the session cookie name. Defaults to `app_session`.
+- **TAUTH_BASE_URL:**  
+  Base URL for the TAuth deployment (used by the UI to load `tauth.js` and call `/auth/*`).
+- **TAUTH_TENANT_ID:**  
+  Tenant identifier configured in TAuth (sent in `X-TAuth-Tenant`).
+- **TAUTH_GOOGLE_CLIENT_ID:**  
+  Google OAuth Web Client ID that TAuth validates and `mpr-ui` uses for GIS.
+- **Authorization:**  
+  The dashboard treats any valid TAuth session as an admin. Restrict who can sign in via `configs/config.tauth.yml`.
 
 - **MAX_RETRIES:**  
   Maximum number of times the background worker will retry sending a failed notification.
@@ -193,7 +197,7 @@ Export the referenced environment variables before starting the server. The defa
 
 ### Tenant configuration (single YAML)
 
-Pinguin keeps all configuration—including tenants—in a single YAML file (`configs/config.yml` by default). The `tenants` section defines which tenants exist, which domains map to each tenant, who can access the web UI, and what delivery credentials each tenant uses.
+Pinguin keeps all configuration—including tenants—in a single YAML file (`configs/config.yml` by default). The `tenants` section defines which tenants exist, which domains map to each tenant, and what delivery credentials each tenant uses.
 
 `tenants[].status` is not supported. Use `tenants[].enabled: true|false`.
 
@@ -208,12 +212,6 @@ tenants:
     domains:
       - acme.example
       - portal.acme.example
-    admins:
-      - admin@acme.example
-      - viewer@acme.example
-    identity:
-      googleClientId: google-client-id.apps.googleusercontent.com
-      tauthBaseUrl: https://auth.acme.example
     emailProfile:
       host: smtp.acme.example
       port: 587
@@ -243,13 +241,6 @@ See `configs/config.yml` for a ready-to-use sample. `MASTER_ENCRYPTION_KEY` encr
 - `tenants[].domains` (list of strings, required): hostnames that map HTTP requests to this tenant.
   - The first domain is treated as the tenant’s default domain.
   - Matching is case-insensitive; ports are ignored (e.g. `localhost:8080` matches `localhost`).
-- `tenants[].admins` (list of emails):
-  - Required when `web.enabled: true`.
-  - These emails are allowed to access the HTTP API after TAuth session validation.
-- `tenants[].identity`:
-  - Required when `web.enabled: true`.
-  - `googleClientId` (string): Google OAuth client id for the tenant.
-  - `tauthBaseUrl` (string): base URL for the tenant’s TAuth instance (used by the UI header).
 - `tenants[].emailProfile` (required): tenant SMTP settings.
   - `host` (string), `port` (int), `username` (string), `password` (string), `fromAddress` (string).
   - `username` and `password` are encrypted with `MASTER_ENCRYPTION_KEY` before storing in SQLite.
@@ -308,7 +299,7 @@ The Pinguin Docker image declares `/web` as a separate volume for the UI bundle;
    ${EDITOR:-vi} .env.pinguin .env.tauth
    ```
 
-   - `.env.pinguin` configures the environment variables referenced by `configs/config.yml` (including `PINGUIN_CONFIG_PATH=/configs/config.yml`, tenant domains/admins, SMTP/Twilio credentials, and `TAUTH_SIGNING_KEY`).
+  - `.env.pinguin` configures the environment variables referenced by `configs/config.yml` (including `PINGUIN_CONFIG_PATH=/configs/config.yml`, tenant domains, SMTP/Twilio credentials, and `TAUTH_SIGNING_KEY`).
    - If `GET http://localhost:8080/runtime-config` returns `{"error":"tenant_not_found"}`, the tenant domain env vars (`TENANT_LOCAL_DOMAIN_PRIMARY` / `TENANT_LOCAL_DOMAIN_SECONDARY`) are missing/mismatched.
    - `.env.tauth` configures the Google OAuth client, signing key, and CORS settings for local development. In both compose profiles, these values are expanded into `configs/tauth/config.yaml` and passed to TAuth via `TAUTH_CONFIG_FILE`.
    - Keep `TAUTH_SIGNING_KEY` (Pinguin) identical to `APP_JWT_SIGNING_KEY` (TAuth) so cookie validation succeeds.
@@ -524,7 +515,7 @@ All endpoints emit structured JSON errors (`401` for auth failures, `400` for in
 
 - Static assets live under `/web` and are served by GitHub Pages at `https://pinguin.mprlab.com` in production, with ghttp on `http://localhost:4173` for local development (the Go HTTP server keeps `/api`/`/runtime-config` in this arrangement). `index.html` provides the marketing + Google Sign-In landing experience, and `dashboard.html` renders the authenticated notifications table.
 - The UI follows AGENTS.md: Alpine components per section, mpr-ui header/footer, DOM-scoped events (`notifications:*`) for toasts + table refreshes, and all strings centralized in `js/constants.js`.
-- `js/app.js` bootstraps Alpine, hydrates the TAuth session (`auth-client.js`), and guards routes. Components interact with the new `/api/notifications` endpoints via the shared `apiClient`.
+- `js/app.js` bootstraps Alpine, registers the UI components, and reacts to `mpr-ui:auth:*` events to sync profile state and guard routes. The header handles auth via `tauth.js` (loaded ahead of `mpr-ui` by `js/tauth-helper.js`), and components talk to `/api/notifications` via the shared `apiClient`.
 - Authentication state is broadcast across tabs via TAuth’s `BroadcastChannel("auth")`, so signing out in one tab logs out the others automatically.
 - Handy for local testing: start the Compose stack so ghttp (`http://localhost:4173`) serves the `/web` bundle while the Go server handles `/api`/`/runtime-config`, then visit the ghttp host to exercise the landing and dashboard flows without needing an external client.
 

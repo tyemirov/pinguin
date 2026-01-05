@@ -29,8 +29,6 @@ func newTestDatabaseWithLogger(t *testing.T, customLogger logger.Interface) *gor
 	if err := dbInstance.AutoMigrate(
 		&Tenant{},
 		&TenantDomain{},
-		&TenantMember{},
-		&TenantIdentity{},
 		&EmailProfile{},
 		&SMSProfile{},
 	); err != nil {
@@ -61,11 +59,6 @@ func sampleBootstrapConfig() BootstrapConfig {
 				SupportEmail: "support@alpha.example",
 				Enabled:      ptrBool(true),
 				Domains:      []string{"alpha.example", "portal.alpha.example"},
-				Admins:       BootstrapAdmins{"admin@alpha.example", "viewer@alpha.example"},
-				Identity: BootstrapIdentity{
-					GoogleClientID: "google-alpha",
-					TAuthBaseURL:   "https://tauth.alpha.example",
-				},
 				EmailProfile: BootstrapEmailProfile{
 					Host:        "smtp.alpha.example",
 					Port:        587,
