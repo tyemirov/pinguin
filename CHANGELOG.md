@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- Cached early mpr-ui auth events in `tauth-helper` and seed the session bridge from the cached state to avoid missed auth transitions when the UI loads before the app bootstrap (PG-332 follow-up).
+- Fixed auth bootstrap loops by waiting on tauth.js/mpr-ui readiness, removing fallback redirects, and broadening the TAuth CORS allowlist defaults for UI + GIS origins (PG-332).
+- Added a declarative `MPRUI.init` configuration bridge so runtime TAuth settings are applied as mpr-ui DSL attributes (PG-331).
+- Enforced the `/api/me` session endpoint in the tauth.js bootstrap and validated required helper globals before mpr-ui loads (PG-330).
+- Migrated TAuth config to `server.tauth`, removed Pinguin-side access allowlists and tenant admins, defaulted the UI to global view, and aligned the UI/auth tests with `tauth.js` + mpr-ui DSL (PG-329).
+- Simplified the TAuth client integration to load `tauth.js` before `mpr-ui` and rely on declarative auth events for UI state (PG-328).
 - Aligned mprlab-gateway production orchestration with `pinguin-api.mprlab.com` routing, GitHub Pages UI hosting, and updated CORS/env templates (PG-325).
 - Added GitHub Pages deployment for the `/web` bundle with `pinguin.mprlab.com` CNAME and production API/runtime defaults for `pinguin-api.mprlab.com` (PG-324).
 - Swapped SQLite to a pure-Go GORM driver so CGO-disabled builds can open SQLite databases (PG-317).
@@ -11,7 +17,7 @@
 - Moved notification request validation into model constructors and edge handlers, leaving service logic edge-validated (PG-204).
 - Optimized retry worker to query pending notifications across active tenants in a single join (PG-203).
 - Added a gRPC tenant-resolution interceptor and removed per-handler tenant lookups (PG-202).
-- Added the `--disable-web-interface` flag (and matching `DISABLE_WEB_INTERFACE` env var) so operators can run gRPC-only deployments without configuring ADMINS/TAuth/Google web settings (PG-103).
+- Added the `--disable-web-interface` flag (and matching `DISABLE_WEB_INTERFACE` env var) so operators can run gRPC-only deployments without configuring TAuth/Google web settings (PG-103).
 - Documented the multitenancy technical plan (`docs/multitenancy-plan.md`) covering schema, config, auth, and rollout steps for serving multiple domains from one deployment (PG-104).
 - Added a regression test that asserts the `third_party` directory stays absent so we continue relying solely on upstream modules for TAuth and google protos (PG-405).
 - Relocated `pinguin.proto` to `pkg/proto/pinguin.proto` so consumer-facing definitions live under the exported packages and documented the new path (PG-406).

@@ -428,7 +428,6 @@ func main() {
 	if configuration.WebInterfaceEnabled {
 		sessionValidator, validatorErr := sessionvalidator.New(sessionvalidator.Config{
 			SigningKey: []byte(configuration.TAuthSigningKey),
-			Issuer:     configuration.TAuthIssuer,
 			CookieName: configuration.TAuthCookieName,
 		})
 		if validatorErr != nil {
@@ -442,6 +441,9 @@ func main() {
 			SessionValidator:    sessionValidator,
 			NotificationService: notificationSvc,
 			TenantRepository:    tenantRepo,
+			TAuthBaseURL:        configuration.TAuthBaseURL,
+			TAuthTenantID:       configuration.TAuthTenantID,
+			TAuthGoogleClientID: configuration.TAuthGoogleClientID,
 			Logger:              mainLogger,
 		})
 		if httpServerErr != nil {

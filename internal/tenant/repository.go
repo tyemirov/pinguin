@@ -12,11 +12,9 @@ import (
 
 // RuntimeConfig aggregates tenant data required at runtime.
 type RuntimeConfig struct {
-	Tenant   Tenant
-	Identity TenantIdentity
-	Admins   map[string]struct{}
-	Email    EmailCredentials
-	SMS      *SMSCredentials
+	Tenant Tenant
+	Email  EmailCredentials
+	SMS    *SMSCredentials
 }
 
 // EmailCredentials exposes decrypted SMTP settings.
@@ -126,10 +124,6 @@ func (repo *Repository) loadRuntimeConfig(ctx context.Context, tenantID string) 
 	if err := repo.db.WithContext(ctx).Where(&Tenant{ID: tenantID}).First(&tenantModel).Error; err != nil {
 		return RuntimeConfig{}, fmt.Errorf("tenant runtime: tenant %s: %w", tenantID, err)
 	}
-	var identity TenantIdentity
-	if err := repo.db.WithContext(ctx).Where(&TenantIdentity{TenantID: tenantID}).First(&identity).Error; err != nil {
-		return RuntimeConfig{}, fmt.Errorf("tenant runtime: identity: %w", err)
-	}
 	var emailProfile EmailProfile
 	if err := repo.db.WithContext(ctx).
 		Where(&EmailProfile{TenantID: tenantID, IsDefault: true}).
@@ -157,14 +151,6 @@ func (repo *Repository) loadRuntimeConfig(ctx context.Context, tenantID string) 
 	} else if err != nil && err != gorm.ErrRecordNotFound {
 		return RuntimeConfig{}, fmt.Errorf("tenant runtime: sms profile: %w", err)
 	}
-	admins := make(map[string]struct{})
-	var members []TenantMember
-	if err := repo.db.WithContext(ctx).Where(&TenantMember{TenantID: tenantID}).Find(&members).Error; err != nil {
-		return RuntimeConfig{}, fmt.Errorf("tenant runtime: members: %w", err)
-	}
-	for _, member := range members {
-		admins[normalizeEmail(member.Email)] = struct{}{}
-	}
 	username, err := repo.keeper.Decrypt(emailProfile.UsernameCipher)
 	if err != nil {
 		return RuntimeConfig{}, err
@@ -174,9 +160,7 @@ func (repo *Repository) loadRuntimeConfig(ctx context.Context, tenantID string) 
 		return RuntimeConfig{}, err
 	}
 	return RuntimeConfig{
-		Tenant:   tenantModel,
-		Identity: identity,
-		Admins:   admins,
+		Tenant: tenantModel,
 		Email: EmailCredentials{
 			Host:        emailProfile.Host,
 			Port:        emailProfile.Port,
@@ -231,12 +215,7 @@ func (repo *Repository) cacheTenantID(host string, tenantID string) {
 }
 
 func cloneRuntimeConfig(cfg RuntimeConfig) RuntimeConfig {
-	clonedAdmins := make(map[string]struct{}, len(cfg.Admins))
-	for email := range cfg.Admins {
-		clonedAdmins[email] = struct{}{}
-	}
 	clonedCfg := cfg
-	clonedCfg.Admins = clonedAdmins
 	if cfg.SMS != nil {
 		smsCopy := *cfg.SMS
 		clonedCfg.SMS = &smsCopy
@@ -262,8 +241,4 @@ func normalizeHost(host string) string {
 		return parts[0]
 	}
 	return host
-}
-
-func normalizeEmail(email string) string {
-	return strings.ToLower(strings.TrimSpace(email))
 }

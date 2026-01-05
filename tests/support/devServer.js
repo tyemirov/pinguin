@@ -8,11 +8,17 @@ const crypto = require('crypto');
 const HOST = '127.0.0.1';
 const PORT = process.env.PLAYWRIGHT_PORT ? Number(process.env.PLAYWRIGHT_PORT) : 4174;
 const WEB_ROOT = path.resolve(__dirname, '../../web');
-const AUTH_CLIENT_PATH = path.resolve(__dirname, './stubs/auth-client.js');
+const TAUTH_HELPER_PATH = path.resolve(__dirname, './stubs/auth-client.js');
 const runtimeConfig = {
   tauthBaseUrl:
     process.env.PLAYWRIGHT_TAUTH_BASE_URL || `http://${HOST}:${PORT}`,
+  tauthTenantId: 'tauth-devserver',
+  googleClientId: 'playwright-client',
   apiBaseUrl: `http://${HOST}:${PORT}/api`,
+  tenant: {
+    id: 'tenant-devserver',
+    displayName: 'Dev Server Tenant',
+  },
 };
 
 const shouldLog = process.env.PLAYWRIGHT_DEVSERVER_LOGS === '1';
@@ -72,6 +78,7 @@ function defaultNotifications() {
   return [
     {
       notification_id: 'notif-1',
+      tenant_id: 'tenant-devserver',
       notification_type: 'email',
       recipient: 'user@example.com',
       subject: 'Queued notification',
@@ -89,6 +96,7 @@ function applyOverrides(payload) {
   if (Array.isArray(payload.notifications) && payload.notifications.length > 0) {
     serverState.notifications = payload.notifications.map((item) => ({
       ...item,
+      tenant_id: item.tenant_id || 'tenant-devserver',
       scheduled_for: item.scheduled_for || item.scheduled_time || null,
     }));
   } else {
@@ -173,6 +181,11 @@ const server = http.createServer(async (req, res) => {
 
   const scheduleMatch = url.pathname.match(/^\/api\/notifications\/([^/]+)\/schedule$/);
   if (scheduleMatch && req.method === 'PATCH') {
+    const tenantId = url.searchParams.get('tenant_id') || '';
+    if (!tenantId.trim()) {
+      sendJson(res, 400, { error: 'tenant_id is required' });
+      return;
+    }
     if (serverState.failReschedule) {
       sendJson(res, 500, { error: 'reschedule_failed' });
       return;
@@ -192,6 +205,11 @@ const server = http.createServer(async (req, res) => {
 
   const cancelMatch = url.pathname.match(/^\/api\/notifications\/([^/]+)\/cancel$/);
   if (cancelMatch && req.method === 'POST') {
+    const tenantId = url.searchParams.get('tenant_id') || '';
+    if (!tenantId.trim()) {
+      sendJson(res, 400, { error: 'tenant_id is required' });
+      return;
+    }
     if (serverState.failCancel) {
       sendJson(res, 500, { error: 'cancel_failed' });
       return;
@@ -238,8 +256,8 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (url.pathname === '/static/auth-client.js') {
-    serveStatic(AUTH_CLIENT_PATH, res);
+  if (url.pathname === '/tauth.js') {
+    serveStatic(TAUTH_HELPER_PATH, res);
     return;
   }
 

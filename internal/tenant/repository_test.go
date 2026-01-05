@@ -71,9 +71,6 @@ func TestRepositoryResolveByHost(t *testing.T) {
 	if runtimeCfg.SMS == nil || runtimeCfg.SMS.AccountSID != "AC123" {
 		t.Fatalf("expected SMS credentials")
 	}
-	if len(runtimeCfg.Admins) != 2 {
-		t.Fatalf("expected 2 admins, got %d", len(runtimeCfg.Admins))
-	}
 }
 
 func TestRepositoryResolveByHostCachesRuntimeConfig(t *testing.T) {
@@ -166,7 +163,6 @@ func TestRepositoryRuntimeCacheIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve by id error: %v", err)
 	}
-	runtimeCfg.Admins["mutated@example.com"] = struct{}{}
 	if runtimeCfg.SMS != nil {
 		runtimeCfg.SMS.AuthToken = "tampered"
 	}
@@ -174,12 +170,6 @@ func TestRepositoryRuntimeCacheIsolation(t *testing.T) {
 	cachedCfg, err := repo.ResolveByID(context.Background(), "tenant-one")
 	if err != nil {
 		t.Fatalf("resolve by id error: %v", err)
-	}
-	if len(cachedCfg.Admins) != 2 {
-		t.Fatalf("expected cached admin map to remain unchanged, got %d entries", len(cachedCfg.Admins))
-	}
-	if _, exists := cachedCfg.Admins["mutated@example.com"]; exists {
-		t.Fatalf("cached admin map should not retain caller mutations")
 	}
 	if cachedCfg.SMS != nil && cachedCfg.SMS.AuthToken == "tampered" {
 		t.Fatalf("cached SMS credentials should not retain caller mutations")
@@ -200,7 +190,6 @@ func TestRepositoryCachesInvalidateAfterBootstrap(t *testing.T) {
 		t.Fatalf("resolve host error: %v", err)
 	}
 
-	cfg.Tenants[0].Admins = BootstrapAdmins{"rotated@alpha.example"}
 	cfg.Tenants[0].EmailProfile.Password = "new-smtp-password"
 	cfg.Tenants[0].SMSProfile = &BootstrapSMSProfile{
 		AccountSID: "AC999",
@@ -215,9 +204,6 @@ func TestRepositoryCachesInvalidateAfterBootstrap(t *testing.T) {
 	refreshedCfg, err := repo.ResolveByHost(context.Background(), "portal.alpha.example")
 	if err != nil {
 		t.Fatalf("resolve after bootstrap error: %v", err)
-	}
-	if len(refreshedCfg.Admins) != 1 {
-		t.Fatalf("expected refreshed admin list, got %d entries", len(refreshedCfg.Admins))
 	}
 	if refreshedCfg.Email.Password != "new-smtp-password" {
 		t.Fatalf("expected refreshed SMTP password")
@@ -238,11 +224,6 @@ func TestRepositoryListActiveTenants(t *testing.T) {
 		SupportEmail: "support@beta.example",
 		Enabled:      ptrBool(false),
 		Domains:      []string{"beta.example"},
-		Admins:       BootstrapAdmins{},
-		Identity: BootstrapIdentity{
-			GoogleClientID: "google-beta",
-			TAuthBaseURL:   "https://tauth.beta.example",
-		},
 		EmailProfile: BootstrapEmailProfile{
 			Host:        "smtp.beta.example",
 			Port:        25,

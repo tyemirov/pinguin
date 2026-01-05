@@ -1,59 +1,106 @@
 // @ts-check
 (function applyTauthConfig() {
-  const fallback = window.PINGUIN_TAUTH_CONFIG || {};
+  const getRuntimeConfig = () => {
+    const runtime = window.__PINGUIN_CONFIG__;
+    return runtime && typeof runtime === 'object' ? runtime : null;
+  };
+
+  const requireString = (value, code) => {
+    const normalized = typeof value === 'string' ? value.trim() : '';
+    if (!normalized) {
+      throw new Error(code);
+    }
+    return normalized;
+  };
+
   function resolveConfig() {
-    const runtime = window.__PINGUIN_CONFIG__ || {};
-    const base = runtime.tauthBaseUrl || fallback.baseUrl || '';
-    const googleClientId = runtime.googleClientId || fallback.googleClientId || '';
-    if (!runtime.tauthBaseUrl && base) {
-      runtime.tauthBaseUrl = base;
+    const runtime = getRuntimeConfig();
+    if (!runtime) {
+      throw new Error('tauth.config.runtime_missing');
     }
-    if (!runtime.googleClientId && googleClientId) {
-      runtime.googleClientId = googleClientId;
+    const tenant =
+      runtime && typeof runtime.tenant === 'object' ? runtime.tenant : null;
+    if (!tenant) {
+      throw new Error('tauth.config.tenant_missing');
     }
+    const tenantId = requireString(
+      runtime.tauthTenantId,
+      'tauth.config.tenant_id_missing',
+    );
+    const baseUrl = requireString(runtime.tauthBaseUrl, 'tauth.config.base_url_missing').replace(/\/$/, '');
+    const googleClientId = requireString(
+      runtime.googleClientId,
+      'tauth.config.google_client_id_missing',
+    );
     return {
-      baseUrl: typeof base === 'string' ? base.replace(/\/$/, '') : '',
-      googleClientId: typeof googleClientId === 'string' ? googleClientId.trim() : '',
+      baseUrl,
+      googleClientId,
+      tenantId,
+      tenant,
     };
   }
 
+  const requireMprUiInit = () => {
+    const api = window.MPRUI && typeof window.MPRUI.init === 'function' ? window.MPRUI.init : null;
+    if (!api) {
+      throw new Error('mpr-ui.init.missing');
+    }
+    return api;
+  };
+
+  const buildMprUiInitConfig = (config) => {
+    const initConfig = {
+      auth: {
+        googleSiteId: config.googleClientId,
+        tauthTenantId: config.tenantId,
+        tauthUrl: config.baseUrl,
+        tauthLoginPath: '/auth/google',
+        tauthLogoutPath: '/auth/logout',
+        tauthNoncePath: '/auth/nonce',
+      },
+    };
+    const displayName =
+      config.tenant &&
+      typeof config.tenant.displayName === 'string' &&
+      config.tenant.displayName.trim()
+        ? config.tenant.displayName.trim()
+        : '';
+    if (displayName) {
+      initConfig.header = {
+        brandLabel: displayName,
+        showProfile: false,
+      };
+    } else {
+      initConfig.header = {
+        showProfile: false,
+      };
+    }
+    return initConfig;
+  };
+
   function applyAttributes() {
     const config = resolveConfig();
-    const headers = document.querySelectorAll('mpr-header');
-    headers.forEach((header) => {
-      if (config.googleClientId) {
-        header.setAttribute('site-id', config.googleClientId);
-      }
-      if (config.baseUrl) {
-        header.setAttribute('base-url', config.baseUrl);
-      }
-      if (!header.getAttribute('login-path')) {
-        header.setAttribute('login-path', '/auth/google');
-      }
-      if (!header.getAttribute('logout-path')) {
-        header.setAttribute('logout-path', '/auth/logout');
-      }
-      if (!header.getAttribute('nonce-path')) {
-        header.setAttribute('nonce-path', '/auth/nonce');
-      }
-    });
-    const loginButtons = document.querySelectorAll('mpr-login-button');
-    loginButtons.forEach((button) => {
-      if (config.googleClientId) {
-        button.setAttribute('site-id', config.googleClientId);
-      }
-      if (config.baseUrl) {
-        button.setAttribute('base-url', config.baseUrl);
-      }
-      button.setAttribute('login-path', '/auth/google');
-      button.setAttribute('logout-path', '/auth/logout');
-      button.setAttribute('nonce-path', '/auth/nonce');
-    });
+    window.__TAUTH_TENANT_ID__ = config.tenantId;
+    if (document.documentElement) {
+      document.documentElement.setAttribute('data-tauth-tenant-id', config.tenantId);
+    }
+    const initConfig = buildMprUiInitConfig(config);
+    window.__MPR_UI_INIT__ = initConfig;
+    const initMprUi = requireMprUiInit();
+    initMprUi(initConfig);
   }
 
-  applyAttributes();
+  const applyWhenReady = () => {
+    const runtime = getRuntimeConfig();
+    if (!runtime || !runtime.tenant) {
+      return;
+    }
+    applyAttributes();
+  };
+
+  applyWhenReady();
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', applyAttributes, { once: true });
+    document.addEventListener('DOMContentLoaded', applyWhenReady, { once: true });
   }
   window.addEventListener('pinguin:config-updated', () => requestAnimationFrame(applyAttributes));
 })();

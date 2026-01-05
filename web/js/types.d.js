@@ -7,6 +7,7 @@
 /**
  * @typedef {Object} NotificationItem
  * @property {string} id
+ * @property {string} tenantId
  * @property {string} type
  * @property {string} recipient
  * @property {string} subject

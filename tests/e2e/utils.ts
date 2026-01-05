@@ -11,15 +11,16 @@ const authClientStub = fs.readFileSync(
 type TenantConfig = {
   id: string;
   displayName: string;
-  identity?: {
-    googleClientId?: string;
-    tauthBaseUrl?: string;
-  };
 };
 
 type ConfigureRuntimeOptions = {
   authenticated: boolean;
   tenant?: TenantConfig;
+  tauth?: {
+    baseUrl?: string;
+    googleClientId?: string;
+    tenantId?: string;
+  };
 };
 
 export async function configureRuntime(page: Page, options: ConfigureRuntimeOptions) {
@@ -27,10 +28,13 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
   const tenant: TenantConfig = options.tenant || {
     id: 'tenant-playwright',
     displayName: 'Playwright Tenant',
-    identity: {
-      googleClientId: 'playwright-client',
-      tauthBaseUrl: baseUrl,
-    },
+  };
+  const tauthConfig = {
+    baseUrl,
+    googleClientId:
+      '991677581607-r0dj8q6irjagipali0jpca7nfp8sfj9r.apps.googleusercontent.com',
+    tenantId: 'tauth-playwright',
+    ...(options.tauth || {}),
   };
   await page.addInitScript(
     ({ authenticated }) => {
@@ -51,13 +55,12 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
     { authenticated: options.authenticated },
   );
   await page.addInitScript(
-    ({ base, authenticated, tenantPayload }) => {
+    ({ authenticated, tenantPayload, tauthPayload }) => {
       window.__PINGUIN_CONFIG__ = {
         apiBaseUrl: '/api',
-        tauthBaseUrl: tenantPayload.identity?.tauthBaseUrl || base,
-        googleClientId:
-          tenantPayload.identity?.googleClientId ||
-          '991677581607-r0dj8q6irjagipali0jpca7nfp8sfj9r.apps.googleusercontent.com',
+        tauthBaseUrl: tauthPayload.baseUrl,
+        tauthTenantId: tauthPayload.tenantId,
+        googleClientId: tauthPayload.googleClientId,
         landingUrl: '/index.html',
         dashboardUrl: '/dashboard.html',
         runtimeConfigUrl: '/runtime-config',
@@ -94,16 +97,8 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
       };
       window.__persistMockAuth();
     },
-    { base: baseUrl, authenticated: options.authenticated, tenantPayload: tenant },
+    { authenticated: options.authenticated, tenantPayload: tenant, tauthPayload: tauthConfig },
   );
-  await page.addInitScript(({ base, tenantPayload }) => {
-    window.PINGUIN_TAUTH_CONFIG = {
-      baseUrl: tenantPayload.identity?.tauthBaseUrl || base,
-      googleClientId:
-        tenantPayload.identity?.googleClientId ||
-        '991677581607-r0dj8q6irjagipali0jpca7nfp8sfj9r.apps.googleusercontent.com',
-    };
-  }, { base: baseUrl, tenantPayload: tenant });
 }
 
 export async function stubExternalAssets(page: Page) {
@@ -177,7 +172,7 @@ export async function stubExternalAssets(page: Page) {
       body: googleStub,
     });
   });
-  await page.route('**/static/auth-client.js', (route) =>
+  await page.route('**/tauth.js', (route) =>
     route.fulfill({ contentType: 'text/javascript', body: authClientStub }),
   );
 }
@@ -271,9 +266,14 @@ async function getHeaderButtonMetrics(page: Page) {
 export async function expectHeaderGoogleButton(page: Page) {
   const header = page.locator('mpr-header').first();
   await expect(header).toBeVisible();
-  const siteId = (await header.getAttribute('site-id')) || '';
-  expect(siteId.trim(), 'login button missing site-id').not.toBe('');
   await waitForHeaderLoginButton(page);
+  const siteId =
+    (await header.getAttribute('google-site-id')) ||
+    (await header.getAttribute('site-id')) ||
+    '';
+  expect(siteId.trim(), 'login button missing google-site-id').not.toBe('');
+  const tenantId = (await header.getAttribute('tauth-tenant-id')) || '';
+  expect(tenantId.trim(), 'login button missing tauth-tenant-id').not.toBe('');
   const metrics = await getHeaderButtonMetrics(page);
   if (!metrics) {
     throw new Error('Unable to locate Google button inside mpr-header');
