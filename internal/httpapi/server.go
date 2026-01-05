@@ -22,6 +22,11 @@ const (
 	contextKeyClaims         = "auth_claims"
 	defaultTimeout           = 5 * time.Second
 	scheduledTimeFutureError = "scheduled_time must be in the future"
+	tenantIDQueryParam       = "tenant_id"
+)
+
+var (
+	errTenantIDRequired = errors.New("tenant_id is required")
 )
 
 // SessionValidator exposes the subset of validator behaviour we depend on.
@@ -36,6 +41,9 @@ type Config struct {
 	SessionValidator     SessionValidator
 	NotificationService  service.NotificationService
 	TenantRepository     *tenant.Repository
+	TAuthBaseURL         string
+	TAuthTenantID        string
+	TAuthGoogleClientID  string
 	Logger               *slog.Logger
 	ReadHeaderTimeout    time.Duration
 	ShutdownGraceTimeout time.Duration
@@ -62,6 +70,15 @@ func NewServer(cfg Config) (*Server, error) {
 	if cfg.TenantRepository == nil {
 		return nil, errors.New("httpapi: tenant repository is required")
 	}
+	if strings.TrimSpace(cfg.TAuthBaseURL) == "" {
+		return nil, errors.New("httpapi: tauth base url is required")
+	}
+	if strings.TrimSpace(cfg.TAuthTenantID) == "" {
+		return nil, errors.New("httpapi: tauth tenant id is required")
+	}
+	if strings.TrimSpace(cfg.TAuthGoogleClientID) == "" {
+		return nil, errors.New("httpapi: google client id is required")
+	}
 	if cfg.Logger == nil {
 		return nil, errors.New("httpapi: logger is required")
 	}
@@ -73,14 +90,18 @@ func NewServer(cfg Config) (*Server, error) {
 	engine.Use(tenantMiddleware(cfg.TenantRepository))
 	engine.Use(buildCORS(cfg.AllowedOrigins))
 
-	engine.GET("/runtime-config", serveRuntimeConfig())
+	engine.GET("/runtime-config", serveRuntimeConfig(runtimeConfigTAuth{
+		BaseURL:        cfg.TAuthBaseURL,
+		TenantID:       cfg.TAuthTenantID,
+		GoogleClientID: cfg.TAuthGoogleClientID,
+	}))
 	engine.GET("/healthz", func(contextGin *gin.Context) {
 		contextGin.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 	protected := engine.Group("/api")
 	protected.Use(sessionMiddleware(cfg.SessionValidator))
 
-	handler := newNotificationHandler(cfg.NotificationService, cfg.Logger)
+	handler := newNotificationHandler(cfg.NotificationService, cfg.TenantRepository, cfg.Logger)
 	protected.GET("/notifications", handler.listNotifications)
 	protected.PATCH("/notifications/:id/schedule", handler.rescheduleNotification)
 	protected.POST("/notifications/:id/cancel", handler.cancelNotification)
@@ -167,19 +188,9 @@ func tenantMiddleware(repo *tenant.Repository) gin.HandlerFunc {
 
 func sessionMiddleware(validator SessionValidator) gin.HandlerFunc {
 	return func(contextGin *gin.Context) {
-		runtimeCfg, ok := tenant.RuntimeFromContext(contextGin.Request.Context())
-		if !ok {
-			contextGin.AbortWithStatus(http.StatusInternalServerError)
-			return
-		}
 		claims, err := validator.ValidateRequest(contextGin.Request)
 		if err != nil {
 			contextGin.AbortWithStatus(http.StatusUnauthorized)
-			return
-		}
-		email := strings.ToLower(strings.TrimSpace(claims.GetUserEmail()))
-		if _, ok := runtimeCfg.Admins[email]; !ok {
-			contextGin.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "admin access required"})
 			return
 		}
 		contextGin.Set(contextKeyClaims, claims)
@@ -188,20 +199,25 @@ func sessionMiddleware(validator SessionValidator) gin.HandlerFunc {
 }
 
 type notificationHandler struct {
-	service service.NotificationService
-	logger  *slog.Logger
+	service    service.NotificationService
+	repository *tenant.Repository
+	logger     *slog.Logger
 }
 
-func newNotificationHandler(svc service.NotificationService, logger *slog.Logger) *notificationHandler {
-	return &notificationHandler{service: svc, logger: logger}
+func newNotificationHandler(svc service.NotificationService, repo *tenant.Repository, logger *slog.Logger) *notificationHandler {
+	return &notificationHandler{service: svc, repository: repo, logger: logger}
 }
 
 func (handler *notificationHandler) listNotifications(contextGin *gin.Context) {
+	if _, ok := tenant.RuntimeFromContext(contextGin.Request.Context()); !ok {
+		contextGin.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
 	statusFilters := contextGin.QueryArray("status")
 	filter := model.NotificationListFilters{
 		Statuses: parseStatusFilters(statusFilters),
 	}
-	responses, err := handler.service.ListNotifications(contextGin.Request.Context(), filter)
+	responses, err := handler.service.ListNotificationsAll(contextGin.Request.Context(), filter)
 	if err != nil {
 		handler.writeError(contextGin, err)
 		return
@@ -236,7 +252,12 @@ func (handler *notificationHandler) rescheduleNotification(contextGin *gin.Conte
 		contextGin.JSON(http.StatusBadRequest, gin.H{"error": scheduledTimeFutureError})
 		return
 	}
-	response, svcErr := handler.service.RescheduleNotification(contextGin.Request.Context(), notificationID, normalizedTime)
+	requestContext, resolveErr := handler.resolveNotificationContext(contextGin)
+	if resolveErr != nil {
+		handler.writeTenantResolutionError(contextGin, resolveErr)
+		return
+	}
+	response, svcErr := handler.service.RescheduleNotification(requestContext, notificationID, normalizedTime)
 	if svcErr != nil {
 		handler.writeError(contextGin, svcErr)
 		return
@@ -250,7 +271,12 @@ func (handler *notificationHandler) cancelNotification(contextGin *gin.Context) 
 		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "notification_id is required"})
 		return
 	}
-	response, err := handler.service.CancelNotification(contextGin.Request.Context(), notificationID)
+	requestContext, resolveErr := handler.resolveNotificationContext(contextGin)
+	if resolveErr != nil {
+		handler.writeTenantResolutionError(contextGin, resolveErr)
+		return
+	}
+	response, err := handler.service.CancelNotification(requestContext, notificationID)
 	if err != nil {
 		handler.writeError(contextGin, err)
 		return
@@ -266,6 +292,33 @@ func (handler *notificationHandler) writeError(contextGin *gin.Context, err erro
 		contextGin.JSON(http.StatusConflict, gin.H{"error": "notification can only be edited while queued"})
 	case errors.Is(err, model.ErrNotificationNotFound), errors.Is(err, gorm.ErrRecordNotFound):
 		contextGin.JSON(http.StatusNotFound, gin.H{"error": "notification not found"})
+	default:
+		handler.logger.Error("http_handler_error", "error", err)
+		contextGin.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+	}
+}
+
+func (handler *notificationHandler) resolveNotificationContext(contextGin *gin.Context) (context.Context, error) {
+	if _, ok := tenant.RuntimeFromContext(contextGin.Request.Context()); !ok {
+		return nil, errors.New("tenant runtime missing")
+	}
+	tenantID := strings.TrimSpace(contextGin.Query(tenantIDQueryParam))
+	if tenantID == "" {
+		return nil, errTenantIDRequired
+	}
+	targetCfg, err := handler.repository.ResolveByID(contextGin.Request.Context(), tenantID)
+	if err != nil {
+		return nil, err
+	}
+	return tenant.WithRuntime(contextGin.Request.Context(), targetCfg), nil
+}
+
+func (handler *notificationHandler) writeTenantResolutionError(contextGin *gin.Context, err error) {
+	switch {
+	case errors.Is(err, errTenantIDRequired):
+		contextGin.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	case errors.Is(err, tenant.ErrInvalidTenantID), errors.Is(err, gorm.ErrRecordNotFound):
+		contextGin.JSON(http.StatusNotFound, gin.H{"error": "tenant not found"})
 	default:
 		handler.logger.Error("http_handler_error", "error", err)
 		contextGin.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
@@ -308,22 +361,25 @@ func pickDuration(candidate time.Duration, fallback time.Duration) time.Duration
 }
 
 type runtimeConfigPayload struct {
-	APIBaseURL string              `json:"apiBaseUrl"`
-	Tenant     runtimeConfigTenant `json:"tenant"`
+	APIBaseURL     string              `json:"apiBaseUrl"`
+	Tenant         runtimeConfigTenant `json:"tenant"`
+	TAuthBaseURL   string              `json:"tauthBaseUrl"`
+	TAuthTenantID  string              `json:"tauthTenantId"`
+	GoogleClientID string              `json:"googleClientId"`
 }
 
 type runtimeConfigTenant struct {
-	ID          string                      `json:"id"`
-	DisplayName string                      `json:"displayName"`
-	Identity    runtimeConfigTenantIdentity `json:"identity"`
+	ID          string `json:"id"`
+	DisplayName string `json:"displayName"`
 }
 
-type runtimeConfigTenantIdentity struct {
-	GoogleClientID string `json:"googleClientId"`
-	TAuthBaseURL   string `json:"tauthBaseUrl"`
+type runtimeConfigTAuth struct {
+	BaseURL        string
+	TenantID       string
+	GoogleClientID string
 }
 
-func serveRuntimeConfig() gin.HandlerFunc {
+func serveRuntimeConfig(tauthConfig runtimeConfigTAuth) gin.HandlerFunc {
 	return func(contextGin *gin.Context) {
 		runtimeCfg, ok := tenant.RuntimeFromContext(contextGin.Request.Context())
 		if !ok {
@@ -331,14 +387,13 @@ func serveRuntimeConfig() gin.HandlerFunc {
 			return
 		}
 		payload := runtimeConfigPayload{
-			APIBaseURL: buildAPIBaseURL(contextGin.Request),
+			APIBaseURL:     buildAPIBaseURL(contextGin.Request),
+			TAuthBaseURL:   tauthConfig.BaseURL,
+			TAuthTenantID:  tauthConfig.TenantID,
+			GoogleClientID: tauthConfig.GoogleClientID,
 			Tenant: runtimeConfigTenant{
 				ID:          runtimeCfg.Tenant.ID,
 				DisplayName: runtimeCfg.Tenant.DisplayName,
-				Identity: runtimeConfigTenantIdentity{
-					GoogleClientID: runtimeCfg.Identity.GoogleClientID,
-					TAuthBaseURL:   runtimeCfg.Identity.TAuthBaseURL,
-				},
 			},
 		}
 		contextGin.JSON(http.StatusOK, payload)
