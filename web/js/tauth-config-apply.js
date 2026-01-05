@@ -23,13 +23,8 @@
     if (!tenant) {
       throw new Error('tauth.config.tenant_missing');
     }
-    const identity =
-      tenant && typeof tenant.identity === 'object' ? tenant.identity : null;
-    if (!identity) {
-      throw new Error('tauth.config.identity_missing');
-    }
     const tenantId = requireString(
-      identity.tauthTenantId,
+      runtime.tauthTenantId,
       'tauth.config.tenant_id_missing',
     );
     const baseUrl = requireString(runtime.tauthBaseUrl, 'tauth.config.base_url_missing').replace(/\/$/, '');
@@ -41,8 +36,47 @@
       baseUrl,
       googleClientId,
       tenantId,
+      tenant,
     };
   }
+
+  const requireMprUiInit = () => {
+    const api = window.MPRUI && typeof window.MPRUI.init === 'function' ? window.MPRUI.init : null;
+    if (!api) {
+      throw new Error('mpr-ui.init.missing');
+    }
+    return api;
+  };
+
+  const buildMprUiInitConfig = (config) => {
+    const initConfig = {
+      auth: {
+        googleSiteId: config.googleClientId,
+        tauthTenantId: config.tenantId,
+        tauthUrl: config.baseUrl,
+        tauthLoginPath: '/auth/google',
+        tauthLogoutPath: '/auth/logout',
+        tauthNoncePath: '/auth/nonce',
+      },
+    };
+    const displayName =
+      config.tenant &&
+      typeof config.tenant.displayName === 'string' &&
+      config.tenant.displayName.trim()
+        ? config.tenant.displayName.trim()
+        : '';
+    if (displayName) {
+      initConfig.header = {
+        brandLabel: displayName,
+        showProfile: false,
+      };
+    } else {
+      initConfig.header = {
+        showProfile: false,
+      };
+    }
+    return initConfig;
+  };
 
   function applyAttributes() {
     const config = resolveConfig();
@@ -50,36 +84,10 @@
     if (document.documentElement) {
       document.documentElement.setAttribute('data-tauth-tenant-id', config.tenantId);
     }
-    const headers = document.querySelectorAll('mpr-header');
-    headers.forEach((header) => {
-      header.setAttribute('google-site-id', config.googleClientId);
-      header.setAttribute('tauth-tenant-id', config.tenantId);
-      header.setAttribute('tauth-url', config.baseUrl);
-      if (!header.getAttribute('tauth-login-path')) {
-        header.setAttribute('tauth-login-path', '/auth/google');
-      }
-      if (!header.getAttribute('tauth-logout-path')) {
-        header.setAttribute('tauth-logout-path', '/auth/logout');
-      }
-      if (!header.getAttribute('tauth-nonce-path')) {
-        header.setAttribute('tauth-nonce-path', '/auth/nonce');
-      }
-    });
-    const loginButtons = document.querySelectorAll('mpr-login-button');
-    loginButtons.forEach((button) => {
-      button.setAttribute('site-id', config.googleClientId);
-      button.setAttribute('tauth-tenant-id', config.tenantId);
-      button.setAttribute('tauth-url', config.baseUrl);
-      if (!button.getAttribute('tauth-login-path')) {
-        button.setAttribute('tauth-login-path', '/auth/google');
-      }
-      if (!button.getAttribute('tauth-logout-path')) {
-        button.setAttribute('tauth-logout-path', '/auth/logout');
-      }
-      if (!button.getAttribute('tauth-nonce-path')) {
-        button.setAttribute('tauth-nonce-path', '/auth/nonce');
-      }
-    });
+    const initConfig = buildMprUiInitConfig(config);
+    window.__MPR_UI_INIT__ = initConfig;
+    const initMprUi = requireMprUiInit();
+    initMprUi(initConfig);
   }
 
   const applyWhenReady = () => {

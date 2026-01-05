@@ -42,10 +42,6 @@ tenants:
     supportEmail: support@example.com
     enabled: false
     domains: [disabled.localhost]
-    admins: [admin@example.com]
-    identity:
-      googleClientId: test-client
-      tauthBaseUrl: https://auth.example.com
     emailProfile:
       host: smtp.example.com
       port: 587
