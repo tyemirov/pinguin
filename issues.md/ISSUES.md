@@ -106,6 +106,7 @@ make: *** [test-frontend] Error 1
 
 ## Maintenance (400–499)
 
+- [x] [PS-404] Add `pinguin-doctor` command for configuration validation. Validates Pinguin configurations with comprehensive checks for server requirements (database, auth, encryption), web interface settings, and tenant requirements (domains, identity, admins). Supports multiple config files with cross-config validation (`--cross-validate`), environment variable expansion (`--expand-env`), and JSON output for CI/CD (`--json`). Pinguin is now the authoritative source for Pinguin configuration correctness.
 - [x] [PS-400] Replace the placeholders with real values. generate the new keys when needed. Look up in .emv files under tools/{tauth} or in ../loopaware or .env to find the actual production values. Verified configs/.env.pinguin + configs/.env.tauth already contain production values from tools/TAuth/.env and `.env`.
 - [x] [PS-401] Declare `/web` as a dedicated Docker volume for the UI bundle and document the mount expectations; `make ci` passes.
 - [x] [PS-402] Switch docker-compose to use a named `pinguin-web` volume (bound to `./web`) for `/web` mounts; `make ci` passes.
