@@ -1,0 +1,19 @@
+diff --git a/ISSUES.md b/ISSUES.md
+index fa1fdbd..d33c194 100644
+--- a/ISSUES.md
++++ b/ISSUES.md
+@@ -29,8 +29,13 @@ Read @AGENTS.md, @ARCHITECTURE.md, @POLICY.md, @NOTES.md, @README.md and @ISSUES
+ 
+ ## BugFixes (300–399)
+ 
++- [ ] [BF-306] Static assets catch-all prevents HTTP server from starting.
++  Notes:
++    - `httpapi.NewServer` calls `engine.StaticFS("/", ...)` before adding `/api` routes, so Gin registers a `/*filepath` catch-all early.
++    - When `HTTP_STATIC_ROOT` is configured (now required), registering `/api/...` after that catch-all panics because wildcards must be mounted last.
++    - Move the static registration after the API routes (or under a non-root prefix) and add a regression test to cover servers with a static root.
++
+ ## Maintenance (400–499)
+ 
+ ## Planning
+ *do not work on these, not ready*
+-
