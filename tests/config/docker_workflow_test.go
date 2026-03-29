@@ -13,7 +13,8 @@ type dockerWorkflow struct {
 }
 
 type dockerWorkflowTriggers struct {
-	WorkflowRun dockerWorkflowRunTrigger `yaml:"workflow_run"`
+	WorkflowRun dockerWorkflowRunTrigger  `yaml:"workflow_run"`
+	Push        dockerWorkflowPushTrigger `yaml:"push"`
 }
 
 type goTestsWorkflow struct {
@@ -34,8 +35,22 @@ type dockerWorkflowRunTrigger struct {
 	Types     []string `yaml:"types"`
 }
 
+type dockerWorkflowPushTrigger struct {
+	Tags []string `yaml:"tags"`
+}
+
 type dockerWorkflowJob struct {
-	If string `yaml:"if"`
+	If    string               `yaml:"if"`
+	Steps []dockerWorkflowStep `yaml:"steps"`
+}
+
+type dockerWorkflowStep struct {
+	Name string                 `yaml:"name"`
+	With dockerWorkflowStepWith `yaml:"with"`
+}
+
+type dockerWorkflowStepWith struct {
+	Tags string `yaml:"tags"`
 }
 
 func TestDockerBuildWorkflowDependsOnSuccessfulGoTests(t *testing.T) {
@@ -55,15 +70,21 @@ func TestDockerBuildWorkflowDependsOnSuccessfulGoTests(t *testing.T) {
 
 	assertContains(t, trigger.Workflows, "Go Tests", "workflow_run trigger missing Go Tests entry")
 	assertContains(t, trigger.Types, "completed", "workflow_run trigger must listen for completed events")
+	assertContains(t, workflow.On.Push.Tags, "v*", "push trigger must include release tag publishing")
 
 	buildJob, jobExists := workflow.Jobs["build-and-push"]
 	if !jobExists {
 		t.Fatalf("build-and-push job must exist")
 	}
 
-	expectedCondition := "${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push') }}"
+	expectedCondition := "${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push') }}"
 	if strings.TrimSpace(buildJob.If) != expectedCondition {
 		t.Fatalf("build-and-push job must guard on successful Go Tests run")
+	}
+
+	metadataStep := findStepByName(t, buildJob.Steps, "Extract Docker metadata")
+	if !strings.Contains(metadataStep.With.Tags, "type=ref,event=tag") {
+		t.Fatalf("docker metadata step must emit image tags for git release tags")
 	}
 }
 
@@ -98,4 +119,17 @@ func assertContains(t *testing.T, values []string, expectedValue string, failure
 	}
 
 	t.Fatalf("%s (expected %q)", failureMessage, expectedValue)
+}
+
+func findStepByName(t *testing.T, steps []dockerWorkflowStep, expectedName string) dockerWorkflowStep {
+	t.Helper()
+
+	for _, step := range steps {
+		if step.Name == expectedName {
+			return step
+		}
+	}
+
+	t.Fatalf("workflow step %q not found", expectedName)
+	return dockerWorkflowStep{}
 }
