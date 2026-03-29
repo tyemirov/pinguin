@@ -1,6 +1,48 @@
 # Changelog
 
 ## Unreleased
+
+## [v0.1.0] - 2026-03-29
+
+### Features ✨
+- Add `pinguin-doctor` command for configuration validation
+- Introduce multi-platform Docker build support in CI
+- Implement tenant and authentication domain configurations with strict validation
+- Add tenant runtime interceptor and tenant-scoped delivery notifications
+- Introduce dynamic TAuth client loader for web
+- Support tenant repository and HTTP wiring for multitenancy
+- Add backend and HTTP integration tests for multitenancy
+
+### Improvements ⚙️
+- Improve theme persistence and profile menu styling
+- Refactor GORM queries and use portable domain reset queries
+- Upgrade Go package dependencies and document dependencies
+- Optimize retry worker pending job queries and tenant repository caching
+- Enhance autonomous coding flow and CI workflow path triggers
+- Add Docker Compose profiles and gate Docker build pushes for PRs
+- Add volume mounts and configuration bridges for web UI
+
+### Bug Fixes 🐛
+- Fix avatar menu layout and dashboard profile menu avatar styling
+- Resolve redirect loop by validating auth state cache profile
+- Fix missed auth events on bootstrap and tenant domain upsert conflicts
+- Stabilize Playwright runs and fix Google Identity stub timeouts in tests
+- Restore header login button and fix mpr login button trigger
+
+### Testing 🧪
+- Add e2e check for avatar menu after login
+- Cover CLI with integration tests and extend login automation coverage
+- Add test coverage for server helpers and attachments
+- Improve integration tests with healthz endpoint bypass and tenant lookup validation
+- Stabilize multitenancy HTTP and UI flow tests with optimized timeouts
+
+### Docs 📚
+- Document tenant configuration and multitenancy plans
+- Clarify API-only serving by Gin and update issues tracking
+- Add .env example and sample snippet with environment parametrics
+- Document real end-to-end UI tests and Playwright dependency installation steps
+
+### Detailed Changes
 - Cached early mpr-ui auth events in `tauth-helper` and seed the session bridge from the cached state to avoid missed auth transitions when the UI loads before the app bootstrap (PG-332 follow-up).
 - Fixed auth bootstrap loops by waiting on tauth.js/mpr-ui readiness, removing fallback redirects, and broadening the TAuth CORS allowlist defaults for UI + GIS origins (PG-332).
 - Added a declarative `MPRUI.init` configuration bridge so runtime TAuth settings are applied as mpr-ui DSL attributes (PG-331).
