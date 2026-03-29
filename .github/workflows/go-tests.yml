@@ -12,11 +12,13 @@ on:
       - 'web/**'
       - 'assets/**'
       - 'tests/**'
+      - 'Dockerfile'
       - 'package.json'
       - 'package-lock.json'
       - 'playwright.config.ts'
       - 'go.mod'
       - 'go.sum'
+      - '.github/workflows/docker-build.yml'
       - '.github/workflows/go-tests.yml'
   pull_request:
     branches:
@@ -28,11 +30,13 @@ on:
       - 'web/**'
       - 'assets/**'
       - 'tests/**'
+      - 'Dockerfile'
       - 'package.json'
       - 'package-lock.json'
       - 'playwright.config.ts'
       - 'go.mod'
       - 'go.sum'
+      - '.github/workflows/docker-build.yml'
       - '.github/workflows/go-tests.yml'
 
 jobs:
