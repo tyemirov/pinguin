@@ -1,6 +1,9 @@
 # syntax=docker/dockerfile:1.7
 
-FROM golang:1.25 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.25 AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /workspace
 
@@ -11,6 +14,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 COPY . .
 ENV CGO_ENABLED=0
 RUN --mount=type=cache,target=/root/.cache/go-build \
+    GOOS="${TARGETOS:-$(go env GOOS)}" GOARCH="${TARGETARCH:-$(go env GOARCH)}" \
     go build -o /workspace/bin/pinguin ./cmd/server
 
 FROM alpine:latest
