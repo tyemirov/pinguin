@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## [v0.1.1] - 2026-03-29
+
+### Features ✨
+- Trigger Docker build workflow on push tags matching `v*` for improved release automation.
+
+### Improvements ⚙️
+- Enhanced CI workflow condition to include push events for Docker build triggering.
+- Docker build metadata step now emits image tags for Git release tags.
+- Added push trigger with tag filters to Docker build workflow specification.
+
+### Bug Fixes 🐛
+- _No changes._
+
+### Testing 🧪
+- Expanded tests to cover push tag triggers in Docker build workflow.
+- Added assertions for Docker metadata step producing correct tag information.
+- Improved test helpers to verify workflow steps and conditions.
+
+### Docs 📚
+- _No changes._
+
 ## [v0.1.0] - 2026-03-29
 
 ### Features ✨
