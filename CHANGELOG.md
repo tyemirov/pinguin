@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+## [v0.2.0] - 2026-04-01
+
+### Features ✨
+- Add `make publish` target to build and publish multi-arch Docker images with platforms linux/amd64 and linux/arm64.
+
+### Improvements ⚙️
+- Update Docker workflow to pull latest base images and support multi-arch build and push.
+- Include Makefile in CI tests to ensure build targets are verified.
+- Enhance README with instructions for publishing multi-arch Docker images to GHCR.
+
+### Bug Fixes 🐛
+- _No changes._
+
+### Testing 🧪
+- Add Makefile to CI test paths for improved test coverage.
+
+### Docs 📚
+- Add documentation for `make publish` Docker image publishing process and configuration options.
+
 ## [v0.1.1] - 2026-03-29
 
 ### Features ✨
