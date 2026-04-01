@@ -291,6 +291,19 @@ Open `http://localhost:4173` in your browser for the landing/dashboard UI. The H
 
 The Pinguin Docker image declares `/web` as a separate volume for the UI bundle; the compose workflow mounts the `pinguin-web` volume (bound to `./web`) at `/web` for you.
 
+### Publish Docker images
+
+The production image is published to GHCR as a multi-arch manifest, so the `latest` tag resolves to both `linux/amd64` and `linux/arm64`.
+
+Use the explicit publish target to build and publish the image:
+
+```bash
+docker login ghcr.io
+make publish
+```
+
+`make publish` defaults to `ghcr.io/tyemirov/pinguin:latest`. Override `DOCKER_IMAGE`, `DOCKER_TAG`, or `DOCKER_PLATFORMS` if you need to publish a different registry target or tag.
+
 1. Copy the sample environment files and update the placeholders. **Use the same signing key in both files** so TAuth and Pinguin agree on JWT validation.
 
    ```bash
