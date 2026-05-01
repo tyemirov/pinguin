@@ -20,6 +20,26 @@
  */
 
 /**
+ * @typedef {Object} SMTPIdentity
+ * @property {string} id
+ * @property {string} tenantId
+ * @property {string} emailAddress
+ * @property {string} username
+ * @property {string} status
+ * @property {string | null} lastUsedAt
+ * @property {string} createdAt
+ * @property {string} updatedAt
+ */
+
+/**
+ * @typedef {Object} SMTPCredentials
+ * @property {SMTPIdentity} identity
+ * @property {{ host: string, port: number, securityMode: string }} smtpSettings
+ * @property {string} username
+ * @property {string} password
+ */
+
+/**
  * @typedef {Object} StatusOption
  * @property {NotificationStatusKey | "all"} value
  * @property {string} label

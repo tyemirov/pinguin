@@ -25,6 +25,7 @@ type Config struct {
 	WebInterfaceEnabled bool
 	HTTPListenAddr      string
 	HTTPAllowedOrigins  []string
+	SMTPSubmission      SMTPSubmissionConfig
 
 	TAuthSigningKey     string
 	TAuthCookieName     string
@@ -47,10 +48,24 @@ type Config struct {
 	OperationTimeoutSec  int
 }
 
+// SMTPSubmissionConfig controls Gmail-facing SMTP submission listeners.
+type SMTPSubmissionConfig struct {
+	Enabled           bool
+	Hostname          string
+	ListenAddr        string
+	TLSListenAddr     string
+	TLSCertPath       string
+	TLSKeyPath        string
+	MaxMessageBytes   int64
+	MaxRecipients     int
+	AllowInsecureAuth bool
+}
+
 type fileConfig struct {
-	Server  serverSection `yaml:"server"`
-	Web     webSection    `yaml:"web"`
-	Tenants tenantConfig  `yaml:"tenants"`
+	Server         serverSection         `yaml:"server"`
+	Web            webSection            `yaml:"web"`
+	SMTPSubmission smtpSubmissionSection `yaml:"smtpSubmission"`
+	Tenants        tenantConfig          `yaml:"tenants"`
 }
 
 type serverSection struct {
@@ -77,6 +92,18 @@ type tauthSection struct {
 	GoogleClientID string `yaml:"googleClientId"`
 	TAuthBaseURL   string `yaml:"tauthBaseUrl"`
 	TAuthTenantID  string `yaml:"tauthTenantId"`
+}
+
+type smtpSubmissionSection struct {
+	Enabled           bool   `yaml:"enabled"`
+	Hostname          string `yaml:"hostname"`
+	ListenAddr        string `yaml:"listenAddr"`
+	TLSListenAddr     string `yaml:"tlsListenAddr"`
+	TLSCertPath       string `yaml:"tlsCertPath"`
+	TLSKeyPath        string `yaml:"tlsKeyPath"`
+	MaxMessageBytes   int64  `yaml:"maxMessageBytes"`
+	MaxRecipients     int    `yaml:"maxRecipients"`
+	AllowInsecureAuth bool   `yaml:"allowInsecureAuth"`
 }
 
 type tenantConfig struct {
@@ -147,16 +174,27 @@ func LoadConfig(disableWebInterface bool) (Config, error) {
 	}
 
 	configuration := Config{
-		DatabasePath:         strings.TrimSpace(fileCfg.Server.DatabasePath),
-		GRPCAuthToken:        strings.TrimSpace(fileCfg.Server.GRPCAuthToken),
-		LogLevel:             strings.TrimSpace(fileCfg.Server.LogLevel),
-		MaxRetries:           fileCfg.Server.MaxRetries,
-		RetryIntervalSec:     fileCfg.Server.RetryIntervalSec,
-		MasterEncryptionKey:  strings.TrimSpace(fileCfg.Server.MasterEncryptionKey),
-		TenantConfigPath:     strings.TrimSpace(fileCfg.Tenants.ConfigPath),
-		WebInterfaceEnabled:  webEnabled,
-		HTTPListenAddr:       strings.TrimSpace(fileCfg.Web.ListenAddr),
-		HTTPAllowedOrigins:   normalizeStrings(fileCfg.Web.AllowedOrigins),
+		DatabasePath:        strings.TrimSpace(fileCfg.Server.DatabasePath),
+		GRPCAuthToken:       strings.TrimSpace(fileCfg.Server.GRPCAuthToken),
+		LogLevel:            strings.TrimSpace(fileCfg.Server.LogLevel),
+		MaxRetries:          fileCfg.Server.MaxRetries,
+		RetryIntervalSec:    fileCfg.Server.RetryIntervalSec,
+		MasterEncryptionKey: strings.TrimSpace(fileCfg.Server.MasterEncryptionKey),
+		TenantConfigPath:    strings.TrimSpace(fileCfg.Tenants.ConfigPath),
+		WebInterfaceEnabled: webEnabled,
+		HTTPListenAddr:      strings.TrimSpace(fileCfg.Web.ListenAddr),
+		HTTPAllowedOrigins:  normalizeStrings(fileCfg.Web.AllowedOrigins),
+		SMTPSubmission: SMTPSubmissionConfig{
+			Enabled:           fileCfg.SMTPSubmission.Enabled,
+			Hostname:          strings.TrimSpace(fileCfg.SMTPSubmission.Hostname),
+			ListenAddr:        strings.TrimSpace(fileCfg.SMTPSubmission.ListenAddr),
+			TLSListenAddr:     strings.TrimSpace(fileCfg.SMTPSubmission.TLSListenAddr),
+			TLSCertPath:       strings.TrimSpace(fileCfg.SMTPSubmission.TLSCertPath),
+			TLSKeyPath:        strings.TrimSpace(fileCfg.SMTPSubmission.TLSKeyPath),
+			MaxMessageBytes:   fileCfg.SMTPSubmission.MaxMessageBytes,
+			MaxRecipients:     fileCfg.SMTPSubmission.MaxRecipients,
+			AllowInsecureAuth: fileCfg.SMTPSubmission.AllowInsecureAuth,
+		},
 		TAuthSigningKey:      strings.TrimSpace(fileCfg.Server.TAuth.SigningKey),
 		TAuthCookieName:      strings.TrimSpace(fileCfg.Server.TAuth.CookieName),
 		TAuthBaseURL:         strings.TrimSpace(fileCfg.Server.TAuth.TAuthBaseURL),
@@ -240,6 +278,19 @@ func validateConfig(cfg Config) error {
 		requireString(cfg.TAuthGoogleClientID, "server.tauth.googleClientId", &errors)
 	}
 
+	if cfg.SMTPSubmission.Enabled {
+		requireString(cfg.SMTPSubmission.Hostname, "smtpSubmission.hostname", &errors)
+		if strings.TrimSpace(cfg.SMTPSubmission.ListenAddr) == "" && strings.TrimSpace(cfg.SMTPSubmission.TLSListenAddr) == "" {
+			errors = append(errors, "missing smtpSubmission.listenAddr or smtpSubmission.tlsListenAddr")
+		}
+		requirePositiveInt64(cfg.SMTPSubmission.MaxMessageBytes, "smtpSubmission.maxMessageBytes", &errors)
+		requirePositive(cfg.SMTPSubmission.MaxRecipients, "smtpSubmission.maxRecipients", &errors)
+		if !cfg.SMTPSubmission.AllowInsecureAuth {
+			requireString(cfg.SMTPSubmission.TLSCertPath, "smtpSubmission.tlsCertPath", &errors)
+			requireString(cfg.SMTPSubmission.TLSKeyPath, "smtpSubmission.tlsKeyPath", &errors)
+		}
+	}
+
 	if len(cfg.TenantBootstrap.Tenants) > 0 {
 		for idx, tenantSpec := range cfg.TenantBootstrap.Tenants {
 			tenantPrefix := fmt.Sprintf("tenants[%d]", idx)
@@ -263,6 +314,12 @@ func requireString(value string, name string, errors *[]string) {
 }
 
 func requirePositive(value int, name string, errors *[]string) {
+	if value <= 0 {
+		*errors = append(*errors, fmt.Sprintf("missing %s", name))
+	}
+}
+
+func requirePositiveInt64(value int64, name string, errors *[]string) {
 	if value <= 0 {
 		*errors = append(*errors, fmt.Sprintf("missing %s", name))
 	}

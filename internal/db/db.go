@@ -10,6 +10,7 @@ import (
 
 	"github.com/glebarez/sqlite"
 	"github.com/tyemirov/pinguin/internal/model"
+	"github.com/tyemirov/pinguin/internal/smtpidentity"
 	"github.com/tyemirov/pinguin/internal/tenant"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -38,8 +39,10 @@ func InitDB(dbPath string, logger *slog.Logger) (*gorm.DB, error) {
 		&model.NotificationAttachment{},
 		&tenant.Tenant{},
 		&tenant.TenantDomain{},
+		&tenant.SenderDomain{},
 		&tenant.EmailProfile{},
 		&tenant.SMSProfile{},
+		&smtpidentity.Identity{},
 	); err != nil {
 		return nil, fmt.Errorf("migration failed: %w", err)
 	}

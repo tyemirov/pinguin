@@ -19,14 +19,15 @@ type BootstrapConfig struct {
 
 // BootstrapTenant declares per-tenant metadata.
 type BootstrapTenant struct {
-	ID           string                `json:"id" yaml:"id"`
-	DisplayName  string                `json:"displayName" yaml:"displayName"`
-	SupportEmail string                `json:"supportEmail" yaml:"supportEmail"`
-	Enabled      *bool                 `json:"enabled" yaml:"enabled"`
-	Status       string                `json:"status" yaml:"status"`
-	Domains      []string              `json:"domains" yaml:"domains"`
-	EmailProfile BootstrapEmailProfile `json:"emailProfile" yaml:"emailProfile"`
-	SMSProfile   *BootstrapSMSProfile  `json:"smsProfile" yaml:"smsProfile"`
+	ID            string                `json:"id" yaml:"id"`
+	DisplayName   string                `json:"displayName" yaml:"displayName"`
+	SupportEmail  string                `json:"supportEmail" yaml:"supportEmail"`
+	Enabled       *bool                 `json:"enabled" yaml:"enabled"`
+	Status        string                `json:"status" yaml:"status"`
+	Domains       []string              `json:"domains" yaml:"domains"`
+	SenderDomains []string              `json:"senderDomains" yaml:"senderDomains"`
+	EmailProfile  BootstrapEmailProfile `json:"emailProfile" yaml:"emailProfile"`
+	SMSProfile    *BootstrapSMSProfile  `json:"smsProfile" yaml:"smsProfile"`
 }
 
 // BootstrapEmailProfile defines SMTP credentials.
@@ -78,6 +79,9 @@ func Bootstrap(ctx context.Context, db *gorm.DB, keeper *SecretKeeper, cfg Boots
 	}
 	transactionErr := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := resetTenantDomains(tx); err != nil {
+			return err
+		}
+		if err := resetSenderDomains(tx); err != nil {
 			return err
 		}
 		for _, tenantSpec := range cfg.Tenants {
@@ -139,6 +143,27 @@ func upsertTenant(ctx context.Context, tx *gorm.DB, keeper *SecretKeeper, spec B
 		}
 	}
 
+	for _, domain := range normalizeDomainHosts(spec.SenderDomains) {
+		senderDomain := SenderDomain{
+			TenantID: spec.ID,
+			Domain:   domain,
+		}
+		createResult := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "domain"}},
+			DoNothing: true,
+		}).Create(&senderDomain)
+		if createResult.Error != nil {
+			return fmt.Errorf("tenant bootstrap: sender domain %s: %w", domain, createResult.Error)
+		}
+		var existingDomain SenderDomain
+		if err := tx.Where(&SenderDomain{Domain: domain}).Take(&existingDomain).Error; err != nil {
+			return fmt.Errorf("tenant bootstrap: sender domain %s: %w", domain, err)
+		}
+		if existingDomain.TenantID != spec.ID {
+			return fmt.Errorf("tenant bootstrap: sender domain %s already assigned to tenant %s", domain, existingDomain.TenantID)
+		}
+	}
+
 	usernameCipher, err := keeper.Encrypt(spec.EmailProfile.Username)
 	if err != nil {
 		return err
@@ -197,11 +222,12 @@ func upsertTenant(ctx context.Context, tx *gorm.DB, keeper *SecretKeeper, spec B
 }
 
 const (
-	bootstrapDuplicateDomainCode = "tenant.bootstrap.domain.duplicate"
-	bootstrapMissingDomainCode   = "tenant.bootstrap.domain.missing"
-	bootstrapDomainResetCode     = "tenant.bootstrap.domain.reset_failed"
-	bootstrapDomainConflictCode  = "tenant.bootstrap.domain.conflict"
-	bootstrapDomainErrorFormat   = "tenant bootstrap: domain %s: %w"
+	bootstrapDuplicateDomainCode   = "tenant.bootstrap.domain.duplicate"
+	bootstrapMissingDomainCode     = "tenant.bootstrap.domain.missing"
+	bootstrapDomainResetCode       = "tenant.bootstrap.domain.reset_failed"
+	bootstrapSenderDomainResetCode = "tenant.bootstrap.sender_domain.reset_failed"
+	bootstrapDomainConflictCode    = "tenant.bootstrap.domain.conflict"
+	bootstrapDomainErrorFormat     = "tenant bootstrap: domain %s: %w"
 )
 
 func validateBootstrapDomains(tenantSpecs []BootstrapTenant) error {
@@ -229,6 +255,13 @@ func validateBootstrapDomains(tenantSpecs []BootstrapTenant) error {
 func resetTenantDomains(db *gorm.DB) error {
 	if err := db.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&TenantDomain{}).Error; err != nil {
 		return fmt.Errorf("tenant bootstrap: %s: reset tenant domains: %w", bootstrapDomainResetCode, err)
+	}
+	return nil
+}
+
+func resetSenderDomains(db *gorm.DB) error {
+	if err := db.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&SenderDomain{}).Error; err != nil {
+		return fmt.Errorf("tenant bootstrap: %s: reset sender domains: %w", bootstrapSenderDomainResetCode, err)
 	}
 	return nil
 }

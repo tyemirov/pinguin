@@ -197,6 +197,130 @@
           </form>
         </dialog>
       </section>
+      <section
+        class="panel"
+        x-data="smtpIdentities()"
+        data-testid="smtp-identities"
+      >
+        <header class="panel-header">
+          <div>
+            <h2 class="section-title" x-text="strings.title"></h2>
+            <p class="text-muted" x-text="strings.subtitle"></p>
+          </div>
+        </header>
+        <form class="identity-form" x-on:submit.prevent="createIdentity">
+          <label>
+            <span x-text="strings.emailLabel"></span>
+            <input
+              type="email"
+              x-model="emailAddress"
+              :placeholder="strings.emailPlaceholder"
+              autocomplete="email"
+              required
+            />
+          </label>
+          <button
+            class="button primary"
+            type="submit"
+            :disabled="isSubmitting"
+            x-text="actions.create"
+          ></button>
+        </form>
+        <template x-if="errorMessage">
+          <p class="notice" data-variant="error" x-text="errorMessage"></p>
+        </template>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th x-text="strings.emailLabel"></th>
+                <th x-text="strings.usernameLabel"></th>
+                <th x-text="strings.lastUsedLabel"></th>
+                <th x-text="strings.actionColumn"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-if="isLoading">
+                <tr>
+                  <td colspan="4" class="empty-state" x-text="strings.loadingState"></td>
+                </tr>
+              </template>
+              <template x-if="!isLoading && identities.length === 0">
+                <tr>
+                  <td colspan="4" class="empty-state" x-text="strings.emptyState"></td>
+                </tr>
+              </template>
+              <template x-for="identity in identities" :key="identity.id">
+                <tr data-testid="smtp-identity-row">
+                  <td>
+                    <strong x-text="identity.emailAddress"></strong>
+                  </td>
+                  <td x-text="identity.username"></td>
+                  <td x-text="formatTimestamp(identity.lastUsedAt)"></td>
+                  <td style="min-width: 180px">
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap">
+                      <button
+                        class="button secondary"
+                        type="button"
+                        x-on:click="rotateIdentity(identity)"
+                        :disabled="isSubmitting"
+                        x-text="actions.rotate"
+                      ></button>
+                      <button
+                        class="button danger"
+                        type="button"
+                        x-on:click="deleteIdentity(identity)"
+                        :disabled="isSubmitting"
+                        x-text="actions.delete"
+                      ></button>
+                    </div>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <dialog class="dialog" x-ref="credentialsDialog">
+          <form class="dialog__body" method="dialog">
+            <div>
+              <h3 x-text="strings.credentialsTitle"></h3>
+              <p class="text-muted" x-text="strings.credentialsDescription"></p>
+            </div>
+            <template x-if="credentials">
+              <div class="credentials-grid" data-testid="smtp-credentials">
+                <label>
+                  <span x-text="strings.hostLabel"></span>
+                  <input type="text" readonly :value="credentials.smtpSettings.host" />
+                </label>
+                <label>
+                  <span x-text="strings.portLabel"></span>
+                  <input type="text" readonly :value="credentials.smtpSettings.port" />
+                </label>
+                <label>
+                  <span x-text="strings.securityLabel"></span>
+                  <input type="text" readonly :value="credentials.smtpSettings.securityMode" />
+                </label>
+                <label>
+                  <span x-text="strings.usernameLabel"></span>
+                  <input type="text" readonly :value="credentials.username" />
+                </label>
+                <label class="credentials-grid__full">
+                  <span x-text="strings.passwordLabel"></span>
+                  <input type="text" readonly :value="credentials.password" />
+                </label>
+              </div>
+            </template>
+            <div style="display: flex; gap: 0.75rem; justify-content: flex-end">
+              <button
+                class="button primary"
+                type="button"
+                x-on:click="closeCredentialsDialog()"
+                x-text="actions.close"
+              ></button>
+            </div>
+          </form>
+        </dialog>
+      </section>
     </main>
     <div
       class="toast-center"

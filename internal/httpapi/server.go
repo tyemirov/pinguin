@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/tyemirov/pinguin/internal/model"
 	"github.com/tyemirov/pinguin/internal/service"
+	"github.com/tyemirov/pinguin/internal/smtpidentity"
 	"github.com/tyemirov/pinguin/internal/tenant"
 	sessionvalidator "github.com/tyemirov/tauth/pkg/sessionvalidator"
 	"gorm.io/gorm"
@@ -40,6 +41,7 @@ type Config struct {
 	AllowedOrigins       []string
 	SessionValidator     SessionValidator
 	NotificationService  service.NotificationService
+	SMTPIdentityService  *smtpidentity.Service
 	TenantRepository     *tenant.Repository
 	TAuthBaseURL         string
 	TAuthTenantID        string
@@ -105,6 +107,13 @@ func NewServer(cfg Config) (*Server, error) {
 	protected.GET("/notifications", handler.listNotifications)
 	protected.PATCH("/notifications/:id/schedule", handler.rescheduleNotification)
 	protected.POST("/notifications/:id/cancel", handler.cancelNotification)
+	if cfg.SMTPIdentityService != nil {
+		identityHandler := newSMTPIdentityHandler(cfg.SMTPIdentityService, cfg.Logger)
+		protected.GET("/smtp-identities", identityHandler.listIdentities)
+		protected.POST("/smtp-identities", identityHandler.createIdentity)
+		protected.POST("/smtp-identities/:id/rotate", identityHandler.rotateIdentity)
+		protected.DELETE("/smtp-identities/:id", identityHandler.deleteIdentity)
+	}
 
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddr,
@@ -155,7 +164,7 @@ func buildCORS(allowedOrigins []string) gin.HandlerFunc {
 		cfg := cors.Config{
 			AllowAllOrigins:  true,
 			AllowHeaders:     []string{"Content-Type", "X-Requested-With", "X-Client-Data", "X-Client"},
-			AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodOptions},
+			AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodOptions},
 			AllowCredentials: false,
 		}
 		return cors.New(cfg)
@@ -163,7 +172,7 @@ func buildCORS(allowedOrigins []string) gin.HandlerFunc {
 	cfg := cors.Config{
 		AllowOrigins:     allowedOrigins,
 		AllowHeaders:     []string{"Content-Type", "X-Requested-With", "X-Client-Data", "X-Client"},
-		AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodOptions},
+		AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodOptions},
 		AllowCredentials: true,
 	}
 	return cors.New(cfg)

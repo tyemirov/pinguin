@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"flag"
@@ -10,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +20,8 @@ import (
 	"github.com/tyemirov/pinguin/internal/httpapi"
 	"github.com/tyemirov/pinguin/internal/model"
 	"github.com/tyemirov/pinguin/internal/service"
+	"github.com/tyemirov/pinguin/internal/smtpidentity"
+	"github.com/tyemirov/pinguin/internal/smtpsubmission"
 	"github.com/tyemirov/pinguin/internal/tenant"
 	"github.com/tyemirov/pinguin/pkg/grpcapi"
 	"github.com/tyemirov/pinguin/pkg/grpcutil"
@@ -417,6 +421,12 @@ func main() {
 		os.Exit(1)
 	}
 	tenantRepo := tenant.NewRepository(databaseInstance, secretKeeper)
+	smtpIdentityRepo, smtpIdentityRepoErr := smtpidentity.NewRepository(databaseInstance, configuration.MasterEncryptionKey)
+	if smtpIdentityRepoErr != nil {
+		mainLogger.Error("Failed to initialize SMTP identity repository", "error", smtpIdentityRepoErr)
+		os.Exit(1)
+	}
+	smtpIdentityService := smtpidentity.NewService(smtpIdentityRepo, smtpPublicSettings(configuration.SMTPSubmission))
 
 	notificationSvc := service.NewNotificationService(databaseInstance, mainLogger, configuration, tenantRepo)
 
@@ -424,6 +434,43 @@ func main() {
 	workerCtx, cancelWorker := context.WithCancel(context.Background())
 	defer cancelWorker()
 	go notificationSvc.StartRetryWorker(workerCtx)
+
+	if configuration.SMTPSubmission.Enabled {
+		var tlsConfig *tls.Config
+		if configuration.SMTPSubmission.TLSCertPath != "" && configuration.SMTPSubmission.TLSKeyPath != "" {
+			loadedTLSConfig, tlsErr := smtpsubmission.LoadTLSConfig(configuration.SMTPSubmission.TLSCertPath, configuration.SMTPSubmission.TLSKeyPath)
+			if tlsErr != nil {
+				mainLogger.Error("Failed to load SMTP submission TLS config", "error", tlsErr)
+				os.Exit(1)
+			}
+			tlsConfig = loadedTLSConfig
+		}
+		smtpSubmissionServer, smtpServerErr := smtpsubmission.NewServer(smtpsubmission.Config{
+			Hostname:          configuration.SMTPSubmission.Hostname,
+			ListenAddr:        configuration.SMTPSubmission.ListenAddr,
+			TLSListenAddr:     configuration.SMTPSubmission.TLSListenAddr,
+			TLSConfig:         tlsConfig,
+			MaxMessageBytes:   configuration.SMTPSubmission.MaxMessageBytes,
+			MaxRecipients:     configuration.SMTPSubmission.MaxRecipients,
+			AllowInsecureAuth: configuration.SMTPSubmission.AllowInsecureAuth,
+			Authenticator:     smtpIdentityRepo,
+			Relay:             smtpsubmission.NewUpstreamRelay(tenantRepo, mainLogger, configuration),
+			Logger:            mainLogger,
+		})
+		if smtpServerErr != nil {
+			mainLogger.Error("Failed to initialize SMTP submission server", "error", smtpServerErr)
+			os.Exit(1)
+		}
+		smtpSubmissionCtx, cancelSMTPSubmission := context.WithCancel(context.Background())
+		defer cancelSMTPSubmission()
+		go func() {
+			mainLogger.Info("SMTP submission server listening", "listen_addr", configuration.SMTPSubmission.ListenAddr, "tls_listen_addr", configuration.SMTPSubmission.TLSListenAddr)
+			if err := smtpSubmissionServer.Start(smtpSubmissionCtx); err != nil {
+				mainLogger.Error("SMTP submission server crashed", "error", err)
+				os.Exit(1)
+			}
+		}()
+	}
 
 	if configuration.WebInterfaceEnabled {
 		sessionValidator, validatorErr := sessionvalidator.New(sessionvalidator.Config{
@@ -440,6 +487,7 @@ func main() {
 			AllowedOrigins:      configuration.HTTPAllowedOrigins,
 			SessionValidator:    sessionValidator,
 			NotificationService: notificationSvc,
+			SMTPIdentityService: smtpIdentityService,
 			TenantRepository:    tenantRepo,
 			TAuthBaseURL:        configuration.TAuthBaseURL,
 			TAuthTenantID:       configuration.TAuthTenantID,
@@ -495,4 +543,34 @@ func main() {
 		mainLogger.Error("gRPC server crashed", "error", serveErr)
 		os.Exit(1)
 	}
+}
+
+func smtpPublicSettings(cfg config.SMTPSubmissionConfig) smtpidentity.PublicSettings {
+	port := smtpPortFromAddr(cfg.ListenAddr, 587)
+	securityMode := "starttls"
+	if strings.TrimSpace(cfg.ListenAddr) == "" && strings.TrimSpace(cfg.TLSListenAddr) != "" {
+		port = smtpPortFromAddr(cfg.TLSListenAddr, 465)
+		securityMode = "ssl"
+	}
+	return smtpidentity.PublicSettings{
+		Host:         cfg.Hostname,
+		Port:         port,
+		SecurityMode: securityMode,
+	}
+}
+
+func smtpPortFromAddr(address string, fallback int) int {
+	trimmedAddress := strings.TrimSpace(address)
+	if trimmedAddress == "" {
+		return fallback
+	}
+	_, portValue, splitErr := net.SplitHostPort(trimmedAddress)
+	if splitErr != nil {
+		portValue = strings.TrimPrefix(trimmedAddress, ":")
+	}
+	port, parseErr := strconv.Atoi(portValue)
+	if parseErr != nil || port <= 0 {
+		return fallback
+	}
+	return port
 }

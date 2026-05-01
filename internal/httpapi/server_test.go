@@ -19,6 +19,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"github.com/tyemirov/pinguin/internal/model"
 	"github.com/tyemirov/pinguin/internal/service"
+	"github.com/tyemirov/pinguin/internal/smtpidentity"
 	"github.com/tyemirov/pinguin/internal/tenant"
 	sessionvalidator "github.com/tyemirov/tauth/pkg/sessionvalidator"
 	"gopkg.in/yaml.v3"
@@ -129,6 +130,78 @@ func TestListNotificationsScopesByTenantHost(t *testing.T) {
 	}
 	if stubSvc.listCalls != currentCalls {
 		t.Fatalf("service should not be called for unknown host")
+	}
+}
+
+func TestSMTPIdentityLifecycle(t *testing.T) {
+	server, identityRepo := newTestHTTPServerWithSMTPIdentities(t)
+
+	createRecorder := httptest.NewRecorder()
+	createBody := bytes.NewBufferString(`{"email_address":"alice@example.com"}`)
+	createRequest := httptest.NewRequest(http.MethodPost, "/api/smtp-identities", createBody)
+	createRequest.Host = "example.com"
+	server.httpServer.Handler.ServeHTTP(createRecorder, createRequest)
+	if createRecorder.Code != http.StatusCreated {
+		t.Fatalf("expected create 201, got %d body=%s", createRecorder.Code, createRecorder.Body.String())
+	}
+	var createPayload smtpidentity.OneTimeCredentials
+	if err := json.Unmarshal(createRecorder.Body.Bytes(), &createPayload); err != nil {
+		t.Fatalf("decode create payload: %v", err)
+	}
+	if createPayload.Password == "" || createPayload.Username == "" || createPayload.SMTPSettings.Host != "smtp.example.com" {
+		t.Fatalf("unexpected create credentials: %+v", createPayload)
+	}
+
+	listRecorder := httptest.NewRecorder()
+	listRequest := httptest.NewRequest(http.MethodGet, "/api/smtp-identities", nil)
+	listRequest.Host = "example.com"
+	server.httpServer.Handler.ServeHTTP(listRecorder, listRequest)
+	if listRecorder.Code != http.StatusOK {
+		t.Fatalf("expected list 200, got %d", listRecorder.Code)
+	}
+	if strings.Contains(listRecorder.Body.String(), createPayload.Password) {
+		t.Fatalf("list response leaked one-time password")
+	}
+
+	rotateRecorder := httptest.NewRecorder()
+	rotatePath := fmt.Sprintf("/api/smtp-identities/%s/rotate", createPayload.Identity.ID)
+	rotateRequest := httptest.NewRequest(http.MethodPost, rotatePath, nil)
+	rotateRequest.Host = "example.com"
+	server.httpServer.Handler.ServeHTTP(rotateRecorder, rotateRequest)
+	if rotateRecorder.Code != http.StatusOK {
+		t.Fatalf("expected rotate 200, got %d", rotateRecorder.Code)
+	}
+	var rotatePayload smtpidentity.OneTimeCredentials
+	if err := json.Unmarshal(rotateRecorder.Body.Bytes(), &rotatePayload); err != nil {
+		t.Fatalf("decode rotate payload: %v", err)
+	}
+	if rotatePayload.Password == createPayload.Password || rotatePayload.Username == createPayload.Username {
+		t.Fatalf("expected rotate credentials to change")
+	}
+
+	deleteRecorder := httptest.NewRecorder()
+	deletePath := fmt.Sprintf("/api/smtp-identities/%s", createPayload.Identity.ID)
+	deleteRequest := httptest.NewRequest(http.MethodDelete, deletePath, nil)
+	deleteRequest.Host = "example.com"
+	server.httpServer.Handler.ServeHTTP(deleteRecorder, deleteRequest)
+	if deleteRecorder.Code != http.StatusNoContent {
+		t.Fatalf("expected delete 204, got %d", deleteRecorder.Code)
+	}
+	if _, authErr := identityRepo.Authenticate(context.Background(), rotatePayload.Username, rotatePayload.Password); !errors.Is(authErr, smtpidentity.ErrAuthenticationFailed) {
+		t.Fatalf("expected deleted credentials to fail, got %v", authErr)
+	}
+}
+
+func TestSMTPIdentityRejectsOutsideSenderDomain(t *testing.T) {
+	server, _ := newTestHTTPServerWithSMTPIdentities(t)
+
+	recorder := httptest.NewRecorder()
+	body := bytes.NewBufferString(`{"email_address":"alice@other.example"}`)
+	request := httptest.NewRequest(http.MethodPost, "/api/smtp-identities", body)
+	request.Host = "example.com"
+	server.httpServer.Handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d body=%s", recorder.Code, recorder.Body.String())
 	}
 }
 
@@ -543,6 +616,77 @@ func newTestHTTPServerWithRepo(t *testing.T, svc service.NotificationService, va
 	return server
 }
 
+func newTestHTTPServerWithSMTPIdentities(t *testing.T) (*Server, *smtpidentity.Repository) {
+	t.Helper()
+	secretKey := strings.Repeat("a", 64)
+	keeper, err := tenant.NewSecretKeeper(secretKey)
+	if err != nil {
+		t.Fatalf("secret keeper error: %v", err)
+	}
+	dbInstance, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "httpapi.db")), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := dbInstance.AutoMigrate(
+		&tenant.Tenant{},
+		&tenant.TenantDomain{},
+		&tenant.SenderDomain{},
+		&tenant.EmailProfile{},
+		&tenant.SMSProfile{},
+		&smtpidentity.Identity{},
+	); err != nil {
+		t.Fatalf("migrate sqlite: %v", err)
+	}
+	cfg := tenant.BootstrapConfig{
+		Tenants: []tenant.BootstrapTenant{
+			{
+				ID:            "tenant-test",
+				DisplayName:   "Test Tenant",
+				SupportEmail:  "support@example.com",
+				Enabled:       ptrBool(true),
+				Domains:       []string{"example.com"},
+				SenderDomains: []string{"example.com"},
+				EmailProfile: tenant.BootstrapEmailProfile{
+					Host:        "smtp.example.com",
+					Port:        587,
+					Username:    "smtp-user",
+					Password:    "smtp-pass",
+					FromAddress: "noreply@example.com",
+				},
+			},
+		},
+	}
+	if err := tenant.Bootstrap(context.Background(), dbInstance, keeper, cfg); err != nil {
+		t.Fatalf("bootstrap tenants: %v", err)
+	}
+	tenantRepo := tenant.NewRepository(dbInstance, keeper)
+	identityRepo, err := smtpidentity.NewRepository(dbInstance, secretKey)
+	if err != nil {
+		t.Fatalf("identity repository: %v", err)
+	}
+	identityService := smtpidentity.NewService(identityRepo, smtpidentity.PublicSettings{
+		Host:         "smtp.example.com",
+		Port:         587,
+		SecurityMode: "starttls",
+	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
+	server, err := NewServer(Config{
+		ListenAddr:          ":0",
+		NotificationService: &stubNotificationService{},
+		SMTPIdentityService: identityService,
+		SessionValidator:    &stubValidator{},
+		TenantRepository:    tenantRepo,
+		TAuthBaseURL:        "https://tauth.example.com",
+		TAuthTenantID:       "tauth-test",
+		TAuthGoogleClientID: "client-id",
+		Logger:              logger,
+	})
+	if err != nil {
+		t.Fatalf("server init error: %v", err)
+	}
+	return server, identityRepo
+}
+
 func newTestTenantRepository(t *testing.T) *tenant.Repository {
 	t.Helper()
 	cfg := tenant.BootstrapConfig{
@@ -616,6 +760,7 @@ func bootstrapTenantRepository(t *testing.T, cfg tenant.BootstrapConfig) *tenant
 	if err := dbInstance.AutoMigrate(
 		&tenant.Tenant{},
 		&tenant.TenantDomain{},
+		&tenant.SenderDomain{},
 		&tenant.EmailProfile{},
 		&tenant.SMSProfile{},
 	); err != nil {

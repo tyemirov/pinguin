@@ -39,6 +39,7 @@ tenants:
     supportEmail: support@one.test
     enabled: true
     domains: [one.test]
+    senderDomains: [one.test]
     emailProfile:
       host: smtp.one.test
       port: 587
@@ -56,6 +57,13 @@ web:
   allowedOrigins:
     - https://app.local
     - https://alt.local
+smtpSubmission:
+  enabled: true
+  hostname: smtp.one.test
+  listenAddr: :587
+  maxMessageBytes: 1048576
+  maxRecipients: 25
+  allowInsecureAuth: true
 `)
 
 	t.Setenv("PINGUIN_CONFIG_PATH", configPath)
@@ -87,11 +95,12 @@ web:
 		TenantBootstrap: tenant.BootstrapConfig{
 			Tenants: []tenant.BootstrapTenant{
 				{
-					ID:           "tenant-one",
-					DisplayName:  "One Corp",
-					SupportEmail: "support@one.test",
-					Enabled:      ptrBool(true),
-					Domains:      []string{"one.test"},
+					ID:            "tenant-one",
+					DisplayName:   "One Corp",
+					SupportEmail:  "support@one.test",
+					Enabled:       ptrBool(true),
+					Domains:       []string{"one.test"},
+					SenderDomains: []string{"one.test"},
 					EmailProfile: tenant.BootstrapEmailProfile{
 						Host:        "smtp.one.test",
 						Port:        587,
@@ -107,9 +116,17 @@ web:
 				},
 			},
 		},
-		WebInterfaceEnabled:  true,
-		HTTPListenAddr:       ":8080",
-		HTTPAllowedOrigins:   []string{"https://app.local", "https://alt.local"},
+		WebInterfaceEnabled: true,
+		HTTPListenAddr:      ":8080",
+		HTTPAllowedOrigins:  []string{"https://app.local", "https://alt.local"},
+		SMTPSubmission: SMTPSubmissionConfig{
+			Enabled:           true,
+			Hostname:          "smtp.one.test",
+			ListenAddr:        ":587",
+			MaxMessageBytes:   1048576,
+			MaxRecipients:     25,
+			AllowInsecureAuth: true,
+		},
 		TAuthSigningKey:      "signing-key",
 		TAuthCookieName:      "custom_session",
 		TAuthBaseURL:         "https://auth.one.test",
@@ -222,6 +239,48 @@ web:
 		t.Fatalf("expected validation error")
 	}
 	if !strings.Contains(err.Error(), "server.grpcAuthToken") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadConfigRejectsIncompleteSMTPSubmission(t *testing.T) {
+	t.Helper()
+	configPath := writeConfigFile(t, `
+server:
+  databasePath: app.db
+  grpcAuthToken: token
+  logLevel: INFO
+  maxRetries: 3
+  retryIntervalSec: 30
+  masterEncryptionKey: ${MASTER_ENCRYPTION_KEY}
+  connectionTimeoutSec: 5
+  operationTimeoutSec: 10
+tenants:
+  - id: tenant-one
+    displayName: One Corp
+    supportEmail: support@one.test
+    enabled: true
+    domains: [one.test]
+    emailProfile:
+      host: smtp.one.test
+      port: 587
+      username: smtp-user
+      password: smtp-pass
+      fromAddress: noreply@one.test
+web:
+  enabled: false
+smtpSubmission:
+  enabled: true
+  hostname: smtp.one.test
+`)
+	t.Setenv("PINGUIN_CONFIG_PATH", configPath)
+	t.Setenv("MASTER_ENCRYPTION_KEY", "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc")
+
+	_, err := LoadConfig(false)
+	if err == nil {
+		t.Fatalf("expected SMTP submission validation error")
+	}
+	if !strings.Contains(err.Error(), "smtpSubmission.listenAddr") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

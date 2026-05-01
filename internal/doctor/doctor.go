@@ -65,9 +65,10 @@ type Options struct {
 
 // pinguinConfig mirrors the Pinguin configuration file structure for validation.
 type pinguinConfig struct {
-	Server  pinguinServer   `yaml:"server"`
-	Web     pinguinWeb      `yaml:"web"`
-	Tenants pinguinYAMLNode `yaml:"tenants"`
+	Server         pinguinServer         `yaml:"server"`
+	Web            pinguinWeb            `yaml:"web"`
+	SMTPSubmission pinguinSMTPSubmission `yaml:"smtpSubmission"`
+	Tenants        pinguinYAMLNode       `yaml:"tenants"`
 }
 
 type pinguinServer struct {
@@ -94,12 +95,25 @@ type pinguinTAuth struct {
 	CookieName string `yaml:"cookieName"`
 }
 
+type pinguinSMTPSubmission struct {
+	Enabled           bool   `yaml:"enabled"`
+	Hostname          string `yaml:"hostname"`
+	ListenAddr        string `yaml:"listenAddr"`
+	TLSListenAddr     string `yaml:"tlsListenAddr"`
+	TLSCertPath       string `yaml:"tlsCertPath"`
+	TLSKeyPath        string `yaml:"tlsKeyPath"`
+	MaxMessageBytes   int64  `yaml:"maxMessageBytes"`
+	MaxRecipients     int    `yaml:"maxRecipients"`
+	AllowInsecureAuth bool   `yaml:"allowInsecureAuth"`
+}
+
 type pinguinTenant struct {
-	ID          string          `yaml:"id"`
-	DisplayName string          `yaml:"displayName"`
-	Domains     []string        `yaml:"domains"`
-	Identity    pinguinIdentity `yaml:"identity"`
-	Admins      []string        `yaml:"admins"`
+	ID            string          `yaml:"id"`
+	DisplayName   string          `yaml:"displayName"`
+	Domains       []string        `yaml:"domains"`
+	SenderDomains []string        `yaml:"senderDomains"`
+	Identity      pinguinIdentity `yaml:"identity"`
+	Admins        []string        `yaml:"admins"`
 }
 
 type pinguinIdentity struct {
@@ -220,6 +234,7 @@ func validateConfig(configPath string, expandEnv bool) (DiagnosticResult, *pingu
 	if webEnabled {
 		validateWebConfig(config.Web, &result)
 	}
+	validateSMTPSubmissionConfig(config.SMTPSubmission, &result)
 
 	for _, tenant := range config.Tenants.AllTenants() {
 		tenantID := strings.TrimSpace(tenant.ID)
@@ -285,6 +300,38 @@ func validateWebConfig(web pinguinWeb, result *DiagnosticResult) {
 	if strings.TrimSpace(web.TAuth.Issuer) == "" {
 		result.Valid = false
 		result.Errors = append(result.Errors, "web.tauth.issuer is required when web is enabled")
+	}
+}
+
+func validateSMTPSubmissionConfig(submission pinguinSMTPSubmission, result *DiagnosticResult) {
+	if !submission.Enabled {
+		return
+	}
+	if strings.TrimSpace(submission.Hostname) == "" {
+		result.Valid = false
+		result.Errors = append(result.Errors, "smtpSubmission.hostname is required when SMTP submission is enabled")
+	}
+	if strings.TrimSpace(submission.ListenAddr) == "" && strings.TrimSpace(submission.TLSListenAddr) == "" {
+		result.Valid = false
+		result.Errors = append(result.Errors, "smtpSubmission.listenAddr or smtpSubmission.tlsListenAddr is required when SMTP submission is enabled")
+	}
+	if submission.MaxMessageBytes <= 0 {
+		result.Valid = false
+		result.Errors = append(result.Errors, "smtpSubmission.maxMessageBytes must be positive")
+	}
+	if submission.MaxRecipients <= 0 {
+		result.Valid = false
+		result.Errors = append(result.Errors, "smtpSubmission.maxRecipients must be positive")
+	}
+	if !submission.AllowInsecureAuth {
+		if strings.TrimSpace(submission.TLSCertPath) == "" {
+			result.Valid = false
+			result.Errors = append(result.Errors, "smtpSubmission.tlsCertPath is required when SMTP submission is enabled")
+		}
+		if strings.TrimSpace(submission.TLSKeyPath) == "" {
+			result.Valid = false
+			result.Errors = append(result.Errors, "smtpSubmission.tlsKeyPath is required when SMTP submission is enabled")
+		}
 	}
 }
 

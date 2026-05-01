@@ -169,4 +169,82 @@ test.describe('Dashboard', () => {
     await page.getByRole('button', { name: 'Cancel' }).click();
     await expectToast(page, 'Unable to cancel notification.');
   });
+
+  test('creates SMTP identity and shows Gmail settings once', async ({ page }) => {
+    await configureRuntime(page, { authenticated: true });
+    await page.goto('/dashboard.html');
+    const panel = page.getByTestId('smtp-identities');
+    await expect(panel.getByRole('heading', { name: 'SMTP identities' })).toBeVisible();
+    await panel.getByLabel('Sender address').fill('alice@example.com');
+    await panel.getByRole('button', { name: 'Create' }).click();
+    await expect(panel.getByTestId('smtp-identity-row')).toHaveCount(1);
+    await expect(panel.getByText('alice@example.com')).toBeVisible();
+    const credentials = panel.getByTestId('smtp-credentials');
+    await expect(credentials.locator('input').nth(0)).toHaveValue('smtp.pinguin.test');
+    await expect(credentials.locator('input').nth(1)).toHaveValue('587');
+    await expect(credentials.locator('input').nth(2)).toHaveValue('starttls');
+    await expect(credentials.locator('input').nth(3)).toHaveValue('smtp_test_1');
+    await expect(credentials.locator('input').nth(4)).toHaveValue('pgsmtp_test_password');
+    await expectToast(page, 'SMTP identity created');
+  });
+
+  test('rotates SMTP identity credentials', async ({ page, request }) => {
+    const now = new Date().toISOString();
+    await resetNotifications(request, {
+      smtpIdentities: [
+        {
+          id: 'smtp-id-1',
+          tenant_id: 'tenant-devserver',
+          email_address: 'alice@example.com',
+          username: 'smtp_test_1',
+          status: 'active',
+          last_used_at: null,
+          created_at: now,
+          updated_at: now,
+        },
+      ],
+    });
+    await configureRuntime(page, { authenticated: true });
+    await page.goto('/dashboard.html');
+    const panel = page.getByTestId('smtp-identities');
+    page.once('dialog', (dialog) => dialog.accept());
+    await panel.getByRole('button', { name: 'Rotate' }).click();
+    await expect(panel.getByTestId('smtp-credentials').locator('input').nth(4)).toHaveValue('pgsmtp_rotated_password');
+    await expectToast(page, 'SMTP credentials rotated');
+  });
+
+  test('deletes SMTP identity', async ({ page, request }) => {
+    const now = new Date().toISOString();
+    await resetNotifications(request, {
+      smtpIdentities: [
+        {
+          id: 'smtp-id-1',
+          tenant_id: 'tenant-devserver',
+          email_address: 'alice@example.com',
+          username: 'smtp_test_1',
+          status: 'active',
+          last_used_at: null,
+          created_at: now,
+          updated_at: now,
+        },
+      ],
+    });
+    await configureRuntime(page, { authenticated: true });
+    await page.goto('/dashboard.html');
+    const panel = page.getByTestId('smtp-identities');
+    await expect(panel.getByTestId('smtp-identity-row')).toHaveCount(1);
+    page.once('dialog', (dialog) => dialog.accept());
+    await panel.getByRole('button', { name: 'Delete' }).click();
+    await expect(panel.getByTestId('smtp-identity-row')).toHaveCount(0);
+    await expectToast(page, 'SMTP identity deleted');
+  });
+
+  test('shows SMTP identity load errors', async ({ page, request }) => {
+    await resetNotifications(request, { failSMTPList: true });
+    await configureRuntime(page, { authenticated: true });
+    await page.goto('/dashboard.html');
+    const panel = page.getByTestId('smtp-identities');
+    await expect(panel.locator('.notice[data-variant="error"]')).toHaveText('Unable to load SMTP identities.');
+    await expectToast(page, 'Unable to load SMTP identities.');
+  });
 });

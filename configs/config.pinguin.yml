@@ -22,6 +22,8 @@ tenants:
     domains:
       - ${TENANT_LOCAL_DOMAIN_PRIMARY}
       - ${TENANT_LOCAL_DOMAIN_SECONDARY}
+    senderDomains:
+      - ${TENANT_LOCAL_SENDER_DOMAIN}
     emailProfile:
       host: ${TENANT_LOCAL_SMTP_HOST}
       port: ${TENANT_LOCAL_SMTP_PORT}
@@ -40,3 +42,14 @@ web:
     - ${HTTP_ALLOWED_ORIGIN1}
     - ${HTTP_ALLOWED_ORIGIN2}
     - ${HTTP_ALLOWED_ORIGIN3}
+
+smtpSubmission:
+  enabled: ${SMTP_SUBMISSION_ENABLED}
+  hostname: ${SMTP_SUBMISSION_HOSTNAME}
+  listenAddr: ${SMTP_SUBMISSION_LISTEN_ADDR}
+  tlsListenAddr: ${SMTP_SUBMISSION_TLS_LISTEN_ADDR}
+  tlsCertPath: ${SMTP_SUBMISSION_TLS_CERT_PATH}
+  tlsKeyPath: ${SMTP_SUBMISSION_TLS_KEY_PATH}
+  maxMessageBytes: ${SMTP_SUBMISSION_MAX_MESSAGE_BYTES}
+  maxRecipients: ${SMTP_SUBMISSION_MAX_RECIPIENTS}
+  allowInsecureAuth: ${SMTP_SUBMISSION_ALLOW_INSECURE_AUTH}
