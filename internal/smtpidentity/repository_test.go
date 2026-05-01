@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/tyemirov/pinguin/internal/tenant"
@@ -55,6 +56,49 @@ func TestRepositoryCreateAuthenticateRotateAndDelete(t *testing.T) {
 	}
 	if _, deletedAuthErr := repository.Authenticate(context.Background(), rotatedIdentity.Username, rotatedPassword); !errors.Is(deletedAuthErr, ErrAuthenticationFailed) {
 		t.Fatalf("expected deleted identity auth failure, got %v", deletedAuthErr)
+	}
+}
+
+func TestRepositoryAuthenticateDoesNotRestoreIdentityDeletedDuringAuth(t *testing.T) {
+	repository, database := newIdentityRepository(t)
+	seedSenderDomain(t, database, "tenant-one", "example.com")
+	address := mustAddress(t, "alice@example.com")
+
+	identity, password, createErr := repository.Create(context.Background(), "tenant-one", address)
+	if createErr != nil {
+		t.Fatalf("create identity: %v", createErr)
+	}
+
+	deleteDuringAuth := true
+	var deleteErr error
+	repository.clockFunc = func() time.Time {
+		now := time.Now().UTC()
+		if deleteDuringAuth {
+			deleteDuringAuth = false
+			deleteErr = database.Model(&Identity{}).
+				Where(&Identity{ID: identity.ID}).
+				Updates(map[string]interface{}{
+					statusColumn:    IdentityStatusDeleted,
+					updatedAtColumn: now,
+				}).Error
+		}
+		return now
+	}
+
+	_, authErr := repository.Authenticate(context.Background(), identity.Username, password)
+	if deleteErr != nil {
+		t.Fatalf("delete during auth: %v", deleteErr)
+	}
+	if !errors.Is(authErr, ErrAuthenticationFailed) {
+		t.Fatalf("expected auth failure after concurrent delete, got %v", authErr)
+	}
+
+	var storedIdentity Identity
+	if fetchErr := database.Where(&Identity{ID: identity.ID}).First(&storedIdentity).Error; fetchErr != nil {
+		t.Fatalf("fetch identity: %v", fetchErr)
+	}
+	if storedIdentity.Status != IdentityStatusDeleted {
+		t.Fatalf("expected identity to remain deleted, got %s", storedIdentity.Status)
 	}
 }
 

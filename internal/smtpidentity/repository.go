@@ -26,6 +26,11 @@ const (
 	credentialUsernameBytes = 12
 	activeStatusValue       = string(IdentityStatusActive)
 	deletedStatusValue      = string(IdentityStatusDeleted)
+	identityIDColumn        = "id"
+	lastUsedAtColumn        = "last_used_at"
+	statusColumn            = "status"
+	updatedAtColumn         = "updated_at"
+	usernameColumn          = "username"
 )
 
 var (
@@ -226,10 +231,8 @@ func (repository *Repository) Authenticate(ctx context.Context, username string,
 		return AuthenticatedIdentity{}, ErrAuthenticationFailed
 	}
 	now := repository.clockFunc()
-	record.LastUsedAt = &now
-	record.UpdatedAt = now
-	if saveErr := repository.db.WithContext(ctx).Save(&record).Error; saveErr != nil {
-		return AuthenticatedIdentity{}, fmt.Errorf("smtp identity auth: mark used: %w", saveErr)
+	if markErr := repository.markAuthenticatedIdentityUsed(ctx, record, now); markErr != nil {
+		return AuthenticatedIdentity{}, markErr
 	}
 	address, addressErr := NewAddress(record.EmailAddress)
 	if addressErr != nil {
@@ -241,6 +244,27 @@ func (repository *Repository) Authenticate(ctx context.Context, username string,
 		EmailAddress: address,
 		Username:     record.Username,
 	}, nil
+}
+
+func (repository *Repository) markAuthenticatedIdentityUsed(ctx context.Context, record Identity, now time.Time) error {
+	updateResult := repository.db.WithContext(ctx).
+		Model(&Identity{}).
+		Where(map[string]interface{}{
+			identityIDColumn: record.ID,
+			statusColumn:     IdentityStatusActive,
+			usernameColumn:   record.Username,
+		}).
+		Updates(map[string]interface{}{
+			lastUsedAtColumn: &now,
+			updatedAtColumn:  now,
+		})
+	if updateResult.Error != nil {
+		return fmt.Errorf("smtp identity auth: mark used: %w", updateResult.Error)
+	}
+	if updateResult.RowsAffected == 0 {
+		return ErrAuthenticationFailed
+	}
+	return nil
 }
 
 func (repository *Repository) requireIdentity(ctx context.Context, tenantID string, identityID string) (Identity, error) {

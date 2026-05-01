@@ -409,28 +409,39 @@ func (server *Server) readData(reader *bufio.Reader) ([]byte, bool, error) {
 	var buffer bytes.Buffer
 	tooLarge := false
 	for {
-		line, readErr := reader.ReadString('\n')
-		if readErr != nil {
-			if errors.Is(readErr, io.EOF) {
+		firstFragment := true
+		for {
+			fragment, readErr := reader.ReadSlice('\n')
+			if readErr != nil && !errors.Is(readErr, bufio.ErrBufferFull) {
+				if errors.Is(readErr, io.EOF) {
+					return nil, false, readErr
+				}
 				return nil, false, readErr
 			}
-			return nil, false, readErr
-		}
-		if line == ".\r\n" || line == ".\n" {
-			break
-		}
-		if strings.HasPrefix(line, "..") {
-			line = line[1:]
-		}
-		if int64(buffer.Len()+len(line)) > server.config.MaxMessageBytes {
-			tooLarge = true
-			continue
-		}
-		if !tooLarge {
-			buffer.WriteString(line)
+			lineComplete := !errors.Is(readErr, bufio.ErrBufferFull)
+			if firstFragment && lineComplete && isSMTPDataTerminator(fragment) {
+				return buffer.Bytes(), tooLarge, nil
+			}
+			if firstFragment && len(fragment) >= 2 && fragment[0] == '.' && fragment[1] == '.' {
+				fragment = fragment[1:]
+			}
+			firstFragment = false
+			if !tooLarge {
+				if int64(buffer.Len()+len(fragment)) > server.config.MaxMessageBytes {
+					tooLarge = true
+				} else {
+					buffer.Write(fragment)
+				}
+			}
+			if lineComplete {
+				break
+			}
 		}
 	}
-	return buffer.Bytes(), tooLarge, nil
+}
+
+func isSMTPDataTerminator(line []byte) bool {
+	return bytes.Equal(line, []byte(".\r\n")) || bytes.Equal(line, []byte(".\n"))
 }
 
 func parseMessageFrom(data []byte) (smtpidentity.Address, error) {

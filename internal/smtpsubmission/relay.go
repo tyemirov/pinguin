@@ -2,8 +2,10 @@ package smtpsubmission
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/textproto"
 	"strconv"
 	"sync"
 
@@ -41,9 +43,24 @@ func (relay *UpstreamRelay) Relay(ctx context.Context, message RawMessage) error
 	sendErr := sender.SendRawEmail(ctx, message.From.String(), message.RecipientStrings(), message.Data)
 	if sendErr != nil {
 		relay.logger.Error("smtp_submission_upstream_failed", "tenant_id", message.TenantID, "identity_id", message.IdentityID, "error", sendErr)
-		return fmt.Errorf("%w: upstream smtp: %v", ErrRelayTemporary, sendErr)
+		return upstreamRelayError(sendErr)
 	}
 	return nil
+}
+
+func upstreamRelayError(sendErr error) error {
+	if isPermanentSMTPError(sendErr) {
+		return fmt.Errorf("%w: upstream smtp: %v", ErrRelayPermanent, sendErr)
+	}
+	return fmt.Errorf("%w: upstream smtp: %v", ErrRelayTemporary, sendErr)
+}
+
+func isPermanentSMTPError(err error) bool {
+	var smtpError *textproto.Error
+	if !errors.As(err, &smtpError) {
+		return false
+	}
+	return smtpError.Code >= 500 && smtpError.Code < 600
 }
 
 func (relay *UpstreamRelay) senderForTenant(runtimeConfig tenant.RuntimeConfig) *service.SMTPEmailSender {

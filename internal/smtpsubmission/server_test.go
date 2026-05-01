@@ -146,6 +146,25 @@ func TestSMTPSubmissionRejectsOversizedMessage(t *testing.T) {
 	client.expectCode(t, "552")
 }
 
+func TestSMTPSubmissionRejectsOversizedMessageLine(t *testing.T) {
+	fixture := newSMTPServerFixture(t, true, nil)
+	payloadPrefix := "From: alice@example.com\r\n\r\n"
+	fixture.server.config.MaxMessageBytes = int64(len(payloadPrefix) + 8)
+	client := fixture.authenticatedClient(t)
+	defer client.close()
+	client.send(t, "MAIL FROM:<alice@example.com>")
+	client.expectCode(t, "250")
+	client.send(t, "RCPT TO:<recipient@example.net>")
+	client.expectCode(t, "250")
+	client.send(t, "DATA")
+	client.expectCode(t, "354")
+	client.sendData(t, payloadPrefix+strings.Repeat("A", 64*1024))
+	client.expectCode(t, "552")
+	if len(fixture.relay.messages) != 0 {
+		t.Fatalf("expected no relay for oversized line")
+	}
+}
+
 func TestSMTPSubmissionRejectsTooManyRecipients(t *testing.T) {
 	fixture := newSMTPServerFixture(t, true, nil)
 	fixture.server.config.MaxRecipients = 1
