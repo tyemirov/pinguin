@@ -108,6 +108,25 @@ func TestRunDetectsCrossConfigDomainConflict(t *testing.T) {
 	}
 }
 
+func TestRunValidatesSMTPSubmissionConfig(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yml")
+	writeTestConfig(t, configPath, invalidSMTPSubmissionConfigYAML)
+
+	report, err := Run(context.Background(), Options{
+		ConfigPaths: []string{configPath},
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if report.Summary.ValidConfigs != 0 {
+		t.Fatalf("expected invalid SMTP submission config")
+	}
+	if !containsDiagnosticError(report.Diagnostics[0].Errors, "smtpSubmission.listenAddr") {
+		t.Fatalf("expected SMTP submission listener error, got %v", report.Diagnostics[0].Errors)
+	}
+}
+
 func TestRunReturnsErrorWithNoConfigs(t *testing.T) {
 	_, err := Run(context.Background(), Options{
 		ConfigPaths: []string{},
@@ -144,6 +163,15 @@ func TestRunExpandsEnvWhenEnabled(t *testing.T) {
 	if report.Summary.ValidConfigs != 1 {
 		t.Fatalf("expected 1 valid config, got %d; errors: %v", report.Summary.ValidConfigs, report.Diagnostics[0].Errors)
 	}
+}
+
+func containsDiagnosticError(errors []string, expected string) bool {
+	for _, diagnosticError := range errors {
+		if strings.Contains(diagnosticError, expected) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestFormatReportProducesValidJSON(t *testing.T) {
@@ -307,6 +335,34 @@ server:
   masterEncryptionKey: ""
   connectionTimeoutSec: 0
   operationTimeoutSec: 0
+`
+
+const invalidSMTPSubmissionConfigYAML = `
+server:
+  databasePath: /data/pinguin.db
+  grpcAuthToken: test-token-123
+  logLevel: INFO
+  maxRetries: 3
+  retryIntervalSec: 60
+  masterEncryptionKey: test-encryption-key-at-least-32-chars
+  connectionTimeoutSec: 30
+  operationTimeoutSec: 60
+
+web:
+  enabled: false
+
+smtpSubmission:
+  enabled: true
+  hostname: smtp.example.com
+  maxMessageBytes: 1048576
+  maxRecipients: 25
+  allowInsecureAuth: true
+
+tenants:
+  - id: demo
+    displayName: Demo Tenant
+    domains:
+      - demo.example.com
 `
 
 const configWithEnvVarsYAML = `

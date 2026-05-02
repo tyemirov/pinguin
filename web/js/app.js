@@ -3,6 +3,7 @@ import Alpine from 'https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/module.esm
 import { RUNTIME_CONFIG, STRINGS } from './constants.js';
 import { createApiClient } from './core/apiClient.js';
 import { createNotificationsTable } from './ui/notificationsTable.js';
+import { createSMTPIdentities } from './ui/smtpIdentities.js';
 import { dispatchRefresh } from './core/events.js';
 import { createToastCenter } from './ui/toastCenter.js';
 
@@ -19,6 +20,13 @@ Alpine.data('notificationsTable', () =>
   createNotificationsTable({
     apiClient,
     strings: STRINGS.dashboard,
+    actions: STRINGS.actions,
+  }),
+);
+Alpine.data('smtpIdentities', () =>
+  createSMTPIdentities({
+    apiClient,
+    strings: STRINGS.smtpIdentities,
     actions: STRINGS.actions,
   }),
 );

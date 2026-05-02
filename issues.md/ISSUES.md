@@ -6,6 +6,8 @@ Read @AGENTS.md, @ARCHITECTURE.md, @README.md, @issues.md/POLICY.md, @issues.md/
 
 ## Features  (102–199)
 
+- [x] [PG-102] Add authenticated SMTP submission for Gmail Send-As: tenant-scoped exact sender identities, STARTTLS SMTP AUTH, raw upstream relay, dashboard identity management, docs, and tests. Resolved with SMTP submission listeners, exact sender credentials, upstream raw relay, dashboard/API management, deployment docs, and passing `make ci`.
+
 ## Improvements (202–299)
 
 - [x] [PG-331] Add a declarative mpr-ui init object for TAuth DSL wiring and route runtime config through `MPRUI.init`; `make ci` passes.

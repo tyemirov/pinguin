@@ -19,6 +19,7 @@
 # vendor/
 node_modules/
 test-results/
+.pages-dist/
 
 # env file
 .env

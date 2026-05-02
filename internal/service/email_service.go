@@ -89,7 +89,11 @@ func NewSMTPEmailSender(configuration SMTPConfig, logger *slog.Logger) *SMTPEmai
 
 func (senderInstance *SMTPEmailSender) SendEmail(ctx context.Context, recipient string, subject string, message string, attachments []model.EmailAttachment) error {
 	emailMessage := buildEmailMessage(senderInstance.Config.FromAddress, recipient, subject, message, attachments)
+	return senderInstance.SendRawEmail(ctx, senderInstance.Config.FromAddress, []string{recipient}, []byte(emailMessage))
+}
 
+// SendRawEmail relays a prebuilt RFC 5322 message through the configured upstream SMTP provider.
+func (senderInstance *SMTPEmailSender) SendRawEmail(ctx context.Context, fromAddress string, recipients []string, rawMessage []byte) error {
 	if senderInstance.Config.Port == "465" {
 		serverAddr := net.JoinHostPort(senderInstance.Config.Host, senderInstance.Config.Port)
 		tlsConfig := &tls.Config{
@@ -122,18 +126,20 @@ func (senderInstance *SMTPEmailSender) SendEmail(ctx context.Context, recipient 
 			return fmt.Errorf("failed to authenticate: %w", authError)
 		}
 
-		if mailError := smtpClient.Mail(senderInstance.Config.FromAddress); mailError != nil {
+		if mailError := smtpClient.Mail(fromAddress); mailError != nil {
 			return fmt.Errorf("failed to set sender: %w", mailError)
 		}
-		if rcptError := smtpClient.Rcpt(recipient); rcptError != nil {
-			return fmt.Errorf("failed to set recipient: %w", rcptError)
+		for _, recipient := range recipients {
+			if rcptError := smtpClient.Rcpt(recipient); rcptError != nil {
+				return fmt.Errorf("failed to set recipient: %w", rcptError)
+			}
 		}
 
 		dataWriter, dataError := smtpClient.Data()
 		if dataError != nil {
 			return fmt.Errorf("failed to get data writer: %w", dataError)
 		}
-		_, writeError := dataWriter.Write([]byte(emailMessage))
+		_, writeError := dataWriter.Write(rawMessage)
 		if writeError != nil {
 			dataWriter.Close()
 			return fmt.Errorf("failed to write email message: %w", writeError)
@@ -147,7 +153,7 @@ func (senderInstance *SMTPEmailSender) SendEmail(ctx context.Context, recipient 
 
 	smtpAddress := net.JoinHostPort(senderInstance.Config.Host, senderInstance.Config.Port)
 	smtpAuth := smtp.PlainAuth("", senderInstance.Config.Username, senderInstance.Config.Password, senderInstance.Config.Host)
-	sendError := sendMailFunc(smtpAddress, smtpAuth, senderInstance.Config.FromAddress, []string{recipient}, []byte(emailMessage))
+	sendError := sendMailFunc(smtpAddress, smtpAuth, fromAddress, recipients, rawMessage)
 	if sendError != nil {
 		return fmt.Errorf("smtp send failed: %w", sendError)
 	}

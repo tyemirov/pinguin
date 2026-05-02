@@ -34,6 +34,15 @@ type TenantDomain struct {
 	UpdatedAt time.Time
 }
 
+// SenderDomain declares a domain that may be used for SMTP submission senders.
+type SenderDomain struct {
+	ID        uint   `gorm:"primaryKey"`
+	TenantID  string `gorm:"index"`
+	Domain    string `gorm:"uniqueIndex"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 // EmailProfile describes SMTP delivery credentials for a tenant.
 type EmailProfile struct {
 	ID             string `gorm:"primaryKey"`

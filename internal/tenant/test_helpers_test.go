@@ -29,6 +29,7 @@ func newTestDatabaseWithLogger(t *testing.T, customLogger logger.Interface) *gor
 	if err := dbInstance.AutoMigrate(
 		&Tenant{},
 		&TenantDomain{},
+		&SenderDomain{},
 		&EmailProfile{},
 		&SMSProfile{},
 	); err != nil {

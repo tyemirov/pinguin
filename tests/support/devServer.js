@@ -67,9 +67,14 @@ const NONCE_TTL_MS = 2 * 60 * 1000;
 function createDefaultState() {
   return {
     notifications: defaultNotifications(),
+    smtpIdentities: [],
     failList: false,
     failReschedule: false,
     failCancel: false,
+    failSMTPList: false,
+    failSMTPCreate: false,
+    failSMTPRotate: false,
+    failSMTPDelete: false,
   };
 }
 
@@ -102,9 +107,19 @@ function applyOverrides(payload) {
   } else {
     serverState.notifications = defaultNotifications();
   }
+  serverState.smtpIdentities = Array.isArray(payload.smtpIdentities)
+    ? payload.smtpIdentities.map((item) => ({
+        ...item,
+        tenant_id: item.tenant_id || 'tenant-devserver',
+      }))
+    : [];
   serverState.failList = Boolean(payload.failList);
   serverState.failReschedule = Boolean(payload.failReschedule);
   serverState.failCancel = Boolean(payload.failCancel);
+  serverState.failSMTPList = Boolean(payload.failSMTPList);
+  serverState.failSMTPCreate = Boolean(payload.failSMTPCreate);
+  serverState.failSMTPRotate = Boolean(payload.failSMTPRotate);
+  serverState.failSMTPDelete = Boolean(payload.failSMTPDelete);
   nonceStore.clear();
 }
 
@@ -225,6 +240,60 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'GET' && url.pathname === '/api/smtp-identities') {
+    if (serverState.failSMTPList) {
+      sendJson(res, 500, { error: 'smtp_identity_list_failed' });
+      return;
+    }
+    sendJson(res, 200, { identities: serverState.smtpIdentities });
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/smtp-identities') {
+    if (serverState.failSMTPCreate) {
+      sendJson(res, 500, { error: 'smtp_identity_create_failed' });
+      return;
+    }
+    const body = await readJson(req);
+    const emailAddress = typeof body.email_address === 'string' ? body.email_address.trim() : '';
+    if (!emailAddress) {
+      sendJson(res, 400, { error: 'email_address is invalid' });
+      return;
+    }
+    const identity = newSMTPIdentity(emailAddress);
+    serverState.smtpIdentities.push(identity);
+    sendJson(res, 201, credentialsForIdentity(identity));
+    return;
+  }
+
+  const rotateSMTPMatch = url.pathname.match(/^\/api\/smtp-identities\/([^/]+)\/rotate$/);
+  if (rotateSMTPMatch && req.method === 'POST') {
+    if (serverState.failSMTPRotate) {
+      sendJson(res, 500, { error: 'smtp_identity_rotate_failed' });
+      return;
+    }
+    const identity = serverState.smtpIdentities.find((item) => item.id === rotateSMTPMatch[1]);
+    if (!identity) {
+      sendJson(res, 404, { error: 'smtp identity not found' });
+      return;
+    }
+    identity.username = `smtp_rotated_${serverState.smtpIdentities.length}`;
+    identity.updated_at = new Date().toISOString();
+    sendJson(res, 200, credentialsForIdentity(identity, 'pgsmtp_rotated_password'));
+    return;
+  }
+
+  const deleteSMTPMatch = url.pathname.match(/^\/api\/smtp-identities\/([^/]+)$/);
+  if (deleteSMTPMatch && req.method === 'DELETE') {
+    if (serverState.failSMTPDelete) {
+      sendJson(res, 500, { error: 'smtp_identity_delete_failed' });
+      return;
+    }
+    serverState.smtpIdentities = serverState.smtpIdentities.filter((item) => item.id !== deleteSMTPMatch[1]);
+    sendJson(res, 204, null);
+    return;
+  }
+
   if (url.pathname === '/auth/nonce' && req.method === 'POST') {
     const token = issueNonce();
     sendJson(res, 200, { nonce: token });
@@ -320,6 +389,34 @@ function filterNotifications(source, statuses) {
   }
   const wanted = new Set(statuses.map((value) => String(value).toLowerCase()));
   return source.filter((item) => wanted.has(String(item.status).toLowerCase()));
+}
+
+function newSMTPIdentity(emailAddress) {
+  const now = new Date().toISOString();
+  const identityIndex = serverState.smtpIdentities.length + 1;
+  return {
+    id: `smtp-id-${identityIndex}`,
+    tenant_id: 'tenant-devserver',
+    email_address: emailAddress,
+    username: `smtp_test_${identityIndex}`,
+    status: 'active',
+    last_used_at: null,
+    created_at: now,
+    updated_at: now,
+  };
+}
+
+function credentialsForIdentity(identity, password = 'pgsmtp_test_password') {
+  return {
+    identity,
+    smtp_settings: {
+      host: 'smtp.pinguin.test',
+      port: 587,
+      security_mode: 'starttls',
+    },
+    username: identity.username,
+    password,
+  };
 }
 
 server.listen(PORT, HOST, () => {
