@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+## [v0.3.0] - 2026-05-02
+
+### Features ✨
+- Add authenticated SMTP submission for Gmail-compatible Send-As identities.
+- Dashboard users can create, rotate, and delete exact SMTP sender credentials with secure one-time passwords.
+- Expose SMTP submission listeners that validate and relay SMTP AUTH submissions through tenant's upstream SMTP provider.
+
+### Improvements ⚙️
+- Refactor SMTP submission listener handling and improve error management.
+- Normalize sender domain and improve error handling in SMTP identity management.
+- Differentiate between not found and storage errors in SMTP identity lookups.
+- Avoid restoring deleted identities during concurrent authentication updates.
+- Disable GitHub Actions workflows and enable local CI and publish scripts.
+- Update configuration and documentation to support SMTP submission and sender domains.
+- Simplify Makefile and introduce local publish and pages-build targets.
+
+### Bug Fixes 🐛
+- Fix sender domain error handling and concurrent identity restoration issues in SMTP identity module.
+
+### Testing 🧪
+- Add extensive tests for SMTP identity repository, SMTP submission server, and integration tests for multitenancy.
+- Enhance HTTP API tests for SMTP identity management and related components.
+- Remove CI workflows to enforce local CI run for validation.
+
+### Docs 📚
+- Add detailed SMTP submission and Send-As identities usage and configuration documentation.
+- Update architecture and README with SMTP submission features and tenant sender domain configuration.
+- Document new build and publish process replacing GitHub Actions workflows.
+- Improve AGENTS.md and other docs for local CI usage and SMTP identity workflow guidance.
+
 ## [v0.2.0] - 2026-04-01
 
 ### Features ✨
