@@ -275,7 +275,10 @@ func (repository *Repository) requireIdentity(ctx context.Context, tenantID stri
 		Where(&Identity{ID: normalizedIdentityID, TenantID: normalizedTenantID, Status: IdentityStatusActive}).
 		First(&record).Error
 	if err != nil {
-		return Identity{}, ErrIdentityNotFound
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return Identity{}, ErrIdentityNotFound
+		}
+		return Identity{}, fmt.Errorf("smtp identity lookup: tenant %s identity %s: %w", normalizedTenantID, normalizedIdentityID, err)
 	}
 	return record, nil
 }

@@ -126,6 +126,34 @@ func TestRepositoryRejectsDuplicateActiveIdentity(t *testing.T) {
 	}
 }
 
+func TestRepositoryRotateReportsMissingIdentityAsNotFound(t *testing.T) {
+	repository, _ := newIdentityRepository(t)
+
+	_, _, rotateErr := repository.Rotate(context.Background(), "tenant-one", "missing-identity")
+	if !errors.Is(rotateErr, ErrIdentityNotFound) {
+		t.Fatalf("expected identity not found, got %v", rotateErr)
+	}
+}
+
+func TestRepositoryRotatePreservesIdentityLookupStorageFailure(t *testing.T) {
+	repository, database := newIdentityRepository(t)
+	sqlDatabase, sqlErr := database.DB()
+	if sqlErr != nil {
+		t.Fatalf("database handle: %v", sqlErr)
+	}
+	if closeErr := sqlDatabase.Close(); closeErr != nil {
+		t.Fatalf("close database: %v", closeErr)
+	}
+
+	_, _, rotateErr := repository.Rotate(context.Background(), "tenant-one", "identity-one")
+	if rotateErr == nil {
+		t.Fatalf("expected storage failure")
+	}
+	if errors.Is(rotateErr, ErrIdentityNotFound) {
+		t.Fatalf("expected storage failure to remain distinct from not found, got %v", rotateErr)
+	}
+}
+
 func TestRepositoryListNeverReturnsPasswords(t *testing.T) {
 	repository, database := newIdentityRepository(t)
 	seedSenderDomain(t, database, "tenant-one", "example.com")
