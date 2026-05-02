@@ -10,6 +10,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -204,6 +205,62 @@ func TestSMTPSubmissionMapsRelayFailures(t *testing.T) {
 	}
 }
 
+func TestSMTPSubmissionStartReturnsFatalListenerError(t *testing.T) {
+	address, addressErr := smtpidentity.NewAddress("alice@example.com")
+	if addressErr != nil {
+		t.Fatalf("identity address: %v", addressErr)
+	}
+	server, serverErr := NewServer(Config{
+		Hostname:          "smtp.test",
+		TLSConfig:         testTLSConfig(t),
+		MaxMessageBytes:   1024 * 1024,
+		MaxRecipients:     10,
+		AllowInsecureAuth: true,
+		Authenticator: &staticAuthenticator{
+			username: "smtp-user",
+			password: "smtp-pass",
+			identity: smtpidentity.AuthenticatedIdentity{
+				ID:           "identity-1",
+				TenantID:     "tenant-1",
+				EmailAddress: address,
+				Username:     "smtp-user",
+			},
+		},
+		Relay:  &recordingRelay{},
+		Logger: slog.New(slog.NewTextHandler(ioDiscard{}, nil)),
+	})
+	if serverErr != nil {
+		t.Fatalf("new server: %v", serverErr)
+	}
+
+	fatalErr := errors.New("fatal accept")
+	fatalListener := newFatalAcceptListener(fatalErr)
+	blockingListener := newBlockingAcceptListener()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errChan := make(chan error, 1)
+	go func() {
+		errChan <- server.serveListeners(ctx, []smtpListener{
+			{listener: fatalListener},
+			{listener: blockingListener, implicitTLS: true},
+		})
+	}()
+
+	select {
+	case serveErr := <-errChan:
+		if !errors.Is(serveErr, fatalErr) {
+			t.Fatalf("expected fatal listener error, got %v", serveErr)
+		}
+	case <-time.After(time.Second):
+		cancel()
+		blockingListener.Close()
+		t.Fatalf("expected fatal listener error without waiting for every listener")
+	}
+	if !blockingListener.wasClosed() {
+		t.Fatalf("expected remaining listener to be closed after fatal error")
+	}
+}
+
 type smtpServerFixture struct {
 	server *Server
 	relay  *recordingRelay
@@ -389,6 +446,77 @@ func (ioDiscard) Write(bytes []byte) (int, error) {
 
 func plainAuthPayload(username string, password string) string {
 	return base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("\x00%s\x00%s", username, password)))
+}
+
+type fatalAcceptListener struct {
+	acceptErr error
+	closed    chan struct{}
+}
+
+func newFatalAcceptListener(acceptErr error) *fatalAcceptListener {
+	return &fatalAcceptListener{acceptErr: acceptErr, closed: make(chan struct{})}
+}
+
+func (listener *fatalAcceptListener) Accept() (net.Conn, error) {
+	return nil, listener.acceptErr
+}
+
+func (listener *fatalAcceptListener) Close() error {
+	closeListenerSignal(listener.closed)
+	return nil
+}
+
+func (listener *fatalAcceptListener) Addr() net.Addr {
+	return testListenerAddr("fatal")
+}
+
+type blockingAcceptListener struct {
+	closed chan struct{}
+}
+
+func newBlockingAcceptListener() *blockingAcceptListener {
+	return &blockingAcceptListener{closed: make(chan struct{})}
+}
+
+func (listener *blockingAcceptListener) Accept() (net.Conn, error) {
+	<-listener.closed
+	return nil, net.ErrClosed
+}
+
+func (listener *blockingAcceptListener) Close() error {
+	closeListenerSignal(listener.closed)
+	return nil
+}
+
+func (listener *blockingAcceptListener) Addr() net.Addr {
+	return testListenerAddr("blocking")
+}
+
+func (listener *blockingAcceptListener) wasClosed() bool {
+	select {
+	case <-listener.closed:
+		return true
+	default:
+		return false
+	}
+}
+
+type testListenerAddr string
+
+func (addr testListenerAddr) Network() string {
+	return string(addr)
+}
+
+func (addr testListenerAddr) String() string {
+	return string(addr)
+}
+
+func closeListenerSignal(closed chan struct{}) {
+	select {
+	case <-closed:
+	default:
+		close(closed)
+	}
 }
 
 func testTLSConfig(t *testing.T) *tls.Config {

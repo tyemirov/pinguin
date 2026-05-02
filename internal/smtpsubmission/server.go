@@ -50,6 +50,11 @@ type sessionState struct {
 	recipients    []smtpidentity.Address
 }
 
+type smtpListener struct {
+	listener    net.Listener
+	implicitTLS bool
+}
+
 // NewServer constructs an SMTP submission server.
 func NewServer(cfg Config) (*Server, error) {
 	if strings.TrimSpace(cfg.Hostname) == "" {
@@ -93,19 +98,13 @@ func LoadTLSConfig(certPath string, keyPath string) (*tls.Config, error) {
 
 // Start listens on configured SMTP submission addresses until the context ends.
 func (server *Server) Start(ctx context.Context) error {
-	var listeners []struct {
-		listener    net.Listener
-		implicitTLS bool
-	}
+	var listeners []smtpListener
 	if strings.TrimSpace(server.config.ListenAddr) != "" {
 		listener, listenErr := net.Listen("tcp", server.config.ListenAddr)
 		if listenErr != nil {
 			return fmt.Errorf("smtp submission: listen %s: %w", server.config.ListenAddr, listenErr)
 		}
-		listeners = append(listeners, struct {
-			listener    net.Listener
-			implicitTLS bool
-		}{listener: listener})
+		listeners = append(listeners, smtpListener{listener: listener})
 	}
 	if strings.TrimSpace(server.config.TLSListenAddr) != "" {
 		listener, listenErr := tls.Listen("tcp", server.config.TLSListenAddr, server.config.TLSConfig)
@@ -113,32 +112,38 @@ func (server *Server) Start(ctx context.Context) error {
 			closeListeners(listeners)
 			return fmt.Errorf("smtp submission: tls listen %s: %w", server.config.TLSListenAddr, listenErr)
 		}
-		listeners = append(listeners, struct {
-			listener    net.Listener
-			implicitTLS bool
-		}{listener: listener, implicitTLS: true})
+		listeners = append(listeners, smtpListener{listener: listener, implicitTLS: true})
 	}
 	if len(listeners) == 0 {
 		return errors.New("smtp submission: no listeners configured")
 	}
+	return server.serveListeners(ctx, listeners)
+}
 
+func (server *Server) serveListeners(ctx context.Context, listeners []smtpListener) error {
 	errChan := make(chan error, len(listeners))
-	var waitGroup sync.WaitGroup
+	var closeOnce sync.Once
+	done := make(chan struct{})
+	defer close(done)
 	for _, listenerConfig := range listeners {
-		waitGroup.Add(1)
 		go func(listener net.Listener, implicitTLS bool) {
-			defer waitGroup.Done()
 			errChan <- server.Serve(ctx, listener, implicitTLS)
 		}(listenerConfig.listener, listenerConfig.implicitTLS)
 	}
 	go func() {
-		<-ctx.Done()
-		closeListeners(listeners)
+		select {
+		case <-ctx.Done():
+			closeOnce.Do(func() { closeListeners(listeners) })
+		case <-done:
+		}
 	}()
-	waitGroup.Wait()
-	close(errChan)
-	for serveErr := range errChan {
+	for completedListeners := 0; completedListeners < len(listeners); completedListeners++ {
+		serveErr := <-errChan
 		if serveErr != nil && !errors.Is(serveErr, net.ErrClosed) {
+			closeOnce.Do(func() { closeListeners(listeners) })
+			for completedListeners++; completedListeners < len(listeners); completedListeners++ {
+				<-errChan
+			}
 			return serveErr
 		}
 	}
@@ -494,10 +499,7 @@ func writeSMTPLine(writer *bufio.Writer, line string) error {
 	return writer.Flush()
 }
 
-func closeListeners(listeners []struct {
-	listener    net.Listener
-	implicitTLS bool
-}) {
+func closeListeners(listeners []smtpListener) {
 	for _, listenerConfig := range listeners {
 		listenerConfig.listener.Close()
 	}
