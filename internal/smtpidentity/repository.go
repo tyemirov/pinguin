@@ -284,12 +284,16 @@ func (repository *Repository) requireIdentity(ctx context.Context, tenantID stri
 }
 
 func (repository *Repository) requireSenderDomain(ctx context.Context, tenantID string, domain string) error {
+	normalizedDomain := strings.ToLower(strings.TrimSpace(domain))
 	var domainRecord tenant.SenderDomain
 	err := repository.db.WithContext(ctx).
-		Where(&tenant.SenderDomain{TenantID: tenantID, Domain: strings.ToLower(strings.TrimSpace(domain))}).
+		Where(&tenant.SenderDomain{TenantID: tenantID, Domain: normalizedDomain}).
 		First(&domainRecord).Error
 	if err != nil {
-		return fmt.Errorf("%w: %s", ErrSenderDomainNotAllowed, domain)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("%w: %s", ErrSenderDomainNotAllowed, normalizedDomain)
+		}
+		return fmt.Errorf("smtp identity sender domain lookup: tenant %s domain %s: %w", tenantID, normalizedDomain, err)
 	}
 	return nil
 }

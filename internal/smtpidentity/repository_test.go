@@ -113,6 +113,25 @@ func TestRepositoryRejectsAddressOutsideSenderDomains(t *testing.T) {
 	}
 }
 
+func TestRepositoryCreatePreservesSenderDomainStorageFailure(t *testing.T) {
+	repository, database := newIdentityRepository(t)
+	sqlDatabase, sqlErr := database.DB()
+	if sqlErr != nil {
+		t.Fatalf("database handle: %v", sqlErr)
+	}
+	if closeErr := sqlDatabase.Close(); closeErr != nil {
+		t.Fatalf("close database: %v", closeErr)
+	}
+
+	_, _, createErr := repository.Create(context.Background(), "tenant-one", mustAddress(t, "alice@example.com"))
+	if createErr == nil {
+		t.Fatalf("expected storage failure")
+	}
+	if errors.Is(createErr, ErrSenderDomainNotAllowed) {
+		t.Fatalf("expected storage failure to remain distinct from sender-domain policy, got %v", createErr)
+	}
+}
+
 func TestRepositoryRejectsDuplicateActiveIdentity(t *testing.T) {
 	repository, database := newIdentityRepository(t)
 	seedSenderDomain(t, database, "tenant-one", "example.com")
