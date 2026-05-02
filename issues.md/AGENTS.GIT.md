@@ -39,8 +39,8 @@ Git and GitHub conventions for this repository. Use these rules whenever you cre
 - PRs are chained: target the previously opened issue branch so reviewers can follow the sequential history. Only the first PR in a sequence targets `master`.
 - PR descriptions should reference the issue ID, summarize the change, and include PLAN.md content if required by process docs.
 - Keep PRs scoped to a single issue branch. If multiple issues are in flight, each must have its own branch and PR.
-- Continuous Integration (CI) runs on GitHub Actions; rely on it for acceptance tests and release validation. Local checks remain mandatory, but CI is the authoritative gate before merge.
-- Releases and deployment artifacts originate from GitHub workflows; keep branch histories clean to ensure deterministic CI results.
+- Continuous Integration (CI) is local for this repository. Run `make ci` before review, merge, or release work.
+- Releases and deployment artifacts originate from `make publish`, which publishes the GHCR Docker image and the legacy `gh-pages` branch-root Pages artifact from `master`.
 
 ## File Tracking & Ignore Rules
 
@@ -75,4 +75,4 @@ git push -u origin bugfix/GN-58-editor-preview
 gh pr create --base master --head bugfix/GN-58-editor-preview --fill
 ```
 
-CI builds and release artifacts are produced by GitHub Actions workflows in `.github/workflows/`. Refer to those YAML files for additional build examples and replicate the same steps locally when needed.
+GitHub Actions are disabled for this repository. Use `make ci` for validation and `make publish` for release artifact publication.

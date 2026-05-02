@@ -7,16 +7,24 @@ RELEASE_DIRECTORY := dist
 RELEASE_BINARY_NAME := pinguin
 DOCKER_IMAGE ?= ghcr.io/tyemirov/pinguin
 DOCKER_TAG ?= latest
-DOCKER_PLATFORMS ?= linux/amd64,linux/arm64
+DOCKER_PLATFORMS ?= linux/amd64
 DOCKER_BUILDX_BUILDER ?= pinguin-builder
 DOCKERFILE ?= Dockerfile
 DOCKER_CONTEXT ?= .
+PUBLISH_ARGS ?=
+PUBLISH_PLATFORMS ?= $(DOCKER_PLATFORMS)
+PAGES_DIST_DIR ?= $(CURDIR)/.pages-dist
+PAGES_REPOSITORY ?= tyemirov/pinguin
+PAGES_PUBLISH_SOURCE_BRANCH ?= master
+PAGES_PUBLISH_REMOTE ?= origin
+PAGES_PUBLISH_BRANCH ?= gh-pages
+PAGES_PUBLISH_FORCE ?= 0
 STATICCHECK_MODULE := honnef.co/go/tools/cmd/staticcheck@master
 INEFFASSIGN_MODULE := github.com/gordonklaus/ineffassign@latest
 SHORT_TIMEOUT := timeout -k 30s -s SIGKILL 30s
 LONG_TIMEOUT := timeout -k 350s -s SIGKILL 350s
 
-.PHONY: format check-format lint test test-unit test-integration test-fast test-slow test-frontend build release publish ci
+.PHONY: format check-format lint test test-unit test-integration test-fast test-slow test-frontend build release publish pages-build pages-publish-branch ci
 
 format:
 	$(SHORT_TIMEOUT) gofmt -w $(GO_SOURCES)
@@ -75,18 +83,12 @@ release:
 	done
 
 publish:
-	@set -e; \
-	if ! docker buildx inspect $(DOCKER_BUILDX_BUILDER) >/dev/null 2>&1; then \
-		docker buildx create --name $(DOCKER_BUILDX_BUILDER) --driver docker-container >/dev/null; \
-	fi; \
-	docker buildx inspect --bootstrap --builder $(DOCKER_BUILDX_BUILDER) >/dev/null; \
-	docker buildx build \
-		--builder $(DOCKER_BUILDX_BUILDER) \
-		--pull \
-		--platform $(DOCKER_PLATFORMS) \
-		--file $(DOCKERFILE) \
-		--tag $(DOCKER_IMAGE):$(DOCKER_TAG) \
-		--push \
-		$(DOCKER_CONTEXT)
+	@DOCKER_IMAGE="$(DOCKER_IMAGE)" DOCKER_TAG="$(DOCKER_TAG)" PUBLISH_PLATFORMS="$(PUBLISH_PLATFORMS)" DOCKER_BUILDX_BUILDER="$(DOCKER_BUILDX_BUILDER)" DOCKERFILE="$(DOCKERFILE)" DOCKER_CONTEXT="$(DOCKER_CONTEXT)" PAGES_REPOSITORY="$(PAGES_REPOSITORY)" PAGES_PUBLISH_SOURCE_BRANCH="$(PAGES_PUBLISH_SOURCE_BRANCH)" PAGES_PUBLISH_REMOTE="$(PAGES_PUBLISH_REMOTE)" PAGES_PUBLISH_BRANCH="$(PAGES_PUBLISH_BRANCH)" ./scripts/publish.sh $(PUBLISH_ARGS)
+
+pages-build:
+	@./scripts/build_pages_artifact.sh "$(PAGES_DIST_DIR)"
+
+pages-publish-branch:
+	@PAGES_PUBLISH_SOURCE_BRANCH="$(PAGES_PUBLISH_SOURCE_BRANCH)" PAGES_PUBLISH_REMOTE="$(PAGES_PUBLISH_REMOTE)" PAGES_PUBLISH_BRANCH="$(PAGES_PUBLISH_BRANCH)" PAGES_PUBLISH_FORCE="$(PAGES_PUBLISH_FORCE)" ./scripts/publish_pages_branch.sh
 
 ci: check-format lint test test-frontend

@@ -34,7 +34,7 @@
   - `index.html` (landing page) and `dashboard.html` both import `mpr-ui` CSS via CDN, load the TAuth config + helper scripts (which inject the `mpr-ui` bundle), and bootstrap via `/js/app.js`.
 - `/js/bootstrap.js` centralizes runtime config resolution, GIS script injection, and lazy loading of the main app module.
   - Alpine factories live under `/js/ui/` and `/js/core/`. Notifications table logic dispatches DOM-scoped events for toast updates and API refreshes.
-- GitHub Pages publishes `/web` via `.github/workflows/frontend-deploy.yml`, and `web/CNAME` maps the site to `pinguin.mprlab.com`.
+- GitHub Pages publishes `/web` through legacy branch-root publishing: `make publish` stages the static assets and pushes them to the `gh-pages` branch root. `web/CNAME` maps the site to `pinguin.mprlab.com`, and `web/.nojekyll` keeps GitHub Pages from running Jekyll over the static bundle.
 - `<mpr-header>` renders the Google Sign-In button inside its own shadow tree. Playwright tests assert that the header shows exactly one visible “Google” button so UI regressions are caught early (`tests/e2e/landing.spec.ts`, `tests/e2e/utils.ts::expectHeaderGoogleButton`).
 
 ## Testing Strategy

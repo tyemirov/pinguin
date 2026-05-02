@@ -33,7 +33,7 @@ All rules for validation, error handling, invariants, and “confident programmi
 - Use the repository `Makefile` for local automation. Invoke `make test`, `make lint`, `make ci`, or other documented targets instead of running ad-hoc tool commands.
 - `make test` runs the canonical test suite for the active stack.
 - `make lint` enforces linting rules before code review.
-- `make ci` mirrors the GitHub Actions workflow and should pass locally before opening a PR.
+- `make ci` is the local CI contract and should pass locally before opening a PR.
 
 ### Tooling Workflow (Tests, Lint, Format)
 
