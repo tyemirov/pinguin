@@ -33,9 +33,11 @@ func TestMakePublishTargetsDockerAndLegacyPages(t *testing.T) {
 	makefile := string(readRepoFile(t, "Makefile"))
 	requiredSnippets := []string{
 		"DOCKER_PLATFORMS ?= linux/amd64",
+		"DOCKER_BUILD_CONTEXT ?= .",
 		"PUBLISH_PLATFORMS ?= $(DOCKER_PLATFORMS)",
 		"PAGES_PUBLISH_SOURCE_BRANCH ?= master",
 		"PAGES_PUBLISH_BRANCH ?= gh-pages",
+		"DOCKER_BUILD_CONTEXT=\"$(DOCKER_BUILD_CONTEXT)\"",
 		"./scripts/publish.sh $(PUBLISH_ARGS)",
 		"./scripts/build_pages_artifact.sh",
 		"./scripts/publish_pages_branch.sh",
@@ -45,6 +47,15 @@ func TestMakePublishTargetsDockerAndLegacyPages(t *testing.T) {
 			t.Fatalf("Makefile missing publish contract snippet %q", requiredSnippet)
 		}
 	}
+	forbiddenSnippets := []string{
+		"DOCKER_CONTEXT ?= .",
+		"DOCKER_CONTEXT=\"$(DOCKER_CONTEXT)\"",
+	}
+	for _, forbiddenSnippet := range forbiddenSnippets {
+		if strings.Contains(makefile, forbiddenSnippet) {
+			t.Fatalf("Makefile exports Docker CLI context variable %q", forbiddenSnippet)
+		}
+	}
 }
 
 func TestPublishScriptBuildsDockerAndLegacyPages(t *testing.T) {
@@ -52,9 +63,11 @@ func TestPublishScriptBuildsDockerAndLegacyPages(t *testing.T) {
 
 	publishScript := string(readRepoFile(t, "scripts", "publish.sh"))
 	requiredSnippets := []string{
+		"DOCKER_CONTEXT_DIR=\"${DOCKER_BUILD_CONTEXT:-.}\"",
 		"timeout -k 350s -s SIGKILL 350s make ci",
 		"\"build_type\":\"legacy\"",
 		"\"source\":{\"branch\":\"${PAGES_BRANCH}\",\"path\":\"/\"}",
+		"--context|--build-context)",
 		"--platform \"${PLATFORMS}\"",
 		"--tag \"${IMAGE}:${TAG}\"",
 		"--push",
@@ -64,6 +77,9 @@ func TestPublishScriptBuildsDockerAndLegacyPages(t *testing.T) {
 		if !strings.Contains(publishScript, requiredSnippet) {
 			t.Fatalf("publish script missing contract snippet %q", requiredSnippet)
 		}
+	}
+	if strings.Contains(publishScript, "DOCKER_CONTEXT:-") {
+		t.Fatalf("publish script must not treat Docker CLI DOCKER_CONTEXT as a build context")
 	}
 }
 

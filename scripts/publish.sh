@@ -17,6 +17,7 @@ Options:
   --image <value>       Full image name without tag. Default: $DOCKER_IMAGE or ghcr.io/tyemirov/pinguin
   --platforms <value>   Docker platforms. Default: $PUBLISH_PLATFORMS or linux/amd64
   --tag <value>         Docker tag. Default: $DOCKER_TAG or latest
+  --context <value>     Docker build context directory. Default: $DOCKER_BUILD_CONTEXT or .
   --username <value>    Registry username. Default: $GHCR_USERNAME or gh authenticated user
   --token <value>       Registry token/password. Default: $GHCR_TOKEN, $GITHUB_TOKEN, $GH_TOKEN, or gh auth token
   --skip-docker-login   Use the existing Docker credential store without logging in
@@ -29,7 +30,7 @@ TAG="${DOCKER_TAG:-latest}"
 PLATFORMS="${PUBLISH_PLATFORMS:-linux/amd64}"
 BUILDER="${DOCKER_BUILDX_BUILDER:-pinguin-builder}"
 DOCKERFILE_PATH="${DOCKERFILE:-Dockerfile}"
-DOCKER_CONTEXT_DIR="${DOCKER_CONTEXT:-.}"
+DOCKER_CONTEXT_DIR="${DOCKER_BUILD_CONTEXT:-.}"
 USERNAME="${GHCR_USERNAME:-}"
 TOKEN="${GHCR_TOKEN:-${GITHUB_TOKEN:-${GH_TOKEN:-}}}"
 SKIP_DOCKER_LOGIN="${PUBLISH_SKIP_DOCKER_LOGIN:-0}"
@@ -53,6 +54,11 @@ while [[ $# -gt 0 ]]; do
     --tag)
       [[ $# -ge 2 ]] || { echo "error: --tag requires a value" >&2; exit 1; }
       TAG="$2"
+      shift 2
+      ;;
+    --context|--build-context)
+      [[ $# -ge 2 ]] || { echo "error: $1 requires a value" >&2; exit 1; }
+      DOCKER_CONTEXT_DIR="$2"
       shift 2
       ;;
     --username)
