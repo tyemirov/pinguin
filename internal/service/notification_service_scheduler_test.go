@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"io"
 	"testing"
 	"time"
@@ -242,6 +243,93 @@ func TestSendNotificationPersistsAttachments(t *testing.T) {
 	}
 }
 
+func TestSendNotificationHandlesImmediateDispatchFailures(t *testing.T) {
+	testCases := []struct {
+		name             string
+		notificationType model.NotificationType
+		emailSender      *stubEmailSender
+		smsSender        *stubSmsSender
+		recipient        string
+		subject          string
+	}{
+		{
+			name:             "email",
+			notificationType: model.NotificationEmail,
+			emailSender:      &stubEmailSender{err: errors.New("smtp failed")},
+			smsSender:        &stubSmsSender{},
+			recipient:        "user@example.com",
+			subject:          "Subject",
+		},
+		{
+			name:             "sms",
+			notificationType: model.NotificationSMS,
+			emailSender:      &stubEmailSender{},
+			smsSender:        &stubSmsSender{err: errors.New("sms failed")},
+			recipient:        "+15555555555",
+		},
+	}
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			database := openIsolatedDatabase(t)
+			serviceInstance := newNotificationServiceWithSendersForSchedulerTests(database, testCase.emailSender, testCase.smsSender)
+			request := mustNotificationRequest(
+				t,
+				testCase.notificationType,
+				testCase.recipient,
+				testCase.subject,
+				"Body",
+				nil,
+				nil,
+			)
+			response, err := serviceInstance.SendNotification(tenantContext(), request)
+			if err != nil {
+				t.Fatalf("send should persist errored notification: %v", err)
+			}
+			if response.Status != model.StatusErrored {
+				t.Fatalf("expected errored status, got %s", response.Status)
+			}
+			stored, fetchErr := model.GetNotificationByID(tenantContext(), database, testTenantID, response.NotificationID)
+			if fetchErr != nil {
+				t.Fatalf("fetch stored notification: %v", fetchErr)
+			}
+			if stored.Status != model.StatusErrored || stored.LastAttemptedAt.IsZero() {
+				t.Fatalf("unexpected stored notification %+v", stored)
+			}
+		})
+	}
+}
+
+func TestSendNotificationSendsSMSImmediately(t *testing.T) {
+	database := openIsolatedDatabase(t)
+	smsSender := &stubSmsSender{providerID: "SM123"}
+	serviceInstance := newNotificationServiceWithSendersForSchedulerTests(database, &stubEmailSender{}, smsSender)
+	request := mustNotificationRequest(t, model.NotificationSMS, "+15555555555", "", "Body", nil, nil)
+
+	response, err := serviceInstance.SendNotification(tenantContext(), request)
+	if err != nil {
+		t.Fatalf("send sms: %v", err)
+	}
+	if response.Status != model.StatusSent || response.ProviderMessageID != "SM123" {
+		t.Fatalf("unexpected sms response %+v", response)
+	}
+	if smsSender.callCount != 1 {
+		t.Fatalf("expected sms sender call")
+	}
+}
+
+func TestStartRetryWorkerReturnsOnInvalidConfigAndCanceledContext(t *testing.T) {
+	database := openIsolatedDatabase(t)
+	serviceInstance := newNotificationServiceWithSendersForSchedulerTests(database, &stubEmailSender{}, &stubSmsSender{})
+	serviceInstance.retryIntervalSec = 0
+	serviceInstance.StartRetryWorker(context.Background())
+
+	canceledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	serviceInstance.retryIntervalSec = 1
+	serviceInstance.StartRetryWorker(canceledCtx)
+}
+
 func TestRetryWorkerMarksSmsDisabledAsFailed(t *testing.T) {
 	t.Helper()
 
@@ -361,6 +449,7 @@ func newRetryWorkerForTest(t *testing.T, serviceInstance *notificationServiceImp
 type stubEmailSender struct {
 	callCount           int
 	receivedAttachments [][]model.EmailAttachment
+	err                 error
 }
 
 func (sender *stubEmailSender) SendEmail(_ context.Context, _ string, _ string, _ string, attachments []model.EmailAttachment) error {
@@ -368,15 +457,23 @@ func (sender *stubEmailSender) SendEmail(_ context.Context, _ string, _ string, 
 	cloned := make([]model.EmailAttachment, len(attachments))
 	copy(cloned, attachments)
 	sender.receivedAttachments = append(sender.receivedAttachments, cloned)
-	return nil
+	return sender.err
 }
 
 type stubSmsSender struct {
-	callCount int
+	callCount  int
+	providerID string
+	err        error
 }
 
 func (sender *stubSmsSender) SendSms(_ context.Context, _ string, _ string) (string, error) {
 	sender.callCount++
+	if sender.err != nil {
+		return "", sender.err
+	}
+	if sender.providerID != "" {
+		return sender.providerID, nil
+	}
 	return "queued", nil
 }
 

@@ -25,8 +25,10 @@ STATICCHECK_MODULE := honnef.co/go/tools/cmd/staticcheck@master
 INEFFASSIGN_MODULE := github.com/gordonklaus/ineffassign@latest
 SHORT_TIMEOUT := timeout -k 30s -s SIGKILL 30s
 LONG_TIMEOUT := timeout -k 350s -s SIGKILL 350s
+COVERAGE_PROFILE ?= coverage.out
+COVERAGE_REQUIRED_TOTAL ?= 100.0%
 
-.PHONY: format check-format lint test test-unit test-integration test-fast test-slow test-frontend build release publish pages-build pages-publish-branch up down ci
+.PHONY: format check-format lint test test-unit test-integration test-fast test-slow test-coverage test-frontend build release publish pages-build pages-publish-branch up down ci
 
 format:
 	$(SHORT_TIMEOUT) gofmt -w $(GO_SOURCES)
@@ -66,6 +68,15 @@ test-integration: test-slow
 
 test: test-fast test-slow
 
+test-coverage:
+	$(LONG_TIMEOUT) go test ./... -coverprofile=$(COVERAGE_PROFILE) -covermode=count
+	@coverage_total="$$(go tool cover -func=$(COVERAGE_PROFILE) | awk '/^total:/ {print $$3}')"; \
+	if [ "$$coverage_total" != "$(COVERAGE_REQUIRED_TOTAL)" ]; then \
+		echo "Expected total Go statement coverage $(COVERAGE_REQUIRED_TOTAL), got $$coverage_total"; \
+		exit 1; \
+	fi; \
+	echo "Total Go statement coverage $$coverage_total"
+
 test-frontend:
 	CI=1 $(LONG_TIMEOUT) npm test
 
@@ -99,4 +110,4 @@ up:
 down:
 	$(SHORT_TIMEOUT) $(DOCKER_COMPOSE) --profile $(COMPOSE_PROFILE) down
 
-ci: check-format lint test test-frontend
+ci: check-format lint test test-coverage test-frontend

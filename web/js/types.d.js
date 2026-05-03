@@ -26,6 +26,19 @@
  */
 
 /**
+ * @typedef {Object} NotificationListPage
+ * @property {NotificationItem[]} notifications
+ * @property {string} nextCursor
+ */
+
+/**
+ * @typedef {Object} NotificationListOptions
+ * @property {string=} query
+ * @property {string=} cursor
+ * @property {number=} limit
+ */
+
+/**
  * @typedef {Object} SMTPIdentity
  * @property {string} id
  * @property {string} emailAddress

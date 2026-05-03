@@ -5,6 +5,10 @@ import { DOM_EVENTS, dispatchToast, listen } from '../core/events.js';
 /** @typedef {import('../types.d.js').NotificationItem} NotificationItem */
 /** @typedef {import('../types.d.js').TenantOption} TenantOption */
 
+const NOTIFICATION_PAGE_LIMIT = 50;
+const SCROLL_ROOT_MARGIN = '240px 0px';
+const SEARCH_DEBOUNCE_MS = 300;
+
 const inputFormatter = {
   toControlValue(isoString) {
     if (!isoString) {
@@ -49,8 +53,13 @@ export function createNotificationsTable(options) {
     tenants: /** @type {TenantOption[]} */ ([]),
     selectedTenantId: '',
     statusFilter: 'all',
+    searchQuery: '',
+    nextCursor: '',
     isLoading: false,
+    isLoadingMore: false,
     isLoadingTenants: false,
+    hasLoadedNotifications: false,
+    hasUserScrolled: false,
     errorMessage: '',
     scheduleDialogVisible: false,
     scheduleForm: {
@@ -59,6 +68,10 @@ export function createNotificationsTable(options) {
       scheduledTime: '',
     },
     stopListening: null,
+    stopScrollWatcher: null,
+    scrollObserver: null,
+    searchDebounceTimer: null,
+    requestSequence: 0,
     STATUS_OPTIONS,
     init() {
       this.selectedTenantId = initialTenantId();
@@ -71,34 +84,91 @@ export function createNotificationsTable(options) {
           } else {
             this.notifications = [];
             this.tenants = [];
+            this.nextCursor = '';
+            this.hasLoadedNotifications = false;
           }
         },
       );
+      this.$watch('searchQuery', () => {
+        this.changeSearch();
+      });
       this.stopListening = listen(DOM_EVENTS.refresh, () => {
         if (authStore().isAuthenticated) {
           this.loadNotifications();
         }
       });
+      const handleWindowScroll = () => {
+        if (window.scrollY > 0) {
+          this.hasUserScrolled = true;
+        }
+      };
+      window.addEventListener('scroll', handleWindowScroll, { passive: true });
+      this.stopScrollWatcher = () => {
+        window.removeEventListener('scroll', handleWindowScroll);
+      };
+      this.$nextTick(() => {
+        this.startScrollObserver();
+      });
     },
     async loadNotifications() {
+      await this.loadNotificationPage(true);
+    },
+    async loadNextPage() {
+      await this.loadNotificationPage(false);
+    },
+    async loadNotificationPage(resetPage) {
       if (!authStore().isAuthenticated) {
         return;
       }
       if (!this.selectedTenantId) {
         this.notifications = [];
+        this.nextCursor = '';
+        this.hasLoadedNotifications = false;
+        this.hasUserScrolled = false;
         this.errorMessage = this.strings.tenantRequired;
         return;
       }
-      this.isLoading = true;
+      if (!resetPage && (!this.nextCursor || this.isLoading || this.isLoadingMore)) {
+        return;
+      }
+      const requestId = this.requestSequence + 1;
+      this.requestSequence = requestId;
+      if (resetPage) {
+        this.isLoading = true;
+        this.notifications = [];
+        this.nextCursor = '';
+        this.hasLoadedNotifications = false;
+        this.hasUserScrolled = false;
+      } else {
+        this.isLoadingMore = true;
+      }
       this.errorMessage = '';
       try {
         const statuses = this.statusFilter === 'all' ? [] : [this.statusFilter];
-        this.notifications = await apiClient.listNotifications(statuses, this.selectedTenantId);
+        const page = await apiClient.listNotifications(statuses, this.selectedTenantId, {
+          query: this.searchQuery,
+          cursor: resetPage ? '' : this.nextCursor,
+          limit: NOTIFICATION_PAGE_LIMIT,
+        });
+        if (requestId !== this.requestSequence) {
+          return;
+        }
+        this.notifications = resetPage
+          ? page.notifications
+          : appendUniqueNotifications(this.notifications, page.notifications);
+        this.nextCursor = page.nextCursor;
+        this.hasLoadedNotifications = true;
       } catch (error) {
+        if (requestId !== this.requestSequence) {
+          return;
+        }
         this.errorMessage = this.strings.loadError;
         dispatchToast({ variant: 'error', message: this.errorMessage });
       } finally {
-        this.isLoading = false;
+        if (requestId === this.requestSequence) {
+          this.isLoading = false;
+          this.isLoadingMore = false;
+        }
       }
     },
     async refreshIfAuthenticated() {
@@ -128,6 +198,30 @@ export function createNotificationsTable(options) {
     },
     async changeTenant() {
       await this.loadNotifications();
+    },
+    changeSearch() {
+      if (this.searchDebounceTimer) {
+        clearTimeout(this.searchDebounceTimer);
+      }
+      this.searchDebounceTimer = setTimeout(() => {
+        this.searchDebounceTimer = null;
+        this.loadNotifications();
+      }, SEARCH_DEBOUNCE_MS);
+    },
+    startScrollObserver() {
+      const sentinel = this.$refs.scrollSentinel;
+      if (!sentinel || typeof IntersectionObserver !== 'function') {
+        return;
+      }
+      this.scrollObserver = new IntersectionObserver(
+        (entries) => {
+          if (this.hasUserScrolled && entries.some((entry) => entry.isIntersecting)) {
+            this.loadNextPage();
+          }
+        },
+        { rootMargin: SCROLL_ROOT_MARGIN },
+      );
+      this.scrollObserver.observe(sentinel);
     },
     formatStatus(status) {
       return STATUS_LABELS[status] || status;
@@ -210,8 +304,34 @@ export function createNotificationsTable(options) {
       if (typeof this.stopListening === 'function') {
         this.stopListening();
       }
+      if (typeof this.stopScrollWatcher === 'function') {
+        this.stopScrollWatcher();
+      }
+      if (this.searchDebounceTimer) {
+        clearTimeout(this.searchDebounceTimer);
+      }
+      if (this.scrollObserver) {
+        this.scrollObserver.disconnect();
+      }
     },
   };
+}
+
+/**
+ * @param {NotificationItem[]} currentItems
+ * @param {NotificationItem[]} nextItems
+ * @returns {NotificationItem[]}
+ */
+function appendUniqueNotifications(currentItems, nextItems) {
+  const existingIds = new Set(currentItems.map((item) => item.id));
+  const mergedItems = currentItems.slice();
+  nextItems.forEach((item) => {
+    if (!existingIds.has(item.id)) {
+      existingIds.add(item.id);
+      mergedItems.push(item);
+    }
+  });
+  return mergedItems;
 }
 
 function initialTenantId() {

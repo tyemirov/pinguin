@@ -31,12 +31,9 @@ func NewAddress(rawAddress string) (Address, error) {
 	if parsedAddress.Name != "" || parsedAddress.Address != trimmedAddress {
 		return Address{}, fmt.Errorf("%w: %s", ErrInvalidAddress, trimmedAddress)
 	}
-	parts := strings.Split(parsedAddress.Address, "@")
-	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
-		return Address{}, fmt.Errorf("%w: %s", ErrInvalidAddress, trimmedAddress)
-	}
-	normalizedDomain := strings.ToLower(strings.TrimSpace(parts[1]))
-	normalizedLocal := strings.ToLower(strings.TrimSpace(parts[0]))
+	localPart, domainPart, _ := strings.Cut(parsedAddress.Address, "@")
+	normalizedDomain := strings.ToLower(strings.TrimSpace(domainPart))
+	normalizedLocal := strings.ToLower(strings.TrimSpace(localPart))
 	return Address{
 		value:  normalizedLocal + "@" + normalizedDomain,
 		domain: normalizedDomain,

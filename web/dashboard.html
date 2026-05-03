@@ -72,6 +72,15 @@
             </select>
           </label>
           <label style="flex: 1; min-width: 200px">
+            <span x-text="strings.searchLabel"></span>
+            <input
+              type="search"
+              x-model="searchQuery"
+              :placeholder="strings.searchPlaceholder"
+              autocomplete="off"
+            />
+          </label>
+          <label style="flex: 1; min-width: 200px">
             <span>Filter by status</span>
             <select x-model="statusFilter" x-on:change="loadNotifications()">
               <template x-for="option in STATUS_OPTIONS" :key="option.value">
@@ -79,13 +88,6 @@
               </template>
             </select>
           </label>
-          <button
-            class="button secondary"
-            type="button"
-            x-on:click="loadNotifications()"
-            :disabled="isLoadingTenants || !selectedTenantId"
-            x-text="actions.refresh"
-          ></button>
         </div>
         <p
           class="text-muted"
@@ -171,6 +173,24 @@
             </tbody>
           </table>
         </div>
+        <div
+          class="table-scroll-sentinel"
+          x-ref="scrollSentinel"
+          data-testid="notification-scroll-sentinel"
+          aria-hidden="true"
+        ></div>
+        <p
+          class="text-muted table-page-status"
+          x-cloak
+          x-show="isLoadingMore"
+          x-text="strings.loadingMore"
+        ></p>
+        <p
+          class="text-muted table-page-status"
+          x-cloak
+          x-show="hasLoadedNotifications && notifications.length > 0 && !nextCursor && !isLoadingMore"
+          x-text="strings.endOfResults"
+        ></p>
         <dialog class="dialog" x-ref="scheduleDialog">
           <form class="dialog__body" x-on:submit.prevent="submitSchedule">
             <div>
