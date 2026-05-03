@@ -32,7 +32,7 @@ func TestMakePublishTargetsDockerAndLegacyPages(t *testing.T) {
 
 	makefile := string(readRepoFile(t, "Makefile"))
 	requiredSnippets := []string{
-		"DOCKER_PLATFORMS ?= linux/amd64",
+		"DOCKER_PLATFORMS ?= linux/amd64,linux/arm64",
 		"DOCKER_BUILD_CONTEXT ?= .",
 		"PUBLISH_PLATFORMS ?= $(DOCKER_PLATFORMS)",
 		"PAGES_PUBLISH_SOURCE_BRANCH ?= master",
@@ -64,6 +64,7 @@ func TestPublishScriptBuildsDockerAndLegacyPages(t *testing.T) {
 	publishScript := string(readRepoFile(t, "scripts", "publish.sh"))
 	requiredSnippets := []string{
 		"DOCKER_CONTEXT_DIR=\"${DOCKER_BUILD_CONTEXT:-.}\"",
+		"PLATFORMS=\"${PUBLISH_PLATFORMS:-linux/amd64,linux/arm64}\"",
 		"timeout -k 350s -s SIGKILL 350s make ci",
 		"\"build_type\":\"legacy\"",
 		"\"source\":{\"branch\":\"${PAGES_BRANCH}\",\"path\":\"/\"}",

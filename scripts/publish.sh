@@ -10,12 +10,12 @@ Publishes from master by:
   1. validating clean local master matches origin/master
   2. running make ci
   3. configuring GitHub Pages for legacy gh-pages branch-root publishing
-  4. building and pushing the linux/amd64 Docker image to GHCR
+  4. building and pushing the linux/amd64 and linux/arm64 Docker image manifest to GHCR
   5. publishing web/ to the gh-pages branch root
 
 Options:
   --image <value>       Full image name without tag. Default: $DOCKER_IMAGE or ghcr.io/tyemirov/pinguin
-  --platforms <value>   Docker platforms. Default: $PUBLISH_PLATFORMS or linux/amd64
+  --platforms <value>   Docker platforms. Default: $PUBLISH_PLATFORMS or linux/amd64,linux/arm64
   --tag <value>         Docker tag. Default: $DOCKER_TAG or latest
   --context <value>     Docker build context directory. Default: $DOCKER_BUILD_CONTEXT or .
   --username <value>    Registry username. Default: $GHCR_USERNAME or gh authenticated user
@@ -27,7 +27,7 @@ USAGE
 
 IMAGE="${DOCKER_IMAGE:-ghcr.io/tyemirov/pinguin}"
 TAG="${DOCKER_TAG:-latest}"
-PLATFORMS="${PUBLISH_PLATFORMS:-linux/amd64}"
+PLATFORMS="${PUBLISH_PLATFORMS:-linux/amd64,linux/arm64}"
 BUILDER="${DOCKER_BUILDX_BUILDER:-pinguin-builder}"
 DOCKERFILE_PATH="${DOCKERFILE:-Dockerfile}"
 DOCKER_CONTEXT_DIR="${DOCKER_BUILD_CONTEXT:-.}"
