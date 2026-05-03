@@ -5,6 +5,12 @@
  */
 
 /**
+ * @typedef {Object} TenantOption
+ * @property {string} id
+ * @property {string} displayName
+ */
+
+/**
  * @typedef {Object} NotificationItem
  * @property {string} id
  * @property {string} tenantId
@@ -17,6 +23,19 @@
  * @property {string} updatedAt
  * @property {string | null} scheduledFor
  * @property {number} retryCount
+ */
+
+/**
+ * @typedef {Object} NotificationListPage
+ * @property {NotificationItem[]} notifications
+ * @property {string} nextCursor
+ */
+
+/**
+ * @typedef {Object} NotificationListOptions
+ * @property {string=} query
+ * @property {string=} cursor
+ * @property {number=} limit
  */
 
 /**

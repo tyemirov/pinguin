@@ -5,6 +5,7 @@ import {
   stubExternalAssets,
   expectToast,
   expectHeaderGoogleButton,
+  expectPinguinHeaderBrand,
   loginAndVisitDashboard,
 } from './utils';
 
@@ -28,6 +29,14 @@ test.describe('Dashboard', () => {
     await page.goto('/dashboard.html');
     await expect(page).toHaveURL(LANDING_URL_PATTERN);
     await expectHeaderGoogleButton(page);
+  });
+
+  test('shows Pinguin logo brand and favicon on the dashboard', async ({ page }) => {
+    await configureRuntime(page, { authenticated: true });
+    await page.goto('/dashboard.html');
+    await expectPinguinHeaderBrand(page);
+    await expect(page.getByTestId('notifications-table')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Refresh' })).toHaveCount(1);
   });
 
   test('redirects after BroadcastChannel logout', async ({ page }) => {
@@ -88,6 +97,124 @@ test.describe('Dashboard', () => {
     await filterSelect.selectOption('cancelled');
     await expect(page.getByTestId('notification-row')).toHaveCount(1);
     await expect(page.locator('.status-badge')).toHaveAttribute('data-variant', 'cancelled');
+  });
+
+  test('searches notifications by message body and resets results', async ({ page, request }) => {
+    const now = new Date();
+    await resetNotifications(request, {
+      notifications: [
+        {
+          notification_id: 'notif-visible-body',
+          notification_type: 'email',
+          recipient: 'visible@example.com',
+          subject: 'Visible body match',
+          message: 'The rare launch phrase appears only in the body',
+          status: 'queued',
+          created_at: now.toISOString(),
+          updated_at: now.toISOString(),
+          scheduled_for: now.toISOString(),
+          retry_count: 0,
+        },
+        {
+          notification_id: 'notif-hidden',
+          notification_type: 'email',
+          recipient: 'hidden@example.com',
+          subject: 'Other message',
+          message: 'No matching words here',
+          status: 'queued',
+          created_at: now.toISOString(),
+          updated_at: now.toISOString(),
+          scheduled_for: now.toISOString(),
+          retry_count: 0,
+        },
+      ],
+    });
+    await configureRuntime(page, { authenticated: true });
+    await page.goto('/dashboard.html');
+    await expect(page.getByTestId('notification-row')).toHaveCount(2);
+
+    await page.getByLabel('Search').fill('rare launch phrase');
+    await expect(page.getByTestId('notification-row')).toHaveCount(1);
+    await expect(page.getByTestId('notifications-table')).toContainText('Visible body match');
+    await expect(page.getByTestId('notifications-table')).not.toContainText('Other message');
+
+    await page.getByLabel('Search').fill('');
+    await expect(page.getByTestId('notification-row')).toHaveCount(2);
+  });
+
+  test('appends notification rows with infinite scroll', async ({ page, request }) => {
+    const now = Date.now();
+    const notifications = Array.from({ length: 60 }, (_, index) => ({
+      notification_id: `notif-scroll-${index}`,
+      notification_type: 'email',
+      recipient: `scroll-${index}@example.com`,
+      subject: `Scroll notification ${index}`,
+      message: `Scroll body ${index}`,
+      status: 'queued',
+      created_at: new Date(now - index * 1000).toISOString(),
+      updated_at: new Date(now - index * 1000).toISOString(),
+      scheduled_for: new Date(now + index * 1000).toISOString(),
+      retry_count: 0,
+    }));
+    await resetNotifications(request, { notifications });
+    await configureRuntime(page, { authenticated: true });
+    await page.goto('/dashboard.html');
+    await expect(page.getByTestId('notification-row')).toHaveCount(50);
+
+    await page.getByTestId('notification-scroll-sentinel').scrollIntoViewIfNeeded();
+    await expect(page.getByTestId('notification-row')).toHaveCount(60);
+    await expect(page.getByTestId('notifications-table')).toContainText('Scroll notification 59');
+  });
+
+  test('switches notification views between tenants', async ({ page, request }) => {
+    const now = new Date();
+    await resetNotifications(request, {
+      tenants: [
+        { id: 'tenant-alpha', displayName: 'Alpha Corp' },
+        { id: 'tenant-bravo', displayName: 'Bravo Labs' },
+      ],
+      notifications: [
+        {
+          notification_id: 'notif-alpha',
+          tenant_id: 'tenant-alpha',
+          notification_type: 'email',
+          recipient: 'alpha@example.com',
+          subject: 'Alpha event',
+          message: 'Hello Alpha',
+          status: 'queued',
+          created_at: now.toISOString(),
+          updated_at: now.toISOString(),
+          scheduled_for: now.toISOString(),
+          retry_count: 0,
+        },
+        {
+          notification_id: 'notif-bravo',
+          tenant_id: 'tenant-bravo',
+          notification_type: 'email',
+          recipient: 'bravo@example.com',
+          subject: 'Bravo event',
+          message: 'Hello Bravo',
+          status: 'queued',
+          created_at: now.toISOString(),
+          updated_at: now.toISOString(),
+          scheduled_for: now.toISOString(),
+          retry_count: 0,
+        },
+      ],
+    });
+    await configureRuntime(page, {
+      authenticated: true,
+      tenant: { id: 'tenant-alpha', displayName: 'Alpha Corp' },
+    });
+    await page.goto('/dashboard.html');
+    await expect(page.getByTestId('notification-row')).toHaveCount(1);
+    await expect(page.getByTestId('notifications-table')).toContainText('Alpha event');
+    await expect(page.getByTestId('notifications-table')).not.toContainText('Bravo event');
+
+    await page.getByLabel('Tenant').selectOption('tenant-bravo');
+    await expect(page.getByTestId('notification-row')).toHaveCount(1);
+    await expect(page.getByTestId('notifications-table')).toContainText('Bravo event');
+    await expect(page.getByTestId('notifications-table')).not.toContainText('Alpha event');
   });
 
   test('renders notification table and allows cancel', async ({ page }) => {

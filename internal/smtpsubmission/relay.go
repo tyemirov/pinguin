@@ -15,7 +15,11 @@ import (
 // UpstreamRelay relays submitted messages through the configured SMTP submission provider.
 type UpstreamRelay struct {
 	logger *slog.Logger
-	sender *service.SMTPEmailSender
+	sender rawEmailSender
+}
+
+type rawEmailSender interface {
+	SendRawEmail(ctx context.Context, fromAddress string, recipients []string, rawMessage []byte) error
 }
 
 // NewUpstreamRelay constructs a raw SMTP relay for the independent submission feature.

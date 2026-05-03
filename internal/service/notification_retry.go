@@ -10,6 +10,7 @@ import (
 	"github.com/tyemirov/pinguin/internal/tenant"
 	"github.com/tyemirov/utils/scheduler"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type notificationRetryStore struct {
@@ -18,11 +19,14 @@ type notificationRetryStore struct {
 }
 
 const (
-	pendingJobsStatusClause       = "(notifications.status = ? OR notifications.status = ? OR notifications.status = ?)"
-	pendingJobsScheduleClause     = "(notifications.scheduled_for IS NULL OR notifications.scheduled_for <= ?)"
-	pendingJobsFilterClause       = pendingJobsStatusClause + " AND notifications.retry_count < ? AND " + pendingJobsScheduleClause
-	pendingJobsTenantJoinClause   = "JOIN tenants ON tenants.id = notifications.tenant_id"
-	pendingJobsTenantStatusClause = "tenants.status = ?"
+	pendingJobsNotificationsTable = "notifications"
+	pendingJobsTenantsTable       = "tenants"
+	pendingJobsTenantIDColumn     = "tenant_id"
+	pendingJobsTenantStatusColumn = "status"
+	pendingJobsTenantPrimaryKey   = "id"
+	pendingJobsStatusColumn       = "status"
+	pendingJobsRetryCountColumn   = "retry_count"
+	pendingJobsScheduledForColumn = "scheduled_for"
 )
 
 func newNotificationRetryStore(database *gorm.DB, tenantRepo *tenant.Repository) *notificationRetryStore {
@@ -40,9 +44,12 @@ func (store *notificationRetryStore) pendingJobsForActiveTenants(ctx context.Con
 	var notifications []model.Notification
 	err := store.database.WithContext(ctx).
 		Preload("Attachments").
-		Joins(pendingJobsTenantJoinClause).
-		Where(pendingJobsTenantStatusClause, tenant.TenantStatusActive).
-		Where(pendingJobsFilterClause, model.StatusQueued, model.StatusErrored, model.StatusFailed, maxRetries, now).
+		Clauses(activeTenantJoinClause()).
+		Where(clause.Eq{
+			Column: clause.Column{Table: pendingJobsTenantsTable, Name: pendingJobsTenantStatusColumn},
+			Value:  tenant.TenantStatusActive,
+		}).
+		Where(pendingJobsFilter(maxRetries, now)).
 		Find(&notifications).Error
 	if err != nil {
 		return nil, err
@@ -54,7 +61,7 @@ func (store *notificationRetryStore) pendingJobsAll(ctx context.Context, maxRetr
 	var notifications []model.Notification
 	err := store.database.WithContext(ctx).
 		Preload("Attachments").
-		Where(pendingJobsFilterClause, model.StatusQueued, model.StatusErrored, model.StatusFailed, maxRetries, now).
+		Where(pendingJobsFilter(maxRetries, now)).
 		Find(&notifications).Error
 	if err != nil {
 		return nil, err
@@ -75,6 +82,37 @@ func (store *notificationRetryStore) jobsFromNotifications(records []model.Notif
 		})
 	}
 	return jobs
+}
+
+func activeTenantJoinClause() clause.From {
+	return clause.From{
+		Joins: []clause.Join{
+			{
+				Type:  clause.InnerJoin,
+				Table: clause.Table{Name: pendingJobsTenantsTable},
+				ON: clause.Where{Exprs: []clause.Expression{
+					clause.Eq{
+						Column: clause.Column{Table: pendingJobsTenantsTable, Name: pendingJobsTenantPrimaryKey},
+						Value:  clause.Column{Table: pendingJobsNotificationsTable, Name: pendingJobsTenantIDColumn},
+					},
+				}},
+			},
+		},
+	}
+}
+
+func pendingJobsFilter(maxRetries int, currentTime time.Time) clause.Expression {
+	return clause.And(
+		clause.IN{
+			Column: clause.Column{Table: pendingJobsNotificationsTable, Name: pendingJobsStatusColumn},
+			Values: []interface{}{model.StatusQueued, model.StatusErrored, model.StatusFailed},
+		},
+		clause.Lt{Column: clause.Column{Table: pendingJobsNotificationsTable, Name: pendingJobsRetryCountColumn}, Value: maxRetries},
+		clause.Or(
+			clause.Eq{Column: clause.Column{Table: pendingJobsNotificationsTable, Name: pendingJobsScheduledForColumn}, Value: nil},
+			clause.Lte{Column: clause.Column{Table: pendingJobsNotificationsTable, Name: pendingJobsScheduledForColumn}, Value: currentTime},
+		),
+	)
 }
 
 func (store *notificationRetryStore) ApplyAttemptResult(ctx context.Context, job scheduler.Job, update scheduler.AttemptUpdate) error {

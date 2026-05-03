@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,7 +18,6 @@ import (
 	"github.com/tyemirov/pinguin/internal/tenant"
 	sessionvalidator "github.com/tyemirov/tauth/pkg/sessionvalidator"
 	"gorm.io/gorm"
-	"log/slog"
 )
 
 const (
@@ -24,6 +25,9 @@ const (
 	defaultTimeout           = 5 * time.Second
 	scheduledTimeFutureError = "scheduled_time must be in the future"
 	tenantIDQueryParam       = "tenant_id"
+	notificationSearchParam  = "q"
+	notificationLimitParam   = "limit"
+	notificationCursorParam  = "cursor"
 )
 
 var (
@@ -104,6 +108,7 @@ func NewServer(cfg Config) (*Server, error) {
 	protected.Use(sessionMiddleware(cfg.SessionValidator))
 
 	handler := newNotificationHandler(cfg.NotificationService, cfg.TenantRepository, cfg.Logger)
+	protected.GET("/tenants", handler.listTenants)
 	protected.GET("/notifications", handler.listNotifications)
 	protected.PATCH("/notifications/:id/schedule", handler.rescheduleNotification)
 	protected.POST("/notifications/:id/cancel", handler.cancelNotification)
@@ -196,7 +201,12 @@ func tenantMiddleware(repo *tenant.Repository) gin.HandlerFunc {
 }
 
 func isTenantAgnosticPath(path string) bool {
-	return path == "/healthz" || path == "/api/smtp-identities" || strings.HasPrefix(path, "/api/smtp-identities/")
+	return path == "/healthz" ||
+		path == "/api/tenants" ||
+		path == "/api/notifications" ||
+		strings.HasPrefix(path, "/api/notifications/") ||
+		path == "/api/smtp-identities" ||
+		strings.HasPrefix(path, "/api/smtp-identities/")
 }
 
 func sessionMiddleware(validator SessionValidator) gin.HandlerFunc {
@@ -221,21 +231,43 @@ func newNotificationHandler(svc service.NotificationService, repo *tenant.Reposi
 	return &notificationHandler{service: svc, repository: repo, logger: logger}
 }
 
-func (handler *notificationHandler) listNotifications(contextGin *gin.Context) {
-	if _, ok := tenant.RuntimeFromContext(contextGin.Request.Context()); !ok {
-		contextGin.AbortWithStatus(http.StatusInternalServerError)
+func (handler *notificationHandler) listTenants(contextGin *gin.Context) {
+	tenants, err := handler.repository.ListActiveTenants(contextGin.Request.Context())
+	if err != nil {
+		handler.logger.Error("http_handler_error", "error", err)
+		contextGin.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 		return
 	}
-	statusFilters := contextGin.QueryArray("status")
-	filter := model.NotificationListFilters{
-		Statuses: parseStatusFilters(statusFilters),
+	payload := make([]runtimeConfigTenant, 0, len(tenants))
+	for _, tenantModel := range tenants {
+		payload = append(payload, runtimeConfigTenant{
+			ID:          tenantModel.ID,
+			DisplayName: tenantModel.DisplayName,
+		})
 	}
-	responses, err := handler.service.ListNotificationsAll(contextGin.Request.Context(), filter)
+	contextGin.JSON(http.StatusOK, gin.H{"tenants": payload})
+}
+
+func (handler *notificationHandler) listNotifications(contextGin *gin.Context) {
+	requestContext, resolveErr := handler.resolveNotificationContext(contextGin)
+	if resolveErr != nil {
+		handler.writeTenantResolutionError(contextGin, resolveErr)
+		return
+	}
+	filter, pageRequest, parseErr := parseNotificationListRequest(contextGin)
+	if parseErr != nil {
+		writeNotificationListRequestError(contextGin, parseErr)
+		return
+	}
+	page, err := handler.service.ListNotificationsPage(requestContext, filter, pageRequest)
 	if err != nil {
 		handler.writeError(contextGin, err)
 		return
 	}
-	contextGin.JSON(http.StatusOK, gin.H{"notifications": responses})
+	contextGin.JSON(http.StatusOK, notificationListPayload{
+		Notifications: page.Notifications,
+		NextCursor:    page.NextCursor,
+	})
 }
 
 func (handler *notificationHandler) rescheduleNotification(contextGin *gin.Context) {
@@ -312,9 +344,6 @@ func (handler *notificationHandler) writeError(contextGin *gin.Context, err erro
 }
 
 func (handler *notificationHandler) resolveNotificationContext(contextGin *gin.Context) (context.Context, error) {
-	if _, ok := tenant.RuntimeFromContext(contextGin.Request.Context()); !ok {
-		return nil, errors.New("tenant runtime missing")
-	}
 	tenantID := strings.TrimSpace(contextGin.Query(tenantIDQueryParam))
 	if tenantID == "" {
 		return nil, errTenantIDRequired
@@ -364,6 +393,60 @@ func parseStatusFilters(values []string) []model.NotificationStatus {
 		statuses = append(statuses, status)
 	}
 	return statuses
+}
+
+type notificationListPayload struct {
+	Notifications []model.NotificationResponse `json:"notifications"`
+	NextCursor    string                       `json:"next_cursor,omitempty"`
+}
+
+func parseNotificationListRequest(contextGin *gin.Context) (model.NotificationListFilters, model.NotificationListPageRequest, error) {
+	searchQuery, searchErr := model.NewNotificationSearchQuery(contextGin.Query(notificationSearchParam))
+	if searchErr != nil {
+		return model.NotificationListFilters{}, model.NotificationListPageRequest{}, searchErr
+	}
+	cursor, cursorErr := model.ParseNotificationListCursor(contextGin.Query(notificationCursorParam))
+	if cursorErr != nil {
+		return model.NotificationListFilters{}, model.NotificationListPageRequest{}, cursorErr
+	}
+	limit, limitErr := parseNotificationListLimit(contextGin.Query(notificationLimitParam))
+	if limitErr != nil {
+		return model.NotificationListFilters{}, model.NotificationListPageRequest{}, limitErr
+	}
+	pageRequest, pageErr := model.NewNotificationListPageRequest(limit, cursor)
+	if pageErr != nil {
+		return model.NotificationListFilters{}, model.NotificationListPageRequest{}, pageErr
+	}
+	filter := model.NotificationListFilters{
+		Statuses:    parseStatusFilters(contextGin.QueryArray("status")),
+		SearchQuery: searchQuery,
+	}
+	return filter, pageRequest, nil
+}
+
+func parseNotificationListLimit(rawValue string) (int, error) {
+	normalized := strings.TrimSpace(rawValue)
+	if normalized == "" {
+		return model.DefaultNotificationListPageRequest().Limit(), nil
+	}
+	parsed, parseErr := strconv.Atoi(normalized)
+	if parseErr != nil {
+		return 0, fmt.Errorf("%w: parse", model.ErrInvalidNotificationLimit)
+	}
+	return parsed, nil
+}
+
+func writeNotificationListRequestError(contextGin *gin.Context, err error) {
+	switch {
+	case errors.Is(err, model.ErrInvalidNotificationSearch):
+		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "q must be 200 characters or fewer"})
+	case errors.Is(err, model.ErrInvalidNotificationCursor):
+		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "cursor is invalid"})
+	case errors.Is(err, model.ErrInvalidNotificationLimit):
+		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "limit must be between 1 and 100"})
+	default:
+		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "invalid notification list request"})
+	}
 }
 
 func pickDuration(candidate time.Duration, fallback time.Duration) time.Duration {

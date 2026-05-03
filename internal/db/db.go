@@ -34,7 +34,15 @@ func InitDB(dbPath string, logger *slog.Logger) (*gorm.DB, error) {
 		return nil, fmt.Errorf("open sqlite failed: %w", err)
 	}
 
-	if err := database.AutoMigrate(
+	if err := migrateDatabaseSchema(database); err != nil {
+		return nil, fmt.Errorf("migration failed: %w", err)
+	}
+
+	return database, nil
+}
+
+var migrateDatabaseSchema = func(database *gorm.DB) error {
+	return database.AutoMigrate(
 		&model.Notification{},
 		&model.NotificationAttachment{},
 		&tenant.Tenant{},
@@ -43,11 +51,7 @@ func InitDB(dbPath string, logger *slog.Logger) (*gorm.DB, error) {
 		&tenant.SMSProfile{},
 		&smtpidentity.SenderDomain{},
 		&smtpidentity.Identity{},
-	); err != nil {
-		return nil, fmt.Errorf("migration failed: %w", err)
-	}
-
-	return database, nil
+	)
 }
 
 type slogGormLogger struct {

@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // RuntimeConfig aggregates tenant data required at runtime.
@@ -101,6 +102,7 @@ func (repo *Repository) ListActiveTenants(ctx context.Context) ([]Tenant, error)
 	var tenants []Tenant
 	if err := repo.db.WithContext(ctx).
 		Where(&Tenant{Status: TenantStatusActive}).
+		Order(clause.OrderByColumn{Column: clause.Column{Name: "display_name"}}).
 		Find(&tenants).Error; err != nil {
 		return nil, fmt.Errorf("tenant list: %w", err)
 	}

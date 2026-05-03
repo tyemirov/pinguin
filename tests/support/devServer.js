@@ -77,6 +77,7 @@ const NONCE_TTL_MS = 2 * 60 * 1000;
 function createDefaultState() {
   return {
     notifications: defaultNotifications(),
+    tenants: defaultTenants(),
     smtpIdentities: [],
     failList: false,
     failReschedule: false,
@@ -86,6 +87,13 @@ function createDefaultState() {
     failSMTPRotate: false,
     failSMTPDelete: false,
   };
+}
+
+function defaultTenants() {
+  return [
+    { id: 'tenant-devserver', displayName: 'Dev Server Tenant' },
+    { id: 'tenant-archive', displayName: 'Archive Tenant' },
+  ];
 }
 
 function defaultNotifications() {
@@ -117,6 +125,12 @@ function applyOverrides(payload) {
   } else {
     serverState.notifications = defaultNotifications();
   }
+  serverState.tenants = Array.isArray(payload.tenants) && payload.tenants.length > 0
+    ? payload.tenants.map((item) => ({
+        id: item.id || item.tenant_id || 'tenant-devserver',
+        displayName: item.displayName || item.display_name || item.id || 'Tenant',
+      }))
+    : defaultTenants();
   serverState.smtpIdentities = Array.isArray(payload.smtpIdentities)
     ? payload.smtpIdentities.map((item) => ({
         ...item,
@@ -183,6 +197,7 @@ function serveStatic(filePath, res) {
         '.html': 'text/html; charset=utf-8',
         '.js': 'text/javascript; charset=utf-8',
         '.css': 'text/css; charset=utf-8',
+        '.svg': 'image/svg+xml',
         '.json': 'application/json',
       }[ext] || 'application/octet-stream';
     res.writeHead(200, { 'Content-Type': contentType });
@@ -211,8 +226,20 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     const statuses = url.searchParams.getAll('status').filter(Boolean);
-    const filtered = filterNotifications(serverState.notifications, statuses);
-    sendJson(res, 200, { notifications: filtered });
+    const tenantId = url.searchParams.get('tenant_id') || '';
+    if (!tenantId.trim()) {
+      sendJson(res, 400, { error: 'tenant_id is required' });
+      return;
+    }
+    const searchQuery = url.searchParams.get('q') || '';
+    const filtered = filterNotifications(serverState.notifications, statuses, tenantId, searchQuery);
+    const page = paginateNotifications(filtered, url.searchParams);
+    sendJson(res, 200, { notifications: page.notifications, next_cursor: page.nextCursor });
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/tenants') {
+    sendJson(res, 200, { tenants: serverState.tenants });
     return;
   }
 
@@ -410,15 +437,47 @@ function purgeNonces() {
   }
 }
 
-function filterNotifications(source, statuses) {
+function filterNotifications(source, statuses, tenantId, searchQuery = '') {
   if (!Array.isArray(source) || source.length === 0) {
     return [];
   }
-  if (!statuses || statuses.length === 0) {
-    return source;
+  const normalizedTenantId = String(tenantId || '').trim();
+  let filtered = normalizedTenantId
+    ? source.filter((item) => item.tenant_id === normalizedTenantId)
+    : source;
+  if (statuses && statuses.length > 0) {
+    const wanted = new Set(statuses.map((value) => String(value).toLowerCase()));
+    filtered = filtered.filter((item) => wanted.has(String(item.status).toLowerCase()));
   }
-  const wanted = new Set(statuses.map((value) => String(value).toLowerCase()));
-  return source.filter((item) => wanted.has(String(item.status).toLowerCase()));
+  const normalizedQuery = String(searchQuery).trim().toLowerCase();
+  if (!normalizedQuery) {
+    return filtered;
+  }
+  return filtered.filter((item) => notificationSearchFields(item).some((value) => value.includes(normalizedQuery)));
+}
+
+function notificationSearchFields(item) {
+  return [
+    item.notification_id,
+    item.tenant_id,
+    item.notification_type,
+    item.status,
+    item.recipient,
+    item.subject,
+    item.message,
+  ].map((value) => String(value || '').toLowerCase());
+}
+
+function paginateNotifications(source, searchParams) {
+  const parsedLimit = Number(searchParams.get('limit') || source.length || 0);
+  const limit = Number.isInteger(parsedLimit) && parsedLimit > 0 ? parsedLimit : source.length;
+  const parsedCursor = Number(searchParams.get('cursor') || 0);
+  const startIndex = Number.isInteger(parsedCursor) && parsedCursor > 0 ? parsedCursor : 0;
+  const endIndex = startIndex + limit;
+  return {
+    notifications: source.slice(startIndex, endIndex),
+    nextCursor: endIndex < source.length ? String(endIndex) : '',
+  };
 }
 
 function newSMTPIdentity(emailAddress) {
