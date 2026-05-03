@@ -261,6 +261,16 @@ main {
   overflow-x: auto;
 }
 
+.table-scroll-sentinel {
+  height: 1px;
+}
+
+.table-page-status {
+  margin: 0.85rem 0 0;
+  text-align: center;
+  font-size: 0.9rem;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

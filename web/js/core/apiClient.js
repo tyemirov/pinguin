@@ -2,6 +2,7 @@
 import { RUNTIME_CONFIG } from '../constants.js';
 
 /** @typedef {import('../types.d.js').NotificationItem} NotificationItem */
+/** @typedef {import('../types.d.js').NotificationListOptions} NotificationListOptions */
 /** @typedef {import('../types.d.js').TenantOption} TenantOption */
 /** @typedef {import('../types.d.js').SMTPIdentity} SMTPIdentity */
 /** @typedef {import('../types.d.js').SMTPCredentials} SMTPCredentials */
@@ -126,7 +127,7 @@ export function createApiClient(baseUrl = RUNTIME_CONFIG.apiBaseUrl) {
       const tenants = Array.isArray(payload?.tenants) ? payload.tenants : [];
       return /** @type {TenantOption[]} */ (tenants.map(mapTenant).filter(Boolean));
     },
-    async listNotifications(statuses = [], tenantId = '') {
+    async listNotifications(statuses = [], tenantId = '', options = /** @type {NotificationListOptions} */ ({})) {
       const query = new URLSearchParams();
       const normalizedTenantId = typeof tenantId === 'string' ? tenantId.trim() : '';
       if (normalizedTenantId) {
@@ -135,12 +136,25 @@ export function createApiClient(baseUrl = RUNTIME_CONFIG.apiBaseUrl) {
       statuses.filter(Boolean).forEach((status) => {
         query.append('status', String(status));
       });
+      const normalizedSearch = typeof options.query === 'string' ? options.query.trim() : '';
+      if (normalizedSearch) {
+        query.set('q', normalizedSearch);
+      }
+      const normalizedCursor = typeof options.cursor === 'string' ? options.cursor.trim() : '';
+      if (normalizedCursor) {
+        query.set('cursor', normalizedCursor);
+      }
+      const limit = Number(options.limit || 0);
+      if (Number.isInteger(limit) && limit > 0) {
+        query.set('limit', String(limit));
+      }
       const suffix = query.toString() ? `?${query.toString()}` : '';
       const payload = await request(`/notifications${suffix}`, { method: 'GET', headers: {} });
       const items = Array.isArray(payload?.notifications) ? payload.notifications : [];
-      return /** @type {NotificationItem[]} */ (
-        items.map(mapNotification).filter(Boolean)
-      );
+      return {
+        notifications: /** @type {NotificationItem[]} */ (items.map(mapNotification).filter(Boolean)),
+        nextCursor: typeof payload?.next_cursor === 'string' ? payload.next_cursor : '',
+      };
     },
     async rescheduleNotification(notificationId, scheduledIsoString, tenantId) {
       const payload = await request(

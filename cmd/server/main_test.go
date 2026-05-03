@@ -952,6 +952,14 @@ func (service *recordingNotificationService) ListNotifications(_ context.Context
 	return service.listResponses, nil
 }
 
+func (service *recordingNotificationService) ListNotificationsPage(_ context.Context, filters model.NotificationListFilters, _ model.NotificationListPageRequest) (model.NotificationListResponsePage, error) {
+	service.listFilters = filters
+	if service.listErr != nil {
+		return model.NotificationListResponsePage{}, service.listErr
+	}
+	return model.NotificationListResponsePage{Notifications: service.listResponses}, nil
+}
+
 func (service *recordingNotificationService) ListNotificationsAll(_ context.Context, filters model.NotificationListFilters) ([]model.NotificationResponse, error) {
 	service.listFilters = filters
 	if service.listErr != nil {

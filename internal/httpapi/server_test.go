@@ -74,6 +74,96 @@ func TestListNotificationsReturnsData(t *testing.T) {
 	}
 }
 
+func TestListNotificationsParsesSearchAndPagination(t *testing.T) {
+	t.Helper()
+
+	cursor, cursorErr := model.NewNotificationListCursor(time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC), 42)
+	if cursorErr != nil {
+		t.Fatalf("cursor: %v", cursorErr)
+	}
+	encodedCursor := cursor.Encode()
+	stubSvc := &stubNotificationService{
+		listResponse: []model.NotificationResponse{{NotificationID: "queued", Status: model.StatusQueued}},
+		nextCursor:   "next-page",
+	}
+	server := newTestHTTPServer(t, stubSvc, &stubValidator{})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-test&status=queued&q=hidden+body&limit=25&cursor="+encodedCursor, nil)
+
+	server.httpServer.Handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+	var payload struct {
+		Notifications []model.NotificationResponse `json:"notifications"`
+		NextCursor    string                       `json:"next_cursor"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("response decode error: %v", err)
+	}
+	if payload.NextCursor != "next-page" || len(payload.Notifications) != 1 {
+		t.Fatalf("unexpected payload %+v", payload)
+	}
+	if stubSvc.lastListFilters.SearchQuery.Value() != "hidden body" {
+		t.Fatalf("expected search query, got %q", stubSvc.lastListFilters.SearchQuery.Value())
+	}
+	if len(stubSvc.lastListFilters.Statuses) != 1 || stubSvc.lastListFilters.Statuses[0] != model.StatusQueued {
+		t.Fatalf("unexpected statuses %+v", stubSvc.lastListFilters.Statuses)
+	}
+	if stubSvc.lastPageRequest.Limit() != 25 {
+		t.Fatalf("expected limit 25, got %d", stubSvc.lastPageRequest.Limit())
+	}
+	parsedCursor := stubSvc.lastPageRequest.Cursor()
+	if parsedCursor == nil || parsedCursor.ID() != 42 {
+		t.Fatalf("expected parsed cursor id 42, got %+v", parsedCursor)
+	}
+}
+
+func TestListNotificationsRejectsInvalidListInputs(t *testing.T) {
+	t.Helper()
+
+	testCases := []struct {
+		name  string
+		query string
+	}{
+		{name: "bad limit", query: "tenant_id=tenant-test&limit=not-a-number"},
+		{name: "low limit", query: "tenant_id=tenant-test&limit=0"},
+		{name: "high limit", query: "tenant_id=tenant-test&limit=101"},
+		{name: "bad cursor", query: "tenant_id=tenant-test&cursor=not-a-cursor"},
+		{name: "long search", query: "tenant_id=tenant-test&q=" + strings.Repeat("a", 201)},
+	}
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			stubSvc := &stubNotificationService{}
+			server := newTestHTTPServer(t, stubSvc, &stubValidator{})
+
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodGet, "/api/notifications?"+testCase.query, nil)
+
+			server.httpServer.Handler.ServeHTTP(recorder, request)
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d body=%s", recorder.Code, recorder.Body.String())
+			}
+			if stubSvc.listCalls != 0 {
+				t.Fatalf("expected service not to be called")
+			}
+		})
+	}
+}
+
+func TestWriteNotificationListRequestErrorDefaultsBadRequest(t *testing.T) {
+	t.Helper()
+
+	recorder := httptest.NewRecorder()
+	contextGin, _ := gin.CreateTestContext(recorder)
+	writeNotificationListRequestError(contextGin, errors.New("unexpected"))
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", recorder.Code)
+	}
+}
+
 func TestListNotificationsUsesSelectedTenant(t *testing.T) {
 	t.Helper()
 
@@ -1287,6 +1377,9 @@ type stubNotificationService struct {
 	lastTenantID       string
 	listCalls          int
 	listAllCalls       int
+	lastListFilters    model.NotificationListFilters
+	lastPageRequest    model.NotificationListPageRequest
+	nextCursor         string
 }
 
 func (stub *stubNotificationService) SendNotification(context.Context, model.NotificationRequest) (model.NotificationResponse, error) {
@@ -1303,6 +1396,19 @@ func (stub *stubNotificationService) ListNotifications(ctx context.Context, _ mo
 		stub.lastTenantID = runtimeCfg.Tenant.ID
 	}
 	return stub.listResponse, stub.listErr
+}
+
+func (stub *stubNotificationService) ListNotificationsPage(ctx context.Context, filters model.NotificationListFilters, pageRequest model.NotificationListPageRequest) (model.NotificationListResponsePage, error) {
+	stub.listCalls++
+	stub.lastListFilters = filters
+	stub.lastPageRequest = pageRequest
+	if runtimeCfg, ok := tenant.RuntimeFromContext(ctx); ok {
+		stub.lastTenantID = runtimeCfg.Tenant.ID
+	}
+	return model.NotificationListResponsePage{
+		Notifications: stub.listResponse,
+		NextCursor:    stub.nextCursor,
+	}, stub.listErr
 }
 
 func (stub *stubNotificationService) ListNotificationsAll(_ context.Context, _ model.NotificationListFilters) ([]model.NotificationResponse, error) {

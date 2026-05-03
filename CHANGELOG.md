@@ -5,6 +5,7 @@
 ### Features
 - Decouple authenticated SMTP submission from notification tenants by giving it its own sender-domain allowlist, identity credentials, and upstream relay profile.
 - Add an authenticated tenant switcher so Pinguin admins can load active tenants and view each tenant's notification events from the dashboard.
+- Add backend-backed search and infinite scroll for dashboard notification events, including cursor pagination and a single top-level refresh control.
 
 ### Bug Fixes
 - Replace the generated placeholder logo with the canonical Pinguin turquoise envelope mark.
@@ -20,6 +21,7 @@
 - Add split `configs/.env.pinguin.example` and `configs/.env.tauth.example` files for the current Compose topology.
 
 ### Testing
+- Add backend and browser coverage for notification search, cursor pagination, infinite scroll, and the GORM-only query contract.
 - Add backend and browser coverage for explicit tenant notification listing and dashboard switching between tenant event views.
 - Add browser coverage for the Pinguin logo/favicon header contract, including a regression where runtime config returns `PoodleScanner` tenant metadata.
 - Add browser coverage for the landing header login path and for the `mpr-ui@latest` config contract.
