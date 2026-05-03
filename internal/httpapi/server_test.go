@@ -56,7 +56,7 @@ func TestListNotificationsReturnsData(t *testing.T) {
 	server := newTestHTTPServer(t, stubSvc, &stubValidator{})
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/notifications?status=queued&status=errored", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-test&status=queued&status=errored", nil)
 
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
@@ -74,7 +74,7 @@ func TestListNotificationsReturnsData(t *testing.T) {
 	}
 }
 
-func TestListNotificationsUsesAll(t *testing.T) {
+func TestListNotificationsUsesSelectedTenant(t *testing.T) {
 	t.Helper()
 
 	stubSvc := &stubNotificationService{
@@ -83,19 +83,22 @@ func TestListNotificationsUsesAll(t *testing.T) {
 	server := newTestHTTPServer(t, stubSvc, &stubValidator{})
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/notifications", nil)
-	request.Host = "example.com"
+	request := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-test", nil)
+	request.Host = "unknown.localhost"
 
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", recorder.Code)
 	}
-	if stubSvc.listAllCalls != 1 {
-		t.Fatalf("expected list all to be used, got %d", stubSvc.listAllCalls)
+	if stubSvc.listCalls != 1 || stubSvc.listAllCalls != 0 {
+		t.Fatalf("expected selected tenant list to be used, got list=%d listAll=%d", stubSvc.listCalls, stubSvc.listAllCalls)
+	}
+	if stubSvc.lastTenantID != "tenant-test" {
+		t.Fatalf("expected tenant-test, got %s", stubSvc.lastTenantID)
 	}
 }
 
-func TestListNotificationsScopesByTenantHost(t *testing.T) {
+func TestListNotificationsCanSwitchTenants(t *testing.T) {
 	t.Helper()
 
 	repo := newMultiTenantRepository(t)
@@ -104,32 +107,38 @@ func TestListNotificationsScopesByTenantHost(t *testing.T) {
 	}
 	server := newTestHTTPServerWithRepo(t, stubSvc, &stubValidator{}, repo)
 
-	alphaReq := httptest.NewRequest(http.MethodGet, "/api/notifications", nil)
-	alphaReq.Host = "alpha.localhost"
+	alphaReq := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-alpha", nil)
+	alphaReq.Host = "unknown.localhost"
 	alphaRec := httptest.NewRecorder()
 	server.httpServer.Handler.ServeHTTP(alphaRec, alphaReq)
 	if alphaRec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for alpha, got %d", alphaRec.Code)
 	}
+	if stubSvc.lastTenantID != "tenant-alpha" {
+		t.Fatalf("expected tenant-alpha, got %s", stubSvc.lastTenantID)
+	}
 
-	bravoReq := httptest.NewRequest(http.MethodGet, "/api/notifications", nil)
-	bravoReq.Host = "bravo.localhost"
+	bravoReq := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-bravo", nil)
+	bravoReq.Host = "unknown.localhost"
 	bravoRec := httptest.NewRecorder()
 	server.httpServer.Handler.ServeHTTP(bravoRec, bravoReq)
 	if bravoRec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for bravo, got %d", bravoRec.Code)
 	}
+	if stubSvc.lastTenantID != "tenant-bravo" {
+		t.Fatalf("expected tenant-bravo, got %s", stubSvc.lastTenantID)
+	}
 
-	unknownReq := httptest.NewRequest(http.MethodGet, "/api/notifications", nil)
+	unknownReq := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-missing", nil)
 	unknownReq.Host = "unknown.localhost"
 	unknownRec := httptest.NewRecorder()
 	currentCalls := stubSvc.listCalls
 	server.httpServer.Handler.ServeHTTP(unknownRec, unknownReq)
 	if unknownRec.Code != http.StatusNotFound {
-		t.Fatalf("expected 404 for unknown host, got %d", unknownRec.Code)
+		t.Fatalf("expected 404 for unknown tenant, got %d", unknownRec.Code)
 	}
 	if stubSvc.listCalls != currentCalls {
-		t.Fatalf("service should not be called for unknown host")
+		t.Fatalf("service should not be called for unknown tenant")
 	}
 }
 
