@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -69,6 +70,121 @@ func TestListNotificationsFiltersByStatus(t *testing.T) {
 	}
 	if _, ok := statusSet[model.StatusErrored]; !ok {
 		t.Fatalf("expected errored record in results")
+	}
+}
+
+func TestListNotificationsPageSearchesMessageAndPaginates(t *testing.T) {
+	t.Helper()
+
+	database := openIsolatedDatabase(t)
+	serviceInstance := newNotificationServiceForDomainTests(database)
+
+	now := time.Now().UTC()
+	for index, notificationID := range []string{"notif-oldest", "notif-middle", "notif-newest"} {
+		insertNotificationRecord(t, database, model.Notification{
+			NotificationID:   notificationID,
+			NotificationType: model.NotificationEmail,
+			Recipient:        fmt.Sprintf("%s@example.com", notificationID),
+			Subject:          fmt.Sprintf("Subject %d", index),
+			Message:          "body contains hidden launch keyword",
+			Status:           model.StatusQueued,
+			CreatedAt:        now.Add(time.Duration(index) * time.Second),
+			UpdatedAt:        now.Add(time.Duration(index) * time.Second),
+		})
+	}
+	searchQuery, queryErr := model.NewNotificationSearchQuery("hidden launch")
+	if queryErr != nil {
+		t.Fatalf("search query: %v", queryErr)
+	}
+	firstPageRequest, pageErr := model.NewNotificationListPageRequest(2, nil)
+	if pageErr != nil {
+		t.Fatalf("first page request: %v", pageErr)
+	}
+	firstPage, firstErr := serviceInstance.ListNotificationsPage(
+		tenantContext(),
+		model.NotificationListFilters{SearchQuery: searchQuery},
+		firstPageRequest,
+	)
+	if firstErr != nil {
+		t.Fatalf("first page: %v", firstErr)
+	}
+	if len(firstPage.Notifications) != 2 {
+		t.Fatalf("expected two first-page notifications, got %d", len(firstPage.Notifications))
+	}
+	if firstPage.Notifications[0].NotificationID != "notif-newest" || firstPage.Notifications[1].NotificationID != "notif-middle" {
+		t.Fatalf("unexpected first page order %+v", firstPage.Notifications)
+	}
+	if firstPage.NextCursor == "" {
+		t.Fatalf("expected next cursor")
+	}
+	cursor, cursorErr := model.ParseNotificationListCursor(firstPage.NextCursor)
+	if cursorErr != nil {
+		t.Fatalf("parse cursor: %v", cursorErr)
+	}
+	secondPageRequest, secondPageErr := model.NewNotificationListPageRequest(2, cursor)
+	if secondPageErr != nil {
+		t.Fatalf("second page request: %v", secondPageErr)
+	}
+	secondPage, secondErr := serviceInstance.ListNotificationsPage(
+		tenantContext(),
+		model.NotificationListFilters{SearchQuery: searchQuery},
+		secondPageRequest,
+	)
+	if secondErr != nil {
+		t.Fatalf("second page: %v", secondErr)
+	}
+	if len(secondPage.Notifications) != 1 || secondPage.Notifications[0].NotificationID != "notif-oldest" {
+		t.Fatalf("unexpected second page %+v", secondPage.Notifications)
+	}
+	if secondPage.NextCursor != "" {
+		t.Fatalf("expected final page cursor to be empty")
+	}
+}
+
+func TestListNotificationsPageCombinesStatusAndSearch(t *testing.T) {
+	t.Helper()
+
+	database := openIsolatedDatabase(t)
+	serviceInstance := newNotificationServiceForDomainTests(database)
+
+	now := time.Now().UTC()
+	testCases := []struct {
+		notificationID string
+		status         model.NotificationStatus
+		message        string
+	}{
+		{notificationID: "notif-match", status: model.StatusQueued, message: "needle lives in this message"},
+		{notificationID: "notif-status-miss", status: model.StatusSent, message: "needle lives here too"},
+		{notificationID: "notif-query-miss", status: model.StatusQueued, message: "different body"},
+	}
+	for index, testCase := range testCases {
+		insertNotificationRecord(t, database, model.Notification{
+			NotificationID:   testCase.notificationID,
+			NotificationType: model.NotificationEmail,
+			Recipient:        fmt.Sprintf("%s@example.com", testCase.notificationID),
+			Message:          testCase.message,
+			Status:           testCase.status,
+			CreatedAt:        now.Add(time.Duration(index) * time.Second),
+			UpdatedAt:        now.Add(time.Duration(index) * time.Second),
+		})
+	}
+	searchQuery, queryErr := model.NewNotificationSearchQuery("needle")
+	if queryErr != nil {
+		t.Fatalf("search query: %v", queryErr)
+	}
+	page, err := serviceInstance.ListNotificationsPage(
+		tenantContext(),
+		model.NotificationListFilters{
+			Statuses:    []model.NotificationStatus{model.StatusQueued},
+			SearchQuery: searchQuery,
+		},
+		model.DefaultNotificationListPageRequest(),
+	)
+	if err != nil {
+		t.Fatalf("list page: %v", err)
+	}
+	if len(page.Notifications) != 1 || page.Notifications[0].NotificationID != "notif-match" {
+		t.Fatalf("unexpected results %+v", page.Notifications)
 	}
 }
 
@@ -143,6 +259,9 @@ func TestNotificationServiceRequiresTenantContext(t *testing.T) {
 	if _, err := serviceInstance.ListNotifications(context.Background(), model.NotificationListFilters{}); !errors.Is(err, ErrMissingTenantContext) {
 		t.Fatalf("expected missing tenant on list, got %v", err)
 	}
+	if _, err := serviceInstance.ListNotificationsPage(context.Background(), model.NotificationListFilters{}, model.DefaultNotificationListPageRequest()); !errors.Is(err, ErrMissingTenantContext) {
+		t.Fatalf("expected missing tenant on list page, got %v", err)
+	}
 	if _, err := serviceInstance.RescheduleNotification(context.Background(), "notif", time.Now()); !errors.Is(err, ErrMissingTenantContext) {
 		t.Fatalf("expected missing tenant on reschedule, got %v", err)
 	}
@@ -165,6 +284,9 @@ func TestNotificationServicePropagatesStorageErrors(t *testing.T) {
 	}
 	if _, err := serviceInstance.ListNotifications(tenantContext(), model.NotificationListFilters{}); err == nil {
 		t.Fatalf("expected list storage error")
+	}
+	if _, err := serviceInstance.ListNotificationsPage(tenantContext(), model.NotificationListFilters{}, model.DefaultNotificationListPageRequest()); err == nil {
+		t.Fatalf("expected list page storage error")
 	}
 	if _, err := serviceInstance.ListNotificationsAll(context.Background(), model.NotificationListFilters{}); err == nil {
 		t.Fatalf("expected list all storage error")

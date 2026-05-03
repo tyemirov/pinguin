@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 func TestNormalizeSenderDomains(t *testing.T) {
@@ -49,7 +50,7 @@ func TestReplaceSenderDomainsResetsConfiguredDomains(t *testing.T) {
 	}
 
 	var domains []SenderDomain
-	if err := database.Order("domain").Find(&domains).Error; err != nil {
+	if err := database.Order(clause.OrderByColumn{Column: clause.Column{Name: "domain"}}).Find(&domains).Error; err != nil {
 		t.Fatalf("list sender domains: %v", err)
 	}
 	if len(domains) != 1 || domains[0].Domain != "final.example" {

@@ -231,8 +231,10 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 400, { error: 'tenant_id is required' });
       return;
     }
-    const filtered = filterNotifications(serverState.notifications, statuses, tenantId);
-    sendJson(res, 200, { notifications: filtered });
+    const searchQuery = url.searchParams.get('q') || '';
+    const filtered = filterNotifications(serverState.notifications, statuses, tenantId, searchQuery);
+    const page = paginateNotifications(filtered, url.searchParams);
+    sendJson(res, 200, { notifications: page.notifications, next_cursor: page.nextCursor });
     return;
   }
 
@@ -435,19 +437,47 @@ function purgeNonces() {
   }
 }
 
-function filterNotifications(source, statuses, tenantId) {
+function filterNotifications(source, statuses, tenantId, searchQuery = '') {
   if (!Array.isArray(source) || source.length === 0) {
     return [];
   }
   const normalizedTenantId = String(tenantId || '').trim();
-  const tenantFiltered = normalizedTenantId
+  let filtered = normalizedTenantId
     ? source.filter((item) => item.tenant_id === normalizedTenantId)
     : source;
-  if (!statuses || statuses.length === 0) {
-    return tenantFiltered;
+  if (statuses && statuses.length > 0) {
+    const wanted = new Set(statuses.map((value) => String(value).toLowerCase()));
+    filtered = filtered.filter((item) => wanted.has(String(item.status).toLowerCase()));
   }
-  const wanted = new Set(statuses.map((value) => String(value).toLowerCase()));
-  return tenantFiltered.filter((item) => wanted.has(String(item.status).toLowerCase()));
+  const normalizedQuery = String(searchQuery).trim().toLowerCase();
+  if (!normalizedQuery) {
+    return filtered;
+  }
+  return filtered.filter((item) => notificationSearchFields(item).some((value) => value.includes(normalizedQuery)));
+}
+
+function notificationSearchFields(item) {
+  return [
+    item.notification_id,
+    item.tenant_id,
+    item.notification_type,
+    item.status,
+    item.recipient,
+    item.subject,
+    item.message,
+  ].map((value) => String(value || '').toLowerCase());
+}
+
+function paginateNotifications(source, searchParams) {
+  const parsedLimit = Number(searchParams.get('limit') || source.length || 0);
+  const limit = Number.isInteger(parsedLimit) && parsedLimit > 0 ? parsedLimit : source.length;
+  const parsedCursor = Number(searchParams.get('cursor') || 0);
+  const startIndex = Number.isInteger(parsedCursor) && parsedCursor > 0 ? parsedCursor : 0;
+  const endIndex = startIndex + limit;
+  return {
+    notifications: source.slice(startIndex, endIndex),
+    nextCursor: endIndex < source.length ? String(endIndex) : '',
+  };
 }
 
 function newSMTPIdentity(emailAddress) {

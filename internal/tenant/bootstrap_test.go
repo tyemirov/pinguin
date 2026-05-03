@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 func TestBootstrapFromFileCreatesTenantRecords(t *testing.T) {
@@ -106,7 +107,7 @@ func TestBootstrapReassignsDomain(t *testing.T) {
 	}
 
 	var domain TenantDomain
-	if err := dbInstance.Where("host = ?", domainHost).First(&domain).Error; err != nil {
+	if err := dbInstance.Where(&TenantDomain{Host: domainHost}).First(&domain).Error; err != nil {
 		t.Fatalf("fetch domain: %v", err)
 	}
 	if domain.TenantID != "tenant-two" {
@@ -236,7 +237,7 @@ func TestBootstrapGeneratesTenantIDAndRemovesSMSProfile(t *testing.T) {
 		t.Fatalf("bootstrap anonymous tenant: %v", err)
 	}
 	var tenantCount int64
-	if err := dbInstance.Model(&Tenant{}).Where("id <> ?", "").Count(&tenantCount).Error; err != nil {
+	if err := dbInstance.Model(&Tenant{}).Where(clause.Neq{Column: clause.Column{Name: "id"}, Value: ""}).Count(&tenantCount).Error; err != nil {
 		t.Fatalf("count generated tenants: %v", err)
 	}
 	if tenantCount == 0 {

@@ -24,6 +24,8 @@ type NotificationService interface {
 	GetNotificationStatus(ctx context.Context, notificationID string) (model.NotificationResponse, error)
 	// ListNotifications returns stored notifications honoring the provided filters.
 	ListNotifications(ctx context.Context, filters model.NotificationListFilters) ([]model.NotificationResponse, error)
+	// ListNotificationsPage returns a paginated set of stored notifications.
+	ListNotificationsPage(ctx context.Context, filters model.NotificationListFilters, pageRequest model.NotificationListPageRequest) (model.NotificationListResponsePage, error)
 	// ListNotificationsAll returns notifications across all tenants.
 	ListNotificationsAll(ctx context.Context, filters model.NotificationListFilters) ([]model.NotificationResponse, error)
 	// RescheduleNotification updates the scheduled send time for a queued notification.
@@ -208,6 +210,26 @@ func (serviceInstance *notificationServiceImpl) ListNotifications(ctx context.Co
 		responses = append(responses, model.NewNotificationResponse(record))
 	}
 	return responses, nil
+}
+
+func (serviceInstance *notificationServiceImpl) ListNotificationsPage(ctx context.Context, filters model.NotificationListFilters, pageRequest model.NotificationListPageRequest) (model.NotificationListResponsePage, error) {
+	runtimeCfg, err := serviceInstance.requireTenant(ctx)
+	if err != nil {
+		return model.NotificationListResponsePage{}, err
+	}
+	page, err := model.ListNotificationsPage(ctx, serviceInstance.database, runtimeCfg.Tenant.ID, filters, pageRequest)
+	if err != nil {
+		serviceInstance.logger.Error("Failed to list notifications", "error", err)
+		return model.NotificationListResponsePage{}, err
+	}
+	responses := make([]model.NotificationResponse, 0, len(page.Notifications))
+	for _, record := range page.Notifications {
+		responses = append(responses, model.NewNotificationResponse(record))
+	}
+	return model.NotificationListResponsePage{
+		Notifications: responses,
+		NextCursor:    page.NextCursor,
+	}, nil
 }
 
 func (serviceInstance *notificationServiceImpl) ListNotificationsAll(ctx context.Context, filters model.NotificationListFilters) ([]model.NotificationResponse, error) {
