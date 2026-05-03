@@ -5,6 +5,12 @@
  */
 
 /**
+ * @typedef {Object} TenantOption
+ * @property {string} id
+ * @property {string} displayName
+ */
+
+/**
  * @typedef {Object} NotificationItem
  * @property {string} id
  * @property {string} tenantId

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -16,7 +17,6 @@ import (
 	"github.com/tyemirov/pinguin/internal/tenant"
 	sessionvalidator "github.com/tyemirov/tauth/pkg/sessionvalidator"
 	"gorm.io/gorm"
-	"log/slog"
 )
 
 const (
@@ -104,6 +104,7 @@ func NewServer(cfg Config) (*Server, error) {
 	protected.Use(sessionMiddleware(cfg.SessionValidator))
 
 	handler := newNotificationHandler(cfg.NotificationService, cfg.TenantRepository, cfg.Logger)
+	protected.GET("/tenants", handler.listTenants)
 	protected.GET("/notifications", handler.listNotifications)
 	protected.PATCH("/notifications/:id/schedule", handler.rescheduleNotification)
 	protected.POST("/notifications/:id/cancel", handler.cancelNotification)
@@ -196,7 +197,12 @@ func tenantMiddleware(repo *tenant.Repository) gin.HandlerFunc {
 }
 
 func isTenantAgnosticPath(path string) bool {
-	return path == "/healthz" || path == "/api/smtp-identities" || strings.HasPrefix(path, "/api/smtp-identities/")
+	return path == "/healthz" ||
+		path == "/api/tenants" ||
+		path == "/api/notifications" ||
+		strings.HasPrefix(path, "/api/notifications/") ||
+		path == "/api/smtp-identities" ||
+		strings.HasPrefix(path, "/api/smtp-identities/")
 }
 
 func sessionMiddleware(validator SessionValidator) gin.HandlerFunc {
@@ -221,16 +227,34 @@ func newNotificationHandler(svc service.NotificationService, repo *tenant.Reposi
 	return &notificationHandler{service: svc, repository: repo, logger: logger}
 }
 
+func (handler *notificationHandler) listTenants(contextGin *gin.Context) {
+	tenants, err := handler.repository.ListActiveTenants(contextGin.Request.Context())
+	if err != nil {
+		handler.logger.Error("http_handler_error", "error", err)
+		contextGin.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+	payload := make([]runtimeConfigTenant, 0, len(tenants))
+	for _, tenantModel := range tenants {
+		payload = append(payload, runtimeConfigTenant{
+			ID:          tenantModel.ID,
+			DisplayName: tenantModel.DisplayName,
+		})
+	}
+	contextGin.JSON(http.StatusOK, gin.H{"tenants": payload})
+}
+
 func (handler *notificationHandler) listNotifications(contextGin *gin.Context) {
-	if _, ok := tenant.RuntimeFromContext(contextGin.Request.Context()); !ok {
-		contextGin.AbortWithStatus(http.StatusInternalServerError)
+	requestContext, resolveErr := handler.resolveNotificationContext(contextGin)
+	if resolveErr != nil {
+		handler.writeTenantResolutionError(contextGin, resolveErr)
 		return
 	}
 	statusFilters := contextGin.QueryArray("status")
 	filter := model.NotificationListFilters{
 		Statuses: parseStatusFilters(statusFilters),
 	}
-	responses, err := handler.service.ListNotificationsAll(contextGin.Request.Context(), filter)
+	responses, err := handler.service.ListNotifications(requestContext, filter)
 	if err != nil {
 		handler.writeError(contextGin, err)
 		return
@@ -312,9 +336,6 @@ func (handler *notificationHandler) writeError(contextGin *gin.Context, err erro
 }
 
 func (handler *notificationHandler) resolveNotificationContext(contextGin *gin.Context) (context.Context, error) {
-	if _, ok := tenant.RuntimeFromContext(contextGin.Request.Context()); !ok {
-		return nil, errors.New("tenant runtime missing")
-	}
 	tenantID := strings.TrimSpace(contextGin.Query(tenantIDQueryParam))
 	if tenantID == "" {
 		return nil, errTenantIDRequired

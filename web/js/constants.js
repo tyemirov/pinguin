@@ -63,12 +63,8 @@ export const RUNTIME_CONFIG = Object.freeze({
   tenant: tenantConfig,
 });
 
-const tenantDisplayName =
-  (tenantConfig && typeof tenantConfig.displayName === "string" && tenantConfig.displayName.trim()) ||
-  "Pinguin Notification Service";
-
 export const STRINGS = Object.freeze({
-  appName: tenantDisplayName,
+  appName: "Pinguin Notification Service",
   landing: {
     eyebrow: "Pinguin workspace",
     headline: "Notification delivery without the guesswork",
@@ -88,6 +84,10 @@ export const STRINGS = Object.freeze({
     cancelError: "Unable to cancel notification.",
     rescheduleError: "Unable to reschedule notification.",
     loadError: "Unable to load notifications.",
+    tenantLabel: "Tenant",
+    tenantLoading: "Loading tenants…",
+    tenantLoadError: "Unable to load tenants.",
+    tenantRequired: "Select a tenant to view notifications.",
   },
   smtpIdentities: {
     title: "SMTP identities",

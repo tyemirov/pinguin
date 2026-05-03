@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>Pinguin Dashboard</title>
     <link
       rel="stylesheet"
@@ -32,6 +33,10 @@
       brand-href="/"
       nav-links='[{ "label": "Docs", "href": "https://github.com/tyemirov/pinguin" }]'
     >
+      <a slot="brand" class="pinguin-brand" href="/" aria-label="Pinguin home">
+        <img class="pinguin-brand__mark" src="/favicon.svg" alt="" aria-hidden="true" />
+        <span>Pinguin</span>
+      </a>
     </mpr-header>
     <main class="anchor-section">
       <header class="dashboard-header">
@@ -54,6 +59,18 @@
         data-testid="notifications-table"
       >
         <div class="filters" style="margin-bottom: 1rem">
+          <label style="flex: 1; min-width: 220px">
+            <span x-text="strings.tenantLabel"></span>
+            <select
+              x-model="selectedTenantId"
+              x-on:change="changeTenant()"
+              :disabled="isLoadingTenants || tenants.length === 0"
+            >
+              <template x-for="tenant in tenants" :key="tenant.id">
+                <option :value="tenant.id" x-text="tenant.displayName"></option>
+              </template>
+            </select>
+          </label>
           <label style="flex: 1; min-width: 200px">
             <span>Filter by status</span>
             <select x-model="statusFilter" x-on:change="loadNotifications()">
@@ -66,9 +83,16 @@
             class="button secondary"
             type="button"
             x-on:click="loadNotifications()"
+            :disabled="isLoadingTenants || !selectedTenantId"
             x-text="actions.refresh"
           ></button>
         </div>
+        <p
+          class="text-muted"
+          x-cloak
+          x-show="isLoadingTenants"
+          x-text="strings.tenantLoading"
+        ></p>
         <template x-if="errorMessage">
           <p class="notice" data-variant="error" x-text="errorMessage"></p>
         </template>

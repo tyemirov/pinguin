@@ -77,6 +77,7 @@ const NONCE_TTL_MS = 2 * 60 * 1000;
 function createDefaultState() {
   return {
     notifications: defaultNotifications(),
+    tenants: defaultTenants(),
     smtpIdentities: [],
     failList: false,
     failReschedule: false,
@@ -86,6 +87,13 @@ function createDefaultState() {
     failSMTPRotate: false,
     failSMTPDelete: false,
   };
+}
+
+function defaultTenants() {
+  return [
+    { id: 'tenant-devserver', displayName: 'Dev Server Tenant' },
+    { id: 'tenant-archive', displayName: 'Archive Tenant' },
+  ];
 }
 
 function defaultNotifications() {
@@ -117,6 +125,12 @@ function applyOverrides(payload) {
   } else {
     serverState.notifications = defaultNotifications();
   }
+  serverState.tenants = Array.isArray(payload.tenants) && payload.tenants.length > 0
+    ? payload.tenants.map((item) => ({
+        id: item.id || item.tenant_id || 'tenant-devserver',
+        displayName: item.displayName || item.display_name || item.id || 'Tenant',
+      }))
+    : defaultTenants();
   serverState.smtpIdentities = Array.isArray(payload.smtpIdentities)
     ? payload.smtpIdentities.map((item) => ({
         ...item,
@@ -183,6 +197,7 @@ function serveStatic(filePath, res) {
         '.html': 'text/html; charset=utf-8',
         '.js': 'text/javascript; charset=utf-8',
         '.css': 'text/css; charset=utf-8',
+        '.svg': 'image/svg+xml',
         '.json': 'application/json',
       }[ext] || 'application/octet-stream';
     res.writeHead(200, { 'Content-Type': contentType });
@@ -211,8 +226,18 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     const statuses = url.searchParams.getAll('status').filter(Boolean);
-    const filtered = filterNotifications(serverState.notifications, statuses);
+    const tenantId = url.searchParams.get('tenant_id') || '';
+    if (!tenantId.trim()) {
+      sendJson(res, 400, { error: 'tenant_id is required' });
+      return;
+    }
+    const filtered = filterNotifications(serverState.notifications, statuses, tenantId);
     sendJson(res, 200, { notifications: filtered });
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/tenants') {
+    sendJson(res, 200, { tenants: serverState.tenants });
     return;
   }
 
@@ -410,15 +435,19 @@ function purgeNonces() {
   }
 }
 
-function filterNotifications(source, statuses) {
+function filterNotifications(source, statuses, tenantId) {
   if (!Array.isArray(source) || source.length === 0) {
     return [];
   }
+  const normalizedTenantId = String(tenantId || '').trim();
+  const tenantFiltered = normalizedTenantId
+    ? source.filter((item) => item.tenant_id === normalizedTenantId)
+    : source;
   if (!statuses || statuses.length === 0) {
-    return source;
+    return tenantFiltered;
   }
   const wanted = new Set(statuses.map((value) => String(value).toLowerCase()));
-  return source.filter((item) => wanted.has(String(item.status).toLowerCase()));
+  return tenantFiltered.filter((item) => wanted.has(String(item.status).toLowerCase()));
 }
 
 function newSMTPIdentity(emailAddress) {

@@ -1,8 +1,9 @@
 // @ts-check
-import { STATUS_LABELS, STATUS_OPTIONS } from '../constants.js';
+import { RUNTIME_CONFIG, STATUS_LABELS, STATUS_OPTIONS } from '../constants.js';
 import { DOM_EVENTS, dispatchToast, listen } from '../core/events.js';
 
 /** @typedef {import('../types.d.js').NotificationItem} NotificationItem */
+/** @typedef {import('../types.d.js').TenantOption} TenantOption */
 
 const inputFormatter = {
   toControlValue(isoString) {
@@ -45,8 +46,11 @@ export function createNotificationsTable(options) {
     strings,
     actions,
     notifications: /** @type {NotificationItem[]} */ ([]),
+    tenants: /** @type {TenantOption[]} */ ([]),
+    selectedTenantId: '',
     statusFilter: 'all',
     isLoading: false,
+    isLoadingTenants: false,
     errorMessage: '',
     scheduleDialogVisible: false,
     scheduleForm: {
@@ -57,14 +61,16 @@ export function createNotificationsTable(options) {
     stopListening: null,
     STATUS_OPTIONS,
     init() {
+      this.selectedTenantId = initialTenantId();
       this.refreshIfAuthenticated();
       this.$watch(
         () => authStore().isAuthenticated,
         (isAuthenticated) => {
           if (isAuthenticated) {
-            this.loadNotifications();
+            this.loadTenants();
           } else {
             this.notifications = [];
+            this.tenants = [];
           }
         },
       );
@@ -78,11 +84,16 @@ export function createNotificationsTable(options) {
       if (!authStore().isAuthenticated) {
         return;
       }
+      if (!this.selectedTenantId) {
+        this.notifications = [];
+        this.errorMessage = this.strings.tenantRequired;
+        return;
+      }
       this.isLoading = true;
       this.errorMessage = '';
       try {
         const statuses = this.statusFilter === 'all' ? [] : [this.statusFilter];
-        this.notifications = await apiClient.listNotifications(statuses);
+        this.notifications = await apiClient.listNotifications(statuses, this.selectedTenantId);
       } catch (error) {
         this.errorMessage = this.strings.loadError;
         dispatchToast({ variant: 'error', message: this.errorMessage });
@@ -92,8 +103,31 @@ export function createNotificationsTable(options) {
     },
     async refreshIfAuthenticated() {
       if (authStore().isAuthenticated) {
-        await this.loadNotifications();
+        await this.loadTenants();
       }
+    },
+    async loadTenants() {
+      if (!authStore().isAuthenticated) {
+        return;
+      }
+      this.isLoadingTenants = true;
+      this.errorMessage = '';
+      try {
+        this.tenants = await apiClient.listTenants();
+        this.selectedTenantId = selectTenantId(this.selectedTenantId, this.tenants);
+        await this.loadNotifications();
+      } catch (error) {
+        this.tenants = [];
+        this.selectedTenantId = '';
+        this.notifications = [];
+        this.errorMessage = this.strings.tenantLoadError;
+        dispatchToast({ variant: 'error', message: this.errorMessage });
+      } finally {
+        this.isLoadingTenants = false;
+      }
+    },
+    async changeTenant() {
+      await this.loadNotifications();
     },
     formatStatus(status) {
       return STATUS_LABELS[status] || status;
@@ -178,4 +212,25 @@ export function createNotificationsTable(options) {
       }
     },
   };
+}
+
+function initialTenantId() {
+  const tenant = RUNTIME_CONFIG.tenant;
+  return tenant && typeof tenant.id === 'string' ? tenant.id.trim() : '';
+}
+
+/**
+ * @param {string} selectedTenantId
+ * @param {TenantOption[]} tenants
+ */
+function selectTenantId(selectedTenantId, tenants) {
+  const normalizedSelected = typeof selectedTenantId === 'string' ? selectedTenantId.trim() : '';
+  if (normalizedSelected && tenants.some((tenant) => tenant.id === normalizedSelected)) {
+    return normalizedSelected;
+  }
+  const runtimeTenantId = initialTenantId();
+  if (runtimeTenantId && tenants.some((tenant) => tenant.id === runtimeTenantId)) {
+    return runtimeTenantId;
+  }
+  return tenants.length > 0 ? tenants[0].id : '';
 }
