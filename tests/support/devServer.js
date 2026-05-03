@@ -8,7 +8,17 @@ const crypto = require('crypto');
 const HOST = '127.0.0.1';
 const PORT = process.env.PLAYWRIGHT_PORT ? Number(process.env.PLAYWRIGHT_PORT) : 4174;
 const WEB_ROOT = path.resolve(__dirname, '../../web');
-const TAUTH_HELPER_PATH = path.resolve(__dirname, './stubs/auth-client.js');
+const AUTH_COOKIE = 'pinguin_playwright_auth';
+const PLAYWRIGHT_AVATAR_URL =
+  'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"%3E%3Crect width="40" height="40" rx="20" fill="%232563eb"/%3E%3Ctext x="20" y="25" text-anchor="middle" font-size="16" font-family="Arial" fill="white"%3EP%3C/text%3E%3C/svg%3E';
+const AUTH_PROFILE = {
+  user_email: 'playwright@example.com',
+  user_display_name: 'Playwright User',
+  user_avatar_url: PLAYWRIGHT_AVATAR_URL,
+  display: 'Playwright User',
+  given_name: 'Playwright',
+  avatar_url: PLAYWRIGHT_AVATAR_URL,
+};
 const runtimeConfig = {
   tauthBaseUrl:
     process.env.PLAYWRIGHT_TAUTH_BASE_URL || `http://${HOST}:${PORT}`,
@@ -146,6 +156,19 @@ function sendJson(res, statusCode, body, headers = {}) {
     ...headers,
   });
   res.end(body ? JSON.stringify(body) : undefined);
+}
+
+function hasAuthCookie(req) {
+  const cookieHeader = req.headers.cookie || '';
+  return cookieHeader.split(';').some((entry) => entry.trim() === `${AUTH_COOKIE}=1`);
+}
+
+function authCookieHeader() {
+  return `${AUTH_COOKIE}=1; Path=/; SameSite=Lax`;
+}
+
+function expiredAuthCookieHeader() {
+  return `${AUTH_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
 }
 
 function serveStatic(filePath, res) {
@@ -300,6 +323,15 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (url.pathname === '/me' && req.method === 'GET') {
+    if (!hasAuthCookie(req)) {
+      sendJson(res, 401, { error: 'session_required' });
+      return;
+    }
+    sendJson(res, 200, AUTH_PROFILE);
+    return;
+  }
+
   if (url.pathname === '/auth/google' && req.method === 'POST') {
     const body = await readJson(req);
     if (!body || typeof body.google_id_token !== 'string' || !body.google_id_token.trim()) {
@@ -311,22 +343,21 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 401, { error: 'invalid_nonce' });
       return;
     }
-    sendJson(res, 200, {
-      profile: {
-        user_email: 'playwright@example.com',
-        user_display_name: 'Playwright User',
-      },
-    });
+    sendJson(res, 200, AUTH_PROFILE, { 'Set-Cookie': authCookieHeader() });
     return;
   }
 
   if (url.pathname === '/auth/refresh' && req.method === 'POST') {
+    if (!hasAuthCookie(req)) {
+      sendJson(res, 401, { error: 'session_required' });
+      return;
+    }
     sendJson(res, 204, null);
     return;
   }
 
-  if (url.pathname === '/tauth.js') {
-    serveStatic(TAUTH_HELPER_PATH, res);
+  if (url.pathname === '/auth/logout' && req.method === 'POST') {
+    sendJson(res, 204, null, { 'Set-Cookie': expiredAuthCookieHeader() });
     return;
   }
 

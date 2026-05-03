@@ -23,8 +23,8 @@ const PLACEHOLDER_GOOGLE_IDS = new Set([
 const deriveDefaultApiBaseUrl = () => {
   try {
     const { protocol, hostname, port } = window.location;
-    if (port === "4173") {
-      return `${protocol}//${hostname}:8080/api`;
+    if (port === "8080") {
+      return `${protocol}//${hostname}:8081/api`;
     }
     if (port && port.length > 0) {
       return `${protocol}//${hostname}:${port}/api`;
@@ -70,13 +70,10 @@ const tenantDisplayName =
 export const STRINGS = Object.freeze({
   appName: tenantDisplayName,
   landing: {
-    eyebrow: "Trusted delivery infrastructure",
-    headline: "Deliver email and SMS notifications with confidence",
+    eyebrow: "Pinguin workspace",
+    headline: "Notification delivery without the guesswork",
     subheadline:
-      "Preview schedules, manage queued notifications, and keep deliveries on track from a single workspace.",
-    ctaPrimary: "Enter workspace",
-    ctaSecondary: "Explore platform",
-    securityCopy: "Your session stays protected by HttpOnly cookies.",
+      "Sign in to review queued, sent, cancelled, and retrying messages from one operational dashboard.",
   },
   dashboard: {
     title: "Scheduled notifications",

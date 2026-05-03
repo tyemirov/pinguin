@@ -1,26 +1,26 @@
 # Architecture
 
 ## System Overview
-- Pinguin exposes two surfaces inside a single Go process: a gRPC notification service (port `50051`) and a Gin HTTP server (default `:8080`) that serves the REST-ish `/api` endpoints plus `/runtime-config`; static assets are hosted separately (GitHub Pages at `https://pinguin.mprlab.com` in production, or the ghttp container on `4173` for local dev).
+- Pinguin exposes two surfaces inside a single Go process: a gRPC notification service (port `50051`) and a Gin HTTP server that serves the REST-ish `/api` endpoints plus `/runtime-config`; static assets are hosted separately (GitHub Pages at `https://pinguin.mprlab.com` in production, or the ghttp container on `8080` for local dev).
 - When enabled, the same process also exposes SMTP submission listeners for Gmail-compatible Send-As clients. The SMTP listener authenticates exact sender identities, accepts raw RFC 5322 messages, and relays them through the tenant’s existing upstream SMTP profile.
 - Docker Compose runs Pinguin alongside two support services:
-  - **TAuth** (`:8081`) issues Google-backed sessions and signs `app_session` cookies.
-  - **ghttp** (`:4173`) serves the static front-end when developing locally. Browsers always load the UI from this host; API traffic targets the Pinguin HTTP server.
+  - **ghttp** (`:8080`) serves the static front-end when developing locally. Browsers always load the UI from this host; API traffic targets the Pinguin HTTP server on `:8081`.
+  - **TAuth** (`:8082`) issues Google-backed sessions and signs `app_session` cookies.
 - All persistent data lives in SQLite (`DATABASE_PATH` inside the container path `/app/data/pinguin.db`). Docker manages the volume so restarts keep the state.
 
 ## Authentication & Session Flow
 - The browser UI never talks directly to Pinguin for authentication. Instead, the `<mpr-header>` component (from `mpr-ui`) coordinates Google Identity Services (GIS) and TAuth:
-  1. `web/js/bootstrap.js` fetches `/runtime-config` (from `pinguin-api.mprlab.com` when served from `.mprlab.com`) to learn the TAuth base URL, tenant id, and Google client id supplied by `server.tauth`.
-  2. `web/js/mpr-ui-init.js` registers `MPRUI.init`, which applies a declarative init object onto the DSL attributes for `<mpr-header>` / `<mpr-login-button>`.
-  3. `web/js/tauth-config-apply.js` builds the init object from runtime config (auth endpoints + tenant) and passes it to `MPRUI.init`; it also stamps `data-tauth-tenant-id` for the helper.
-  4. `web/js/tauth-helper.js` loads `tauthBaseUrl/tauth.js` and then injects the `mpr-ui` bundle so the helper is ready before the header boots; the app listens for `mpr-ui:auth:*` events.
-  4. Successful sign-in yields an HttpOnly `app_session` cookie issued by TAuth; Pinguin validates that cookie on every `/api` request.
+  1. `<mpr-header data-config-url="/config-ui.yaml">` declares the shared shell contract in `index.html` and `dashboard.html`.
+  2. `mpr-ui-config.js` reads `web/config-ui.yaml`, selects the entry for the current page origin, applies Google/TAuth attributes to the header, and loads the `mpr-ui@latest` bundle from the bundle marker.
+  3. `web/js/bootstrap.js` still fetches `/runtime-config` (from `pinguin-api.mprlab.com` when served from `.mprlab.com`) for the Pinguin API URL and tenant display metadata used by the app surface.
+  4. `web/js/app.js` listens for `mpr-ui:auth:*` events to sync profile state, drive redirects, and guard the dashboard.
+  5. Successful sign-in yields an HttpOnly `app_session` cookie issued by TAuth; Pinguin validates that cookie on every `/api` request.
 - The Go backend needs the shared signing key (`TAUTH_SIGNING_KEY`) and optional cookie name override. TAuth issuer is handled inside the session validator; Pinguin should not configure it directly.
 - Pinguin assumes any valid TAuth session is an admin; configure access control in `configs/config.tauth.yml`.
 
 ## HTTP Server Responsibilities
 - Routes defined in `internal/httpapi`:
-- `GET /runtime-config` → `{ apiBaseUrl, tauthBaseUrl, tauthTenantId, googleClientId, tenant }`. The UI uses this to derive absolute API URLs and configure `mpr-ui` auth attributes.
+- `GET /runtime-config` → `{ apiBaseUrl, tauthBaseUrl, tauthTenantId, googleClientId, tenant }`. The UI uses this to derive absolute API URLs and tenant display metadata; `mpr-ui` auth attributes come from `web/config-ui.yaml`.
   - `GET /healthz` – unauthenticated health probe.
   - Authenticated `/api/notifications` list/reschedule/cancel handlers guarded by the session middleware.
   - Authenticated `/api/smtp-identities` list/create/rotate/delete handlers for exact SMTP submission sender credentials.
@@ -31,7 +31,7 @@
 
 ## Front-End Structure
 - `/web` hosts an Alpine.js-based bundle that follows `AGENTS.md` guidelines:
-  - `index.html` (landing page) and `dashboard.html` both import `mpr-ui` CSS via CDN, load the TAuth config + helper scripts (which inject the `mpr-ui` bundle), and bootstrap via `/js/app.js`.
+  - `index.html` (landing page) and `dashboard.html` both import `mpr-ui` CSS via CDN, load `/config-ui.yaml` through `mpr-ui-config.js`, and bootstrap via `/js/app.js`.
 - `/js/bootstrap.js` centralizes runtime config resolution, GIS script injection, and lazy loading of the main app module.
   - Alpine factories live under `/js/ui/` and `/js/core/`. Notifications table logic dispatches DOM-scoped events for toast updates and API refreshes.
 - GitHub Pages publishes `/web` through legacy branch-root publishing: `make publish` stages the static assets and pushes them to the `gh-pages` branch root. `web/CNAME` maps the site to `pinguin.mprlab.com`, and `web/.nojekyll` keeps GitHub Pages from running Jekyll over the static bundle.
@@ -47,18 +47,18 @@
 - Go unit/integration tests cover configuration loading, HTTP handlers, domain scheduling logic, and the SQLite-backed scheduler worker (`go test ./...` gate).
 
 ## Configuration Files
-- `.env.pinguin.example`: defines the environment variables referenced by `configs/config.yml` (database path, master encryption key, tenant bootstrap values, shared TAuth signing key, optional Twilio credentials).
+- `configs/.env.pinguin.example`: defines the environment variables referenced by `configs/config.pinguin.yml` (database path, master encryption key, tenant bootstrap values, shared TAuth signing key, optional Twilio credentials).
 - `smtpSubmission` controls optional STARTTLS/implicit-TLS SMTP submission listeners. `tenants[].senderDomains` gates which exact sender identities dashboard users may create.
-- `.env.tauth.example`: holds the Google OAuth client ID, signing key, cookie domain, and CORS allowlist (must include the UI origin such as `http://localhost:4173` or `https://pinguin.mprlab.com`, plus `https://accounts.google.com`, so GIS nonce exchanges succeed).
-- Front-end TAuth details (base URL + Google client ID + tenant id) live under `server.tauth` in `configs/config.yml` and are exposed via `/runtime-config`; `web/js/tauth-config.js` only sets the runtime-config URL for hosted deployments.
+- `configs/.env.tauth.example`: holds the Google OAuth client ID, signing key, cookie domain, and CORS allowlist (must include the UI origin such as `http://localhost:8080` or `https://pinguin.mprlab.com`, plus `https://accounts.google.com`, so GIS nonce exchanges succeed).
+- Front-end TAuth details for `mpr-ui` live in `web/config-ui.yaml`; Pinguin runtime metadata still comes from `/runtime-config`.
 
 ## Docker Compose Topology
 - `docker-compose.yaml` starts three services sharing the same network:
   - `pinguin`: Go server with `/web` bind-mounted for local iteration.
   - `tauth`: official `ghcr.io/tyemirov/tauth` image configured via `.env.tauth`.
-  - `ghttp`: lightweight Python HTTP server serving `/web` on host port 4173.
+  - `ghttp`: lightweight HTTP server serving `/web` on host port 8080.
 - Ensure `.env.pinguin` and `.env.tauth` reuse the **same** signing key so cookie verification succeeds.
 - Workflow:
   1. Copy the example env files and populate secrets.
-  2. `docker compose up --build`.
-  3. Visit `http://localhost:4173` for the landing page; the UI talks to `http://localhost:8080/api`, and TAuth runs on `http://localhost:8081`.
+  2. `make up`.
+  3. Visit `http://localhost:8080` for the landing page; the UI talks to `http://localhost:8081/api`, and TAuth runs on `http://localhost:8082`.

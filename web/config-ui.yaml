@@ -1,0 +1,61 @@
+environments:
+  - description: Production
+    origins:
+      - https://pinguin.mprlab.com
+    auth:
+      tauthUrl: https://tauth-api.mprlab.com
+      googleClientId: 460317815414-f7ps2orvfcract2og605r2ghljbts4qv.apps.googleusercontent.com
+      tenantId: pinguin
+      loginPath: /auth/google
+      logoutPath: /auth/logout
+      noncePath: /auth/nonce
+    authButton:
+      text: continue_with
+      size: large
+      theme: outline
+      shape: pill
+  - description: Local Docker
+    origins:
+      - http://localhost:8080
+    auth:
+      tauthUrl: http://localhost:8082
+      googleClientId: 460317815414-f7ps2orvfcract2og605r2ghljbts4qv.apps.googleusercontent.com
+      tenantId: pinguin
+      loginPath: /auth/google
+      logoutPath: /auth/logout
+      noncePath: /auth/nonce
+    authButton:
+      text: continue_with
+      size: large
+      theme: outline
+      shape: pill
+  - description: Playwright
+    origins:
+      - http://127.0.0.1:4174
+    auth:
+      tauthUrl: http://127.0.0.1:4174
+      googleClientId: playwright-client
+      tenantId: tauth-devserver
+      loginPath: /auth/google
+      logoutPath: /auth/logout
+      noncePath: /auth/nonce
+    authButton:
+      text: continue_with
+      size: large
+      theme: outline
+      shape: pill
+  - description: Playwright localhost
+    origins:
+      - http://localhost:4174
+    auth:
+      tauthUrl: http://localhost:4174
+      googleClientId: playwright-client
+      tenantId: tauth-devserver
+      loginPath: /auth/google
+      logoutPath: /auth/logout
+      noncePath: /auth/nonce
+    authButton:
+      text: continue_with
+      size: large
+      theme: outline
+      shape: pill

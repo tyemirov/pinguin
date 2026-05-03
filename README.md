@@ -123,7 +123,7 @@ tenants:
 
 Export the referenced environment variables before starting the server. The default config references or sets the following keys:
 
-- See `.env.pinguin.example` for a full list of variables to seed your environment when using the default config template.
+- See `configs/.env.pinguin.example` for a full list of variables to seed your environment when using the default config template.
 - **PINGUIN_CONFIG_PATH:**  
   Optional override for the service configuration file (defaults to `configs/config.yml`).
 
@@ -143,25 +143,25 @@ Export the referenced environment variables before starting the server. The defa
 - **OPERATION_TIMEOUT_SEC:**  
   Maximum number of seconds to wait for a send attempt before treating it as failed. Set this to `30` seconds unless your provider requires longer operations.
 - **HTTP_LISTEN_ADDR:**  
-  Address used by the Gin HTTP server that exposes runtime config and the JSON `/api/*` endpoints (e.g. `:8080`). The HTTP stack no longer serves static assets directly—use a separate host such as GitHub Pages at `https://pinguin.mprlab.com` (production) or ghttp (`http://localhost:4173`) for `/web`.
+  Address used by the Gin HTTP server that exposes runtime config and the JSON `/api/*` endpoints (local Compose uses `:8081`). The HTTP stack no longer serves static assets directly—use a separate host such as GitHub Pages at `https://pinguin.mprlab.com` (production) or ghttp (`http://localhost:8080`) for `/web`.
 - **HTTP_ALLOWED_ORIGINS:**  
-  Comma-separated list of origins allowed to call the JSON API when running cross-origin (leave empty to allow same-origin only). The docker-compose workflow serves the UI via ghttp on `http://localhost:4173`, and production uses `https://pinguin.mprlab.com`, so include the relevant UI origins here.
+  Comma-separated list of origins allowed to call the JSON API when running cross-origin (leave empty to allow same-origin only). The docker-compose workflow serves the UI via ghttp on `http://localhost:8080`, and production uses `https://pinguin.mprlab.com`, so include the relevant UI origins here.
 - **DISABLE_WEB_INTERFACE:**  
   Set to `true`, `1`, `yes`, or `on` (or start the server with `--disable-web-interface`) to skip booting the Gin/HTML stack entirely. When disabled, Pinguin runs the gRPC service only and skips Google Identity/TAuth/HTTP configuration checks, which is useful for backends that never expose the dashboard.
 - **MASTER_ENCRYPTION_KEY:**  
   Hex-encoded 32-byte key used to encrypt SMTP/Twilio secrets stored in the tenant config. Generate one with `openssl rand -hex 32` and keep it secret.
 - **TAuth CORS allowlist:**  
-  When you serve the UI from a different origin (ghttp on `http://localhost:4173`, GitHub Pages on `https://pinguin.mprlab.com`, a CDN, etc.), TAuth must enable CORS and allow both the UI origin *and* `https://accounts.google.com`. Google Identity Services performs the nonce/login exchange from the `accounts.google.com` origin, so omitting it results in `auth.login.nonce_mismatch` errors. The sample `.env.tauth.example` includes `APP_CORS_ALLOWED_ORIGINS="http://localhost:4173,https://accounts.google.com"` for this reason—extend the list with any additional UI origins you deploy.
+  When you serve the UI from a different origin (ghttp on `http://localhost:8080`, GitHub Pages on `https://pinguin.mprlab.com`, a CDN, etc.), TAuth must enable CORS and allow both the UI origin *and* `https://accounts.google.com`. Google Identity Services performs the nonce/login exchange from the `accounts.google.com` origin, so omitting it results in `auth.login.nonce_mismatch` errors. The sample `configs/.env.tauth.example` sets `TAUTH_CORS_ORIGIN_1="${TAUTH_TENANT_ORIGIN_PINGUIN}"` and `TAUTH_CORS_EXCEPTION_1="https://accounts.google.com"` for this reason.
 - **Front-end TAuth config:**  
-  The web bundle reads TAuth settings from `/runtime-config`, which is populated from `server.tauth` in `configs/config.yml`. `web/js/tauth-config.js` now only supplies the runtime-config URL + API base for hosted deployments; `/js/tauth-helper.js` loads `tauth.js` before the `mpr-ui` bundle runs, and `<mpr-header>` consumes the resolved TAuth attributes.
+  The shared shell reads browser auth settings from `web/config-ui.yaml`, which is selected by the current page origin and consumed by `mpr-ui-config.js`. `web/js/tauth-config.js` only supplies the runtime-config URL + API base for hosted deployments; it does not configure `<mpr-header>` auth.
 - **Web authentication flow:**  
-  The browser UI relies on `<mpr-header>` and `<mpr-login-button>` from the `mpr-ui` package. Both components expect a Google OAuth Web Client ID (`google-site-id`) plus the TAuth endpoints noted above; `tauth.js` is loaded ahead of `mpr-ui` via `/js/tauth-helper.js`, and the app listens for `mpr-ui:auth:*` events to drive redirects and profile state. See `docs/mprui-integration-guide.md` for the header wiring details and `docs/tauth-usage.md` for the TAuth helper/nonce contract.
+  The browser UI relies on `<mpr-header>` from the `mpr-ui` package. `mpr-ui-config.js` applies `/config-ui.yaml` to the header, loads the `mpr-ui@latest` bundle, and the app listens for `mpr-ui:auth:*` events to drive redirects and profile state. Do not add a direct `tauth.js` script path for this integration.
 - **Google Identity Client ID:**  
-  The Google OAuth client ID is defined under `server.tauth.googleClientId` and is supplied to the UI through `/runtime-config`.
+  The Google OAuth client ID for shared-shell auth is defined in `web/config-ui.yaml`; the backend runtime config still exposes the same value for app metadata.
 - **TAUTH_SIGNING_KEY:**  
   HS256 signing key shared with the TAuth deployment. Used to validate the `app_session` cookie.
 - **TAUTH_BASE_URL:**  
-  Base URL for the TAuth deployment (used by the UI to load `tauth.js` and call `/auth/*`).
+  Base URL for the TAuth deployment (used by the browser-facing `config-ui.yaml` contract and by backend runtime config).
 - **TAUTH_TENANT_ID:**  
   Tenant identifier configured in TAuth (sent in `X-TAuth-Tenant`).
 - **TAUTH_GOOGLE_CLIENT_ID:**  
@@ -335,12 +335,12 @@ export $(cat .env | xargs)
 The repository ships with `docker-compose.yaml` to run Pinguin alongside TAuth and a static file server (ghttp). The stack exposes:
 
 - gRPC: `localhost:50051`
-- HTTP API: `http://localhost:8080`
+- UI: `http://localhost:8080`
+- HTTP API: `http://localhost:8081`
 - SMTP submission: `localhost:1587` → container `:587`, `localhost:1465` → container `:465`
-- TAuth: `http://localhost:8081`
-- Front-end bundle via ghttp: `http://localhost:4173`
+- TAuth: `http://localhost:8082`
 
-Open `http://localhost:4173` in your browser for the landing/dashboard UI. The HTTP API on `http://localhost:8080` remains available for CLI/grpcurl clients, but browsers should never point to that port directly.
+Open `http://localhost:8080` in your browser for the landing/dashboard UI. The HTTP API on `http://localhost:8081` remains available for CLI/grpcurl clients, but browsers should use the UI port.
 
 The Pinguin Docker image declares `/web` as a separate volume for the UI bundle; the compose workflow mounts the `pinguin-web` volume (bound to `./web`) at `/web` for you.
 
@@ -360,37 +360,36 @@ make publish
 1. Copy the sample environment files and update the placeholders. **Use the same signing key in both files** so TAuth and Pinguin agree on JWT validation.
 
    ```bash
-   cp .env.pinguin.example .env.pinguin
-   cp .env.tauth.example .env.tauth
-   ${EDITOR:-vi} .env.pinguin .env.tauth
+   cp configs/.env.pinguin.example configs/.env.pinguin
+   cp configs/.env.tauth.example configs/.env.tauth
+   ${EDITOR:-vi} configs/.env.pinguin configs/.env.tauth
    ```
 
-  - `.env.pinguin` configures the environment variables referenced by `configs/config.yml` (including `PINGUIN_CONFIG_PATH=/configs/config.yml`, tenant domains, SMTP/Twilio credentials, and `TAUTH_SIGNING_KEY`).
-   - If `GET http://localhost:8080/runtime-config` returns `{"error":"tenant_not_found"}`, the tenant domain env vars (`TENANT_LOCAL_DOMAIN_PRIMARY` / `TENANT_LOCAL_DOMAIN_SECONDARY`) are missing/mismatched.
-   - `.env.tauth` configures the Google OAuth client, signing key, and CORS settings for local development. In both compose profiles, these values are expanded into `configs/tauth/config.yaml` and passed to TAuth via `TAUTH_CONFIG_FILE`.
-   - Keep `TAUTH_SIGNING_KEY` (Pinguin) identical to `APP_JWT_SIGNING_KEY` (TAuth) so cookie validation succeeds.
-   - `configs/config.yml` controls the Pinguin web allowlist (`web.allowedOrigins`); keep `http://localhost:4173` there when using ghttp.
-   - Match the same UI origin in `.env.tauth` via `APP_CORS_ALLOWED_ORIGINS` so the auth endpoints accept browser requests (use `http://localhost:4173` for the default setup, plus `https://accounts.google.com`).
+  - `configs/.env.pinguin` configures the environment variables referenced by `configs/config.pinguin.yml` (including `PINGUIN_CONFIG_PATH=/config/config.yml`, tenant domains, SMTP/Twilio credentials, and `TAUTH_SIGNING_KEY`).
+   - If `GET http://localhost:8081/runtime-config` returns `{"error":"tenant_not_found"}`, the tenant domain env vars (`TENANT_LOCAL_DOMAIN_PRIMARY` / `TENANT_LOCAL_DOMAIN_SECONDARY`) are missing/mismatched.
+   - `configs/.env.tauth` configures the Google OAuth client, signing key, and CORS settings for local development. Compose expands these values into `configs/config.tauth.yml` and passes that file to TAuth via `TAUTH_CONFIG_FILE`.
+   - Keep `TAUTH_SIGNING_KEY` (Pinguin) identical to `TAUTH_TENANT_JWT_SIGNING_KEY_PINGUIN` (TAuth) so cookie validation succeeds.
+   - `configs/config.pinguin.yml` controls the Pinguin web allowlist (`web.allowedOrigins`); keep `http://localhost:8080` there when using ghttp.
+   - Match the same UI origin in `configs/.env.tauth` via `TAUTH_TENANT_ORIGIN_PINGUIN`/`TAUTH_CORS_ORIGIN_1` so the auth endpoints accept browser requests.
 
 2. Build and start the stack (this creates the named Docker volume `pinguin-data` automatically). Use the `dev` profile to build Pinguin from the local Dockerfile:
 
    ```bash
-   docker compose --profile dev up --build
+   make up
    ```
 
    To pull the prebuilt Pinguin + ghttp images from GHCR, start the `docker` profile (TAuth still builds locally to load `configs/tauth/config.yaml`):
 
    ```bash
-   docker compose --profile docker up -d
+   COMPOSE_PROFILE=docker make up
    ```
 
-   Pinguin writes its SQLite file to the Docker-managed volume, validates browser sessions issued by the colocated TAuth instance, and exposes the HTTP API on port 8080. The static landing/dashboard bundle is served by ghttp on `http://localhost:4173`.
-   Note: TAuth currently builds from a pinned upstream commit in both profiles so it can consume `configs/tauth/config.yaml`.
+   Pinguin writes its SQLite file to the Docker-managed volume, validates browser sessions issued by the colocated TAuth instance, and exposes the HTTP API on port 8081. The static landing/dashboard bundle is served by ghttp on `http://localhost:8080`.
 
 3. Stop the stack when you are finished (use the same profile you started):
 
    ```bash
-   docker compose --profile dev down
+   make down
    ```
 
 To inspect the persisted database file later, run:
@@ -404,29 +403,29 @@ docker volume inspect pinguin-data
 1. Copy the sample env files (one command per file so you can edit secrets immediately):
 
    ```bash
-   timeout -k 5s -s SIGKILL 5s cp .env.pinguin.example .env.pinguin
-   timeout -k 5s -s SIGKILL 5s cp .env.tauth.example .env.tauth
+   timeout -k 5s -s SIGKILL 5s cp configs/.env.pinguin.example configs/.env.pinguin
+   timeout -k 5s -s SIGKILL 5s cp configs/.env.tauth.example configs/.env.tauth
    ```
 
-2. Edit `.env.pinguin` (SMTP/Twilio + shared signing key) and `.env.tauth` (Google client ID + the same signing key + `APP_CORS_ALLOWED_ORIGINS=["http://localhost:4173"]`).
+2. Edit `configs/.env.pinguin` (SMTP/Twilio + shared signing key) and `configs/.env.tauth` (Google client ID + the same signing key + `TAUTH_TENANT_ORIGIN_PINGUIN=http://localhost:8080`).
 3. Start the orchestration with the `dev` profile (which builds Pinguin locally):
 
    ```bash
-   docker compose --profile dev up --build
+   make up
    ```
 
-   To run the prebuilt Pinguin + ghttp containers from GHCR instead, run `docker compose --profile docker up -d` (TAuth still builds locally).
+   To run the prebuilt Pinguin + ghttp containers from GHCR instead, run `COMPOSE_PROFILE=docker make up` (TAuth still builds locally).
 
    - gRPC server → `localhost:50051`
-   - HTTP API → `http://localhost:8080`
-   - TAuth → `http://localhost:8081`
-   - UI (landing + dashboard) → `http://localhost:4173`
+   - UI (landing + dashboard) → `http://localhost:8080`
+   - HTTP API → `http://localhost:8081`
+   - TAuth → `http://localhost:8082`
 
-4. Visit `http://localhost:4173` in your browser, sign in via Google/TAuth, and interact with the dashboard (the UI automatically talks to the API on port 8080).
+4. Visit `http://localhost:8080` in your browser, sign in via Google/TAuth, and interact with the dashboard (the UI automatically talks to the API on port 8081).
 5. When finished, stop the stack (match the profile you started):
 
    ```bash
-   docker compose --profile dev down
+   make down
    ```
 
 ---
@@ -597,7 +596,7 @@ grpcurl -d '{
 
 The gRPC server now ships with a sibling Gin HTTP server that:
 
-- Serves runtime configuration (`/runtime-config`) and the REST-ish JSON `/api/*` endpoints the browser UI consumes. Static assets under `/web` are hosted separately (GitHub Pages at `https://pinguin.mprlab.com` in production; ghttp on `http://localhost:4173` during local dev).
+- Serves runtime configuration (`/runtime-config`) and the REST-ish JSON `/api/*` endpoints the browser UI consumes. Static assets under `/web` are hosted separately (GitHub Pages at `https://pinguin.mprlab.com` in production; ghttp on `http://localhost:8080` during local dev).
 - Validates every authenticated request by reading the TAuth `app_session` cookie (via `TAUTH_*` settings and the shared signing key).
 - Exposes JSON endpoints for the UI:
   - `GET /api/notifications?status=queued&status=errored` – lists stored notifications filtered by status.
@@ -609,11 +608,11 @@ All endpoints emit structured JSON errors (`401` for auth failures, `400` for in
 
 ### Browser UI (beta)
 
-- Static assets live under `/web` and are served by GitHub Pages at `https://pinguin.mprlab.com` in production, with ghttp on `http://localhost:4173` for local development (the Go HTTP server keeps `/api`/`/runtime-config` in this arrangement). `index.html` provides the marketing + Google Sign-In landing experience, and `dashboard.html` renders the authenticated notifications table.
+- Static assets live under `/web` and are served by GitHub Pages at `https://pinguin.mprlab.com` in production, with ghttp on `http://localhost:8080` for local development (the Go HTTP server keeps `/api`/`/runtime-config` on `http://localhost:8081` in this arrangement). `index.html` provides the marketing + Google Sign-In landing experience, and `dashboard.html` renders the authenticated notifications table.
 - The UI follows AGENTS.md: Alpine components per section, mpr-ui header/footer, DOM-scoped events (`notifications:*`) for toasts + table refreshes, and all strings centralized in `js/constants.js`.
-- `js/app.js` bootstraps Alpine, registers the UI components, and reacts to `mpr-ui:auth:*` events to sync profile state and guard routes. The header handles auth via `tauth.js` (loaded ahead of `mpr-ui` by `js/tauth-helper.js`), and components talk to `/api/notifications` via the shared `apiClient`.
+- `js/app.js` bootstraps Alpine, registers the UI components, and reacts to `mpr-ui:auth:*` events to sync profile state and guard routes. The header handles auth through `/config-ui.yaml` plus `mpr-ui-config.js`, and components talk to `/api/notifications` via the shared `apiClient`.
 - Authentication state is broadcast across tabs via TAuth’s `BroadcastChannel("auth")`, so signing out in one tab logs out the others automatically.
-- Handy for local testing: start the Compose stack so ghttp (`http://localhost:4173`) serves the `/web` bundle while the Go server handles `/api`/`/runtime-config`, then visit the ghttp host to exercise the landing and dashboard flows without needing an external client.
+- Handy for local testing: start the Compose stack so ghttp (`http://localhost:8080`) serves the `/web` bundle while the Go server handles `/api`/`/runtime-config` on `http://localhost:8081`, then visit the ghttp host to exercise the landing and dashboard flows without needing an external client.
 
 ### Front-End Tests (Playwright)
 

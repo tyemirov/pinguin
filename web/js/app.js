@@ -7,6 +7,8 @@ import { createSMTPIdentities } from './ui/smtpIdentities.js';
 import { dispatchRefresh } from './core/events.js';
 import { createToastCenter } from './ui/toastCenter.js';
 
+const AUTH_STATUS_TIMEOUT_MS = 12000;
+
 window.Alpine = Alpine;
 
 const apiClient = createApiClient(RUNTIME_CONFIG.apiBaseUrl);
@@ -150,33 +152,6 @@ function createAppShell(bridge) {
     refreshNotifications() {
       dispatchRefresh();
     },
-    async handleLogout() {
-      await bridge.logout();
-      const pageId = document.body.dataset.page || 'landing';
-      if (pageId === 'dashboard') {
-        this.redirectToLanding();
-      } else {
-        window.location.reload();
-      }
-    },
-    getAvatarUrl() {
-      const profile = Alpine.store('auth').profile;
-      if (!profile || typeof profile !== 'object') {
-        return null;
-      }
-      const url =
-        (typeof profile.avatar_url === 'string' && profile.avatar_url.trim()) ||
-        (typeof profile.user_avatar_url === 'string' &&
-          profile.user_avatar_url.trim());
-      return url || null;
-    },
-    profileMenuStyle() {
-      const avatarUrl = this.getAvatarUrl();
-      if (!avatarUrl) {
-        return {};
-      }
-      return { '--profile-avatar-url': `url("${avatarUrl}")` };
-    },
     redirectToLanding() {
       if (this.hasRedirected) {
         return;
@@ -238,12 +213,20 @@ function bootstrapPage(controller) {
     handleUnauthenticated();
   };
 
-  if (window.__PINGUIN_AUTH_READY__) {
-    startSession();
-    return;
+  waitForMprUiOrchestration().then(startSession).catch(handleAuthError);
+}
+
+function waitForMprUiOrchestration() {
+  const namespace = window.MPRUI;
+  if (namespace && typeof namespace.whenAutoOrchestrationReady === 'function') {
+    return namespace.whenAutoOrchestrationReady();
   }
-  window.addEventListener('pinguin:auth-ready', startSession, { once: true });
-  window.addEventListener('pinguin:auth-error', handleAuthError, { once: true });
+  if (document.readyState !== 'loading') {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    document.addEventListener('DOMContentLoaded', resolve, { once: true });
+  });
 }
 
 function normalizeProfile(profile) {
@@ -311,7 +294,7 @@ function createSessionBridge() {
       if (!hasResolved) {
         setStatus('error');
       }
-    }, 12000);
+    }, AUTH_STATUS_TIMEOUT_MS);
   };
 
   const sessionChannel =
@@ -351,9 +334,21 @@ function createSessionBridge() {
     invokeCallback('onUnauthenticated');
   };
 
+  const handleHeaderStatusChange = (event) => {
+    const status = event?.detail?.status || '';
+    if (status === 'bootstrapping' || status === 'authenticating') {
+      setStatus('hydrating');
+      return;
+    }
+    if (status === 'unauthenticated' && !hasResolved) {
+      handleHeaderUnauthenticated();
+    }
+  };
+
   if (typeof document !== 'undefined') {
     document.addEventListener('mpr-ui:auth:authenticated', handleHeaderAuthenticated);
     document.addEventListener('mpr-ui:auth:unauthenticated', handleHeaderUnauthenticated);
+    document.addEventListener('mpr-ui:auth:status-change', handleHeaderStatusChange);
     document.addEventListener('mpr-ui:auth:error', () => {
       if (!hasResolved) {
         setStatus('error');
@@ -388,21 +383,12 @@ function createSessionBridge() {
     }
     setStatus('hydrating');
     startStatusTimer();
-    if (typeof window.getCurrentUser !== 'function') {
-      fail();
-      throw new Error('auth.helper.missing');
+    if (typeof window.getCurrentUser === 'function') {
+      const seededProfile = window.getCurrentUser();
+      if (seededProfile) {
+        handleHeaderAuthenticated({ detail: { profile: seededProfile } });
+      }
     }
-    const seededProfile = window.getCurrentUser();
-    if (seededProfile) {
-      handleHeaderAuthenticated({ detail: { profile: seededProfile } });
-    }
-  }
-
-  async function logout() {
-    if (typeof window.logout === 'function') {
-      await window.logout();
-    }
-    applyProfile(null);
   }
 
   function fail() {
@@ -417,5 +403,5 @@ function createSessionBridge() {
     return () => statusListeners.delete(listener);
   }
 
-  return { start, logout, onStatusChange, fail };
+  return { start, onStatusChange, fail };
 }

@@ -2,8 +2,8 @@ import { expect, test } from '@playwright/test';
 import {
   completeHeaderLogin,
   configureRuntime,
+  expectSharedHeaderUserMenu,
   expectHeaderGoogleButton,
-  expectHeaderGoogleButtonTopRight,
   resetNotifications,
   stubExternalAssets,
 } from './utils';
@@ -15,15 +15,11 @@ test.describe('Landing page auth flow', () => {
     await configureRuntime(page, { authenticated: false });
   });
 
-  test('shows CTA and disables button during GIS prep', async ({ page }) => {
+  test('shows a focused sign-in page and login button', async ({ page }) => {
     await page.goto('/index.html');
-    await expect(page.getByTestId('landing-cta')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /notification delivery/i })).toBeVisible();
     await expectHeaderGoogleButton(page);
-  });
-
-  test('renders Google login button in top-right header slot', async ({ page }) => {
-    await page.goto('/index.html');
-    await expectHeaderGoogleButtonTopRight(page);
+    await expect(page.getByLabel('Notification workspace preview')).toBeVisible();
   });
 
   test('completes Google/TAuth handshake and redirects to dashboard', async ({ page }) => {
@@ -32,34 +28,35 @@ test.describe('Landing page auth flow', () => {
     await expect(page.getByTestId('notifications-table')).toBeVisible();
   });
 
-  test('shows avatar menu and hides header sign-out pill after login', async ({ page }) => {
+  test('starts login from the landing page header login button', async ({ page }) => {
     await page.goto('/index.html');
     await completeHeaderLogin(page);
-    const avatarTrigger = page
-      .getByTestId('profile-chip')
-      .locator('[data-mpr-settings="toggle"]');
-    await expect(avatarTrigger).toBeVisible();
+  });
+
+  test('shows the shared mpr-ui header user menu after login', async ({ page }) => {
+    await page.goto('/index.html');
+    await completeHeaderLogin(page);
+    await expectSharedHeaderUserMenu(page);
     await expect(
       page.locator('mpr-header [data-mpr-header="sign-out-button"]'),
     ).toBeHidden();
   });
 
-  test('mpr-header attributes mirror runtime TAuth base URL', async ({ page }) => {
+  test('mpr-header uses the config-ui auth contract', async ({ page }) => {
     await page.goto('/index.html');
-    const runtimeBase = await page.evaluate(() => (window as any).__PINGUIN_CONFIG__?.tauthBaseUrl || '');
-    const normalizedRuntimeBase = runtimeBase.replace(/\/$/, '');
-    if (normalizedRuntimeBase) {
-      await page.waitForFunction((expected) => {
-        const header = document.querySelector('mpr-header');
-        return header && header.getAttribute('tauth-url') === expected;
-      }, normalizedRuntimeBase);
-    }
-    const headerBase = (await page.locator('mpr-header').first().getAttribute('tauth-url')) || '';
-    if (normalizedRuntimeBase) {
-      expect(headerBase).toBe(normalizedRuntimeBase);
-    } else {
-      expect(headerBase).not.toBe('');
-    }
+    await expect(page.locator('mpr-header').first()).toHaveAttribute(
+      'data-config-url',
+      '/config-ui.yaml',
+    );
+    await expect(page.locator('script[data-mpr-ui-bundle-src]')).toHaveAttribute(
+      'data-mpr-ui-bundle-src',
+      /mpr-ui@latest\/mpr-ui\.js$/,
+    );
+    await expect(page.locator('script[src*="tauth.js"]')).toHaveCount(0);
+    await expect(page.locator('mpr-header').first()).toHaveAttribute(
+      'tauth-url',
+      'http://127.0.0.1:4174',
+    );
   });
 
   test('updates header brand label with tenant display name', async ({ page }) => {
@@ -88,7 +85,7 @@ test.describe('Landing page auth flow', () => {
       });
     });
 
-    test('applies runtime tenant display name and Google client ID', async ({ page }) => {
+    test('applies runtime tenant display name while auth stays config-ui owned', async ({ page }) => {
       await page.goto('/index.html');
       await page.waitForFunction((expected) => {
         const header = document.querySelector('mpr-header');
@@ -96,7 +93,7 @@ test.describe('Landing page auth flow', () => {
       }, 'Bravo Labs');
       await expect(
         page.locator('mpr-header').first(),
-      ).toHaveAttribute('google-site-id', 'bravo-google-client');
+      ).toHaveAttribute('google-site-id', 'playwright-client');
       const id = await page.evaluate(() => (window as any).__PINGUIN_CONFIG__?.tenant?.id || '');
       expect(id).toBe('tenant-bravo');
     });

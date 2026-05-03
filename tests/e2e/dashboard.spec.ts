@@ -4,7 +4,7 @@ import {
   resetNotifications,
   stubExternalAssets,
   expectToast,
-  expectHeaderGoogleButtonTopRight,
+  expectHeaderGoogleButton,
   loginAndVisitDashboard,
 } from './utils';
 
@@ -20,20 +20,21 @@ test.describe('Dashboard', () => {
     await configureRuntime(page, { authenticated: false });
     await page.goto('/dashboard.html');
     await expect(page).toHaveURL(LANDING_URL_PATTERN);
-    await expect(page.getByTestId('landing-cta')).toBeVisible();
+    await expectHeaderGoogleButton(page);
   });
 
-  test('shows a Google-powered login button in the header for guests', async ({ page }) => {
+  test('shows a Google-powered login button on the landing page for guests', async ({ page }) => {
     await configureRuntime(page, { authenticated: false });
     await page.goto('/dashboard.html');
     await expect(page).toHaveURL(LANDING_URL_PATTERN);
-    await expectHeaderGoogleButtonTopRight(page);
+    await expectHeaderGoogleButton(page);
   });
 
   test('redirects after BroadcastChannel logout', async ({ page }) => {
     await configureRuntime(page, { authenticated: true });
     await page.goto('/dashboard.html');
     await expect(page.getByTestId('notification-row')).toHaveCount(1);
+    await page.context().clearCookies();
     await page.evaluate(() => {
       const channel = new BroadcastChannel('auth');
       if (window.__mockAuth) {
@@ -44,7 +45,7 @@ test.describe('Dashboard', () => {
       channel.close();
     });
     await expect(page).toHaveURL(/\/index\.html$/);
-    await expect(page.getByTestId('landing-cta')).toBeVisible();
+    await expectHeaderGoogleButton(page);
   });
 
   test('filters notifications by status selection', async ({ page, request }) => {

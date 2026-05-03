@@ -1,12 +1,4 @@
 import { expect, Page } from '@playwright/test';
-import fs from 'node:fs';
-import path from 'node:path';
-
-const projectRoot = path.resolve(__dirname, '..', '..');
-const authClientStub = fs.readFileSync(
-  path.join(projectRoot, 'tests/support/stubs/auth-client.js'),
-  'utf-8',
-);
 
 type TenantConfig = {
   id: string;
@@ -23,8 +15,22 @@ type ConfigureRuntimeOptions = {
   };
 };
 
+const PLAYWRIGHT_AVATAR_URL =
+  'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"%3E%3Crect width="40" height="40" rx="20" fill="%232563eb"/%3E%3Ctext x="20" y="25" text-anchor="middle" font-size="16" font-family="Arial" fill="white"%3EP%3C/text%3E%3C/svg%3E';
+
 export async function configureRuntime(page: Page, options: ConfigureRuntimeOptions) {
   const baseUrl = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:4174';
+  await page.context().clearCookies();
+  if (options.authenticated) {
+    await page.context().addCookies([
+      {
+        name: 'pinguin_playwright_auth',
+        value: '1',
+        url: baseUrl,
+        sameSite: 'Lax',
+      },
+    ]);
+  }
   const tenant: TenantConfig = options.tenant || {
     id: 'tenant-playwright',
     displayName: 'Playwright Tenant',
@@ -37,12 +43,15 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
     ...(options.tauth || {}),
   };
   await page.addInitScript(
-    ({ authenticated }) => {
+    ({ authenticated, avatarUrl }) => {
       if (!window.name) {
         const defaultProfile = {
           user_email: 'playwright@example.com',
           user_display_name: 'Playwright User',
-          user_avatar_url: '',
+          user_avatar_url: avatarUrl,
+          display: 'Playwright User',
+          given_name: 'Playwright',
+          avatar_url: avatarUrl,
         };
         window.name = JSON.stringify({
           __mockAuth: {
@@ -52,10 +61,10 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
         });
       }
     },
-    { authenticated: options.authenticated },
+    { authenticated: options.authenticated, avatarUrl: PLAYWRIGHT_AVATAR_URL },
   );
   await page.addInitScript(
-    ({ authenticated, tenantPayload, tauthPayload }) => {
+    ({ authenticated, tenantPayload, tauthPayload, avatarUrl }) => {
       window.__PINGUIN_CONFIG__ = {
         apiBaseUrl: '/api',
         tauthBaseUrl: tauthPayload.baseUrl,
@@ -71,7 +80,10 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
       const defaultProfile = {
         user_email: 'playwright@example.com',
         user_display_name: 'Playwright User',
-        user_avatar_url: '',
+        user_avatar_url: avatarUrl,
+        display: 'Playwright User',
+        given_name: 'Playwright',
+        avatar_url: avatarUrl,
       };
       const storedState = (() => {
         try {
@@ -97,7 +109,12 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
       };
       window.__persistMockAuth();
     },
-    { authenticated: options.authenticated, tenantPayload: tenant, tauthPayload: tauthConfig },
+    {
+      authenticated: options.authenticated,
+      tenantPayload: tenant,
+      tauthPayload: tauthConfig,
+      avatarUrl: PLAYWRIGHT_AVATAR_URL,
+    },
   );
 }
 
@@ -116,7 +133,10 @@ export async function stubExternalAssets(page: Page) {
             window.__mockAuth.profile || {
               user_email: 'playwright@example.com',
               user_display_name: 'Playwright User',
-              user_avatar_url: '',
+              user_avatar_url: '${PLAYWRIGHT_AVATAR_URL}',
+              display: 'Playwright User',
+              given_name: 'Playwright',
+              avatar_url: '${PLAYWRIGHT_AVATAR_URL}',
             };
           window.__persistMockAuth && window.__persistMockAuth();
           this.callback(payload || { credential: 'playwright-token' });
@@ -172,9 +192,7 @@ export async function stubExternalAssets(page: Page) {
       body: googleStub,
     });
   });
-  await page.route('**/tauth.js', (route) =>
-    route.fulfill({ contentType: 'text/javascript', body: authClientStub }),
-  );
+  await page.route('**/tauth.js', (route) => route.abort('blockedbyclient'));
 }
 
 export async function resetNotifications(request: import('@playwright/test').APIRequestContext, overrides = {}) {
@@ -283,6 +301,34 @@ export async function expectHeaderGoogleButton(page: Page) {
   expect(metrics.label.toLowerCase()).toContain('sign');
 }
 
+export async function expectSharedHeaderUserMenu(page: Page) {
+  const legacyProfileChip = page.getByTestId('profile-chip');
+  await expect(legacyProfileChip).toHaveCount(0);
+
+  const header = page.locator('mpr-header').first();
+  await expect(header).toBeVisible();
+  const userMenu = header.locator('[data-mpr-header="user-menu"]');
+  await expect(userMenu).toHaveCount(1);
+  await expect(userMenu).toBeVisible();
+  await expect(userMenu).toHaveAttribute('data-mpr-user-status', 'authenticated');
+  await expect(userMenu.locator('[data-mpr-user="trigger"]')).toBeVisible();
+  await expect(userMenu.locator('[data-mpr-user="name"]')).toContainText('Playwright');
+  await expect(userMenu).toHaveAttribute('data-user-display', 'Playwright User');
+  await expect(userMenu.locator('[data-mpr-user="avatar"]')).toBeVisible();
+}
+
+export async function openSharedHeaderUserMenu(page: Page) {
+  await expectSharedHeaderUserMenu(page);
+  const userMenu = page
+    .locator('mpr-header')
+    .first()
+    .locator('[data-mpr-header="user-menu"]');
+  await userMenu.locator('[data-mpr-user="trigger"]').click();
+  await expect(userMenu).toHaveAttribute('data-mpr-user-open', 'true');
+  await expect(userMenu.locator('[data-mpr-user="menu"]')).toBeVisible();
+  return userMenu;
+}
+
 export async function expectHeaderGoogleButtonTopRight(page: Page) {
   await waitForHeaderLoginButton(page);
   const metrics = await getHeaderButtonMetrics(page);
@@ -320,6 +366,10 @@ export async function clickHeaderGoogleButton(page: Page) {
 export async function completeHeaderLogin(page: Page) {
   await expectHeaderGoogleButton(page);
   await clickHeaderGoogleButton(page);
+  await triggerGoogleCredentialAndWaitForDashboard(page);
+}
+
+export async function triggerGoogleCredentialAndWaitForDashboard(page: Page) {
   
   // Wait for the Google Identity stub to be initialized with a callback
   await page.waitForFunction(() => {

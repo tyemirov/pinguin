@@ -1,7 +1,7 @@
 // @ts-check
 
 const PRODUCTION_API_ORIGIN = 'https://pinguin-api.mprlab.com';
-const LOCAL_API_ORIGIN = 'http://localhost:8080';
+const LOCAL_API_ORIGIN = 'http://localhost:8081';
 const currentHostname = window.location.hostname || '';
 const isProductionHost = currentHostname.endsWith('.mprlab.com');
 const resolvedApiOrigin = isProductionHost ? PRODUCTION_API_ORIGIN : LOCAL_API_ORIGIN;

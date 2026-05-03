@@ -26,6 +26,8 @@ test-results/
 .env.*
 !.env.tauth.example
 !.env.pinguin.example
+!configs/.env.tauth.example
+!configs/.env.pinguin.example
 .idea/
 bin/
 tools/
@@ -33,6 +35,10 @@ tools/
 PLAN.md
 # Managed by gix gitignore workflow
 .env.*
+!.env.tauth.example
+!.env.pinguin.example
+!configs/.env.tauth.example
+!configs/.env.pinguin.example
 .DS_Store
 qodana.yaml
 

@@ -22,8 +22,8 @@ function deriveApiOriginFromConfig(config) {
     return '';
   }
   const { protocol, hostname, port } = window.location;
-  if (port === '4173') {
-    return `${protocol}//${hostname}:8080`;
+  if (port === '8080') {
+    return `${protocol}//${hostname}:8081`;
   }
   if (port && port.length > 0) {
     return `${protocol}//${hostname}:${port}`;

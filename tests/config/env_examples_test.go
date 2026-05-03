@@ -1,0 +1,60 @@
+package tests
+
+import (
+	"regexp"
+	"strings"
+	"testing"
+)
+
+func TestServiceEnvExamplesCoverConfigTemplates(t *testing.T) {
+	t.Helper()
+
+	requiredByExample := map[string][]string{
+		"configs/.env.pinguin.example": {
+			"configs/config.pinguin.yml",
+		},
+		"configs/.env.tauth.example": {
+			"configs/config.tauth.yml",
+		},
+	}
+
+	for examplePath, templatePaths := range requiredByExample {
+		exampleKeys := parseEnvExampleKeys(string(readRepoFile(t, examplePath)))
+		for _, templatePath := range templatePaths {
+			for _, requiredKey := range parseTemplateEnvKeys(string(readRepoFile(t, templatePath))) {
+				if !exampleKeys[requiredKey] {
+					t.Fatalf("%s does not define %s required by %s", examplePath, requiredKey, templatePath)
+				}
+			}
+		}
+	}
+}
+
+func parseEnvExampleKeys(contents string) map[string]bool {
+	keys := make(map[string]bool)
+	for _, line := range strings.Split(contents, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		key, _, found := strings.Cut(trimmed, "=")
+		if found {
+			keys[strings.TrimSpace(key)] = true
+		}
+	}
+	return keys
+}
+
+func parseTemplateEnvKeys(contents string) []string {
+	matches := regexp.MustCompile(`\$\{([A-Z0-9_]+)\}`).FindAllStringSubmatch(contents, -1)
+	keys := make([]string, 0, len(matches))
+	seen := make(map[string]bool)
+	for _, match := range matches {
+		key := match[1]
+		if !seen[key] {
+			seen[key] = true
+			keys = append(keys, key)
+		}
+	}
+	return keys
+}

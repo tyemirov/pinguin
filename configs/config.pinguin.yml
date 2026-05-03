@@ -23,7 +23,9 @@ tenants:
       - ${TENANT_LOCAL_DOMAIN_PRIMARY}
       - ${TENANT_LOCAL_DOMAIN_SECONDARY}
     senderDomains:
-      - ${TENANT_LOCAL_SENDER_DOMAIN}
+      - ${TENANT_LOCAL_SENDER_DOMAIN_1}
+      - ${TENANT_LOCAL_SENDER_DOMAIN_2}
+      - ${TENANT_LOCAL_SENDER_DOMAIN_3}
     emailProfile:
       host: ${TENANT_LOCAL_SMTP_HOST}
       port: ${TENANT_LOCAL_SMTP_PORT}
