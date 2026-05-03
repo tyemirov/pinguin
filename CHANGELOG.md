@@ -20,6 +20,30 @@
 ### Docs
 - Update README and architecture notes to describe `config-ui.yaml` as the browser auth source of truth.
 
+## [v0.3.1] - 2026-05-03
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Replace the old landing page with a focused Pinguin sign-in screen and notification queue preview.
+- Add `make up` and `make down` wrappers for local Docker Compose orchestration.
+- Add split `configs/.env.pinguin.example` and `configs/.env.tauth.example` files to reflect current Compose topology.
+- Update README and architecture to use `config-ui.yaml` as the browser auth source of truth.
+
+### Bug Fixes 🐛
+- Restore production login by migrating frontend auth to `mpr-ui` and removing direct `tauth.js` loading.
+- Align local Docker origins: UI on `http://localhost:8080`, API on `http://localhost:8081`, and TAuth on `http://localhost:8082`.
+- Remove duplicate landing-page auth controller to avoid multiple Google Identity initializations.
+- Remove Pinguin's duplicate account chip in the authenticated header to use the shared `mpr-ui` user menu.
+
+### Testing 🧪
+- Add browser tests covering landing header login path and `mpr-ui@latest` config contract.
+- Update profile-menu tests to assert shared `mpr-user` header contract instead of removed local settings menu.
+
+### Docs 📚
+- Document updated architecture and README for new auth flow using `config-ui.yaml` and updated Docker Compose setup.
+
 ## [v0.3.0] - 2026-05-02
 
 ### Features ✨
