@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" data-mpr-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pinguin Dashboard</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.css"
+    />
+    <link rel="stylesheet" href="/assets/css/base.css" />
+    <script defer src="/js/tauth-config.js"></script>
+    <script defer src="/js/mpr-ui-auth-cache.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui-config.js"></script>
+    <script
+      id="mpr-ui-bundle"
+      type="application/json"
+      data-mpr-ui-bundle-src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js"
+    ></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+  </head>
+  <body
+    data-page="dashboard"
+    x-data="appShell()"
+    class="theme-light"
+  >
+    <mpr-header
+      id="pinguin-dashboard-header"
+      data-config-url="/config-ui.yaml"
+      brand-label="Pinguin"
+      brand-href="/"
+      nav-links='[{ "label": "Docs", "href": "https://github.com/tyemirov/pinguin" }]'
+    >
+    </mpr-header>
+    <main class="anchor-section">
+      <header class="dashboard-header">
+        <div>
+          <h1 x-text="strings.title"></h1>
+          <p x-text="strings.subtitle"></p>
+        </div>
+        <div class="filters">
+          <button
+            class="button secondary"
+            type="button"
+            x-on:click="refreshNotifications()"
+            x-text="actions.refresh"
+          ></button>
+        </div>
+      </header>
+      <section
+        class="panel"
+        x-data="notificationsTable()"
+        data-testid="notifications-table"
+      >
+        <div class="filters" style="margin-bottom: 1rem">
+          <label style="flex: 1; min-width: 200px">
+            <span>Filter by status</span>
+            <select x-model="statusFilter" x-on:change="loadNotifications()">
+              <template x-for="option in STATUS_OPTIONS" :key="option.value">
+                <option :value="option.value" x-text="option.label"></option>
+              </template>
+            </select>
+          </label>
+          <button
+            class="button secondary"
+            type="button"
+            x-on:click="loadNotifications()"
+            x-text="actions.refresh"
+          ></button>
+        </div>
+        <template x-if="errorMessage">
+          <p class="notice" data-variant="error" x-text="errorMessage"></p>
+        </template>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Notification</th>
+                <th>Tenant</th>
+                <th>Status</th>
+                <th>Recipient</th>
+                <th>Scheduled for</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-if="isLoading">
+                <tr>
+                  <td colspan="6" class="empty-state">
+                    Loading notifications…
+                  </td>
+                </tr>
+              </template>
+              <template x-if="!isLoading && notifications.length === 0">
+                <tr>
+                  <td
+                    colspan="6"
+                    class="empty-state"
+                    x-text="strings.emptyState"
+                  ></td>
+                </tr>
+              </template>
+              <template x-for="item in notifications" :key="item.id">
+                <tr data-testid="notification-row">
+                  <td>
+                    <strong
+                      x-text="item.subject || 'Untitled notification'"
+                    ></strong>
+                    <p class="text-muted">
+                      Created
+                      <span x-text="formatTimestamp(item.createdAt)"></span>
+                    </p>
+                  </td>
+                  <td x-text="item.tenantId || '—'"></td>
+                  <td>
+                    <span
+                      class="status-badge"
+                      :data-variant="item.status"
+                      x-text="formatStatus(item.status)"
+                    ></span>
+                  </td>
+                  <td>
+                    <span x-text="item.recipient"></span>
+                  </td>
+                  <td x-text="formatTimestamp(item.scheduledFor)"></td>
+                  <td style="min-width: 220px">
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap">
+                      <button
+                        class="button secondary"
+                        type="button"
+                        x-on:click="openScheduleDialog(item)"
+                        :disabled="item.status !== 'queued'"
+                        x-text="actions.reschedule"
+                      ></button>
+                      <button
+                        class="button danger"
+                        type="button"
+                        x-on:click="cancelNotification(item)"
+                        :disabled="item.status !== 'queued'"
+                        x-text="actions.cancel"
+                      ></button>
+                    </div>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <dialog class="dialog" x-ref="scheduleDialog">
+          <form class="dialog__body" x-on:submit.prevent="submitSchedule">
+            <div>
+              <h3 x-text="strings.scheduleDialogTitle"></h3>
+              <p
+                class="text-muted"
+                x-text="strings.scheduleDialogDescription"
+              ></p>
+            </div>
+            <label>
+              <span>Delivery time</span>
+              <input
+                type="datetime-local"
+                x-model="scheduleForm.scheduledTime"
+                required
+              />
+            </label>
+            <div style="display: flex; gap: 0.75rem; justify-content: flex-end">
+              <button
+                class="button secondary"
+                type="button"
+                x-on:click="closeScheduleDialog()"
+                x-text="actions.close"
+              ></button>
+              <button
+                class="button primary"
+                type="submit"
+                x-text="actions.saveChanges"
+              ></button>
+            </div>
+          </form>
+        </dialog>
+      </section>
+      <section
+        class="panel"
+        x-data="smtpIdentities()"
+        data-testid="smtp-identities"
+      >
+        <header class="panel-header">
+          <div>
+            <h2 class="section-title" x-text="strings.title"></h2>
+            <p class="text-muted" x-text="strings.subtitle"></p>
+          </div>
+        </header>
+        <form class="identity-form" x-on:submit.prevent="createIdentity">
+          <label>
+            <span x-text="strings.emailLabel"></span>
+            <input
+              type="email"
+              x-model="emailAddress"
+              :placeholder="strings.emailPlaceholder"
+              autocomplete="email"
+              required
+            />
+          </label>
+          <button
+            class="button primary"
+            type="submit"
+            :disabled="isSubmitting"
+            x-text="actions.create"
+          ></button>
+        </form>
+        <template x-if="errorMessage">
+          <p class="notice" data-variant="error" x-text="errorMessage"></p>
+        </template>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th x-text="strings.emailLabel"></th>
+                <th x-text="strings.usernameLabel"></th>
+                <th x-text="strings.lastUsedLabel"></th>
+                <th x-text="strings.actionColumn"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-if="isLoading">
+                <tr>
+                  <td colspan="4" class="empty-state" x-text="strings.loadingState"></td>
+                </tr>
+              </template>
+              <template x-if="!isLoading && identities.length === 0">
+                <tr>
+                  <td colspan="4" class="empty-state" x-text="strings.emptyState"></td>
+                </tr>
+              </template>
+              <template x-for="identity in identities" :key="identity.id">
+                <tr data-testid="smtp-identity-row">
+                  <td>
+                    <strong x-text="identity.emailAddress"></strong>
+                  </td>
+                  <td x-text="identity.username"></td>
+                  <td x-text="formatTimestamp(identity.lastUsedAt)"></td>
+                  <td style="min-width: 180px">
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap">
+                      <button
+                        class="button secondary"
+                        type="button"
+                        x-on:click="rotateIdentity(identity)"
+                        :disabled="isSubmitting"
+                        x-text="actions.rotate"
+                      ></button>
+                      <button
+                        class="button danger"
+                        type="button"
+                        x-on:click="deleteIdentity(identity)"
+                        :disabled="isSubmitting"
+                        x-text="actions.delete"
+                      ></button>
+                    </div>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <dialog class="dialog" x-ref="credentialsDialog">
+          <form class="dialog__body" method="dialog">
+            <div>
+              <h3 x-text="strings.credentialsTitle"></h3>
+              <p class="text-muted" x-text="strings.credentialsDescription"></p>
+            </div>
+            <template x-if="credentials">
+              <div class="credentials-grid" data-testid="smtp-credentials">
+                <label>
+                  <span x-text="strings.hostLabel"></span>
+                  <input type="text" readonly :value="credentials.smtpSettings.host" />
+                </label>
+                <label>
+                  <span x-text="strings.portLabel"></span>
+                  <input type="text" readonly :value="credentials.smtpSettings.port" />
+                </label>
+                <label>
+                  <span x-text="strings.securityLabel"></span>
+                  <input type="text" readonly :value="credentials.smtpSettings.securityMode" />
+                </label>
+                <label>
+                  <span x-text="strings.usernameLabel"></span>
+                  <input type="text" readonly :value="credentials.username" />
+                </label>
+                <label class="credentials-grid__full">
+                  <span x-text="strings.passwordLabel"></span>
+                  <input type="text" readonly :value="credentials.password" />
+                </label>
+              </div>
+            </template>
+            <div style="display: flex; gap: 0.75rem; justify-content: flex-end">
+              <button
+                class="button primary"
+                type="button"
+                x-on:click="closeCredentialsDialog()"
+                x-text="actions.close"
+              ></button>
+            </div>
+          </form>
+        </dialog>
+      </section>
+    </main>
+    <div
+      class="toast-center"
+      x-data="toastCenter()"
+      x-init="init()"
+      aria-live="polite"
+    >
+      <template x-for="toast in toasts" :key="toast.id">
+        <button
+          type="button"
+          class="toast"
+          :data-variant="toast.variant"
+          x-on:click="dismissToast(toast.id)"
+          x-text="toast.message"
+        ></button>
+      </template>
+    </div>
+    <script type="module" src="/js/bootstrap.js"></script>
+    <mpr-footer
+      id="dashboard-footer"
+      prefix-text="Pinguin Notification Service"
+      privacy-link-label="Privacy &amp; Terms"
+      privacy-modal-content="
+        <h1>Privacy Policy — Pinguin</h1>
+        <p>Pinguin stores the notification drafts you create, recipient details, and delivery metadata solely to run the scheduling workspace.</p>
+        <p>Authentication happens through Google Sign-In; we issue HttpOnly session cookies and never store your password.</p>
+        <p>We do not sell or share notification content with third parties, and you may remove queued items from the dashboard at any time.</p>
+      "
+      links-collection='{"style":"drop-up","text":"Explore","links":[{ "label": "Repository", "url": "https://github.com/tyemirov/pinguin" },{ "label": "mpr-ui docs", "url": "https://github.com/MarcoPoloResearchLab/mpr-ui" }]}'
+      theme-switcher="toggle"
+      theme-config='{"attribute":"data-theme","targets":["body"],"modes":[{"value":"light","attributeValue":"light","classList":["theme-light"]},{"value":"dark","attributeValue":"dark","classList":["theme-dark"]}]}'
+    ></mpr-footer>
+  </body>
+</html>
