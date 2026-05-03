@@ -12,7 +12,7 @@ Read @AGENTS.md, @ARCHITECTURE.md, @README.md, @issues.md/POLICY.md, @issues.md/
 
 ## Improvements (202–299)
 
-- [x] [PG-339] Restore Go statement coverage to 100% on a stacked branch without adding test-aware production paths. Resolved with production dependency seams for external boundaries, branch-complete backend/CLI coverage, and `go test ./... -coverprofile=coverage.out -covermode=count` reporting 100.0% total statements.
+- [x] [PG-339] Restore Go statement coverage to 100% on a stacked branch without adding test-aware production paths. Resolved with production dependency seams for external boundaries, branch-complete backend/CLI coverage, `go test ./... -coverprofile=coverage.out -covermode=count` reporting 100.0% total statements, and a `make ci` coverage gate that fails unless total Go statement coverage remains 100.0%.
 - [x] [PG-331] Add a declarative mpr-ui init object for TAuth DSL wiring and route runtime config through `MPRUI.init`; `make ci` passes.
 - [x] [PG-329] Move TAuth config to server scope, add global view default for web UI, and gate access by allowed user list. Resolved with server.tauth config, global/tenant view scope handling, and updated UI/auth flows; `make ci` passes.
 - [x] [PG-329] Follow-up: remove Pinguin allowed-user gating; TAuth now owns user access control via `configs/config.tauth.yml`.

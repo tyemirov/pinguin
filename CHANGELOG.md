@@ -25,6 +25,7 @@
 - Add browser coverage for the landing header login path and for the `mpr-ui@latest` config contract.
 - Update profile-menu browser coverage to assert the shared `mpr-user` header contract instead of the removed local settings menu.
 - Restore Go statement coverage to 100.0% across all covered packages.
+- Add a `make ci` coverage gate that fails unless total Go statement coverage remains at 100.0%.
 
 ### Docs
 - Update README and architecture notes to describe `config-ui.yaml` as the browser auth source of truth.
