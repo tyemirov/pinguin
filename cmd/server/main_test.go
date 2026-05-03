@@ -270,7 +270,6 @@ func newTestTenantRepository(testHandle *testing.T, tenantID string) *tenant.Rep
 	if err := database.AutoMigrate(
 		&tenant.Tenant{},
 		&tenant.TenantDomain{},
-		&tenant.SenderDomain{},
 		&tenant.EmailProfile{},
 		&tenant.SMSProfile{},
 	); err != nil {

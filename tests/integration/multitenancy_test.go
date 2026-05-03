@@ -224,7 +224,7 @@ func setupTestDB(t *testing.T) (*gorm.DB, *tenant.SecretKeeper) {
 		t.Fatalf("gorm.Open failed: %v", err)
 	}
 
-	err = db.AutoMigrate(&model.Notification{}, &model.NotificationAttachment{}, &tenant.Tenant{}, &tenant.TenantDomain{}, &tenant.SenderDomain{}, &tenant.EmailProfile{}, &tenant.SMSProfile{})
+	err = db.AutoMigrate(&model.Notification{}, &model.NotificationAttachment{}, &tenant.Tenant{}, &tenant.TenantDomain{}, &tenant.EmailProfile{}, &tenant.SMSProfile{})
 	if err != nil {
 		t.Fatalf("AutoMigrate failed: %v", err)
 	}

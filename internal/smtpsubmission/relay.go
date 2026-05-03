@@ -7,42 +7,37 @@ import (
 	"log/slog"
 	"net/textproto"
 	"strconv"
-	"sync"
 
 	"github.com/tyemirov/pinguin/internal/config"
 	"github.com/tyemirov/pinguin/internal/service"
-	"github.com/tyemirov/pinguin/internal/tenant"
 )
 
-// UpstreamRelay relays submitted messages through tenant email credentials.
+// UpstreamRelay relays submitted messages through the configured SMTP submission provider.
 type UpstreamRelay struct {
-	tenantRepository *tenant.Repository
-	logger           *slog.Logger
-	config           config.Config
-	senderMutex      sync.RWMutex
-	senders          map[string]*service.SMTPEmailSender
+	logger *slog.Logger
+	sender *service.SMTPEmailSender
 }
 
-// NewUpstreamRelay constructs a tenant-aware raw SMTP relay.
-func NewUpstreamRelay(tenantRepository *tenant.Repository, logger *slog.Logger, cfg config.Config) *UpstreamRelay {
+// NewUpstreamRelay constructs a raw SMTP relay for the independent submission feature.
+func NewUpstreamRelay(logger *slog.Logger, cfg config.Config) *UpstreamRelay {
+	relayProfile := cfg.SMTPSubmission.Relay
 	return &UpstreamRelay{
-		tenantRepository: tenantRepository,
-		logger:           logger,
-		config:           cfg,
-		senders:          make(map[string]*service.SMTPEmailSender),
+		logger: logger,
+		sender: service.NewSMTPEmailSender(service.SMTPConfig{
+			Host:     relayProfile.Host,
+			Port:     strconv.Itoa(relayProfile.Port),
+			Username: relayProfile.Username,
+			Password: relayProfile.Password,
+			Timeouts: cfg,
+		}, logger),
 	}
 }
 
-// Relay forwards a validated raw message through the tenant upstream provider.
+// Relay forwards a validated raw message through the configured upstream provider.
 func (relay *UpstreamRelay) Relay(ctx context.Context, message RawMessage) error {
-	runtimeConfig, resolveErr := relay.tenantRepository.ResolveByID(ctx, message.TenantID)
-	if resolveErr != nil {
-		return fmt.Errorf("%w: resolve tenant: %v", ErrRelayTemporary, resolveErr)
-	}
-	sender := relay.senderForTenant(runtimeConfig)
-	sendErr := sender.SendRawEmail(ctx, message.From.String(), message.RecipientStrings(), message.Data)
+	sendErr := relay.sender.SendRawEmail(ctx, message.From.String(), message.RecipientStrings(), message.Data)
 	if sendErr != nil {
-		relay.logger.Error("smtp_submission_upstream_failed", "tenant_id", message.TenantID, "identity_id", message.IdentityID, "error", sendErr)
+		relay.logger.Error("smtp_submission_upstream_failed", "identity_id", message.IdentityID, "error", sendErr)
 		return upstreamRelayError(sendErr)
 	}
 	return nil
@@ -61,28 +56,4 @@ func isPermanentSMTPError(err error) bool {
 		return false
 	}
 	return smtpError.Code >= 500 && smtpError.Code < 600
-}
-
-func (relay *UpstreamRelay) senderForTenant(runtimeConfig tenant.RuntimeConfig) *service.SMTPEmailSender {
-	relay.senderMutex.RLock()
-	cachedSender := relay.senders[runtimeConfig.Tenant.ID]
-	relay.senderMutex.RUnlock()
-	if cachedSender != nil {
-		return cachedSender
-	}
-	relay.senderMutex.Lock()
-	defer relay.senderMutex.Unlock()
-	if existingSender := relay.senders[runtimeConfig.Tenant.ID]; existingSender != nil {
-		return existingSender
-	}
-	sender := service.NewSMTPEmailSender(service.SMTPConfig{
-		Host:        runtimeConfig.Email.Host,
-		Port:        strconv.Itoa(runtimeConfig.Email.Port),
-		Username:    runtimeConfig.Email.Username,
-		Password:    runtimeConfig.Email.Password,
-		FromAddress: runtimeConfig.Email.FromAddress,
-		Timeouts:    relay.config,
-	}, relay.logger)
-	relay.senders[runtimeConfig.Tenant.ID] = sender
-	return sender
 }

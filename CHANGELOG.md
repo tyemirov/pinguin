@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Features
+- Decouple authenticated SMTP submission from notification tenants by giving it its own sender-domain allowlist, identity credentials, and upstream relay profile.
+
 ### Bug Fixes
 - Restore production login rendering by moving the frontend onto the `mpr-ui` `/config-ui.yaml` orchestration contract and removing the direct `tauth.js` loader.
 - Align the local Docker browser origin with the configured Google OAuth client by moving the UI to `http://localhost:8080`, the API to `http://localhost:8081`, and TAuth to `http://localhost:8082`.

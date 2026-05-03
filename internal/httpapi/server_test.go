@@ -205,6 +205,19 @@ func TestSMTPIdentityRejectsOutsideSenderDomain(t *testing.T) {
 	}
 }
 
+func TestSMTPIdentityRoutesBypassTenantLookup(t *testing.T) {
+	server, _ := newTestHTTPServerWithSMTPIdentities(t)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/smtp-identities", nil)
+	request.Host = "unknown.example.com"
+	server.httpServer.Handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200 for tenant-independent SMTP identities, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestHealthzBypassesTenantLookup(t *testing.T) {
 	t.Helper()
 	repo := newTestTenantRepository(t)
@@ -630,9 +643,9 @@ func newTestHTTPServerWithSMTPIdentities(t *testing.T) (*Server, *smtpidentity.R
 	if err := dbInstance.AutoMigrate(
 		&tenant.Tenant{},
 		&tenant.TenantDomain{},
-		&tenant.SenderDomain{},
 		&tenant.EmailProfile{},
 		&tenant.SMSProfile{},
+		&smtpidentity.SenderDomain{},
 		&smtpidentity.Identity{},
 	); err != nil {
 		t.Fatalf("migrate sqlite: %v", err)
@@ -640,12 +653,11 @@ func newTestHTTPServerWithSMTPIdentities(t *testing.T) (*Server, *smtpidentity.R
 	cfg := tenant.BootstrapConfig{
 		Tenants: []tenant.BootstrapTenant{
 			{
-				ID:            "tenant-test",
-				DisplayName:   "Test Tenant",
-				SupportEmail:  "support@example.com",
-				Enabled:       ptrBool(true),
-				Domains:       []string{"example.com"},
-				SenderDomains: []string{"example.com"},
+				ID:           "tenant-test",
+				DisplayName:  "Test Tenant",
+				SupportEmail: "support@example.com",
+				Enabled:      ptrBool(true),
+				Domains:      []string{"example.com"},
 				EmailProfile: tenant.BootstrapEmailProfile{
 					Host:        "smtp.example.com",
 					Port:        587,
@@ -658,6 +670,9 @@ func newTestHTTPServerWithSMTPIdentities(t *testing.T) (*Server, *smtpidentity.R
 	}
 	if err := tenant.Bootstrap(context.Background(), dbInstance, keeper, cfg); err != nil {
 		t.Fatalf("bootstrap tenants: %v", err)
+	}
+	if err := smtpidentity.ReplaceSenderDomains(context.Background(), dbInstance, []string{"example.com"}); err != nil {
+		t.Fatalf("bootstrap smtp sender domains: %v", err)
 	}
 	tenantRepo := tenant.NewRepository(dbInstance, keeper)
 	identityRepo, err := smtpidentity.NewRepository(dbInstance, secretKey)
@@ -760,7 +775,6 @@ func bootstrapTenantRepository(t *testing.T, cfg tenant.BootstrapConfig) *tenant
 	if err := dbInstance.AutoMigrate(
 		&tenant.Tenant{},
 		&tenant.TenantDomain{},
-		&tenant.SenderDomain{},
 		&tenant.EmailProfile{},
 		&tenant.SMSProfile{},
 	); err != nil {

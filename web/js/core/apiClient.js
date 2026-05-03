@@ -44,7 +44,6 @@ function mapSMTPIdentity(raw) {
   }
   return {
     id: raw.id,
-    tenantId: raw.tenant_id,
     emailAddress: raw.email_address,
     username: raw.username,
     status: raw.status,

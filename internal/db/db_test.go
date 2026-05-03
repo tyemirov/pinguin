@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/tyemirov/pinguin/internal/model"
+	"github.com/tyemirov/pinguin/internal/smtpidentity"
 	"github.com/tyemirov/pinguin/internal/tenant"
 )
 
@@ -55,6 +56,8 @@ func TestInitDBCreatesSchema(t *testing.T) {
 		&tenant.TenantDomain{},
 		&tenant.EmailProfile{},
 		&tenant.SMSProfile{},
+		&smtpidentity.SenderDomain{},
+		&smtpidentity.Identity{},
 	}
 	for _, table := range tables {
 		if exists := database.Migrator().HasTable(table); !exists {

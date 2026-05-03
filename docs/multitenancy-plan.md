@@ -4,6 +4,7 @@
 - Allow a single Pinguin deployment to serve multiple logical customers (“tenants”) who access the system through their own domains / subdomains.
 - Isolate data, delivery credentials, and admin access between tenants while reusing the same process, scheduler, and queues.
 - Support both programmatic gRPC clients and the existing web dashboard/HTTP API without breaking current single-tenant users.
+- Keep authenticated SMTP submission independent from notification tenants; sender identities, allowed sender domains, and the upstream relay profile live under `smtpSubmission`.
 
 ## High-Level Tenancy Model
 1. **Tenant definition**  

@@ -22,7 +22,6 @@
 /**
  * @typedef {Object} SMTPIdentity
  * @property {string} id
- * @property {string} tenantId
  * @property {string} emailAddress
  * @property {string} username
  * @property {string} status

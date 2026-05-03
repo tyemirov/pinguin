@@ -20,7 +20,7 @@ type OneTimeCredentials struct {
 	Password     string         `json:"password"`
 }
 
-// Service exposes tenant-scoped SMTP identity workflows.
+// Service exposes SMTP identity workflows.
 type Service struct {
 	repository *Repository
 	settings   PublicSettings
@@ -34,14 +34,14 @@ func NewService(repository *Repository, settings PublicSettings) *Service {
 	}
 }
 
-// List returns active tenant identities.
-func (service *Service) List(ctx context.Context, tenantID string) ([]PublicIdentity, error) {
-	return service.repository.List(ctx, tenantID)
+// List returns active identities.
+func (service *Service) List(ctx context.Context) ([]PublicIdentity, error) {
+	return service.repository.List(ctx)
 }
 
 // Create provisions a new exact sender identity.
-func (service *Service) Create(ctx context.Context, tenantID string, address Address) (OneTimeCredentials, error) {
-	identity, password, err := service.repository.Create(ctx, tenantID, address)
+func (service *Service) Create(ctx context.Context, address Address) (OneTimeCredentials, error) {
+	identity, password, err := service.repository.Create(ctx, address)
 	if err != nil {
 		return OneTimeCredentials{}, err
 	}
@@ -49,8 +49,8 @@ func (service *Service) Create(ctx context.Context, tenantID string, address Add
 }
 
 // Rotate replaces credentials for an existing identity.
-func (service *Service) Rotate(ctx context.Context, tenantID string, identityID string) (OneTimeCredentials, error) {
-	identity, password, err := service.repository.Rotate(ctx, tenantID, strings.TrimSpace(identityID))
+func (service *Service) Rotate(ctx context.Context, identityID string) (OneTimeCredentials, error) {
+	identity, password, err := service.repository.Rotate(ctx, strings.TrimSpace(identityID))
 	if err != nil {
 		return OneTimeCredentials{}, err
 	}
@@ -58,8 +58,8 @@ func (service *Service) Rotate(ctx context.Context, tenantID string, identityID 
 }
 
 // Delete disables an identity.
-func (service *Service) Delete(ctx context.Context, tenantID string, identityID string) error {
-	return service.repository.Delete(ctx, tenantID, strings.TrimSpace(identityID))
+func (service *Service) Delete(ctx context.Context, identityID string) error {
+	return service.repository.Delete(ctx, strings.TrimSpace(identityID))
 }
 
 func (service *Service) credentials(identity PublicIdentity, password string) OneTimeCredentials {

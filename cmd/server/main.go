@@ -426,6 +426,12 @@ func main() {
 		mainLogger.Error("Failed to initialize SMTP identity repository", "error", smtpIdentityRepoErr)
 		os.Exit(1)
 	}
+	if len(configuration.SMTPSubmission.SenderDomains) > 0 {
+		if senderDomainErr := smtpidentity.ReplaceSenderDomains(context.Background(), databaseInstance, configuration.SMTPSubmission.SenderDomains); senderDomainErr != nil {
+			mainLogger.Error("Failed to configure SMTP submission sender domains", "error", senderDomainErr)
+			os.Exit(1)
+		}
+	}
 	smtpIdentityService := smtpidentity.NewService(smtpIdentityRepo, smtpPublicSettings(configuration.SMTPSubmission))
 
 	notificationSvc := service.NewNotificationService(databaseInstance, mainLogger, configuration, tenantRepo)
@@ -454,7 +460,7 @@ func main() {
 			MaxRecipients:     configuration.SMTPSubmission.MaxRecipients,
 			AllowInsecureAuth: configuration.SMTPSubmission.AllowInsecureAuth,
 			Authenticator:     smtpIdentityRepo,
-			Relay:             smtpsubmission.NewUpstreamRelay(tenantRepo, mainLogger, configuration),
+			Relay:             smtpsubmission.NewUpstreamRelay(mainLogger, configuration),
 			Logger:            mainLogger,
 		})
 		if smtpServerErr != nil {

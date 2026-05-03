@@ -221,7 +221,6 @@ func TestSMTPSubmissionStartReturnsFatalListenerError(t *testing.T) {
 			password: "smtp-pass",
 			identity: smtpidentity.AuthenticatedIdentity{
 				ID:           "identity-1",
-				TenantID:     "tenant-1",
 				EmailAddress: address,
 				Username:     "smtp-user",
 			},
@@ -286,7 +285,6 @@ func newSMTPServerFixture(t *testing.T, allowInsecureAuth bool, relayError error
 			password: "smtp-pass",
 			identity: smtpidentity.AuthenticatedIdentity{
 				ID:           "identity-1",
-				TenantID:     "tenant-1",
 				EmailAddress: address,
 				Username:     "smtp-user",
 			},

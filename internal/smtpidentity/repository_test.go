@@ -9,16 +9,15 @@ import (
 	"time"
 
 	"github.com/glebarez/sqlite"
-	"github.com/tyemirov/pinguin/internal/tenant"
 	"gorm.io/gorm"
 )
 
 func TestRepositoryCreateAuthenticateRotateAndDelete(t *testing.T) {
 	repository, database := newIdentityRepository(t)
-	seedSenderDomain(t, database, "tenant-one", "example.com")
+	seedSenderDomain(t, database, "example.com")
 	address := mustAddress(t, "alice@example.com")
 
-	identity, password, createErr := repository.Create(context.Background(), "tenant-one", address)
+	identity, password, createErr := repository.Create(context.Background(), address)
 	if createErr != nil {
 		t.Fatalf("create identity: %v", createErr)
 	}
@@ -37,7 +36,7 @@ func TestRepositoryCreateAuthenticateRotateAndDelete(t *testing.T) {
 		t.Fatalf("unexpected authenticated sender %s", authenticated.EmailAddress.String())
 	}
 
-	rotatedIdentity, rotatedPassword, rotateErr := repository.Rotate(context.Background(), "tenant-one", identity.ID)
+	rotatedIdentity, rotatedPassword, rotateErr := repository.Rotate(context.Background(), identity.ID)
 	if rotateErr != nil {
 		t.Fatalf("rotate identity: %v", rotateErr)
 	}
@@ -51,7 +50,7 @@ func TestRepositoryCreateAuthenticateRotateAndDelete(t *testing.T) {
 		t.Fatalf("expected rotated credentials to authenticate: %v", newAuthErr)
 	}
 
-	if deleteErr := repository.Delete(context.Background(), "tenant-one", identity.ID); deleteErr != nil {
+	if deleteErr := repository.Delete(context.Background(), identity.ID); deleteErr != nil {
 		t.Fatalf("delete identity: %v", deleteErr)
 	}
 	if _, deletedAuthErr := repository.Authenticate(context.Background(), rotatedIdentity.Username, rotatedPassword); !errors.Is(deletedAuthErr, ErrAuthenticationFailed) {
@@ -61,10 +60,10 @@ func TestRepositoryCreateAuthenticateRotateAndDelete(t *testing.T) {
 
 func TestRepositoryAuthenticateDoesNotRestoreIdentityDeletedDuringAuth(t *testing.T) {
 	repository, database := newIdentityRepository(t)
-	seedSenderDomain(t, database, "tenant-one", "example.com")
+	seedSenderDomain(t, database, "example.com")
 	address := mustAddress(t, "alice@example.com")
 
-	identity, password, createErr := repository.Create(context.Background(), "tenant-one", address)
+	identity, password, createErr := repository.Create(context.Background(), address)
 	if createErr != nil {
 		t.Fatalf("create identity: %v", createErr)
 	}
@@ -104,10 +103,10 @@ func TestRepositoryAuthenticateDoesNotRestoreIdentityDeletedDuringAuth(t *testin
 
 func TestRepositoryRejectsAddressOutsideSenderDomains(t *testing.T) {
 	repository, database := newIdentityRepository(t)
-	seedSenderDomain(t, database, "tenant-one", "example.com")
+	seedSenderDomain(t, database, "example.com")
 	address := mustAddress(t, "alice@other.example")
 
-	_, _, createErr := repository.Create(context.Background(), "tenant-one", address)
+	_, _, createErr := repository.Create(context.Background(), address)
 	if !errors.Is(createErr, ErrSenderDomainNotAllowed) {
 		t.Fatalf("expected sender domain error, got %v", createErr)
 	}
@@ -123,7 +122,7 @@ func TestRepositoryCreatePreservesSenderDomainStorageFailure(t *testing.T) {
 		t.Fatalf("close database: %v", closeErr)
 	}
 
-	_, _, createErr := repository.Create(context.Background(), "tenant-one", mustAddress(t, "alice@example.com"))
+	_, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"))
 	if createErr == nil {
 		t.Fatalf("expected storage failure")
 	}
@@ -134,13 +133,13 @@ func TestRepositoryCreatePreservesSenderDomainStorageFailure(t *testing.T) {
 
 func TestRepositoryRejectsDuplicateActiveIdentity(t *testing.T) {
 	repository, database := newIdentityRepository(t)
-	seedSenderDomain(t, database, "tenant-one", "example.com")
+	seedSenderDomain(t, database, "example.com")
 	address := mustAddress(t, "alice@example.com")
 
-	if _, _, createErr := repository.Create(context.Background(), "tenant-one", address); createErr != nil {
+	if _, _, createErr := repository.Create(context.Background(), address); createErr != nil {
 		t.Fatalf("create first identity: %v", createErr)
 	}
-	if _, _, createErr := repository.Create(context.Background(), "tenant-one", address); !errors.Is(createErr, ErrIdentityExists) {
+	if _, _, createErr := repository.Create(context.Background(), address); !errors.Is(createErr, ErrIdentityExists) {
 		t.Fatalf("expected duplicate identity error, got %v", createErr)
 	}
 }
@@ -148,7 +147,7 @@ func TestRepositoryRejectsDuplicateActiveIdentity(t *testing.T) {
 func TestRepositoryRotateReportsMissingIdentityAsNotFound(t *testing.T) {
 	repository, _ := newIdentityRepository(t)
 
-	_, _, rotateErr := repository.Rotate(context.Background(), "tenant-one", "missing-identity")
+	_, _, rotateErr := repository.Rotate(context.Background(), "missing-identity")
 	if !errors.Is(rotateErr, ErrIdentityNotFound) {
 		t.Fatalf("expected identity not found, got %v", rotateErr)
 	}
@@ -164,7 +163,7 @@ func TestRepositoryRotatePreservesIdentityLookupStorageFailure(t *testing.T) {
 		t.Fatalf("close database: %v", closeErr)
 	}
 
-	_, _, rotateErr := repository.Rotate(context.Background(), "tenant-one", "identity-one")
+	_, _, rotateErr := repository.Rotate(context.Background(), "identity-one")
 	if rotateErr == nil {
 		t.Fatalf("expected storage failure")
 	}
@@ -175,14 +174,14 @@ func TestRepositoryRotatePreservesIdentityLookupStorageFailure(t *testing.T) {
 
 func TestRepositoryListNeverReturnsPasswords(t *testing.T) {
 	repository, database := newIdentityRepository(t)
-	seedSenderDomain(t, database, "tenant-one", "example.com")
+	seedSenderDomain(t, database, "example.com")
 	address := mustAddress(t, "alice@example.com")
-	identity, password, createErr := repository.Create(context.Background(), "tenant-one", address)
+	identity, password, createErr := repository.Create(context.Background(), address)
 	if createErr != nil {
 		t.Fatalf("create identity: %v", createErr)
 	}
 
-	identities, listErr := repository.List(context.Background(), "tenant-one")
+	identities, listErr := repository.List(context.Background())
 	if listErr != nil {
 		t.Fatalf("list identities: %v", listErr)
 	}
@@ -203,7 +202,7 @@ func newIdentityRepository(t *testing.T) (*Repository, *gorm.DB) {
 	if databaseErr != nil {
 		t.Fatalf("open database: %v", databaseErr)
 	}
-	if migrateErr := database.AutoMigrate(&tenant.SenderDomain{}, &Identity{}); migrateErr != nil {
+	if migrateErr := database.AutoMigrate(&SenderDomain{}, &Identity{}); migrateErr != nil {
 		t.Fatalf("migrate database: %v", migrateErr)
 	}
 	repository, repositoryErr := NewRepository(database, strings.Repeat("a", 64))
@@ -213,9 +212,9 @@ func newIdentityRepository(t *testing.T) (*Repository, *gorm.DB) {
 	return repository, database
 }
 
-func seedSenderDomain(t *testing.T, database *gorm.DB, tenantID string, domain string) {
+func seedSenderDomain(t *testing.T, database *gorm.DB, domain string) {
 	t.Helper()
-	if err := database.Create(&tenant.SenderDomain{TenantID: tenantID, Domain: domain}).Error; err != nil {
+	if err := database.Create(&SenderDomain{Domain: domain}).Error; err != nil {
 		t.Fatalf("seed sender domain: %v", err)
 	}
 }
@@ -230,5 +229,5 @@ func mustAddress(t *testing.T, rawAddress string) Address {
 }
 
 func fmtPublicIdentity(identity PublicIdentity) string {
-	return identity.ID + identity.TenantID + identity.EmailAddress + identity.Username + identity.Status
+	return identity.ID + identity.EmailAddress + identity.Username + identity.Status
 }

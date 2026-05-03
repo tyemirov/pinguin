@@ -180,7 +180,7 @@ func buildCORS(allowedOrigins []string) gin.HandlerFunc {
 
 func tenantMiddleware(repo *tenant.Repository) gin.HandlerFunc {
 	return func(contextGin *gin.Context) {
-		if contextGin.Request != nil && contextGin.Request.URL != nil && contextGin.Request.URL.Path == "/healthz" {
+		if contextGin.Request != nil && contextGin.Request.URL != nil && isTenantAgnosticPath(contextGin.Request.URL.Path) {
 			contextGin.Next()
 			return
 		}
@@ -193,6 +193,10 @@ func tenantMiddleware(repo *tenant.Repository) gin.HandlerFunc {
 		contextGin.Request = contextGin.Request.WithContext(ctx)
 		contextGin.Next()
 	}
+}
+
+func isTenantAgnosticPath(path string) bool {
+	return path == "/healthz" || path == "/api/smtp-identities" || strings.HasPrefix(path, "/api/smtp-identities/")
 }
 
 func sessionMiddleware(validator SessionValidator) gin.HandlerFunc {

@@ -96,24 +96,32 @@ type pinguinTAuth struct {
 }
 
 type pinguinSMTPSubmission struct {
-	Enabled           bool   `yaml:"enabled"`
-	Hostname          string `yaml:"hostname"`
-	ListenAddr        string `yaml:"listenAddr"`
-	TLSListenAddr     string `yaml:"tlsListenAddr"`
-	TLSCertPath       string `yaml:"tlsCertPath"`
-	TLSKeyPath        string `yaml:"tlsKeyPath"`
-	MaxMessageBytes   int64  `yaml:"maxMessageBytes"`
-	MaxRecipients     int    `yaml:"maxRecipients"`
-	AllowInsecureAuth bool   `yaml:"allowInsecureAuth"`
+	Enabled           bool             `yaml:"enabled"`
+	Hostname          string           `yaml:"hostname"`
+	ListenAddr        string           `yaml:"listenAddr"`
+	TLSListenAddr     string           `yaml:"tlsListenAddr"`
+	TLSCertPath       string           `yaml:"tlsCertPath"`
+	TLSKeyPath        string           `yaml:"tlsKeyPath"`
+	MaxMessageBytes   int64            `yaml:"maxMessageBytes"`
+	MaxRecipients     int              `yaml:"maxRecipients"`
+	AllowInsecureAuth bool             `yaml:"allowInsecureAuth"`
+	SenderDomains     []string         `yaml:"senderDomains"`
+	Relay             pinguinSMTPRelay `yaml:"relay"`
+}
+
+type pinguinSMTPRelay struct {
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
 }
 
 type pinguinTenant struct {
-	ID            string          `yaml:"id"`
-	DisplayName   string          `yaml:"displayName"`
-	Domains       []string        `yaml:"domains"`
-	SenderDomains []string        `yaml:"senderDomains"`
-	Identity      pinguinIdentity `yaml:"identity"`
-	Admins        []string        `yaml:"admins"`
+	ID          string          `yaml:"id"`
+	DisplayName string          `yaml:"displayName"`
+	Domains     []string        `yaml:"domains"`
+	Identity    pinguinIdentity `yaml:"identity"`
+	Admins      []string        `yaml:"admins"`
 }
 
 type pinguinIdentity struct {
@@ -323,6 +331,26 @@ func validateSMTPSubmissionConfig(submission pinguinSMTPSubmission, result *Diag
 		result.Valid = false
 		result.Errors = append(result.Errors, "smtpSubmission.maxRecipients must be positive")
 	}
+	if countNonEmpty(submission.SenderDomains) == 0 {
+		result.Valid = false
+		result.Errors = append(result.Errors, "smtpSubmission.senderDomains is required when SMTP submission is enabled")
+	}
+	if strings.TrimSpace(submission.Relay.Host) == "" {
+		result.Valid = false
+		result.Errors = append(result.Errors, "smtpSubmission.relay.host is required when SMTP submission is enabled")
+	}
+	if submission.Relay.Port <= 0 {
+		result.Valid = false
+		result.Errors = append(result.Errors, "smtpSubmission.relay.port must be positive")
+	}
+	if strings.TrimSpace(submission.Relay.Username) == "" {
+		result.Valid = false
+		result.Errors = append(result.Errors, "smtpSubmission.relay.username is required when SMTP submission is enabled")
+	}
+	if strings.TrimSpace(submission.Relay.Password) == "" {
+		result.Valid = false
+		result.Errors = append(result.Errors, "smtpSubmission.relay.password is required when SMTP submission is enabled")
+	}
 	if !submission.AllowInsecureAuth {
 		if strings.TrimSpace(submission.TLSCertPath) == "" {
 			result.Valid = false
@@ -333,6 +361,16 @@ func validateSMTPSubmissionConfig(submission pinguinSMTPSubmission, result *Diag
 			result.Errors = append(result.Errors, "smtpSubmission.tlsKeyPath is required when SMTP submission is enabled")
 		}
 	}
+}
+
+func countNonEmpty(values []string) int {
+	count := 0
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			count++
+		}
+	}
+	return count
 }
 
 func validateTenantConfig(tenant pinguinTenant, webEnabled bool, result *DiagnosticResult) {

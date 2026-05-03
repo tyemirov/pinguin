@@ -39,7 +39,6 @@ tenants:
     supportEmail: support@one.test
     enabled: true
     domains: [one.test]
-    senderDomains: [one.test]
     emailProfile:
       host: smtp.one.test
       port: 587
@@ -64,6 +63,12 @@ smtpSubmission:
   maxMessageBytes: 1048576
   maxRecipients: 25
   allowInsecureAuth: true
+  senderDomains: [one.test]
+  relay:
+    host: ${SMTP_SUBMISSION_RELAY_HOST}
+    port: ${SMTP_SUBMISSION_RELAY_PORT}
+    username: ${SMTP_SUBMISSION_RELAY_USERNAME}
+    password: ${SMTP_SUBMISSION_RELAY_PASSWORD}
 `)
 
 	t.Setenv("PINGUIN_CONFIG_PATH", configPath)
@@ -79,6 +84,10 @@ smtpSubmission:
 	t.Setenv("TWILIO_ACCOUNT_SID", "sid")
 	t.Setenv("TWILIO_AUTH_TOKEN", "auth")
 	t.Setenv("TWILIO_FROM_NUMBER", "+10000000000")
+	t.Setenv("SMTP_SUBMISSION_RELAY_HOST", "relay.one.test")
+	t.Setenv("SMTP_SUBMISSION_RELAY_PORT", "2525")
+	t.Setenv("SMTP_SUBMISSION_RELAY_USERNAME", "relay-user")
+	t.Setenv("SMTP_SUBMISSION_RELAY_PASSWORD", "relay-secret")
 
 	cfg, err := LoadConfig(false)
 	if err != nil {
@@ -95,12 +104,11 @@ smtpSubmission:
 		TenantBootstrap: tenant.BootstrapConfig{
 			Tenants: []tenant.BootstrapTenant{
 				{
-					ID:            "tenant-one",
-					DisplayName:   "One Corp",
-					SupportEmail:  "support@one.test",
-					Enabled:       ptrBool(true),
-					Domains:       []string{"one.test"},
-					SenderDomains: []string{"one.test"},
+					ID:           "tenant-one",
+					DisplayName:  "One Corp",
+					SupportEmail: "support@one.test",
+					Enabled:      ptrBool(true),
+					Domains:      []string{"one.test"},
 					EmailProfile: tenant.BootstrapEmailProfile{
 						Host:        "smtp.one.test",
 						Port:        587,
@@ -126,6 +134,13 @@ smtpSubmission:
 			MaxMessageBytes:   1048576,
 			MaxRecipients:     25,
 			AllowInsecureAuth: true,
+			SenderDomains:     []string{"one.test"},
+			Relay: SMTPSubmissionRelayConfig{
+				Host:     "relay.one.test",
+				Port:     2525,
+				Username: "relay-user",
+				Password: "relay-secret",
+			},
 		},
 		TAuthSigningKey:      "signing-key",
 		TAuthCookieName:      "custom_session",

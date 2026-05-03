@@ -39,9 +39,9 @@ func InitDB(dbPath string, logger *slog.Logger) (*gorm.DB, error) {
 		&model.NotificationAttachment{},
 		&tenant.Tenant{},
 		&tenant.TenantDomain{},
-		&tenant.SenderDomain{},
 		&tenant.EmailProfile{},
 		&tenant.SMSProfile{},
+		&smtpidentity.SenderDomain{},
 		&smtpidentity.Identity{},
 	); err != nil {
 		return nil, fmt.Errorf("migration failed: %w", err)

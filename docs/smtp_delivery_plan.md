@@ -2,7 +2,7 @@
 
 Pinguin delivers email notifications through `SMTPEmailSender`, a provider-agnostic implementation that speaks the SMTP protocol directly. This document captures the agreed plan for how the sender is configured, how it connects to remote servers, and how we will extend and test the functionality.
 
-Pinguin can also expose an authenticated SMTP submission listener for Gmail Send-As. That listener does not deliver directly to recipient MX hosts; it validates the authenticated exact sender, preserves the raw submitted message, and relays it through the same tenant upstream SMTP profile described below.
+Pinguin can also expose an authenticated SMTP submission listener for Gmail Send-As. That listener does not deliver directly to recipient MX hosts; it validates the authenticated exact sender, preserves the raw submitted message, and relays it through the independent `smtpSubmission.relay` upstream profile.
 
 ## Components
 
@@ -16,6 +16,8 @@ Pinguin can also expose an authenticated SMTP submission listener for Gmail Send
   - `FROM_EMAIL`
   - `CONNECTION_TIMEOUT_SEC`
   - `OPERATION_TIMEOUT_SEC`
+- **smtpSubmission.relay** exposes the upstream SMTP account used only by the authenticated SMTP submission listener.
+- **smtpSubmission.senderDomains** defines the global domain allowlist for exact sender identities.
 
 ## Delivery Sequence
 

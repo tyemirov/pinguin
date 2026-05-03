@@ -120,7 +120,6 @@ function applyOverrides(payload) {
   serverState.smtpIdentities = Array.isArray(payload.smtpIdentities)
     ? payload.smtpIdentities.map((item) => ({
         ...item,
-        tenant_id: item.tenant_id || 'tenant-devserver',
       }))
     : [];
   serverState.failList = Boolean(payload.failList);
@@ -427,7 +426,6 @@ function newSMTPIdentity(emailAddress) {
   const identityIndex = serverState.smtpIdentities.length + 1;
   return {
     id: `smtp-id-${identityIndex}`,
-    tenant_id: 'tenant-devserver',
     email_address: emailAddress,
     username: `smtp_test_${identityIndex}`,
     status: 'active',

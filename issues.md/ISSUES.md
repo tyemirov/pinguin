@@ -7,6 +7,7 @@ Read @AGENTS.md, @ARCHITECTURE.md, @README.md, @issues.md/POLICY.md, @issues.md/
 ## Features  (102–199)
 
 - [x] [PG-102] Add authenticated SMTP submission for Gmail Send-As: tenant-scoped exact sender identities, STARTTLS SMTP AUTH, raw upstream relay, dashboard identity management, docs, and tests. Resolved with SMTP submission listeners, exact sender credentials, upstream raw relay, dashboard/API management, deployment docs, and passing `make ci`.
+- [x] [PG-103] Decouple authenticated SMTP submission from notification tenants. Resolved by moving sender domains and SMTP identities out of tenant scope, adding `smtpSubmission.relay`, routing accepted raw messages through that independent upstream profile, updating docs/config/UI mappings, and passing `make test`, `make lint`, and `make ci`.
 
 ## Improvements (202–299)
 

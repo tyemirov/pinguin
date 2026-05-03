@@ -195,7 +195,6 @@ test.describe('Dashboard', () => {
       smtpIdentities: [
         {
           id: 'smtp-id-1',
-          tenant_id: 'tenant-devserver',
           email_address: 'alice@example.com',
           username: 'smtp_test_1',
           status: 'active',
@@ -220,7 +219,6 @@ test.describe('Dashboard', () => {
       smtpIdentities: [
         {
           id: 'smtp-id-1',
-          tenant_id: 'tenant-devserver',
           email_address: 'alice@example.com',
           username: 'smtp_test_1',
           status: 'active',

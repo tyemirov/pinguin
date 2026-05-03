@@ -391,7 +391,6 @@ func (server *Server) handleData(ctx context.Context, reader *bufio.Reader, writ
 		return
 	}
 	relayErr := server.config.Relay.Relay(ctx, RawMessage{
-		TenantID:   session.authenticated.TenantID,
 		IdentityID: session.authenticated.ID,
 		From:       session.authenticated.EmailAddress,
 		Recipients: append([]smtpidentity.Address(nil), session.recipients...),

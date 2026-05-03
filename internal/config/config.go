@@ -59,6 +59,16 @@ type SMTPSubmissionConfig struct {
 	MaxMessageBytes   int64
 	MaxRecipients     int
 	AllowInsecureAuth bool
+	SenderDomains     []string
+	Relay             SMTPSubmissionRelayConfig
+}
+
+// SMTPSubmissionRelayConfig controls the upstream relay used by SMTP submission.
+type SMTPSubmissionRelayConfig struct {
+	Host     string
+	Port     int
+	Username string
+	Password string
 }
 
 type fileConfig struct {
@@ -95,15 +105,24 @@ type tauthSection struct {
 }
 
 type smtpSubmissionSection struct {
-	Enabled           bool   `yaml:"enabled"`
-	Hostname          string `yaml:"hostname"`
-	ListenAddr        string `yaml:"listenAddr"`
-	TLSListenAddr     string `yaml:"tlsListenAddr"`
-	TLSCertPath       string `yaml:"tlsCertPath"`
-	TLSKeyPath        string `yaml:"tlsKeyPath"`
-	MaxMessageBytes   int64  `yaml:"maxMessageBytes"`
-	MaxRecipients     int    `yaml:"maxRecipients"`
-	AllowInsecureAuth bool   `yaml:"allowInsecureAuth"`
+	Enabled           bool                       `yaml:"enabled"`
+	Hostname          string                     `yaml:"hostname"`
+	ListenAddr        string                     `yaml:"listenAddr"`
+	TLSListenAddr     string                     `yaml:"tlsListenAddr"`
+	TLSCertPath       string                     `yaml:"tlsCertPath"`
+	TLSKeyPath        string                     `yaml:"tlsKeyPath"`
+	MaxMessageBytes   int64                      `yaml:"maxMessageBytes"`
+	MaxRecipients     int                        `yaml:"maxRecipients"`
+	AllowInsecureAuth bool                       `yaml:"allowInsecureAuth"`
+	SenderDomains     []string                   `yaml:"senderDomains"`
+	Relay             smtpSubmissionRelaySection `yaml:"relay"`
+}
+
+type smtpSubmissionRelaySection struct {
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
 }
 
 type tenantConfig struct {
@@ -194,6 +213,13 @@ func LoadConfig(disableWebInterface bool) (Config, error) {
 			MaxMessageBytes:   fileCfg.SMTPSubmission.MaxMessageBytes,
 			MaxRecipients:     fileCfg.SMTPSubmission.MaxRecipients,
 			AllowInsecureAuth: fileCfg.SMTPSubmission.AllowInsecureAuth,
+			SenderDomains:     normalizeStrings(fileCfg.SMTPSubmission.SenderDomains),
+			Relay: SMTPSubmissionRelayConfig{
+				Host:     strings.TrimSpace(fileCfg.SMTPSubmission.Relay.Host),
+				Port:     fileCfg.SMTPSubmission.Relay.Port,
+				Username: strings.TrimSpace(fileCfg.SMTPSubmission.Relay.Username),
+				Password: strings.TrimSpace(fileCfg.SMTPSubmission.Relay.Password),
+			},
 		},
 		TAuthSigningKey:      strings.TrimSpace(fileCfg.Server.TAuth.SigningKey),
 		TAuthCookieName:      strings.TrimSpace(fileCfg.Server.TAuth.CookieName),
@@ -285,6 +311,13 @@ func validateConfig(cfg Config) error {
 		}
 		requirePositiveInt64(cfg.SMTPSubmission.MaxMessageBytes, "smtpSubmission.maxMessageBytes", &errors)
 		requirePositive(cfg.SMTPSubmission.MaxRecipients, "smtpSubmission.maxRecipients", &errors)
+		if countNonEmptyStrings(cfg.SMTPSubmission.SenderDomains) == 0 {
+			errors = append(errors, "missing smtpSubmission.senderDomains")
+		}
+		requireString(cfg.SMTPSubmission.Relay.Host, "smtpSubmission.relay.host", &errors)
+		requirePositive(cfg.SMTPSubmission.Relay.Port, "smtpSubmission.relay.port", &errors)
+		requireString(cfg.SMTPSubmission.Relay.Username, "smtpSubmission.relay.username", &errors)
+		requireString(cfg.SMTPSubmission.Relay.Password, "smtpSubmission.relay.password", &errors)
 		if !cfg.SMTPSubmission.AllowInsecureAuth {
 			requireString(cfg.SMTPSubmission.TLSCertPath, "smtpSubmission.tlsCertPath", &errors)
 			requireString(cfg.SMTPSubmission.TLSKeyPath, "smtpSubmission.tlsKeyPath", &errors)

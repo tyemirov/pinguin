@@ -7,7 +7,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tyemirov/pinguin/internal/smtpidentity"
-	"github.com/tyemirov/pinguin/internal/tenant"
 	"gorm.io/gorm"
 	"log/slog"
 )
@@ -22,12 +21,7 @@ func newSMTPIdentityHandler(service *smtpidentity.Service, logger *slog.Logger) 
 }
 
 func (handler *smtpIdentityHandler) listIdentities(contextGin *gin.Context) {
-	runtimeConfig, ok := tenant.RuntimeFromContext(contextGin.Request.Context())
-	if !ok {
-		contextGin.AbortWithStatus(http.StatusInternalServerError)
-		return
-	}
-	identities, err := handler.service.List(contextGin.Request.Context(), runtimeConfig.Tenant.ID)
+	identities, err := handler.service.List(contextGin.Request.Context())
 	if err != nil {
 		handler.writeError(contextGin, err)
 		return
@@ -36,11 +30,6 @@ func (handler *smtpIdentityHandler) listIdentities(contextGin *gin.Context) {
 }
 
 func (handler *smtpIdentityHandler) createIdentity(contextGin *gin.Context) {
-	runtimeConfig, ok := tenant.RuntimeFromContext(contextGin.Request.Context())
-	if !ok {
-		contextGin.AbortWithStatus(http.StatusInternalServerError)
-		return
-	}
 	var payload struct {
 		EmailAddress string `json:"email_address"`
 	}
@@ -53,7 +42,7 @@ func (handler *smtpIdentityHandler) createIdentity(contextGin *gin.Context) {
 		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "email_address is invalid"})
 		return
 	}
-	credentials, err := handler.service.Create(contextGin.Request.Context(), runtimeConfig.Tenant.ID, address)
+	credentials, err := handler.service.Create(contextGin.Request.Context(), address)
 	if err != nil {
 		handler.writeError(contextGin, err)
 		return
@@ -62,17 +51,12 @@ func (handler *smtpIdentityHandler) createIdentity(contextGin *gin.Context) {
 }
 
 func (handler *smtpIdentityHandler) rotateIdentity(contextGin *gin.Context) {
-	runtimeConfig, ok := tenant.RuntimeFromContext(contextGin.Request.Context())
-	if !ok {
-		contextGin.AbortWithStatus(http.StatusInternalServerError)
-		return
-	}
 	identityID := strings.TrimSpace(contextGin.Param("id"))
 	if identityID == "" {
 		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "identity_id is required"})
 		return
 	}
-	credentials, err := handler.service.Rotate(contextGin.Request.Context(), runtimeConfig.Tenant.ID, identityID)
+	credentials, err := handler.service.Rotate(contextGin.Request.Context(), identityID)
 	if err != nil {
 		handler.writeError(contextGin, err)
 		return
@@ -81,17 +65,12 @@ func (handler *smtpIdentityHandler) rotateIdentity(contextGin *gin.Context) {
 }
 
 func (handler *smtpIdentityHandler) deleteIdentity(contextGin *gin.Context) {
-	runtimeConfig, ok := tenant.RuntimeFromContext(contextGin.Request.Context())
-	if !ok {
-		contextGin.AbortWithStatus(http.StatusInternalServerError)
-		return
-	}
 	identityID := strings.TrimSpace(contextGin.Param("id"))
 	if identityID == "" {
 		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "identity_id is required"})
 		return
 	}
-	if err := handler.service.Delete(contextGin.Request.Context(), runtimeConfig.Tenant.ID, identityID); err != nil {
+	if err := handler.service.Delete(contextGin.Request.Context(), identityID); err != nil {
 		handler.writeError(contextGin, err)
 		return
 	}

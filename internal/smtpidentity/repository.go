@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tyemirov/pinguin/internal/tenant"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -36,11 +35,11 @@ const (
 var (
 	// ErrAuthenticationFailed indicates SMTP credentials were rejected.
 	ErrAuthenticationFailed = errors.New("smtp_identity.auth_failed")
-	// ErrSenderDomainNotAllowed indicates a tenant cannot create this sender.
+	// ErrSenderDomainNotAllowed indicates SMTP submission cannot create this sender.
 	ErrSenderDomainNotAllowed = errors.New("smtp_identity.sender_domain_not_allowed")
-	// ErrIdentityExists indicates the tenant already has an active identity for the sender.
+	// ErrIdentityExists indicates an active identity already exists for the sender.
 	ErrIdentityExists = errors.New("smtp_identity.exists")
-	// ErrIdentityNotFound indicates the identity does not exist for the tenant.
+	// ErrIdentityNotFound indicates the identity does not exist.
 	ErrIdentityNotFound = errors.New("smtp_identity.not_found")
 )
 
@@ -54,11 +53,10 @@ const (
 	IdentityStatusDeleted IdentityStatus = "deleted"
 )
 
-// Identity stores tenant-scoped SMTP submission credentials.
+// Identity stores SMTP submission credentials.
 type Identity struct {
 	ID             string `gorm:"primaryKey"`
-	TenantID       string `gorm:"index;uniqueIndex:idx_smtp_identity_tenant_email"`
-	EmailAddress   string `gorm:"uniqueIndex:idx_smtp_identity_tenant_email"`
+	EmailAddress   string `gorm:"uniqueIndex"`
 	Username       string `gorm:"uniqueIndex"`
 	PasswordSalt   []byte
 	PasswordDigest []byte
@@ -71,7 +69,6 @@ type Identity struct {
 // PublicIdentity is the secret-free identity shape exposed to callers.
 type PublicIdentity struct {
 	ID           string     `json:"id"`
-	TenantID     string     `json:"tenant_id"`
 	EmailAddress string     `json:"email_address"`
 	Username     string     `json:"username"`
 	Status       string     `json:"status"`
@@ -83,7 +80,6 @@ type PublicIdentity struct {
 // AuthenticatedIdentity is the validated SMTP AUTH result.
 type AuthenticatedIdentity struct {
 	ID           string
-	TenantID     string
 	EmailAddress Address
 	Username     string
 }
@@ -113,15 +109,14 @@ func NewRepository(db *gorm.DB, rawMasterKey string) (*Repository, error) {
 	}, nil
 }
 
-// List returns active tenant identities without secrets.
-func (repository *Repository) List(ctx context.Context, tenantID string) ([]PublicIdentity, error) {
-	normalizedTenantID := strings.TrimSpace(tenantID)
+// List returns active SMTP identities without secrets.
+func (repository *Repository) List(ctx context.Context) ([]PublicIdentity, error) {
 	var records []Identity
 	if err := repository.db.WithContext(ctx).
-		Where(&Identity{TenantID: normalizedTenantID, Status: IdentityStatusActive}).
+		Where(&Identity{Status: IdentityStatusActive}).
 		Order(clause.OrderByColumn{Column: clause.Column{Name: "email_address"}}).
 		Find(&records).Error; err != nil {
-		return nil, fmt.Errorf("smtp identity list: tenant %s: %w", normalizedTenantID, err)
+		return nil, fmt.Errorf("smtp identity list: %w", err)
 	}
 	result := make([]PublicIdentity, 0, len(records))
 	for _, record := range records {
@@ -131,14 +126,13 @@ func (repository *Repository) List(ctx context.Context, tenantID string) ([]Publ
 }
 
 // Create creates or reactivates an exact sender identity.
-func (repository *Repository) Create(ctx context.Context, tenantID string, address Address) (PublicIdentity, string, error) {
-	normalizedTenantID := strings.TrimSpace(tenantID)
-	if allowedErr := repository.requireSenderDomain(ctx, normalizedTenantID, address.Domain()); allowedErr != nil {
+func (repository *Repository) Create(ctx context.Context, address Address) (PublicIdentity, string, error) {
+	if allowedErr := repository.requireSenderDomain(ctx, address.Domain()); allowedErr != nil {
 		return PublicIdentity{}, "", allowedErr
 	}
 	var existing Identity
 	findErr := repository.db.WithContext(ctx).
-		Where(&Identity{TenantID: normalizedTenantID, EmailAddress: address.String()}).
+		Where(&Identity{EmailAddress: address.String()}).
 		First(&existing).Error
 	if findErr == nil && existing.Status == IdentityStatusActive {
 		return PublicIdentity{}, "", ErrIdentityExists
@@ -165,7 +159,6 @@ func (repository *Repository) Create(ctx context.Context, tenantID string, addre
 	}
 	record := Identity{
 		ID:             uuid.NewString(),
-		TenantID:       normalizedTenantID,
 		EmailAddress:   address.String(),
 		Username:       username,
 		PasswordSalt:   salt,
@@ -181,8 +174,8 @@ func (repository *Repository) Create(ctx context.Context, tenantID string, addre
 }
 
 // Rotate replaces credentials for an active identity.
-func (repository *Repository) Rotate(ctx context.Context, tenantID string, identityID string) (PublicIdentity, string, error) {
-	record, fetchErr := repository.requireIdentity(ctx, tenantID, identityID)
+func (repository *Repository) Rotate(ctx context.Context, identityID string) (PublicIdentity, string, error) {
+	record, fetchErr := repository.requireIdentity(ctx, identityID)
 	if fetchErr != nil {
 		return PublicIdentity{}, "", fetchErr
 	}
@@ -201,8 +194,8 @@ func (repository *Repository) Rotate(ctx context.Context, tenantID string, ident
 }
 
 // Delete disables an identity so it can no longer authenticate.
-func (repository *Repository) Delete(ctx context.Context, tenantID string, identityID string) error {
-	record, fetchErr := repository.requireIdentity(ctx, tenantID, identityID)
+func (repository *Repository) Delete(ctx context.Context, identityID string) error {
+	record, fetchErr := repository.requireIdentity(ctx, identityID)
 	if fetchErr != nil {
 		return fetchErr
 	}
@@ -240,7 +233,6 @@ func (repository *Repository) Authenticate(ctx context.Context, username string,
 	}
 	return AuthenticatedIdentity{
 		ID:           record.ID,
-		TenantID:     record.TenantID,
 		EmailAddress: address,
 		Username:     record.Username,
 	}, nil
@@ -267,33 +259,32 @@ func (repository *Repository) markAuthenticatedIdentityUsed(ctx context.Context,
 	return nil
 }
 
-func (repository *Repository) requireIdentity(ctx context.Context, tenantID string, identityID string) (Identity, error) {
-	normalizedTenantID := strings.TrimSpace(tenantID)
+func (repository *Repository) requireIdentity(ctx context.Context, identityID string) (Identity, error) {
 	normalizedIdentityID := strings.TrimSpace(identityID)
 	var record Identity
 	err := repository.db.WithContext(ctx).
-		Where(&Identity{ID: normalizedIdentityID, TenantID: normalizedTenantID, Status: IdentityStatusActive}).
+		Where(&Identity{ID: normalizedIdentityID, Status: IdentityStatusActive}).
 		First(&record).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return Identity{}, ErrIdentityNotFound
 		}
-		return Identity{}, fmt.Errorf("smtp identity lookup: tenant %s identity %s: %w", normalizedTenantID, normalizedIdentityID, err)
+		return Identity{}, fmt.Errorf("smtp identity lookup: identity %s: %w", normalizedIdentityID, err)
 	}
 	return record, nil
 }
 
-func (repository *Repository) requireSenderDomain(ctx context.Context, tenantID string, domain string) error {
+func (repository *Repository) requireSenderDomain(ctx context.Context, domain string) error {
 	normalizedDomain := strings.ToLower(strings.TrimSpace(domain))
-	var domainRecord tenant.SenderDomain
+	var domainRecord SenderDomain
 	err := repository.db.WithContext(ctx).
-		Where(&tenant.SenderDomain{TenantID: tenantID, Domain: normalizedDomain}).
+		Where(&SenderDomain{Domain: normalizedDomain}).
 		First(&domainRecord).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return fmt.Errorf("%w: %s", ErrSenderDomainNotAllowed, normalizedDomain)
 		}
-		return fmt.Errorf("smtp identity sender domain lookup: tenant %s domain %s: %w", tenantID, normalizedDomain, err)
+		return fmt.Errorf("smtp identity sender domain lookup: domain %s: %w", normalizedDomain, err)
 	}
 	return nil
 }
@@ -335,7 +326,6 @@ func (repository *Repository) digest(salt []byte, password string) []byte {
 func publicIdentity(record Identity) PublicIdentity {
 	return PublicIdentity{
 		ID:           record.ID,
-		TenantID:     record.TenantID,
 		EmailAddress: record.EmailAddress,
 		Username:     record.Username,
 		Status:       string(record.Status),
