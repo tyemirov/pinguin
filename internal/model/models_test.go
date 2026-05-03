@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -33,6 +34,26 @@ func TestNotificationListFiltersNormalizeStatuses(t *testing.T) {
 		if status != expected[index] {
 			t.Fatalf("status mismatch at %d: want %s got %s", index, expected[index], status)
 		}
+	}
+}
+
+func TestCanonicalStatusCoversAllStatuses(t *testing.T) {
+	testCases := map[NotificationStatus]NotificationStatus{
+		StatusQueued:    StatusQueued,
+		StatusSent:      StatusSent,
+		StatusErrored:   StatusErrored,
+		StatusCancelled: StatusCancelled,
+		StatusUnknown:   StatusUnknown,
+		StatusFailed:    StatusErrored,
+		"invalid":       "",
+	}
+	for input, expected := range testCases {
+		if got := CanonicalStatus(input); got != expected {
+			t.Fatalf("canonical status for %s: want %s got %s", input, expected, got)
+		}
+	}
+	if (NotificationListFilters{}).NormalizedStatuses() != nil {
+		t.Fatalf("expected nil normalized statuses for empty filters")
 	}
 }
 
@@ -153,6 +174,19 @@ func TestNewNotificationResponseCopiesScheduledTime(t *testing.T) {
 	}
 }
 
+func TestNewNotificationResponseDefaultsUnknownStatus(t *testing.T) {
+	response := NewNotificationResponse(Notification{
+		NotificationID:   "notif-unknown",
+		Status:           "not-real",
+		NotificationType: NotificationEmail,
+		CreatedAt:        time.Now().UTC(),
+		UpdatedAt:        time.Now().UTC(),
+	})
+	if response.Status != StatusUnknown {
+		t.Fatalf("expected unknown status, got %s", response.Status)
+	}
+}
+
 func TestDatabaseHelpersFilterAndRetrieve(t *testing.T) {
 	t.Helper()
 
@@ -197,10 +231,75 @@ func TestDatabaseHelpersFilterAndRetrieve(t *testing.T) {
 	if fetched.NotificationID != "queued-now" {
 		t.Fatalf("unexpected fetched id %s", fetched.NotificationID)
 	}
+	fetchedDirect, directFetchError := GetNotificationByID(ctx, database, modelTestTenantID, "queued-now")
+	if directFetchError != nil || fetchedDirect.NotificationID != "queued-now" {
+		t.Fatalf("direct fetch notification=%+v error=%v", fetchedDirect, directFetchError)
+	}
+	fetchedDirect.Status = StatusSent
+	if saveError := SaveNotification(ctx, database, fetchedDirect); saveError != nil {
+		t.Fatalf("save notification: %v", saveError)
+	}
+
+	listed, listError := ListNotifications(ctx, database, modelTestTenantID, NotificationListFilters{})
+	if listError != nil {
+		t.Fatalf("list notifications: %v", listError)
+	}
+	if len(listed) != 3 {
+		t.Fatalf("expected three tenant notifications, got %d", len(listed))
+	}
+	listedErrored, listErroredError := ListNotifications(ctx, database, modelTestTenantID, NotificationListFilters{Statuses: []NotificationStatus{StatusErrored}})
+	if listErroredError != nil {
+		t.Fatalf("list errored notifications: %v", listErroredError)
+	}
+	if len(listedErrored) != 1 || listedErrored[0].Status != StatusFailed {
+		t.Fatalf("expected legacy failed record through errored filter, got %+v", listedErrored)
+	}
+	allNotifications, listAllError := ListNotificationsAll(ctx, database, NotificationListFilters{Statuses: []NotificationStatus{StatusSent}})
+	if listAllError != nil {
+		t.Fatalf("list all notifications: %v", listAllError)
+	}
+	if len(allNotifications) != 1 || allNotifications[0].NotificationID != "queued-now" {
+		t.Fatalf("unexpected list all result %+v", allNotifications)
+	}
+	allErroredNotifications, listAllErroredError := ListNotificationsAll(ctx, database, NotificationListFilters{Statuses: []NotificationStatus{StatusErrored}})
+	if listAllErroredError != nil {
+		t.Fatalf("list all errored notifications: %v", listAllErroredError)
+	}
+	if len(allErroredNotifications) != 1 || allErroredNotifications[0].Status != StatusFailed {
+		t.Fatalf("expected failed record through all errored filter, got %+v", allErroredNotifications)
+	}
 
 	_, missingError := MustGetNotificationByID(ctx, database, modelTestTenantID, "missing")
-	if missingError == nil {
-		t.Fatalf("expected missing error")
+	if !errors.Is(missingError, ErrNotificationNotFound) {
+		t.Fatalf("expected missing error, got %v", missingError)
+	}
+}
+
+func TestDatabaseHelpersReturnStorageErrors(t *testing.T) {
+	database := openModelTestDatabase(t)
+	ctx := context.Background()
+	closeModelDatabase(t, database)
+
+	if err := CreateNotification(ctx, database, &Notification{}); err == nil {
+		t.Fatalf("expected create storage error")
+	}
+	if _, err := GetNotificationByID(ctx, database, modelTestTenantID, "notif"); err == nil {
+		t.Fatalf("expected get storage error")
+	}
+	if err := SaveNotification(ctx, database, &Notification{}); err == nil {
+		t.Fatalf("expected save storage error")
+	}
+	if _, err := GetQueuedOrFailedNotifications(ctx, database, modelTestTenantID, 3, time.Now().UTC()); err == nil {
+		t.Fatalf("expected pending storage error")
+	}
+	if _, err := ListNotifications(ctx, database, modelTestTenantID, NotificationListFilters{}); err == nil {
+		t.Fatalf("expected list storage error")
+	}
+	if _, err := ListNotificationsAll(ctx, database, NotificationListFilters{}); err == nil {
+		t.Fatalf("expected list all storage error")
+	}
+	if _, err := MustGetNotificationByID(ctx, database, modelTestTenantID, "notif"); err == nil || errors.Is(err, ErrNotificationNotFound) {
+		t.Fatalf("expected wrapped storage error, got %v", err)
 	}
 }
 
@@ -238,4 +337,15 @@ func mergeNotification(base Notification, override Notification) Notification {
 func timePointer(value time.Time) *time.Time {
 	copiedValue := value
 	return &copiedValue
+}
+
+func closeModelDatabase(t *testing.T, database *gorm.DB) {
+	t.Helper()
+	sqlDatabase, err := database.DB()
+	if err != nil {
+		t.Fatalf("database handle: %v", err)
+	}
+	if closeErr := sqlDatabase.Close(); closeErr != nil {
+		t.Fatalf("close database: %v", closeErr)
+	}
 }

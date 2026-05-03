@@ -94,6 +94,9 @@ type Repository struct {
 
 // NewRepository constructs an SMTP identity repository.
 func NewRepository(db *gorm.DB, rawMasterKey string) (*Repository, error) {
+	if db == nil {
+		return nil, fmt.Errorf("smtp identity: database is required")
+	}
 	key, decodeErr := hex.DecodeString(strings.TrimSpace(rawMasterKey))
 	if decodeErr != nil {
 		return nil, fmt.Errorf("smtp identity: invalid master key: %w", decodeErr)

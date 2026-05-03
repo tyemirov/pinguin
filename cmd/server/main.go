@@ -32,6 +32,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"gorm.io/gorm"
 	"log/slog"
 )
 
@@ -376,65 +377,148 @@ func buildTenantInterceptor(logger *slog.Logger, repo *tenant.Repository) grpc.U
 	}
 }
 
-func main() {
-	disableWebFlag := flag.Bool("disable-web-interface", false, "disable the HTTP web interface and static asset server (env: DISABLE_WEB_INTERFACE)")
-	flag.Parse()
+type smtpSubmissionStarter interface {
+	Start(context.Context) error
+}
 
-	configuration, configErr := config.LoadConfig(*disableWebFlag)
+type httpServerRunner interface {
+	Start() error
+	Shutdown(context.Context) error
+}
+
+type serverDependencies struct {
+	loadConfig                func(bool) (config.Config, error)
+	newLogger                 func(string) *slog.Logger
+	initDB                    func(string, *slog.Logger) (*gorm.DB, error)
+	newSecretKeeper           func(string) (*tenant.SecretKeeper, error)
+	bootstrapTenants          func(context.Context, *gorm.DB, *tenant.SecretKeeper, tenant.BootstrapConfig) error
+	bootstrapTenantsFromFile  func(context.Context, *gorm.DB, *tenant.SecretKeeper, string) error
+	newTenantRepository       func(*gorm.DB, *tenant.SecretKeeper) *tenant.Repository
+	newSMTPIdentityRepository func(*gorm.DB, string) (*smtpidentity.Repository, error)
+	replaceSenderDomains      func(context.Context, *gorm.DB, []string) error
+	newSMTPIdentityService    func(*smtpidentity.Repository, smtpidentity.PublicSettings) *smtpidentity.Service
+	newNotificationService    func(*gorm.DB, *slog.Logger, config.Config, *tenant.Repository) service.NotificationService
+	loadTLSConfig             func(string, string) (*tls.Config, error)
+	newSMTPRelay              func(*slog.Logger, config.Config) smtpsubmission.RawRelay
+	newSMTPSubmissionServer   func(smtpsubmission.Config) (smtpSubmissionStarter, error)
+	newSessionValidator       func(sessionvalidator.Config) (httpapi.SessionValidator, error)
+	newHTTPServer             func(httpapi.Config) (httpServerRunner, error)
+	listen                    func(string, string) (net.Listener, error)
+	serveGRPC                 func(net.Listener, service.NotificationService, *tenant.Repository, *slog.Logger, string) error
+	exit                      func(int)
+}
+
+func main() {
+	runServerAndExit(os.Args[1:], productionServerDependencies())
+}
+
+func runServerAndExit(args []string, dependencies serverDependencies) {
+	dependencies = withServerDependencyDefaults(dependencies)
+	exitCode := runServer(args, dependencies)
+	if exitCode != 0 {
+		dependencies.exit(exitCode)
+	}
+}
+
+func productionServerDependencies() serverDependencies {
+	return serverDependencies{
+		loadConfig:                config.LoadConfig,
+		newLogger:                 logging.NewLogger,
+		initDB:                    db.InitDB,
+		newSecretKeeper:           tenant.NewSecretKeeper,
+		bootstrapTenants:          tenant.Bootstrap,
+		bootstrapTenantsFromFile:  tenant.BootstrapFromFile,
+		newTenantRepository:       tenant.NewRepository,
+		newSMTPIdentityRepository: smtpidentity.NewRepository,
+		replaceSenderDomains:      smtpidentity.ReplaceSenderDomains,
+		newSMTPIdentityService:    smtpidentity.NewService,
+		newNotificationService:    service.NewNotificationService,
+		loadTLSConfig:             smtpsubmission.LoadTLSConfig,
+		newSMTPRelay: func(logger *slog.Logger, cfg config.Config) smtpsubmission.RawRelay {
+			return smtpsubmission.NewUpstreamRelay(logger, cfg)
+		},
+		newSMTPSubmissionServer: func(cfg smtpsubmission.Config) (smtpSubmissionStarter, error) {
+			return smtpsubmission.NewServer(cfg)
+		},
+		newSessionValidator: func(cfg sessionvalidator.Config) (httpapi.SessionValidator, error) {
+			return sessionvalidator.New(cfg)
+		},
+		newHTTPServer: func(cfg httpapi.Config) (httpServerRunner, error) {
+			return httpapi.NewServer(cfg)
+		},
+		listen:    net.Listen,
+		serveGRPC: serveGRPC,
+		exit:      os.Exit,
+	}
+}
+
+func runServer(args []string, dependencies serverDependencies) int {
+	dependencies = withServerDependencyDefaults(dependencies)
+	flags := flag.NewFlagSet("pinguin-server", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	disableWebFlag := flags.Bool("disable-web-interface", false, "disable the HTTP web interface and static asset server (env: DISABLE_WEB_INTERFACE)")
+	if parseErr := flags.Parse(args); parseErr != nil {
+		if errors.Is(parseErr, flag.ErrHelp) {
+			return 0
+		}
+		return 1
+	}
+
+	configuration, configErr := dependencies.loadConfig(*disableWebFlag)
 	if configErr != nil {
-		fallbackLogger := logging.NewLogger("INFO")
+		fallbackLogger := dependencies.newLogger("INFO")
 		for _, errMsg := range strings.Split(configErr.Error(), ", ") {
 			fallbackLogger.Error("Configuration error", "detail", errMsg)
 		}
-		os.Exit(1)
+		return 1
 	}
 
-	mainLogger := logging.NewLogger(configuration.LogLevel)
+	mainLogger := dependencies.newLogger(configuration.LogLevel)
 	mainLogger.Info("Starting gRPC Notification Server on :50051")
 
-	databaseInstance, dbErr := db.InitDB(configuration.DatabasePath, mainLogger)
+	databaseInstance, dbErr := dependencies.initDB(configuration.DatabasePath, mainLogger)
 	if dbErr != nil {
 		mainLogger.Error("Failed to initialize DB", "error", dbErr)
-		os.Exit(1)
+		return 1
 	}
 
-	secretKeeper, keeperErr := tenant.NewSecretKeeper(configuration.MasterEncryptionKey)
+	secretKeeper, keeperErr := dependencies.newSecretKeeper(configuration.MasterEncryptionKey)
 	if keeperErr != nil {
 		mainLogger.Error("Failed to initialize secret keeper", "error", keeperErr)
-		os.Exit(1)
+		return 1
 	}
 
 	bootstrapCfg := configuration.TenantBootstrap
 	switch {
 	case len(bootstrapCfg.Tenants) > 0:
-		if bootstrapErr := tenant.Bootstrap(context.Background(), databaseInstance, secretKeeper, bootstrapCfg); bootstrapErr != nil {
+		if bootstrapErr := dependencies.bootstrapTenants(context.Background(), databaseInstance, secretKeeper, bootstrapCfg); bootstrapErr != nil {
 			mainLogger.Error("Failed to bootstrap tenants", "error", bootstrapErr)
-			os.Exit(1)
+			return 1
 		}
 	case configuration.TenantConfigPath != "":
-		if bootstrapErr := tenant.BootstrapFromFile(context.Background(), databaseInstance, secretKeeper, configuration.TenantConfigPath); bootstrapErr != nil {
+		if bootstrapErr := dependencies.bootstrapTenantsFromFile(context.Background(), databaseInstance, secretKeeper, configuration.TenantConfigPath); bootstrapErr != nil {
 			mainLogger.Error("Failed to bootstrap tenants", "error", bootstrapErr)
-			os.Exit(1)
+			return 1
 		}
 	default:
 		mainLogger.Error("Failed to bootstrap tenants", "error", "no tenant config supplied")
-		os.Exit(1)
+		return 1
 	}
-	tenantRepo := tenant.NewRepository(databaseInstance, secretKeeper)
-	smtpIdentityRepo, smtpIdentityRepoErr := smtpidentity.NewRepository(databaseInstance, configuration.MasterEncryptionKey)
+	tenantRepo := dependencies.newTenantRepository(databaseInstance, secretKeeper)
+	smtpIdentityRepo, smtpIdentityRepoErr := dependencies.newSMTPIdentityRepository(databaseInstance, configuration.MasterEncryptionKey)
 	if smtpIdentityRepoErr != nil {
 		mainLogger.Error("Failed to initialize SMTP identity repository", "error", smtpIdentityRepoErr)
-		os.Exit(1)
+		return 1
 	}
 	if len(configuration.SMTPSubmission.SenderDomains) > 0 {
-		if senderDomainErr := smtpidentity.ReplaceSenderDomains(context.Background(), databaseInstance, configuration.SMTPSubmission.SenderDomains); senderDomainErr != nil {
+		if senderDomainErr := dependencies.replaceSenderDomains(context.Background(), databaseInstance, configuration.SMTPSubmission.SenderDomains); senderDomainErr != nil {
 			mainLogger.Error("Failed to configure SMTP submission sender domains", "error", senderDomainErr)
-			os.Exit(1)
+			return 1
 		}
 	}
-	smtpIdentityService := smtpidentity.NewService(smtpIdentityRepo, smtpPublicSettings(configuration.SMTPSubmission))
+	smtpIdentityService := dependencies.newSMTPIdentityService(smtpIdentityRepo, smtpPublicSettings(configuration.SMTPSubmission))
 
-	notificationSvc := service.NewNotificationService(databaseInstance, mainLogger, configuration, tenantRepo)
+	notificationSvc := dependencies.newNotificationService(databaseInstance, mainLogger, configuration, tenantRepo)
 
 	// Start the background retry worker.
 	workerCtx, cancelWorker := context.WithCancel(context.Background())
@@ -444,14 +528,14 @@ func main() {
 	if configuration.SMTPSubmission.Enabled {
 		var tlsConfig *tls.Config
 		if configuration.SMTPSubmission.TLSCertPath != "" && configuration.SMTPSubmission.TLSKeyPath != "" {
-			loadedTLSConfig, tlsErr := smtpsubmission.LoadTLSConfig(configuration.SMTPSubmission.TLSCertPath, configuration.SMTPSubmission.TLSKeyPath)
+			loadedTLSConfig, tlsErr := dependencies.loadTLSConfig(configuration.SMTPSubmission.TLSCertPath, configuration.SMTPSubmission.TLSKeyPath)
 			if tlsErr != nil {
 				mainLogger.Error("Failed to load SMTP submission TLS config", "error", tlsErr)
-				os.Exit(1)
+				return 1
 			}
 			tlsConfig = loadedTLSConfig
 		}
-		smtpSubmissionServer, smtpServerErr := smtpsubmission.NewServer(smtpsubmission.Config{
+		smtpSubmissionServer, smtpServerErr := dependencies.newSMTPSubmissionServer(smtpsubmission.Config{
 			Hostname:          configuration.SMTPSubmission.Hostname,
 			ListenAddr:        configuration.SMTPSubmission.ListenAddr,
 			TLSListenAddr:     configuration.SMTPSubmission.TLSListenAddr,
@@ -460,35 +544,29 @@ func main() {
 			MaxRecipients:     configuration.SMTPSubmission.MaxRecipients,
 			AllowInsecureAuth: configuration.SMTPSubmission.AllowInsecureAuth,
 			Authenticator:     smtpIdentityRepo,
-			Relay:             smtpsubmission.NewUpstreamRelay(mainLogger, configuration),
+			Relay:             dependencies.newSMTPRelay(mainLogger, configuration),
 			Logger:            mainLogger,
 		})
 		if smtpServerErr != nil {
 			mainLogger.Error("Failed to initialize SMTP submission server", "error", smtpServerErr)
-			os.Exit(1)
+			return 1
 		}
 		smtpSubmissionCtx, cancelSMTPSubmission := context.WithCancel(context.Background())
 		defer cancelSMTPSubmission()
-		go func() {
-			mainLogger.Info("SMTP submission server listening", "listen_addr", configuration.SMTPSubmission.ListenAddr, "tls_listen_addr", configuration.SMTPSubmission.TLSListenAddr)
-			if err := smtpSubmissionServer.Start(smtpSubmissionCtx); err != nil {
-				mainLogger.Error("SMTP submission server crashed", "error", err)
-				os.Exit(1)
-			}
-		}()
+		startSMTPSubmission(smtpSubmissionCtx, mainLogger, smtpSubmissionServer, configuration, dependencies.exit)
 	}
 
 	if configuration.WebInterfaceEnabled {
-		sessionValidator, validatorErr := sessionvalidator.New(sessionvalidator.Config{
+		sessionValidator, validatorErr := dependencies.newSessionValidator(sessionvalidator.Config{
 			SigningKey: []byte(configuration.TAuthSigningKey),
 			CookieName: configuration.TAuthCookieName,
 		})
 		if validatorErr != nil {
 			mainLogger.Error("Failed to initialize session validator", "error", validatorErr)
-			os.Exit(1)
+			return 1
 		}
 
-		httpServer, httpServerErr := httpapi.NewServer(httpapi.Config{
+		httpServer, httpServerErr := dependencies.newHTTPServer(httpapi.Config{
 			ListenAddr:          configuration.HTTPListenAddr,
 			AllowedOrigins:      configuration.HTTPAllowedOrigins,
 			SessionValidator:    sessionValidator,
@@ -502,18 +580,10 @@ func main() {
 		})
 		if httpServerErr != nil {
 			mainLogger.Error("Failed to initialize HTTP server", "error", httpServerErr)
-			os.Exit(1)
+			return 1
 		}
 
-		go func() {
-			mainLogger.Info("HTTP server listening", "addr", configuration.HTTPListenAddr)
-			if err := httpServer.Start(); err != nil {
-				if !errors.Is(err, http.ErrServerClosed) {
-					mainLogger.Error("HTTP server crashed", "error", err)
-					os.Exit(1)
-				}
-			}
-		}()
+		startHTTPServer(mainLogger, httpServer, configuration.HTTPListenAddr, dependencies.exit)
 		defer func() {
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
@@ -525,30 +595,118 @@ func main() {
 		mainLogger.Info("Web interface disabled; HTTP server not started")
 	}
 
+	listener, listenErr := dependencies.listen("tcp", ":50051")
+	if listenErr != nil {
+		mainLogger.Error("Failed to listen on :50051", "error", listenErr)
+		return 1
+	}
+	mainLogger.Info("gRPC server listening on :50051")
+
+	if serveErr := dependencies.serveGRPC(listener, notificationSvc, tenantRepo, mainLogger, configuration.GRPCAuthToken); serveErr != nil {
+		mainLogger.Error("gRPC server crashed", "error", serveErr)
+		return 1
+	}
+	return 0
+}
+
+func withServerDependencyDefaults(dependencies serverDependencies) serverDependencies {
+	production := productionServerDependencies()
+	if dependencies.loadConfig == nil {
+		dependencies.loadConfig = production.loadConfig
+	}
+	if dependencies.newLogger == nil {
+		dependencies.newLogger = production.newLogger
+	}
+	if dependencies.initDB == nil {
+		dependencies.initDB = production.initDB
+	}
+	if dependencies.newSecretKeeper == nil {
+		dependencies.newSecretKeeper = production.newSecretKeeper
+	}
+	if dependencies.bootstrapTenants == nil {
+		dependencies.bootstrapTenants = production.bootstrapTenants
+	}
+	if dependencies.bootstrapTenantsFromFile == nil {
+		dependencies.bootstrapTenantsFromFile = production.bootstrapTenantsFromFile
+	}
+	if dependencies.newTenantRepository == nil {
+		dependencies.newTenantRepository = production.newTenantRepository
+	}
+	if dependencies.newSMTPIdentityRepository == nil {
+		dependencies.newSMTPIdentityRepository = production.newSMTPIdentityRepository
+	}
+	if dependencies.replaceSenderDomains == nil {
+		dependencies.replaceSenderDomains = production.replaceSenderDomains
+	}
+	if dependencies.newSMTPIdentityService == nil {
+		dependencies.newSMTPIdentityService = production.newSMTPIdentityService
+	}
+	if dependencies.newNotificationService == nil {
+		dependencies.newNotificationService = production.newNotificationService
+	}
+	if dependencies.loadTLSConfig == nil {
+		dependencies.loadTLSConfig = production.loadTLSConfig
+	}
+	if dependencies.newSMTPRelay == nil {
+		dependencies.newSMTPRelay = production.newSMTPRelay
+	}
+	if dependencies.newSMTPSubmissionServer == nil {
+		dependencies.newSMTPSubmissionServer = production.newSMTPSubmissionServer
+	}
+	if dependencies.newSessionValidator == nil {
+		dependencies.newSessionValidator = production.newSessionValidator
+	}
+	if dependencies.newHTTPServer == nil {
+		dependencies.newHTTPServer = production.newHTTPServer
+	}
+	if dependencies.listen == nil {
+		dependencies.listen = production.listen
+	}
+	if dependencies.serveGRPC == nil {
+		dependencies.serveGRPC = production.serveGRPC
+	}
+	if dependencies.exit == nil {
+		dependencies.exit = production.exit
+	}
+	return dependencies
+}
+
+func startSMTPSubmission(ctx context.Context, logger *slog.Logger, server smtpSubmissionStarter, configuration config.Config, exit func(int)) {
+	go func() {
+		logger.Info("SMTP submission server listening", "listen_addr", configuration.SMTPSubmission.ListenAddr, "tls_listen_addr", configuration.SMTPSubmission.TLSListenAddr)
+		if err := server.Start(ctx); err != nil {
+			logger.Error("SMTP submission server crashed", "error", err)
+			exit(1)
+		}
+	}()
+}
+
+func startHTTPServer(logger *slog.Logger, server httpServerRunner, listenAddr string, exit func(int)) {
+	go func() {
+		logger.Info("HTTP server listening", "addr", listenAddr)
+		if err := server.Start(); err != nil {
+			if !errors.Is(err, http.ErrServerClosed) {
+				logger.Error("HTTP server crashed", "error", err)
+				exit(1)
+			}
+		}
+	}()
+}
+
+func serveGRPC(listener net.Listener, notificationSvc service.NotificationService, tenantRepo *tenant.Repository, logger *slog.Logger, requiredToken string) error {
 	grpcServer := grpc.NewServer(
 		grpc.MaxRecvMsgSize(grpcutil.MaxMessageSizeBytes),
 		grpc.MaxSendMsgSize(grpcutil.MaxMessageSizeBytes),
 		grpc.ChainUnaryInterceptor(
-			buildAuthInterceptor(mainLogger, configuration.GRPCAuthToken),
-			buildTenantInterceptor(mainLogger, tenantRepo),
+			buildAuthInterceptor(logger, requiredToken),
+			buildTenantInterceptor(logger, tenantRepo),
 		),
 	)
 	grpcapi.RegisterNotificationServiceServer(grpcServer, &notificationServiceServer{
 		notificationService: notificationSvc,
-		logger:              mainLogger,
+		logger:              logger,
 	})
-
-	listener, listenErr := net.Listen("tcp", ":50051")
-	if listenErr != nil {
-		mainLogger.Error("Failed to listen on :50051", "error", listenErr)
-		os.Exit(1)
-	}
-	mainLogger.Info("gRPC server listening on :50051")
-
-	if serveErr := grpcServer.Serve(listener); serveErr != nil {
-		mainLogger.Error("gRPC server crashed", "error", serveErr)
-		os.Exit(1)
-	}
+	return grpcServer.Serve(listener)
 }
 
 func smtpPublicSettings(cfg config.SMTPSubmissionConfig) smtpidentity.PublicSettings {

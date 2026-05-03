@@ -59,7 +59,7 @@ func NewNotificationService(db *gorm.DB, logger *slog.Logger, cfg config.Config,
 	return NewNotificationServiceWithSenders(db, logger, cfg, tenantRepo, nil, nil)
 }
 
-// NewNotificationServiceWithSenders allows callers (primarily tests) to provide custom senders.
+// NewNotificationServiceWithSenders allows callers to provide custom senders.
 func NewNotificationServiceWithSenders(
 	db *gorm.DB,
 	logger *slog.Logger,
@@ -320,9 +320,6 @@ func (serviceInstance *notificationServiceImpl) emailSenderForTenant(runtimeCfg 
 	}, serviceInstance.logger)
 	serviceInstance.senderMutex.Lock()
 	defer serviceInstance.senderMutex.Unlock()
-	if existing := serviceInstance.emailSenders[runtimeCfg.Tenant.ID]; existing != nil {
-		return existing, nil
-	}
 	serviceInstance.emailSenders[runtimeCfg.Tenant.ID] = smtpSender
 	return smtpSender, nil
 }
@@ -343,9 +340,6 @@ func (serviceInstance *notificationServiceImpl) smsSenderForTenant(runtimeCfg te
 	smsSender := NewTwilioSmsSender(runtimeCfg.SMS.AccountSID, runtimeCfg.SMS.AuthToken, runtimeCfg.SMS.FromNumber, serviceInstance.logger, serviceInstance.config)
 	serviceInstance.senderMutex.Lock()
 	defer serviceInstance.senderMutex.Unlock()
-	if existing := serviceInstance.smsSenders[runtimeCfg.Tenant.ID]; existing != nil {
-		return existing, nil
-	}
 	serviceInstance.smsSenders[runtimeCfg.Tenant.ID] = smsSender
 	return smsSender, nil
 }

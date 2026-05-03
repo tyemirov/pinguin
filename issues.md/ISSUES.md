@@ -6,11 +6,13 @@ Read @AGENTS.md, @ARCHITECTURE.md, @README.md, @issues.md/POLICY.md, @issues.md/
 
 ## Features  (102–199)
 
+- [x] [PG-104] Add an authenticated tenant switcher so Pinguin admins can choose a tenant and view that tenant's notification events from the dashboard. Resolved with authenticated tenant listing, explicit tenant-scoped notification listing, dashboard tenant selection, and backend/browser coverage.
 - [x] [PG-102] Add authenticated SMTP submission for Gmail Send-As: tenant-scoped exact sender identities, STARTTLS SMTP AUTH, raw upstream relay, dashboard identity management, docs, and tests. Resolved with SMTP submission listeners, exact sender credentials, upstream raw relay, dashboard/API management, deployment docs, and passing `make ci`.
 - [x] [PG-103] Decouple authenticated SMTP submission from notification tenants. Resolved by moving sender domains and SMTP identities out of tenant scope, adding `smtpSubmission.relay`, routing accepted raw messages through that independent upstream profile, updating docs/config/UI mappings, and passing `make test`, `make lint`, and `make ci`.
 
 ## Improvements (202–299)
 
+- [x] [PG-339] Restore Go statement coverage to 100% on a stacked branch without adding test-aware production paths. Resolved with production dependency seams for external boundaries, branch-complete backend/CLI coverage, and `go test ./... -coverprofile=coverage.out -covermode=count` reporting 100.0% total statements.
 - [x] [PG-331] Add a declarative mpr-ui init object for TAuth DSL wiring and route runtime config through `MPRUI.init`; `make ci` passes.
 - [x] [PG-329] Move TAuth config to server scope, add global view default for web UI, and gate access by allowed user list. Resolved with server.tauth config, global/tenant view scope handling, and updated UI/auth flows; `make ci` passes.
 - [x] [PG-329] Follow-up: remove Pinguin allowed-user gating; TAuth now owns user access control via `configs/config.tauth.yml`.
@@ -32,6 +34,8 @@ Read @AGENTS.md, @ARCHITECTURE.md, @README.md, @issues.md/POLICY.md, @issues.md/
 
 ## BugFixes (308–399)
 
+- [x] [PG-341] Replace the incorrect generated Pinguin logo with the canonical turquoise envelope mark from the Marco Polo project catalog. Resolved by updating the served `/favicon.svg` used by both the browser favicon and header brand slot.
+- [x] [PG-340] Keep the Pinguin UI chrome branded as `[logo] Pinguin` on local and production Pages, independent of notification tenant display names, and serve a Pinguin favicon. Resolved with a served SVG favicon/logo, brand slots on landing and dashboard, frontend metadata handling that no longer renames product chrome from tenant display names, and passing `make ci`.
 - [x] [PG-332] Stop the auth bootstrap loop by waiting for tauth.js/mpr-ui readiness, removing fallback redirects, and expanding TAuth CORS allowlist defaults for the UI + GIS origins; `make ci` passes.
 - [x] [PG-332] Follow-up: cache early mpr-ui auth events in `tauth-helper` and hydrate the session bridge from cached state to prevent missed auth transitions when mpr-ui loads before app bootstrap; `make ci` passes.
 - [x] [PG-330] Update the TAuth client wiring to use `/api/me` and hard-fail when the helper is missing so the auth bootstrap matches current TAuth endpoints; `make ci` passes.

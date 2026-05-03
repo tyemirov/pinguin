@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -17,9 +18,22 @@ const (
 )
 
 func main() {
-	if err := newRootCommand().Execute(); err != nil {
-		os.Exit(1)
+	runAndExit(os.Args[1:], os.Stdout, os.Stderr, os.Exit)
+}
+
+func runAndExit(arguments []string, stdout io.Writer, stderr io.Writer, exit func(int)) {
+	if err := run(arguments, stdout, stderr); err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		exit(1)
 	}
+}
+
+func run(arguments []string, stdout io.Writer, stderr io.Writer) error {
+	command := newRootCommand()
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	command.SetArgs(arguments)
+	return command.Execute()
 }
 
 func newRootCommand() *cobra.Command {
@@ -78,10 +92,7 @@ func runDoctor(command *cobra.Command, arguments []string) error {
 
 	var output []byte
 	if outputJSON {
-		formatted, formatErr := doctor.FormatReport(report)
-		if formatErr != nil {
-			return fmt.Errorf("doctor.format_json: %w", formatErr)
-		}
+		formatted, _ := doctor.FormatReport(report)
 		output = formatted
 	} else {
 		output = []byte(doctor.FormatSummary(report))

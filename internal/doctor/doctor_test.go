@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestRunValidatesValidConfig(t *testing.T) {
@@ -165,6 +167,202 @@ func TestRunExpandsEnvWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestRunHandlesMappingTenantItemsAndSMTPSubmission(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yml")
+	writeTestConfig(t, configPath, mappingItemsSMTPSubmissionConfigYAML)
+
+	report, err := Run(context.Background(), Options{
+		ConfigPaths: []string{configPath},
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if report.Summary.ValidConfigs != 1 {
+		t.Fatalf("expected valid config, got errors %v", report.Diagnostics[0].Errors)
+	}
+	if len(report.Diagnostics[0].Warnings) == 0 {
+		t.Fatalf("expected master key warning")
+	}
+	if len(report.Diagnostics[0].TenantIDs) != 1 || report.Diagnostics[0].TenantIDs[0] != "mapped" {
+		t.Fatalf("expected mapped tenant id, got %v", report.Diagnostics[0].TenantIDs)
+	}
+}
+
+func TestRunReportsParseYAMLError(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yml")
+	writeTestConfig(t, configPath, "server:\n  databasePath: [unterminated\n")
+
+	report, err := Run(context.Background(), Options{ConfigPaths: []string{configPath}})
+	if err != nil {
+		t.Fatalf("expected no run error, got %v", err)
+	}
+	if report.Summary.InvalidConfigs != 1 || !containsDiagnosticError(report.Diagnostics[0].Errors, "parse_yaml") {
+		t.Fatalf("expected parse yaml diagnostic, got %+v", report.Diagnostics[0])
+	}
+}
+
+func TestRunDetectsCrossConfigSharedGoogleClientWarning(t *testing.T) {
+	tempDir := t.TempDir()
+	config1Path := filepath.Join(tempDir, "config1.yml")
+	config2Path := filepath.Join(tempDir, "config2.yml")
+	writeTestConfig(t, config1Path, validConfigYAML)
+	writeTestConfig(t, config2Path, sharedGoogleClientConfigYAML)
+
+	report, err := Run(context.Background(), Options{
+		ConfigPaths:          []string{config1Path, config2Path},
+		ValidateCrossConfigs: true,
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(report.CrossValidation.Warnings) == 0 {
+		t.Fatalf("expected shared google client warning")
+	}
+	summary := FormatSummary(report)
+	if !strings.Contains(summary, "Cross-Config Validation") || !strings.Contains(summary, "WARN: googleClientId") {
+		t.Fatalf("expected cross validation warning summary, got %q", summary)
+	}
+}
+
+func TestFormatSummaryIncludesInvalidAndCleanCrossValidation(t *testing.T) {
+	report := &Report{
+		Timestamp: timeNowForDoctorTest,
+		Summary: reportSummary{
+			TotalConfigs:   1,
+			InvalidConfigs: 1,
+			TotalErrors:    1,
+			TotalWarnings:  1,
+		},
+		Diagnostics: []DiagnosticResult{
+			{
+				ConfigPath: "bad.yml",
+				Valid:      false,
+				Errors:     []string{"missing server.databasePath"},
+				Warnings:   []string{"server.masterEncryptionKey should be at least 32 characters"},
+			},
+		},
+		CrossValidation: crossValidation{Performed: true},
+	}
+	summary := FormatSummary(report)
+	for _, expected := range []string{"INVALID", "ERROR: missing server.databasePath", "WARN: server.masterEncryptionKey", "No cross-config issues detected"} {
+		if !strings.Contains(summary, expected) {
+			t.Fatalf("expected summary to contain %q, got %q", expected, summary)
+		}
+	}
+}
+
+func TestPinguinYAMLNodeDefaultKind(t *testing.T) {
+	var node pinguinYAMLNode
+	if err := node.UnmarshalYAML(&yaml.Node{Kind: yaml.ScalarNode, Value: "ignored"}); err != nil {
+		t.Fatalf("default kind should be ignored, got %v", err)
+	}
+	if tenants := node.AllTenants(); tenants != nil {
+		t.Fatalf("expected no tenants, got %+v", tenants)
+	}
+}
+
+func TestPinguinYAMLNodeDecodeErrors(t *testing.T) {
+	sequenceNode := &yaml.Node{
+		Kind: yaml.SequenceNode,
+		Content: []*yaml.Node{
+			{Kind: yaml.MappingNode, Content: []*yaml.Node{
+				{Kind: yaml.ScalarNode, Value: "domains"},
+				{Kind: yaml.MappingNode},
+			}},
+		},
+	}
+	var sequence pinguinYAMLNode
+	if err := sequence.UnmarshalYAML(sequenceNode); err == nil {
+		t.Fatalf("expected sequence decode error")
+	}
+
+	mappingNode := &yaml.Node{
+		Kind: yaml.MappingNode,
+		Content: []*yaml.Node{
+			{Kind: yaml.ScalarNode, Value: "items"},
+			{Kind: yaml.MappingNode},
+		},
+	}
+	var mapping pinguinYAMLNode
+	if err := mapping.UnmarshalYAML(mappingNode); err == nil {
+		t.Fatalf("expected mapping decode error")
+	}
+}
+
+func TestDoctorValidationHelpersCoverErrorBranches(t *testing.T) {
+	smtpResult := DiagnosticResult{Valid: true}
+	validateSMTPSubmissionConfig(pinguinSMTPSubmission{Enabled: true}, &smtpResult)
+	for _, expected := range []string{
+		"smtpSubmission.hostname",
+		"smtpSubmission.listenAddr",
+		"smtpSubmission.maxMessageBytes",
+		"smtpSubmission.maxRecipients",
+		"smtpSubmission.senderDomains",
+		"smtpSubmission.relay.host",
+		"smtpSubmission.relay.port",
+		"smtpSubmission.relay.username",
+		"smtpSubmission.relay.password",
+		"smtpSubmission.tlsCertPath",
+		"smtpSubmission.tlsKeyPath",
+	} {
+		if !containsDiagnosticError(smtpResult.Errors, expected) {
+			t.Fatalf("expected SMTP validation error %q in %v", expected, smtpResult.Errors)
+		}
+	}
+
+	tenantResult := DiagnosticResult{Valid: true}
+	validateTenantConfig(pinguinTenant{}, true, &tenantResult)
+	for _, expected := range []string{
+		"tenant[(unknown)]: displayName",
+		"tenant[(unknown)]: at least one domain",
+		"tenant[(unknown)]: identity.googleClientId",
+		"tenant[(unknown)]: identity.tauthBaseUrl",
+		"tenant[(unknown)]: at least one admin",
+	} {
+		if !containsDiagnosticError(tenantResult.Errors, expected) {
+			t.Fatalf("expected tenant validation error %q in %v", expected, tenantResult.Errors)
+		}
+	}
+}
+
+func TestFormatSummaryIncludesCrossValidationErrors(t *testing.T) {
+	report := &Report{
+		Timestamp:   timeNowForDoctorTest,
+		Summary:     reportSummary{TotalConfigs: 2, ValidConfigs: 2},
+		Diagnostics: []DiagnosticResult{{ConfigPath: "a.yml", Valid: true}, {ConfigPath: "b.yml", Valid: true}},
+		CrossValidation: crossValidation{
+			Performed: true,
+			Errors:    []string{"domain conflict"},
+		},
+	}
+	summary := FormatSummary(report)
+	if !strings.Contains(summary, "ERROR: domain conflict") {
+		t.Fatalf("expected cross validation error, got %q", summary)
+	}
+}
+
+func TestValidateCrossConfigsSkipsBlankDomains(t *testing.T) {
+	validation := validateCrossConfigs(map[string]*pinguinConfig{
+		"a.yml": {
+			Tenants: pinguinYAMLNode{Tenants: []pinguinTenant{
+				{ID: "tenant-a", Domains: []string{" ", "Alpha.example"}},
+			}},
+		},
+		"b.yml": {
+			Tenants: pinguinYAMLNode{Tenants: []pinguinTenant{
+				{ID: "tenant-b", Domains: []string{"Beta.example"}},
+			}},
+		},
+	})
+	if !validation.Performed {
+		t.Fatalf("expected cross validation to run")
+	}
+	if len(validation.Errors) != 0 {
+		t.Fatalf("blank domains should not create conflicts: %v", validation.Errors)
+	}
+}
+
 func containsDiagnosticError(errors []string, expected string) bool {
 	for _, diagnosticError := range errors {
 		if strings.Contains(diagnosticError, expected) {
@@ -252,6 +450,79 @@ tenants:
     displayName: Demo Tenant
     domains:
       - demo.example.com
+    identity:
+      googleClientId: demo-client.apps.googleusercontent.com
+      tauthBaseUrl: https://tauth.example.com
+    admins:
+      - admin@example.com
+`
+
+const timeNowForDoctorTest = "2026-05-03T00:00:00Z"
+
+const mappingItemsSMTPSubmissionConfigYAML = `
+server:
+  databasePath: /data/pinguin.db
+  grpcAuthToken: test-token-123
+  logLevel: INFO
+  maxRetries: 3
+  retryIntervalSec: 60
+  masterEncryptionKey: short-master-key-warning
+  connectionTimeoutSec: 30
+  operationTimeoutSec: 60
+
+web:
+  enabled: false
+
+smtpSubmission:
+  enabled: true
+  hostname: smtp.example.com
+  listenAddr: ":587"
+  tlsCertPath: /certs/fullchain.pem
+  tlsKeyPath: /certs/privkey.pem
+  maxMessageBytes: 1048576
+  maxRecipients: 25
+  senderDomains:
+    - " example.com "
+  relay:
+    host: smtp-relay.example.com
+    port: 587
+    username: relay-user
+    password: relay-pass
+
+tenants:
+  items:
+    - id: mapped
+      displayName: Mapped Tenant
+      domains:
+        - mapped.example.com
+`
+
+const sharedGoogleClientConfigYAML = `
+server:
+  databasePath: /data/pinguin3.db
+  grpcAuthToken: test-token-789
+  logLevel: INFO
+  maxRetries: 3
+  retryIntervalSec: 60
+  masterEncryptionKey: test-encryption-key-at-least-32-chars
+  connectionTimeoutSec: 30
+  operationTimeoutSec: 60
+
+web:
+  enabled: true
+  listenAddr: ":8082"
+  allowedOrigins:
+    - http://localhost:3002
+  tauth:
+    signingKey: test-signing-key-3
+    issuer: test-issuer-3
+    cookieName: app_session
+
+tenants:
+  - id: shared-client
+    displayName: Shared Client Tenant
+    domains:
+      - shared-client.example.com
     identity:
       googleClientId: demo-client.apps.googleusercontent.com
       tauthBaseUrl: https://tauth.example.com

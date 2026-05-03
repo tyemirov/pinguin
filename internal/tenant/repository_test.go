@@ -5,10 +5,12 @@ import (
 	"errors"
 	"io"
 	"log"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
 
@@ -70,6 +72,26 @@ func TestRepositoryResolveByHost(t *testing.T) {
 	}
 	if runtimeCfg.SMS == nil || runtimeCfg.SMS.AccountSID != "AC123" {
 		t.Fatalf("expected SMS credentials")
+	}
+}
+
+func TestRepositoryResolveByHostValidationAndLookupErrors(t *testing.T) {
+	t.Helper()
+	dbInstance := newTestDatabase(t)
+	keeper := newTestSecretKeeper(t)
+	repo := NewRepository(dbInstance, keeper)
+
+	if _, err := repo.ResolveByHost(context.Background(), "   "); err == nil {
+		t.Fatalf("expected empty host error")
+	}
+	if _, err := repo.ResolveByHost(context.Background(), "missing.example"); err == nil {
+		t.Fatalf("expected missing domain error")
+	}
+	if err := dbInstance.Create(&TenantDomain{Host: "orphan.example", TenantID: "missing-tenant"}).Error; err != nil {
+		t.Fatalf("seed orphan domain: %v", err)
+	}
+	if _, err := repo.ResolveByHost(context.Background(), "orphan.example"); err == nil || !strings.Contains(err.Error(), "missing-tenant") {
+		t.Fatalf("expected runtime error for orphan domain, got %v", err)
 	}
 }
 
@@ -244,6 +266,216 @@ func TestRepositoryListActiveTenants(t *testing.T) {
 	}
 	if len(tenants) != 1 || tenants[0].ID != "tenant-one" {
 		t.Fatalf("expected only active tenant, got %+v", tenants)
+	}
+}
+
+func TestRepositoryListActiveTenantsOrdersByDisplayName(t *testing.T) {
+	t.Helper()
+	dbInstance := newTestDatabase(t)
+	keeper := newTestSecretKeeper(t)
+	cfg := BootstrapConfig{
+		Tenants: []BootstrapTenant{
+			bootstrapTenantSpec("tenant-z", []string{"z.example"}),
+			bootstrapTenantSpec("tenant-a", []string{"a.example"}),
+		},
+	}
+	cfg.Tenants[0].DisplayName = "Zulu"
+	cfg.Tenants[1].DisplayName = "Alpha"
+	if err := Bootstrap(context.Background(), dbInstance, keeper, cfg); err != nil {
+		t.Fatalf("bootstrap tenants: %v", err)
+	}
+
+	tenants, err := NewRepository(dbInstance, keeper).ListActiveTenants(context.Background())
+	if err != nil {
+		t.Fatalf("list active tenants: %v", err)
+	}
+	if len(tenants) != 2 || tenants[0].DisplayName != "Alpha" || tenants[1].DisplayName != "Zulu" {
+		t.Fatalf("expected display-name ordering, got %+v", tenants)
+	}
+}
+
+func TestRepositoryListActiveTenantsReportsStorageFailure(t *testing.T) {
+	dbInstance := newTestDatabase(t)
+	repo := NewRepository(dbInstance, newTestSecretKeeper(t))
+	closeTenantDatabase(t, dbInstance)
+	if _, err := repo.ListActiveTenants(context.Background()); err == nil {
+		t.Fatalf("expected list active tenants storage error")
+	}
+}
+
+func TestRepositoryLoadRuntimeErrors(t *testing.T) {
+	t.Helper()
+	dbInstance := newTestDatabase(t)
+	keeper := newTestSecretKeeper(t)
+	repo := NewRepository(dbInstance, keeper)
+
+	if _, err := repo.ResolveByID(context.Background(), "missing"); err == nil {
+		t.Fatalf("expected missing tenant error")
+	}
+
+	if err := dbInstance.Create(&Tenant{
+		ID:          "without-email",
+		DisplayName: "Without Email",
+		Status:      TenantStatusActive,
+	}).Error; err != nil {
+		t.Fatalf("create tenant: %v", err)
+	}
+	if _, err := repo.ResolveByID(context.Background(), "without-email"); err == nil {
+		t.Fatalf("expected missing email profile error")
+	}
+
+	usernameCipher, err := keeper.Encrypt("user")
+	if err != nil {
+		t.Fatalf("encrypt username: %v", err)
+	}
+	if err := dbInstance.Create(&EmailProfile{
+		ID:             "email-bad-password",
+		TenantID:       "without-email",
+		Host:           "smtp.example",
+		Port:           587,
+		UsernameCipher: usernameCipher,
+		PasswordCipher: []byte("not-a-ciphertext"),
+		FromAddress:    "from@example.com",
+		IsDefault:      true,
+	}).Error; err != nil {
+		t.Fatalf("create email profile: %v", err)
+	}
+	if _, err := repo.ResolveByID(context.Background(), "without-email"); err == nil {
+		t.Fatalf("expected decrypt error")
+	}
+}
+
+func TestRepositoryLoadRuntimeReportsSMSAndEmailDecryptErrors(t *testing.T) {
+	dbInstance := newTestDatabase(t)
+	keeper := newTestSecretKeeper(t)
+	repo := NewRepository(dbInstance, keeper)
+	if err := dbInstance.Create(&Tenant{
+		ID:          "tenant-runtime-errors",
+		DisplayName: "Runtime Errors",
+		Status:      TenantStatusActive,
+	}).Error; err != nil {
+		t.Fatalf("create tenant: %v", err)
+	}
+	usernameCipher, err := keeper.Encrypt("smtp-user")
+	if err != nil {
+		t.Fatalf("encrypt username: %v", err)
+	}
+	passwordCipher, err := keeper.Encrypt("smtp-pass")
+	if err != nil {
+		t.Fatalf("encrypt password: %v", err)
+	}
+	if err := dbInstance.Create(&EmailProfile{
+		ID:             "email-runtime-errors",
+		TenantID:       "tenant-runtime-errors",
+		Host:           "smtp.example",
+		Port:           587,
+		UsernameCipher: usernameCipher,
+		PasswordCipher: passwordCipher,
+		FromAddress:    "from@example.com",
+		IsDefault:      true,
+	}).Error; err != nil {
+		t.Fatalf("create email profile: %v", err)
+	}
+
+	if err := dbInstance.Create(&SMSProfile{
+		ID:               "sms-bad-account",
+		TenantID:         "tenant-runtime-errors",
+		AccountSIDCipher: []byte("bad-account"),
+		AuthTokenCipher:  []byte("bad-token"),
+		FromNumber:       "+15550001111",
+		IsDefault:        true,
+	}).Error; err != nil {
+		t.Fatalf("create sms profile: %v", err)
+	}
+	if _, err := repo.ResolveByID(context.Background(), "tenant-runtime-errors"); err == nil {
+		t.Fatalf("expected sms account decrypt error")
+	}
+
+	goodAccountCipher, err := keeper.Encrypt("AC123")
+	if err != nil {
+		t.Fatalf("encrypt account: %v", err)
+	}
+	var smsProfile SMSProfile
+	if err := dbInstance.Where(&SMSProfile{ID: "sms-bad-account"}).First(&smsProfile).Error; err != nil {
+		t.Fatalf("fetch sms profile: %v", err)
+	}
+	smsProfile.AccountSIDCipher = goodAccountCipher
+	smsProfile.AuthTokenCipher = []byte("bad-token")
+	if err := dbInstance.Save(&smsProfile).Error; err != nil {
+		t.Fatalf("update sms profile: %v", err)
+	}
+	if _, err := repo.ResolveByID(context.Background(), "tenant-runtime-errors"); err == nil {
+		t.Fatalf("expected sms token decrypt error")
+	}
+
+	if err := dbInstance.Where(&SMSProfile{ID: "sms-bad-account"}).Delete(&SMSProfile{}).Error; err != nil {
+		t.Fatalf("delete sms profile: %v", err)
+	}
+	if err := dbInstance.Model(&EmailProfile{}).
+		Where(&EmailProfile{ID: "email-runtime-errors"}).
+		Update("username_cipher", []byte("bad-username")).Error; err != nil {
+		t.Fatalf("update email username: %v", err)
+	}
+	if _, err := repo.ResolveByID(context.Background(), "tenant-runtime-errors"); err == nil {
+		t.Fatalf("expected email username decrypt error")
+	}
+}
+
+func TestRepositoryLoadRuntimeReportsSMSQueryFailure(t *testing.T) {
+	dbInstance := newTestDatabase(t)
+	keeper := newTestSecretKeeper(t)
+	if err := Bootstrap(context.Background(), dbInstance, keeper, sampleBootstrapConfig()); err != nil {
+		t.Fatalf("bootstrap: %v", err)
+	}
+	repo := NewRepository(dbInstance, keeper)
+	if err := dbInstance.Migrator().DropTable(&SMSProfile{}); err != nil {
+		t.Fatalf("drop sms profiles: %v", err)
+	}
+	if _, err := repo.ResolveByID(context.Background(), "tenant-one"); err == nil || !strings.Contains(err.Error(), "sms profile") {
+		t.Fatalf("expected sms query failure, got %v", err)
+	}
+}
+
+func TestRepositoryCacheHelpersIgnoreEmptyKeys(t *testing.T) {
+	t.Helper()
+	repo := NewRepository(newTestDatabase(t), newTestSecretKeeper(t))
+	repo.cacheRuntimeConfig("", RuntimeConfig{Tenant: Tenant{ID: "ignored"}})
+	if _, ok := repo.cachedRuntimeConfig(""); ok {
+		t.Fatalf("expected empty runtime cache key to be ignored")
+	}
+	repo.cacheTenantID("", "tenant")
+	repo.cacheTenantID("host.example", "")
+	if _, ok := repo.cachedTenantID(""); ok {
+		t.Fatalf("expected empty host cache key to be ignored")
+	}
+	if _, ok := repo.cachedTenantID("host.example"); ok {
+		t.Fatalf("expected empty tenant id cache value to be ignored")
+	}
+}
+
+func TestNormalizeHost(t *testing.T) {
+	t.Helper()
+	testCases := map[string]string{
+		" Example.COM ":       "example.com",
+		"example.com:8080":    "example.com",
+		" ":                   "",
+		"sub.example.com:443": "sub.example.com",
+	}
+	for input, expected := range testCases {
+		if actual := normalizeHost(input); actual != expected {
+			t.Fatalf("normalizeHost(%q) = %q, expected %q", input, actual, expected)
+		}
+	}
+}
+
+func closeTenantDatabase(t *testing.T, database *gorm.DB) {
+	t.Helper()
+	sqlDatabase, err := database.DB()
+	if err != nil {
+		t.Fatalf("database handle: %v", err)
+	}
+	if closeErr := sqlDatabase.Close(); closeErr != nil {
+		t.Fatalf("close database: %v", closeErr)
 	}
 }
 

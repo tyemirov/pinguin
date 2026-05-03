@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -225,5 +226,156 @@ func TestNotificationRetryStoreWithoutTenantRepository(t *testing.T) {
 	}
 	if len(jobs) != expectedJobs {
 		t.Fatalf("expected %d jobs, got %d", expectedJobs, len(jobs))
+	}
+}
+
+func TestNotificationRetryStoreReportsStorageAndPayloadErrors(t *testing.T) {
+	now := time.Now().UTC()
+	allDatabase := openIsolatedDatabase(t)
+	allStore := newNotificationRetryStore(allDatabase, nil)
+	closeDatabase(t, allDatabase)
+	if _, err := allStore.PendingJobs(context.Background(), 3, now); err == nil {
+		t.Fatalf("expected pending jobs storage error without tenant repo")
+	}
+
+	activeDatabase := openIsolatedDatabase(t)
+	if err := activeDatabase.AutoMigrate(&tenant.Tenant{}); err != nil {
+		t.Fatalf("tenant migration error: %v", err)
+	}
+	activeStore := newNotificationRetryStore(activeDatabase, tenant.NewRepository(activeDatabase, nil))
+	closeDatabase(t, activeDatabase)
+	if _, err := activeStore.PendingJobs(context.Background(), 3, now); err == nil {
+		t.Fatalf("expected pending jobs storage error with tenant repo")
+	}
+
+	store := newNotificationRetryStore(openIsolatedDatabase(t), nil)
+	if err := store.ApplyAttemptResult(context.Background(), scheduler.Job{ID: "missing"}, scheduler.AttemptUpdate{}); err == nil {
+		t.Fatalf("expected missing payload error")
+	}
+	if err := store.ApplyAttemptResult(context.Background(), scheduler.Job{ID: "wrong", Payload: "not a notification"}, scheduler.AttemptUpdate{}); err == nil {
+		t.Fatalf("expected invalid payload type error")
+	}
+}
+
+func TestNotificationRetryStoreCanonicalizesUnknownAttemptStatus(t *testing.T) {
+	database := openIsolatedDatabase(t)
+	store := newNotificationRetryStore(database, nil)
+	now := time.Now().UTC()
+	record := &model.Notification{
+		TenantID:         testTenantID,
+		NotificationID:   "notif-unknown-status",
+		NotificationType: model.NotificationEmail,
+		Recipient:        "user@example.com",
+		Message:          "Body",
+		Status:           model.StatusQueued,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}
+	if createErr := model.CreateNotification(tenantContext(), database, record); createErr != nil {
+		t.Fatalf("create notification: %v", createErr)
+	}
+	attemptedAt := now.Add(time.Minute)
+	if err := store.ApplyAttemptResult(context.Background(), scheduler.Job{ID: record.NotificationID, Payload: record}, scheduler.AttemptUpdate{
+		Status:            "not-a-status",
+		ProviderMessageID: "provider-1",
+		RetryCount:        2,
+		LastAttemptedAt:   attemptedAt,
+	}); err != nil {
+		t.Fatalf("apply attempt result: %v", err)
+	}
+	updated, fetchErr := model.GetNotificationByID(tenantContext(), database, testTenantID, record.NotificationID)
+	if fetchErr != nil {
+		t.Fatalf("fetch updated notification: %v", fetchErr)
+	}
+	if updated.Status != model.StatusErrored || updated.ProviderMessageID != "provider-1" || updated.RetryCount != 2 {
+		t.Fatalf("unexpected updated notification %+v", updated)
+	}
+}
+
+func TestNotificationDispatcherReportsPayloadRuntimeAndSendFailures(t *testing.T) {
+	bareService := &notificationServiceImpl{
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	dispatcher := newNotificationDispatcher(bareService)
+	if _, err := dispatcher.Attempt(context.Background(), scheduler.Job{}); err == nil {
+		t.Fatalf("expected missing payload error")
+	}
+	if _, err := dispatcher.Attempt(context.Background(), scheduler.Job{Payload: "bad"}); err == nil {
+		t.Fatalf("expected invalid payload error")
+	}
+	runtimeResult, runtimeErr := dispatcher.Attempt(context.Background(), scheduler.Job{Payload: &model.Notification{
+		NotificationID:   "notif-no-runtime",
+		TenantID:         "tenant-no-runtime",
+		NotificationType: model.NotificationEmail,
+		Recipient:        "user@example.com",
+		Message:          "Body",
+	}})
+	if !errors.Is(runtimeErr, ErrMissingTenantContext) || runtimeResult.Status != string(model.StatusErrored) {
+		t.Fatalf("expected runtime error result, got result=%+v err=%v", runtimeResult, runtimeErr)
+	}
+
+	emailErr := errors.New("email retry failed")
+	emailService := &notificationServiceImpl{
+		logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
+		defaultEmailSender: &stubEmailSender{err: emailErr},
+	}
+	emailResult, err := newNotificationDispatcher(emailService).Attempt(tenantContext(), scheduler.Job{Payload: &model.Notification{
+		TenantID:         testTenantID,
+		NotificationType: model.NotificationEmail,
+		Recipient:        "user@example.com",
+		Subject:          "Subject",
+		Message:          "Body",
+	}})
+	if !errors.Is(err, emailErr) || emailResult.Status != "" {
+		t.Fatalf("expected email send error without status, got result=%+v err=%v", emailResult, err)
+	}
+
+	unavailableEmailService := &notificationServiceImpl{
+		logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		emailSenders: make(map[string]EmailSender),
+		smsSenders:   make(map[string]SmsSender),
+	}
+	unavailableEmailResult, unavailableEmailErr := newNotificationDispatcher(unavailableEmailService).Attempt(
+		tenant.WithRuntime(context.Background(), tenant.RuntimeConfig{Tenant: tenant.Tenant{ID: testTenantID}}),
+		scheduler.Job{Payload: &model.Notification{
+			TenantID:         testTenantID,
+			NotificationType: model.NotificationEmail,
+			Recipient:        "user@example.com",
+			Subject:          "Subject",
+			Message:          "Body",
+		}},
+	)
+	if unavailableEmailErr == nil || unavailableEmailResult.Status != string(model.StatusErrored) {
+		t.Fatalf("expected unavailable email sender error, got result=%+v err=%v", unavailableEmailResult, unavailableEmailErr)
+	}
+
+	smsErr := errors.New("sms retry failed")
+	smsService := &notificationServiceImpl{
+		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		defaultSmsSender: &stubSmsSender{err: smsErr},
+	}
+	smsResult, err := newNotificationDispatcher(smsService).Attempt(tenantContext(), scheduler.Job{Payload: &model.Notification{
+		TenantID:         testTenantID,
+		NotificationType: model.NotificationSMS,
+		Recipient:        "+1222",
+		Message:          "Body",
+	}})
+	if !errors.Is(err, smsErr) || smsResult.Status != "" {
+		t.Fatalf("expected sms send error without status, got result=%+v err=%v", smsResult, err)
+	}
+
+	unsupportedService := &notificationServiceImpl{
+		logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
+		defaultEmailSender: &testEmailSender{},
+		defaultSmsSender:   &testSmsSender{},
+	}
+	unsupportedResult, unsupportedErr := newNotificationDispatcher(unsupportedService).Attempt(tenantContext(), scheduler.Job{Payload: &model.Notification{
+		TenantID:         testTenantID,
+		NotificationType: "push",
+		Recipient:        "user@example.com",
+		Message:          "Body",
+	}})
+	if unsupportedErr == nil || unsupportedResult.Status != string(model.StatusErrored) {
+		t.Fatalf("expected unsupported notification error, got result=%+v err=%v", unsupportedResult, unsupportedErr)
 	}
 }

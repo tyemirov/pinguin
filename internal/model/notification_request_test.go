@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 )
 
 const (
@@ -118,6 +119,44 @@ func TestNewNotificationRequestNormalizesAttachments(t *testing.T) {
 	attachmentsAgain := request.Attachments()
 	if attachmentsAgain[0].Data[0] == attachments[0].Data[0] {
 		t.Fatalf("expected attachment copies to be independent")
+	}
+}
+
+func TestNotificationRequestAccessorsReturnNormalizedCopies(t *testing.T) {
+	scheduledTime := time.Now().Add(time.Hour)
+	request, requestErr := NewNotificationRequest(
+		NotificationEmail,
+		" user@example.com ",
+		" Subject ",
+		" Body ",
+		&scheduledTime,
+		[]EmailAttachment{{Filename: " file.txt ", ContentType: " text/plain ", Data: []byte("data")}},
+	)
+	if requestErr != nil {
+		t.Fatalf("notification request error: %v", requestErr)
+	}
+	if request.NotificationType() != NotificationEmail {
+		t.Fatalf("unexpected type %s", request.NotificationType())
+	}
+	if request.Recipient() != "user@example.com" || request.Subject() != "Subject" || request.Message() != " Body " {
+		t.Fatalf("unexpected scalar accessors")
+	}
+	if request.ScheduledFor() == nil || !request.ScheduledFor().Equal(scheduledTime.UTC()) {
+		t.Fatalf("unexpected scheduled accessor")
+	}
+	firstAttachments := request.Attachments()
+	secondAttachments := request.Attachments()
+	firstAttachments[0].Data[0] = 'x'
+	if secondAttachments[0].Data[0] == 'x' {
+		t.Fatalf("expected independent attachment copies")
+	}
+
+	withoutSchedule, withoutScheduleErr := NewNotificationRequest(NotificationSMS, "+15555555555", "", "Body", nil, nil)
+	if withoutScheduleErr != nil {
+		t.Fatalf("sms request: %v", withoutScheduleErr)
+	}
+	if withoutSchedule.ScheduledFor() != nil || withoutSchedule.Attachments() != nil {
+		t.Fatalf("expected nil schedule and attachments")
 	}
 }
 

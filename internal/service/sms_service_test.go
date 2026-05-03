@@ -3,10 +3,12 @@ package service
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"testing"
 
+	"github.com/tyemirov/pinguin/internal/config"
 	"log/slog"
 )
 
@@ -86,5 +88,37 @@ func TestTwilioSmsSenderErrorStatus(t *testing.T) {
 	}
 	if _, err := sender.SendSms(context.Background(), "+1222", "Hello"); err == nil {
 		t.Fatalf("expected error for non-2xx response")
+	}
+}
+
+func TestTwilioSmsSenderConstructorAndRequestFailures(t *testing.T) {
+	constructed := NewTwilioSmsSender("sid", "token", "+1000", newDiscardLogger(), config.Config{ConnectionTimeoutSec: 3})
+	if constructed.AccountSID != "sid" || constructed.HTTPClient == nil {
+		t.Fatalf("unexpected constructed sender %+v", constructed)
+	}
+
+	badURLSender := &TwilioSmsSender{
+		AccountSID: "bad\nsid",
+		AuthToken:  "token",
+		FromNumber: "+1000",
+		HTTPClient: http.DefaultClient,
+		Logger:     newDiscardLogger(),
+	}
+	if _, err := badURLSender.SendSms(context.Background(), "+1222", "Hello"); err == nil {
+		t.Fatalf("expected request creation error")
+	}
+
+	doError := errors.New("twilio unavailable")
+	httpErrorSender := &TwilioSmsSender{
+		AccountSID: "sid",
+		AuthToken:  "token",
+		FromNumber: "+1000",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, doError
+		})},
+		Logger: newDiscardLogger(),
+	}
+	if _, err := httpErrorSender.SendSms(context.Background(), "+1222", "Hello"); !errors.Is(err, doError) {
+		t.Fatalf("expected HTTP client error, got %v", err)
 	}
 }

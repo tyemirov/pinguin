@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/tyemirov/pinguin/internal/tenant"
+	"gopkg.in/yaml.v3"
 )
 
 func ptrBool(value bool) *bool {
@@ -215,6 +216,152 @@ web:
 	}
 }
 
+func TestLoadConfigDefaultsCookieAndSupportsTenantConfigPath(t *testing.T) {
+	configPath := writeConfigFile(t, `
+server:
+  databasePath: app.db
+  grpcAuthToken: token
+  logLevel: INFO
+  maxRetries: 3
+  retryIntervalSec: 30
+  masterEncryptionKey: ${MASTER_ENCRYPTION_KEY}
+  connectionTimeoutSec: 5
+  operationTimeoutSec: 10
+  tauth:
+    signingKey: signing-key
+    googleClientId: google-one
+    tauthBaseUrl: https://auth.one.test
+    tauthTenantId: tauth-one
+tenants:
+  configPath: tenants.yml
+web:
+  enabled: true
+  listenAddr: :0
+`)
+	t.Setenv("PINGUIN_CONFIG_PATH", configPath)
+	t.Setenv("MASTER_ENCRYPTION_KEY", "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd")
+
+	cfg, err := LoadConfig(false)
+	if err != nil {
+		t.Fatalf("LoadConfig returned error: %v", err)
+	}
+	if cfg.TenantConfigPath != "tenants.yml" {
+		t.Fatalf("unexpected tenant config path %q", cfg.TenantConfigPath)
+	}
+	if cfg.TAuthCookieName != "app_session" {
+		t.Fatalf("expected default cookie, got %q", cfg.TAuthCookieName)
+	}
+}
+
+func TestLoadConfigCanDisableWebFromEnvironment(t *testing.T) {
+	configPath := writeConfigFile(t, `
+server:
+  databasePath: app.db
+  grpcAuthToken: token
+  logLevel: INFO
+  maxRetries: 3
+  retryIntervalSec: 30
+  masterEncryptionKey: ${MASTER_ENCRYPTION_KEY}
+  connectionTimeoutSec: 5
+  operationTimeoutSec: 10
+tenants:
+  configPath: tenants.yml
+web:
+  enabled: true
+`)
+	t.Setenv("PINGUIN_CONFIG_PATH", configPath)
+	t.Setenv("MASTER_ENCRYPTION_KEY", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee")
+	t.Setenv("DISABLE_WEB_INTERFACE", "yes")
+
+	cfg, err := LoadConfig(false)
+	if err != nil {
+		t.Fatalf("LoadConfig returned error: %v", err)
+	}
+	if cfg.WebInterfaceEnabled {
+		t.Fatalf("expected web disabled from environment")
+	}
+}
+
+func TestLoadConfigRejectsUnreadableAndInvalidYAML(t *testing.T) {
+	t.Setenv("PINGUIN_CONFIG_PATH", filepath.Join(t.TempDir(), "missing.yml"))
+	if _, err := LoadConfig(false); err == nil || !strings.Contains(err.Error(), "configuration: read") {
+		t.Fatalf("expected read error, got %v", err)
+	}
+
+	configPath := writeConfigFile(t, "server:\n  databasePath: [")
+	t.Setenv("PINGUIN_CONFIG_PATH", configPath)
+	if _, err := LoadConfig(false); err == nil || !strings.Contains(err.Error(), "configuration: parse yaml") {
+		t.Fatalf("expected parse error, got %v", err)
+	}
+}
+
+func TestTenantConfigUnmarshalShapes(t *testing.T) {
+	var nilConfig tenantConfig
+	if err := nilConfig.UnmarshalYAML(nil); err != nil {
+		t.Fatalf("nil unmarshal: %v", err)
+	}
+
+	var sequence tenantConfig
+	if err := yaml.Unmarshal([]byte("- id: tenant-one\n  displayName: One\n"), &sequence); err != nil {
+		t.Fatalf("unmarshal sequence: %v", err)
+	}
+	if len(sequence.Tenants) != 1 || sequence.ConfigPath != "" {
+		t.Fatalf("unexpected sequence config %+v", sequence)
+	}
+
+	var items tenantConfig
+	if err := yaml.Unmarshal([]byte("items:\n  - id: tenant-two\n    displayName: Two\nconfigPath: ignored.yml\n"), &items); err != nil {
+		t.Fatalf("unmarshal items: %v", err)
+	}
+	if len(items.Tenants) != 1 || items.Tenants[0].ID != "tenant-two" || items.ConfigPath != "ignored.yml" {
+		t.Fatalf("unexpected items config %+v", items)
+	}
+
+	var invalid tenantConfig
+	if err := yaml.Unmarshal([]byte("123"), &invalid); err == nil || !strings.Contains(err.Error(), "tenants must be a list") {
+		t.Fatalf("expected invalid tenant shape error, got %v", err)
+	}
+
+	sequenceNode := &yaml.Node{
+		Kind: yaml.SequenceNode,
+		Content: []*yaml.Node{
+			{Kind: yaml.MappingNode, Content: []*yaml.Node{
+				{Kind: yaml.ScalarNode, Value: "domains"},
+				{Kind: yaml.MappingNode},
+			}},
+		},
+	}
+	if err := sequence.UnmarshalYAML(sequenceNode); err == nil {
+		t.Fatalf("expected sequence decode error")
+	}
+	mappingNode := &yaml.Node{
+		Kind: yaml.MappingNode,
+		Content: []*yaml.Node{
+			{Kind: yaml.ScalarNode, Value: "items"},
+			{Kind: yaml.MappingNode},
+		},
+	}
+	if err := items.UnmarshalYAML(mappingNode); err == nil {
+		t.Fatalf("expected mapping decode error")
+	}
+}
+
+func TestParseDisabledEnv(t *testing.T) {
+	testCases := map[string]bool{
+		"":     false,
+		"true": true,
+		"1":    true,
+		"on":   true,
+		"no":   false,
+	}
+	for rawValue, expected := range testCases {
+		t.Setenv("CONFIG_TEST_DISABLED", rawValue)
+		if got := parseDisabledEnv("CONFIG_TEST_DISABLED"); got != expected {
+			t.Fatalf("parse disabled env %q: want %v got %v", rawValue, expected, got)
+		}
+	}
+}
+
 func TestLoadConfigRejectsMissingRequiredField(t *testing.T) {
 	t.Helper()
 	configPath := writeConfigFile(t, `
@@ -258,6 +405,33 @@ web:
 	}
 }
 
+func TestValidateConfigAggregatesMissingFields(t *testing.T) {
+	err := validateConfig(Config{
+		WebInterfaceEnabled: true,
+		SMTPSubmission: SMTPSubmissionConfig{
+			Enabled: true,
+		},
+		TenantBootstrap: tenant.BootstrapConfig{
+			Tenants: []tenant.BootstrapTenant{{ID: "tenant-one"}},
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected validation error")
+	}
+	for _, expected := range []string{
+		"server.databasePath",
+		"web.listenAddr",
+		"smtpSubmission.hostname",
+		"smtpSubmission.senderDomains",
+		"tenants[0].displayName",
+		"tenants[0].domains",
+	} {
+		if !strings.Contains(err.Error(), expected) {
+			t.Fatalf("expected error to contain %s, got %v", expected, err)
+		}
+	}
+}
+
 func TestLoadConfigRejectsIncompleteSMTPSubmission(t *testing.T) {
 	t.Helper()
 	configPath := writeConfigFile(t, `
@@ -297,6 +471,61 @@ smtpSubmission:
 	}
 	if !strings.Contains(err.Error(), "smtpSubmission.listenAddr") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadConfigUsesDefaultPath(t *testing.T) {
+	tempDir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(tempDir, "configs"), 0o755); err != nil {
+		t.Fatalf("mkdir configs: %v", err)
+	}
+	configPath := filepath.Join(tempDir, defaultConfigPath)
+	if err := os.WriteFile(configPath, []byte(`
+server:
+  databasePath: app.db
+  grpcAuthToken: token
+  logLevel: INFO
+  maxRetries: 3
+  retryIntervalSec: 30
+  masterEncryptionKey: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  connectionTimeoutSec: 5
+  operationTimeoutSec: 10
+tenants:
+  configPath: tenants.yml
+web:
+  enabled: false
+`), 0o600); err != nil {
+		t.Fatalf("write default config: %v", err)
+	}
+	oldWorkingDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get cwd: %v", err)
+	}
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("chdir temp: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(oldWorkingDirectory); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	}()
+	t.Setenv("PINGUIN_CONFIG_PATH", "")
+
+	cfg, err := LoadConfig(false)
+	if err != nil {
+		t.Fatalf("LoadConfig default path: %v", err)
+	}
+	if cfg.TenantConfigPath != "tenants.yml" {
+		t.Fatalf("unexpected tenant config path %q", cfg.TenantConfigPath)
+	}
+}
+
+func TestStringHelpersSkipBlankValues(t *testing.T) {
+	if normalized := normalizeStrings([]string{" one ", " ", "two"}); !reflect.DeepEqual(normalized, []string{"one", "two"}) {
+		t.Fatalf("unexpected normalized strings %v", normalized)
+	}
+	if count := countNonEmptyStrings([]string{"one", " ", "two"}); count != 2 {
+		t.Fatalf("unexpected non-empty count %d", count)
 	}
 }
 

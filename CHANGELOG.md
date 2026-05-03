@@ -4,8 +4,11 @@
 
 ### Features
 - Decouple authenticated SMTP submission from notification tenants by giving it its own sender-domain allowlist, identity credentials, and upstream relay profile.
+- Add an authenticated tenant switcher so Pinguin admins can load active tenants and view each tenant's notification events from the dashboard.
 
 ### Bug Fixes
+- Replace the generated placeholder logo with the canonical Pinguin turquoise envelope mark.
+- Keep the landing and dashboard header branded as `[logo] Pinguin` even when runtime tenant metadata belongs to a notification consumer, and serve the Pinguin favicon from `/favicon.svg`.
 - Restore production login rendering by moving the frontend onto the `mpr-ui` `/config-ui.yaml` orchestration contract and removing the direct `tauth.js` loader.
 - Align the local Docker browser origin with the configured Google OAuth client by moving the UI to `http://localhost:8080`, the API to `http://localhost:8081`, and TAuth to `http://localhost:8082`.
 - Remove the duplicate landing-page auth controller so local login initializes Google Identity once.
@@ -17,8 +20,11 @@
 - Add split `configs/.env.pinguin.example` and `configs/.env.tauth.example` files for the current Compose topology.
 
 ### Testing
+- Add backend and browser coverage for explicit tenant notification listing and dashboard switching between tenant event views.
+- Add browser coverage for the Pinguin logo/favicon header contract, including a regression where runtime config returns `PoodleScanner` tenant metadata.
 - Add browser coverage for the landing header login path and for the `mpr-ui@latest` config contract.
 - Update profile-menu browser coverage to assert the shared `mpr-user` header contract instead of the removed local settings menu.
+- Restore Go statement coverage to 100.0% across all covered packages.
 
 ### Docs
 - Update README and architecture notes to describe `config-ui.yaml` as the browser auth source of truth.

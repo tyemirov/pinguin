@@ -101,6 +101,7 @@ func (repo *Repository) ListActiveTenants(ctx context.Context) ([]Tenant, error)
 	var tenants []Tenant
 	if err := repo.db.WithContext(ctx).
 		Where(&Tenant{Status: TenantStatusActive}).
+		Order("display_name ASC").
 		Find(&tenants).Error; err != nil {
 		return nil, fmt.Errorf("tenant list: %w", err)
 	}

@@ -1,8 +1,10 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -67,6 +69,127 @@ func TestListNotificationsFiltersByStatus(t *testing.T) {
 	}
 	if _, ok := statusSet[model.StatusErrored]; !ok {
 		t.Fatalf("expected errored record in results")
+	}
+}
+
+func TestGetNotificationStatusReturnsStoredRecord(t *testing.T) {
+	database := openIsolatedDatabase(t)
+	serviceInstance := newNotificationServiceForDomainTests(database)
+	now := time.Now().UTC()
+	insertNotificationRecord(t, database, model.Notification{
+		NotificationID:   "notif-status",
+		NotificationType: model.NotificationEmail,
+		Recipient:        "status@example.com",
+		Message:          "status",
+		Status:           model.StatusQueued,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	})
+
+	response, err := serviceInstance.GetNotificationStatus(tenantContext(), "notif-status")
+	if err != nil {
+		t.Fatalf("get status: %v", err)
+	}
+	if response.NotificationID != "notif-status" || response.Status != model.StatusQueued {
+		t.Fatalf("unexpected response %+v", response)
+	}
+}
+
+func TestListNotificationsAllReturnsRecordsAcrossTenants(t *testing.T) {
+	database := openIsolatedDatabase(t)
+	serviceInstance := newNotificationServiceForDomainTests(database)
+	now := time.Now().UTC()
+	insertNotificationRecord(t, database, model.Notification{
+		TenantID:         testTenantID,
+		NotificationID:   "notif-alpha",
+		NotificationType: model.NotificationEmail,
+		Recipient:        "alpha@example.com",
+		Message:          "alpha",
+		Status:           model.StatusQueued,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	})
+	insertNotificationRecord(t, database, model.Notification{
+		TenantID:         "tenant-other",
+		NotificationID:   "notif-bravo",
+		NotificationType: model.NotificationEmail,
+		Recipient:        "bravo@example.com",
+		Message:          "bravo",
+		Status:           model.StatusSent,
+		CreatedAt:        now.Add(time.Second),
+		UpdatedAt:        now.Add(time.Second),
+	})
+
+	responses, err := serviceInstance.ListNotificationsAll(context.Background(), model.NotificationListFilters{})
+	if err != nil {
+		t.Fatalf("list all: %v", err)
+	}
+	if len(responses) != 2 {
+		t.Fatalf("expected two responses, got %d", len(responses))
+	}
+}
+
+func TestNotificationServiceRequiresTenantContext(t *testing.T) {
+	database := openIsolatedDatabase(t)
+	serviceInstance := newNotificationServiceForDomainTests(database)
+	request := mustNotificationRequest(t, model.NotificationEmail, "user@example.com", "Subject", "Body", nil, nil)
+
+	if _, err := serviceInstance.SendNotification(context.Background(), request); !errors.Is(err, ErrMissingTenantContext) {
+		t.Fatalf("expected missing tenant on send, got %v", err)
+	}
+	if _, err := serviceInstance.GetNotificationStatus(context.Background(), "notif"); !errors.Is(err, ErrMissingTenantContext) {
+		t.Fatalf("expected missing tenant on get, got %v", err)
+	}
+	if _, err := serviceInstance.ListNotifications(context.Background(), model.NotificationListFilters{}); !errors.Is(err, ErrMissingTenantContext) {
+		t.Fatalf("expected missing tenant on list, got %v", err)
+	}
+	if _, err := serviceInstance.RescheduleNotification(context.Background(), "notif", time.Now()); !errors.Is(err, ErrMissingTenantContext) {
+		t.Fatalf("expected missing tenant on reschedule, got %v", err)
+	}
+	if _, err := serviceInstance.CancelNotification(context.Background(), "notif"); !errors.Is(err, ErrMissingTenantContext) {
+		t.Fatalf("expected missing tenant on cancel, got %v", err)
+	}
+}
+
+func TestNotificationServicePropagatesStorageErrors(t *testing.T) {
+	database := openIsolatedDatabase(t)
+	serviceInstance := newNotificationServiceForDomainTests(database)
+	request := mustNotificationRequest(t, model.NotificationEmail, "user@example.com", "Subject", "Body", nil, nil)
+	closeDatabase(t, database)
+
+	if _, err := serviceInstance.SendNotification(tenantContext(), request); err == nil {
+		t.Fatalf("expected send storage error")
+	}
+	if _, err := serviceInstance.GetNotificationStatus(tenantContext(), "missing"); err == nil {
+		t.Fatalf("expected get storage error")
+	}
+	if _, err := serviceInstance.ListNotifications(tenantContext(), model.NotificationListFilters{}); err == nil {
+		t.Fatalf("expected list storage error")
+	}
+	if _, err := serviceInstance.ListNotificationsAll(context.Background(), model.NotificationListFilters{}); err == nil {
+		t.Fatalf("expected list all storage error")
+	}
+	if _, err := serviceInstance.RescheduleNotification(tenantContext(), "missing", time.Now()); err == nil {
+		t.Fatalf("expected reschedule storage error")
+	}
+	if _, err := serviceInstance.CancelNotification(tenantContext(), "missing"); err == nil {
+		t.Fatalf("expected cancel storage error")
+	}
+}
+
+func TestSendNotificationReturnsEmailSenderResolutionError(t *testing.T) {
+	database := openIsolatedDatabase(t)
+	serviceInstance := &notificationServiceImpl{
+		database:     database,
+		logger:       slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+		config:       config.Config{ConnectionTimeoutSec: 5, OperationTimeoutSec: 5},
+		emailSenders: make(map[string]EmailSender),
+		smsSenders:   make(map[string]SmsSender),
+	}
+	request := mustNotificationRequest(t, model.NotificationEmail, "user@example.com", "Subject", "Body", nil, nil)
+	runtimeCtx := tenant.WithRuntime(context.Background(), tenant.RuntimeConfig{Tenant: tenant.Tenant{ID: "tenant-empty-email"}})
+	if _, err := serviceInstance.SendNotification(runtimeCtx, request); err == nil || !strings.Contains(err.Error(), "email credentials unavailable") {
+		t.Fatalf("expected email sender resolution error, got %v", err)
 	}
 }
 
@@ -193,6 +316,49 @@ func TestCancelNotificationRejectsNonQueued(t *testing.T) {
 	}
 }
 
+func TestRescheduleAndCancelPropagateSaveErrors(t *testing.T) {
+	testCases := []struct {
+		name string
+		call func(*notificationServiceImpl, time.Time) error
+	}{
+		{
+			name: "reschedule",
+			call: func(serviceInstance *notificationServiceImpl, now time.Time) error {
+				_, err := serviceInstance.RescheduleNotification(tenantContext(), "notif-edit", now.Add(time.Hour))
+				return err
+			},
+		},
+		{
+			name: "cancel",
+			call: func(serviceInstance *notificationServiceImpl, now time.Time) error {
+				_, err := serviceInstance.CancelNotification(tenantContext(), "notif-edit")
+				return err
+			},
+		},
+	}
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			database := openIsolatedDatabase(t)
+			serviceInstance := newNotificationServiceForDomainTests(database)
+			now := time.Now().UTC()
+			insertNotificationRecord(t, database, model.Notification{
+				NotificationID:   "notif-edit",
+				NotificationType: model.NotificationEmail,
+				Recipient:        "edit@example.com",
+				Message:          "queued",
+				Status:           model.StatusQueued,
+				CreatedAt:        now,
+				UpdatedAt:        now,
+			})
+			registerNotificationUpdateError(t, database)
+			if err := testCase.call(serviceInstance, now); err == nil {
+				t.Fatalf("expected save error")
+			}
+		})
+	}
+}
+
 func TestEmailSenderForTenantUsesRuntimeCredentials(t *testing.T) {
 	t.Helper()
 
@@ -289,6 +455,104 @@ func TestSmsSenderForTenantUsesRuntimeCredentials(t *testing.T) {
 	}
 }
 
+func TestNotificationServiceUsesInjectedDefaultsAndRuntimeFallbacks(t *testing.T) {
+	database := openIsolatedDatabase(t)
+	emailSender := &stubEmailSender{}
+	smsSender := &stubSmsSender{}
+	serviceInterface := NewNotificationServiceWithSenders(
+		database,
+		slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+		config.Config{MaxRetries: 3, RetryIntervalSec: 1},
+		nil,
+		emailSender,
+		smsSender,
+	)
+	serviceInstance := serviceInterface.(*notificationServiceImpl)
+	if serviceInstance.defaultEmailSender != emailSender || serviceInstance.defaultSmsSender != smsSender {
+		t.Fatalf("expected injected default senders")
+	}
+	runtimeCfg, err := serviceInstance.runtimeForTenantID(context.Background(), "tenant-from-payload")
+	if err != nil {
+		t.Fatalf("runtime fallback: %v", err)
+	}
+	if runtimeCfg.Tenant.ID != "tenant-from-payload" {
+		t.Fatalf("unexpected fallback runtime %+v", runtimeCfg)
+	}
+}
+
+func TestRuntimeForTenantIDValidation(t *testing.T) {
+	bareService := &notificationServiceImpl{}
+	if _, err := bareService.runtimeForTenantID(context.Background(), ""); !errors.Is(err, ErrMissingTenantContext) {
+		t.Fatalf("expected missing tenant for blank id, got %v", err)
+	}
+	if _, err := bareService.runtimeForTenantID(context.Background(), "tenant"); !errors.Is(err, ErrMissingTenantContext) {
+		t.Fatalf("expected missing tenant without default senders, got %v", err)
+	}
+	serviceInstance := newNotificationServiceForDomainTests(openIsolatedDatabase(t))
+	if _, err := serviceInstance.runtimeForTenantID(tenantContext(), "other-tenant"); err == nil || !strings.Contains(err.Error(), "tenant mismatch") {
+		t.Fatalf("expected tenant mismatch, got %v", err)
+	}
+	runtimeCfg, err := serviceInstance.runtimeForTenantID(tenantContext(), testTenantID)
+	if err != nil {
+		t.Fatalf("expected runtime from context: %v", err)
+	}
+	if runtimeCfg.Tenant.ID != testTenantID {
+		t.Fatalf("unexpected runtime tenant %s", runtimeCfg.Tenant.ID)
+	}
+
+	database := openIsolatedDatabase(t)
+	if err := database.AutoMigrate(&tenant.Tenant{}, &tenant.TenantDomain{}, &tenant.EmailProfile{}, &tenant.SMSProfile{}); err != nil {
+		t.Fatalf("tenant migration: %v", err)
+	}
+	keeper, err := tenant.NewSecretKeeper(strings.Repeat("a", 64))
+	if err != nil {
+		t.Fatalf("secret keeper: %v", err)
+	}
+	if err := tenant.Bootstrap(context.Background(), database, keeper, tenant.BootstrapConfig{
+		Tenants: []tenant.BootstrapTenant{
+			{
+				ID:           "tenant-repo",
+				DisplayName:  "Repo Tenant",
+				SupportEmail: "support@example.com",
+				Enabled:      ptrBool(true),
+				Domains:      []string{"repo.example"},
+				EmailProfile: tenant.BootstrapEmailProfile{
+					Host:        "smtp.example.com",
+					Port:        587,
+					Username:    "smtp-user",
+					Password:    "smtp-pass",
+					FromAddress: "from@example.com",
+				},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("bootstrap tenant repo: %v", err)
+	}
+	repoService := &notificationServiceImpl{tenantRepo: tenant.NewRepository(database, keeper)}
+	repoRuntime, err := repoService.runtimeForTenantID(context.Background(), "tenant-repo")
+	if err != nil {
+		t.Fatalf("tenant repo runtime: %v", err)
+	}
+	if repoRuntime.Tenant.ID != "tenant-repo" {
+		t.Fatalf("unexpected tenant repo runtime %+v", repoRuntime)
+	}
+}
+
+func TestSenderResolutionErrors(t *testing.T) {
+	serviceInstance := &notificationServiceImpl{
+		logger:       slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+		config:       config.Config{ConnectionTimeoutSec: 5, OperationTimeoutSec: 5},
+		emailSenders: make(map[string]EmailSender),
+		smsSenders:   make(map[string]SmsSender),
+	}
+	if _, err := serviceInstance.emailSenderForTenant(tenant.RuntimeConfig{Tenant: tenant.Tenant{ID: "tenant-empty"}}); err == nil {
+		t.Fatalf("expected missing email credentials error")
+	}
+	if _, err := serviceInstance.smsSenderForTenant(tenant.RuntimeConfig{Tenant: tenant.Tenant{ID: "tenant-empty"}}); !errors.Is(err, ErrSMSDisabled) {
+		t.Fatalf("expected sms disabled, got %v", err)
+	}
+}
+
 func newNotificationServiceForDomainTests(database *gorm.DB) *notificationServiceImpl {
 	return &notificationServiceImpl{
 		database:           database,
@@ -317,4 +581,31 @@ func insertNotificationRecord(t *testing.T, database *gorm.DB, record model.Noti
 	if err := model.CreateNotification(tenantContext(), database, &record); err != nil {
 		t.Fatalf("create notification error: %v", err)
 	}
+}
+
+func closeDatabase(t *testing.T, database *gorm.DB) {
+	t.Helper()
+	sqlDatabase, err := database.DB()
+	if err != nil {
+		t.Fatalf("database handle: %v", err)
+	}
+	if closeErr := sqlDatabase.Close(); closeErr != nil {
+		t.Fatalf("close database: %v", closeErr)
+	}
+}
+
+func registerNotificationUpdateError(t *testing.T, database *gorm.DB) {
+	t.Helper()
+	callbackName := "pinguin:force_notification_update_error"
+	if err := database.Callback().Update().Before("gorm:update").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement != nil && tx.Statement.Schema != nil && tx.Statement.Schema.Name == "Notification" {
+			tx.AddError(errors.New("forced notification update failure"))
+		}
+	}); err != nil {
+		t.Fatalf("register update callback: %v", err)
+	}
+}
+
+func ptrBool(value bool) *bool {
+	return &value
 }
