@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	runtimeconfig "github.com/tyemirov/pinguin/internal/config"
 	"gopkg.in/yaml.v3"
 )
 
@@ -222,7 +223,13 @@ func validateConfig(configPath string, expandEnv bool) (DiagnosticResult, *pingu
 
 	contents := string(rawContents)
 	if expandEnv {
-		contents = os.ExpandEnv(contents)
+		expandedContents, expandErr := runtimeconfig.ExpandConfigEnvironment(contents)
+		if expandErr != nil {
+			result.Valid = false
+			result.Errors = append(result.Errors, fmt.Sprintf("expand_env: %v", expandErr))
+			return result, nil
+		}
+		contents = expandedContents
 	}
 
 	var config pinguinConfig

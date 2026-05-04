@@ -191,7 +191,7 @@ func loadConfigFromPath(configPath string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("configuration: read %s: %w", configPath, err)
 	}
-	expanded, expandErr := expandConfigEnvironment(string(rawContents))
+	expanded, expandErr := ExpandConfigEnvironment(string(rawContents))
 	if expandErr != nil {
 		return Config{}, expandErr
 	}
@@ -270,7 +270,8 @@ func (configuration Config) TwilioConfigured() bool {
 	return configuration.TwilioAccountSID != "" && configuration.TwilioAuthToken != "" && configuration.TwilioFromNumber != ""
 }
 
-func expandConfigEnvironment(contents string) (string, error) {
+// ExpandConfigEnvironment expands shell-style placeholders and rejects absent variables.
+func ExpandConfigEnvironment(contents string) (string, error) {
 	var missing []string
 	seenMissing := make(map[string]bool)
 	expanded := os.Expand(contents, func(key string) string {

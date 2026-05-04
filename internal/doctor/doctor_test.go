@@ -167,6 +167,40 @@ func TestRunExpandsEnvWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestRunReportsMissingEnvWhenExpansionEnabled(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yml")
+	writeTestConfig(t, configPath, `
+server:
+  databasePath: ${TEST_DB_PATH}
+  grpcAuthToken: test-token
+  logLevel: INFO
+  maxRetries: 3
+  retryIntervalSec: 30
+  masterEncryptionKey: test-encryption-key-at-least-32
+  connectionTimeoutSec: 5
+  operationTimeoutSec: 10
+tenants:
+  configPath: tenants.yml
+web:
+  enabled: false
+`)
+
+	report, err := Run(context.Background(), Options{
+		ConfigPaths: []string{configPath},
+		ExpandEnv:   true,
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if report.Summary.ValidConfigs != 0 {
+		t.Fatalf("expected invalid config for missing env, got %d valid configs", report.Summary.ValidConfigs)
+	}
+	if !containsDiagnosticError(report.Diagnostics[0].Errors, "missing environment variables: TEST_DB_PATH") {
+		t.Fatalf("expected missing env diagnostic, got %v", report.Diagnostics[0].Errors)
+	}
+}
+
 func TestRunHandlesMappingTenantItemsAndSMTPSubmission(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "config.yml")
