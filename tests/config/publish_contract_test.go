@@ -27,7 +27,7 @@ func TestGitHubActionsWorkflowsAreDisabled(t *testing.T) {
 	}
 }
 
-func TestMakePublishTargetsDockerAndLegacyPages(t *testing.T) {
+func TestMakePublishAndDeploySplitDockerAndLegacyPages(t *testing.T) {
 	t.Helper()
 
 	makefile := string(readRepoFile(t, "Makefile"))
@@ -35,10 +35,13 @@ func TestMakePublishTargetsDockerAndLegacyPages(t *testing.T) {
 		"DOCKER_PLATFORMS ?= linux/amd64,linux/arm64",
 		"DOCKER_BUILD_CONTEXT ?= .",
 		"PUBLISH_PLATFORMS ?= $(DOCKER_PLATFORMS)",
+		"PUBLISH_BRANCH ?= master",
+		"PUBLISH_REMOTE ?= origin",
 		"PAGES_PUBLISH_SOURCE_BRANCH ?= master",
 		"PAGES_PUBLISH_BRANCH ?= gh-pages",
 		"DOCKER_BUILD_CONTEXT=\"$(DOCKER_BUILD_CONTEXT)\"",
 		"./scripts/publish.sh $(PUBLISH_ARGS)",
+		"./scripts/deploy.sh $(DEPLOY_ARGS)",
 		"./scripts/build_pages_artifact.sh",
 		"./scripts/publish_pages_branch.sh",
 	}
@@ -58,7 +61,7 @@ func TestMakePublishTargetsDockerAndLegacyPages(t *testing.T) {
 	}
 }
 
-func TestPublishScriptBuildsDockerAndLegacyPages(t *testing.T) {
+func TestPublishScriptBuildsDockerOnly(t *testing.T) {
 	t.Helper()
 
 	publishScript := string(readRepoFile(t, "scripts", "publish.sh"))
@@ -66,21 +69,48 @@ func TestPublishScriptBuildsDockerAndLegacyPages(t *testing.T) {
 		"DOCKER_CONTEXT_DIR=\"${DOCKER_BUILD_CONTEXT:-.}\"",
 		"PLATFORMS=\"${PUBLISH_PLATFORMS:-linux/amd64,linux/arm64}\"",
 		"timeout -k 350s -s SIGKILL 350s make ci",
-		"\"build_type\":\"legacy\"",
-		"\"source\":{\"branch\":\"${PAGES_BRANCH}\",\"path\":\"/\"}",
+		"git tag --points-at HEAD --list 'v*'",
 		"--context|--build-context)",
 		"--platform \"${PLATFORMS}\"",
-		"--tag \"${IMAGE}:${TAG}\"",
+		"tag_args=(--tag \"${IMAGE}:${TAG}\")",
 		"--push",
-		"./scripts/publish_pages_branch.sh",
 	}
 	for _, requiredSnippet := range requiredSnippets {
 		if !strings.Contains(publishScript, requiredSnippet) {
 			t.Fatalf("publish script missing contract snippet %q", requiredSnippet)
 		}
 	}
+	forbiddenSnippets := []string{
+		"\"build_type\":\"legacy\"",
+		"./scripts/publish_pages_branch.sh",
+		"Published Pages",
+	}
+	for _, forbiddenSnippet := range forbiddenSnippets {
+		if strings.Contains(publishScript, forbiddenSnippet) {
+			t.Fatalf("publish script still owns Pages contract snippet %q", forbiddenSnippet)
+		}
+	}
 	if strings.Contains(publishScript, "DOCKER_CONTEXT:-") {
 		t.Fatalf("publish script must not treat Docker CLI DOCKER_CONTEXT as a build context")
+	}
+}
+
+func TestDeployScriptDeploysBackendThenLegacyPages(t *testing.T) {
+	t.Helper()
+
+	deployScript := string(readRepoFile(t, "scripts", "deploy.sh"))
+	requiredSnippets := []string{
+		"make -C \"${GATEWAY_DIR}\" deploy-pinguin",
+		"Verifying ${IMAGE_REPOSITORY}:latest matches ${TAG}",
+		"./scripts/publish_pages_branch.sh",
+		"\"build_type\":\"legacy\"",
+		"\"path\":\"/\"",
+		"curl --fail --silent --show-error --location --max-time 30 \"${PAGES_URL}\"",
+	}
+	for _, requiredSnippet := range requiredSnippets {
+		if !strings.Contains(deployScript, requiredSnippet) {
+			t.Fatalf("deploy script missing contract snippet %q", requiredSnippet)
+		}
 	}
 }
 
