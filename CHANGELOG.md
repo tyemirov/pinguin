@@ -44,6 +44,34 @@
 - Update README and architecture notes to describe `config-ui.yaml` as the browser auth source of truth.
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 
+## [v0.4.3] - 2026-05-04
+
+### Features ✨
+- Added new environment boundary tests centralizing environment variable access.
+- Added environment boundary tests for configuration.
+
+### Improvements ⚙️
+- Updated configuration files and documentation to use `web.enabled: false` in `config.yml` instead of `DISABLE_WEB_INTERFACE` for disabling the web interface.
+- Refined CLI settings: replaced environment variable config with explicit flags for server address, auth token, tenant ID, timeouts, and log level.
+- Simplified CLI config loading to ignore environment variable fallbacks.
+- Enhanced README with clearer configuration, CLI usage, and logging instructions.
+- Removed deprecated environment fallback bindings in client config.
+- Improved test coverage and refactored tests to match new CLI flag usage.
+- Streamlined server config loading API and removed deprecated flags.
+
+### Bug Fixes 🐛
+- Fixed incorrect usage of environment variables in CLI config loading that could cause unexpected behavior.
+
+### Testing 🧪
+- Added comprehensive tests for environment variable boundaries in config loading.
+- Added examples and tests verifying environment and config interactions.
+- Expanded integration and E2E tests with updated CLI usage patterns.
+
+### Docs 📚
+- Revised all documentation references to web interface configuration and CLI usage.
+- Clarified environment variable usage and config file structure in README.
+- Updated instructions for loading environment variables prior to running the server.
+
 ## [v0.4.2] - 2026-05-04
 
 ### Features ✨
