@@ -58,17 +58,14 @@ func buildSendCommand(dependencies Dependencies) *cobra.Command {
 		Use:   "send",
 		Short: "Submit a notification to the Pinguin service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			configFromEnv, err := cliConfig.Load(viper.New())
+			configDefaults, _ := cliConfig.Load(viper.New())
+
+			serverAddress, err := valueOrConfig(cmd, "grpc-server-addr", configDefaults.ServerAddress())
 			if err != nil {
 				return err
 			}
 
-			serverAddress, err := valueOrConfig(cmd, "grpc-server-addr", configFromEnv.ServerAddress())
-			if err != nil {
-				return err
-			}
-
-			authToken, err := valueOrConfig(cmd, "grpc-auth-token", configFromEnv.AuthToken())
+			authToken, err := valueOrConfig(cmd, "grpc-auth-token", configDefaults.AuthToken())
 			if err != nil {
 				return err
 			}
@@ -76,7 +73,7 @@ func buildSendCommand(dependencies Dependencies) *cobra.Command {
 				return fmt.Errorf("grpc-auth-token is required")
 			}
 
-			tenantID, err := valueOrConfig(cmd, "tenant-id", configFromEnv.TenantID())
+			tenantID, err := valueOrConfig(cmd, "tenant-id", configDefaults.TenantID())
 			if err != nil {
 				return err
 			}
@@ -85,16 +82,16 @@ func buildSendCommand(dependencies Dependencies) *cobra.Command {
 				return fmt.Errorf("tenant-id is required")
 			}
 
-			connectionTimeoutSec, err := intOrConfig(cmd, "connection-timeout-sec", configFromEnv.ConnectionTimeoutSeconds())
+			connectionTimeoutSec, err := intOrConfig(cmd, "connection-timeout-sec", configDefaults.ConnectionTimeoutSeconds())
 			if err != nil {
 				return err
 			}
-			operationTimeoutSec, err := intOrConfig(cmd, "operation-timeout-sec", configFromEnv.OperationTimeoutSeconds())
+			operationTimeoutSec, err := intOrConfig(cmd, "operation-timeout-sec", configDefaults.OperationTimeoutSeconds())
 			if err != nil {
 				return err
 			}
 
-			logLevel, err := valueOrConfig(cmd, "log-level", configFromEnv.LogLevel())
+			logLevel, err := valueOrConfig(cmd, "log-level", configDefaults.LogLevel())
 			if err != nil {
 				return err
 			}

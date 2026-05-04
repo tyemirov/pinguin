@@ -217,6 +217,54 @@ test.describe('Dashboard', () => {
     await expect(page.getByTestId('notifications-table')).not.toContainText('Alpha event');
   });
 
+  test('uses the tenant list for the initial admin dashboard view', async ({ page, request }) => {
+    const now = new Date();
+    await resetNotifications(request, {
+      tenants: [
+        { id: 'loopaware', displayName: 'Loopaware' },
+        { id: 'ps', displayName: 'Poodle Scanner' },
+      ],
+      notifications: [
+        {
+          notification_id: 'notif-loopaware',
+          tenant_id: 'loopaware',
+          notification_type: 'email',
+          recipient: 'loopaware@example.com',
+          subject: 'Loopaware event',
+          message: 'Hello Loopaware',
+          status: 'sent',
+          created_at: now.toISOString(),
+          updated_at: now.toISOString(),
+          scheduled_for: null,
+          retry_count: 0,
+        },
+        {
+          notification_id: 'notif-ps',
+          tenant_id: 'ps',
+          notification_type: 'email',
+          recipient: 'ps@example.com',
+          subject: 'Poodle Scanner event',
+          message: 'Hello Poodle Scanner',
+          status: 'sent',
+          created_at: now.toISOString(),
+          updated_at: now.toISOString(),
+          scheduled_for: null,
+          retry_count: 0,
+        },
+      ],
+    });
+    await configureRuntime(page, {
+      authenticated: true,
+      tenant: { id: 'ps', displayName: 'PoodleScanner' },
+    });
+    await page.goto('/dashboard.html');
+
+    await expect(page.getByLabel('Tenant')).toHaveValue('loopaware');
+    await expect(page.getByTestId('notification-row')).toHaveCount(1);
+    await expect(page.getByTestId('notifications-table')).toContainText('Loopaware event');
+    await expect(page.getByTestId('notifications-table')).not.toContainText('Poodle Scanner event');
+  });
+
   test('renders notification table and allows cancel', async ({ page }) => {
     await configureRuntime(page, { authenticated: true });
     await page.goto('/dashboard.html');

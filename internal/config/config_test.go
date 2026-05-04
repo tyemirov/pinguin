@@ -72,7 +72,6 @@ smtpSubmission:
     password: ${SMTP_SUBMISSION_RELAY_PASSWORD}
 `)
 
-	t.Setenv("PINGUIN_CONFIG_PATH", configPath)
 	t.Setenv("DATABASE_PATH", "test.db")
 	t.Setenv("GRPC_AUTH_TOKEN", "unit-token")
 	t.Setenv("MASTER_ENCRYPTION_KEY", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
@@ -90,7 +89,7 @@ smtpSubmission:
 	t.Setenv("SMTP_SUBMISSION_RELAY_USERNAME", "relay-user")
 	t.Setenv("SMTP_SUBMISSION_RELAY_PASSWORD", "relay-secret")
 
-	cfg, err := LoadConfig(false)
+	cfg, err := loadConfigFromPath(configPath)
 	if err != nil {
 		t.Fatalf("LoadConfig returned error: %v", err)
 	}
@@ -160,7 +159,7 @@ smtpSubmission:
 	}
 }
 
-func TestLoadConfigAppliesDefaultsAndRespectsDisableWeb(t *testing.T) {
+func TestLoadConfigAppliesDefaultsAndRespectsWebEnabledFalse(t *testing.T) {
 	t.Helper()
 	configPath := writeConfigFile(t, `
 server:
@@ -190,14 +189,13 @@ tenants:
       password: smtp-pass
       fromAddress: noreply@one.test
 web:
-  enabled: true
+  enabled: false
   listenAddr: :0
 `)
-	t.Setenv("PINGUIN_CONFIG_PATH", configPath)
 	t.Setenv("MASTER_ENCRYPTION_KEY", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 	t.Setenv("TAUTH_SIGNING_KEY", "signing-key")
 
-	cfg, err := LoadConfig(true)
+	cfg, err := loadConfigFromPath(configPath)
 	if err != nil {
 		t.Fatalf("LoadConfig returned error: %v", err)
 	}
@@ -238,10 +236,9 @@ web:
   enabled: true
   listenAddr: :0
 `)
-	t.Setenv("PINGUIN_CONFIG_PATH", configPath)
 	t.Setenv("MASTER_ENCRYPTION_KEY", "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd")
 
-	cfg, err := LoadConfig(false)
+	cfg, err := loadConfigFromPath(configPath)
 	if err != nil {
 		t.Fatalf("LoadConfig returned error: %v", err)
 	}
@@ -253,7 +250,7 @@ web:
 	}
 }
 
-func TestLoadConfigCanDisableWebFromEnvironment(t *testing.T) {
+func TestLoadConfigDoesNotDisableWebFromEnvironment(t *testing.T) {
 	configPath := writeConfigFile(t, `
 server:
   databasePath: app.db
@@ -264,33 +261,126 @@ server:
   masterEncryptionKey: ${MASTER_ENCRYPTION_KEY}
   connectionTimeoutSec: 5
   operationTimeoutSec: 10
+  tauth:
+    signingKey: signing-key
+    googleClientId: google-one
+    tauthBaseUrl: https://auth.one.test
+    tauthTenantId: tauth-one
 tenants:
   configPath: tenants.yml
 web:
   enabled: true
+  listenAddr: :0
 `)
-	t.Setenv("PINGUIN_CONFIG_PATH", configPath)
 	t.Setenv("MASTER_ENCRYPTION_KEY", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee")
 	t.Setenv("DISABLE_WEB_INTERFACE", "yes")
 
-	cfg, err := LoadConfig(false)
+	cfg, err := loadConfigFromPath(configPath)
 	if err != nil {
 		t.Fatalf("LoadConfig returned error: %v", err)
 	}
-	if cfg.WebInterfaceEnabled {
-		t.Fatalf("expected web disabled from environment")
+	if !cfg.WebInterfaceEnabled {
+		t.Fatalf("expected web.enabled from config.yml to control the web interface")
+	}
+}
+
+func TestLoadConfigRejectsMissingEnvironmentVariables(t *testing.T) {
+	configPath := writeConfigFile(t, `
+server:
+  databasePath: app.db
+  grpcAuthToken: token
+  logLevel: INFO
+  maxRetries: 3
+  retryIntervalSec: 30
+  masterEncryptionKey: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  connectionTimeoutSec: 5
+  operationTimeoutSec: 10
+tenants:
+  configPath: tenants.yml
+web:
+  enabled: false
+smtpSubmission:
+  enabled: true
+  hostname: smtp.one.test
+  listenAddr: :587
+  maxMessageBytes: 1048576
+  maxRecipients: 25
+  allowInsecureAuth: true
+  senderDomains:
+    - ${SMTP_SUBMISSION_SENDER_DOMAIN_1}
+    - ${SMTP_SUBMISSION_SENDER_DOMAIN_2}
+    - ${SMTP_SUBMISSION_SENDER_DOMAIN_3}
+    - ${SMTP_SUBMISSION_SENDER_DOMAIN_4}
+  relay:
+    host: relay.one.test
+    port: 2525
+    username: relay-user
+    password: relay-secret
+`)
+	t.Setenv("SMTP_SUBMISSION_SENDER_DOMAIN_1", "mprlab.com")
+	t.Setenv("SMTP_SUBMISSION_SENDER_DOMAIN_2", "poodlescanner.com")
+	t.Setenv("SMTP_SUBMISSION_SENDER_DOMAIN_3", "temirov.com")
+
+	_, err := loadConfigFromPath(configPath)
+	if err == nil {
+		t.Fatalf("expected missing environment variable error")
+	}
+	if !strings.Contains(err.Error(), "configuration: missing environment variables: SMTP_SUBMISSION_SENDER_DOMAIN_4") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadConfigAllowsDefinedBlankEnvironmentVariables(t *testing.T) {
+	configPath := writeConfigFile(t, `
+server:
+  databasePath: app.db
+  grpcAuthToken: token
+  logLevel: INFO
+  maxRetries: 3
+  retryIntervalSec: 30
+  masterEncryptionKey: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  connectionTimeoutSec: 5
+  operationTimeoutSec: 10
+tenants:
+  configPath: tenants.yml
+web:
+  enabled: false
+smtpSubmission:
+  enabled: true
+  hostname: smtp.one.test
+  listenAddr: :587
+  maxMessageBytes: 1048576
+  maxRecipients: 25
+  allowInsecureAuth: true
+  senderDomains:
+    - ${SMTP_SUBMISSION_SENDER_DOMAIN_1}
+    - ${SMTP_SUBMISSION_SENDER_DOMAIN_2}
+  relay:
+    host: relay.one.test
+    port: 2525
+    username: relay-user
+    password: relay-secret
+`)
+	t.Setenv("SMTP_SUBMISSION_SENDER_DOMAIN_1", "mprlab.com")
+	t.Setenv("SMTP_SUBMISSION_SENDER_DOMAIN_2", "")
+
+	cfg, err := loadConfigFromPath(configPath)
+	if err != nil {
+		t.Fatalf("LoadConfig returned error: %v", err)
+	}
+	if !reflect.DeepEqual(cfg.SMTPSubmission.SenderDomains, []string{"mprlab.com"}) {
+		t.Fatalf("unexpected sender domains %v", cfg.SMTPSubmission.SenderDomains)
 	}
 }
 
 func TestLoadConfigRejectsUnreadableAndInvalidYAML(t *testing.T) {
-	t.Setenv("PINGUIN_CONFIG_PATH", filepath.Join(t.TempDir(), "missing.yml"))
-	if _, err := LoadConfig(false); err == nil || !strings.Contains(err.Error(), "configuration: read") {
+	missingConfigPath := filepath.Join(t.TempDir(), "missing.yml")
+	if _, err := loadConfigFromPath(missingConfigPath); err == nil || !strings.Contains(err.Error(), "configuration: read") {
 		t.Fatalf("expected read error, got %v", err)
 	}
 
 	configPath := writeConfigFile(t, "server:\n  databasePath: [")
-	t.Setenv("PINGUIN_CONFIG_PATH", configPath)
-	if _, err := LoadConfig(false); err == nil || !strings.Contains(err.Error(), "configuration: parse yaml") {
+	if _, err := loadConfigFromPath(configPath); err == nil || !strings.Contains(err.Error(), "configuration: parse yaml") {
 		t.Fatalf("expected parse error, got %v", err)
 	}
 }
@@ -346,22 +436,6 @@ func TestTenantConfigUnmarshalShapes(t *testing.T) {
 	}
 }
 
-func TestParseDisabledEnv(t *testing.T) {
-	testCases := map[string]bool{
-		"":     false,
-		"true": true,
-		"1":    true,
-		"on":   true,
-		"no":   false,
-	}
-	for rawValue, expected := range testCases {
-		t.Setenv("CONFIG_TEST_DISABLED", rawValue)
-		if got := parseDisabledEnv("CONFIG_TEST_DISABLED"); got != expected {
-			t.Fatalf("parse disabled env %q: want %v got %v", rawValue, expected, got)
-		}
-	}
-}
-
 func TestLoadConfigRejectsMissingRequiredField(t *testing.T) {
 	t.Helper()
 	configPath := writeConfigFile(t, `
@@ -394,9 +468,8 @@ tenants:
 web:
   enabled: false
 `)
-	t.Setenv("PINGUIN_CONFIG_PATH", configPath)
 
-	_, err := LoadConfig(false)
+	_, err := loadConfigFromPath(configPath)
 	if err == nil {
 		t.Fatalf("expected validation error")
 	}
@@ -462,10 +535,9 @@ smtpSubmission:
   enabled: true
   hostname: smtp.one.test
 `)
-	t.Setenv("PINGUIN_CONFIG_PATH", configPath)
 	t.Setenv("MASTER_ENCRYPTION_KEY", "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc")
 
-	_, err := LoadConfig(false)
+	_, err := loadConfigFromPath(configPath)
 	if err == nil {
 		t.Fatalf("expected SMTP submission validation error")
 	}
@@ -509,14 +581,24 @@ web:
 			t.Fatalf("restore cwd: %v", err)
 		}
 	}()
-	t.Setenv("PINGUIN_CONFIG_PATH", "")
-
-	cfg, err := LoadConfig(false)
+	cfg, err := LoadConfig()
 	if err != nil {
 		t.Fatalf("LoadConfig default path: %v", err)
 	}
 	if cfg.TenantConfigPath != "tenants.yml" {
 		t.Fatalf("unexpected tenant config path %q", cfg.TenantConfigPath)
+	}
+}
+
+func TestDefaultConfigFilePathFallsBackToLocalDefault(t *testing.T) {
+	originalDefaultConfigPaths := defaultConfigPaths
+	defaultConfigPaths = []string{filepath.Join(t.TempDir(), "missing.yml")}
+	t.Cleanup(func() {
+		defaultConfigPaths = originalDefaultConfigPaths
+	})
+
+	if got := defaultConfigFilePath(); got != defaultConfigPath {
+		t.Fatalf("expected fallback path %q, got %q", defaultConfigPath, got)
 	}
 }
 

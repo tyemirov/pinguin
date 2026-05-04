@@ -557,7 +557,7 @@ func TestRunServerErrorPaths(testHandle *testing.T) {
 	}{
 		{name: "flag parse", args: []string{"-unknown"}, config: serverTestConfig},
 		{name: "config", config: serverTestConfig, mutate: func(deps *serverDependencies) {
-			deps.loadConfig = func(bool) (config.Config, error) { return config.Config{}, expectedErr }
+			deps.loadConfig = func() (config.Config, error) { return config.Config{}, expectedErr }
 		}},
 		{name: "database", config: serverTestConfig, mutate: func(deps *serverDependencies) {
 			deps.initDB = func(string, *slog.Logger) (*gorm.DB, error) { return nil, expectedErr }
@@ -659,7 +659,7 @@ func TestRunServerHelpAndExitWrapper(testHandle *testing.T) {
 	if exitCode := runServer([]string{"-h"}, dependencies); exitCode != 0 {
 		testHandle.Fatalf("expected help success, got %d", exitCode)
 	}
-	dependencies.loadConfig = func(bool) (config.Config, error) {
+	dependencies.loadConfig = func() (config.Config, error) {
 		return config.Config{}, errors.New("config failed")
 	}
 	runServerAndExit(nil, dependencies)
@@ -698,7 +698,7 @@ func TestServerMainReturnsForHelp(testHandle *testing.T) {
 	if readErr != nil {
 		testHandle.Fatalf("read stderr: %v", readErr)
 	}
-	if !strings.Contains(string(output), "disable-web-interface") {
+	if !strings.Contains(string(output), "Usage of pinguin-server") {
 		testHandle.Fatalf("expected help output, got %q", string(output))
 	}
 }
@@ -1048,10 +1048,7 @@ func newServerTestDependencies(cfg config.Config) (*serverTestState, serverDepen
 		httpServer:  &fakeHTTPServer{startErr: http.ErrServerClosed, started: make(chan struct{})},
 	}
 	dependencies := serverDependencies{
-		loadConfig: func(disableWeb bool) (config.Config, error) {
-			if disableWeb {
-				cfg.WebInterfaceEnabled = false
-			}
+		loadConfig: func() (config.Config, error) {
 			return cfg, nil
 		},
 		newLogger: func(string) *slog.Logger {

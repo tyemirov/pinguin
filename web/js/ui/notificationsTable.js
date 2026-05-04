@@ -1,5 +1,5 @@
 // @ts-check
-import { RUNTIME_CONFIG, STATUS_LABELS, STATUS_OPTIONS } from '../constants.js';
+import { STATUS_LABELS, STATUS_OPTIONS } from '../constants.js';
 import { DOM_EVENTS, dispatchToast, listen } from '../core/events.js';
 
 /** @typedef {import('../types.d.js').NotificationItem} NotificationItem */
@@ -74,7 +74,7 @@ export function createNotificationsTable(options) {
     requestSequence: 0,
     STATUS_OPTIONS,
     init() {
-      this.selectedTenantId = initialTenantId();
+      this.selectedTenantId = '';
       this.refreshIfAuthenticated();
       this.$watch(
         () => authStore().isAuthenticated,
@@ -334,11 +334,6 @@ function appendUniqueNotifications(currentItems, nextItems) {
   return mergedItems;
 }
 
-function initialTenantId() {
-  const tenant = RUNTIME_CONFIG.tenant;
-  return tenant && typeof tenant.id === 'string' ? tenant.id.trim() : '';
-}
-
 /**
  * @param {string} selectedTenantId
  * @param {TenantOption[]} tenants
@@ -347,10 +342,6 @@ function selectTenantId(selectedTenantId, tenants) {
   const normalizedSelected = typeof selectedTenantId === 'string' ? selectedTenantId.trim() : '';
   if (normalizedSelected && tenants.some((tenant) => tenant.id === normalizedSelected)) {
     return normalizedSelected;
-  }
-  const runtimeTenantId = initialTenantId();
-  if (runtimeTenantId && tenants.some((tenant) => tenant.id === runtimeTenantId)) {
-    return runtimeTenantId;
   }
   return tenants.length > 0 ? tenants[0].id : '';
 }
