@@ -10,6 +10,7 @@
 ### Bug Fixes
 - Replace the generated placeholder logo with the canonical Pinguin turquoise envelope mark.
 - Enforce tenant authorization before honoring `tenant_id` on notification list, reschedule, and cancel endpoints.
+- Match the legacy failed-notification `errored` search alias only when the query exactly equals `errored`.
 - Keep the landing and dashboard header branded as `[logo] Pinguin` even when runtime tenant metadata belongs to a notification consumer, and serve the Pinguin favicon from `/favicon.svg`.
 - Restore production login rendering by moving the frontend onto the `mpr-ui` `/config-ui.yaml` orchestration contract and removing the direct `tauth.js` loader.
 - Align the local Docker browser origin with the configured Google OAuth client by moving the UI to `http://localhost:8080`, the API to `http://localhost:8081`, and TAuth to `http://localhost:8082`.
@@ -24,6 +25,7 @@
 ### Testing
 - Add backend and browser coverage for notification search, cursor pagination, infinite scroll, and the GORM-only query contract.
 - Add backend coverage for admin-wide notification tenant access and non-admin email-domain tenant restrictions.
+- Add backend coverage preventing partial search terms from broadening to legacy failed-notification aliases.
 - Add backend and browser coverage for explicit tenant notification listing and dashboard switching between tenant event views.
 - Add browser coverage for the Pinguin logo/favicon header contract, including a regression where runtime config returns `PoodleScanner` tenant metadata.
 - Add browser coverage for the landing header login path and for the `mpr-ui@latest` config contract.

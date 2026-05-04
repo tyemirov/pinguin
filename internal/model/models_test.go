@@ -464,6 +464,17 @@ func TestListNotificationsPageSearchesAndPaginates(t *testing.T) {
 	if len(statusPage.Notifications) != 1 || statusPage.Notifications[0].NotificationID != "notif-failed" {
 		t.Fatalf("expected legacy failed record through errored search, got %+v", statusPage.Notifications)
 	}
+	partialAliasSearch, partialAliasSearchErr := NewNotificationSearchQuery("or")
+	if partialAliasSearchErr != nil {
+		t.Fatalf("partial alias search: %v", partialAliasSearchErr)
+	}
+	partialAliasPage, partialAliasPageErr := ListNotificationsPage(ctx, database, modelTestTenantID, NotificationListFilters{SearchQuery: partialAliasSearch}, DefaultNotificationListPageRequest())
+	if partialAliasPageErr != nil {
+		t.Fatalf("partial alias page: %v", partialAliasPageErr)
+	}
+	if len(partialAliasPage.Notifications) != 0 {
+		t.Fatalf("expected partial alias search to skip legacy failed record, got %+v", partialAliasPage.Notifications)
+	}
 }
 
 func TestNotificationPageFromRecordsRejectsInvalidCursorRecord(t *testing.T) {
