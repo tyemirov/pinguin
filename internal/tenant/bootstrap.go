@@ -25,6 +25,7 @@ type BootstrapTenant struct {
 	Enabled      *bool                 `json:"enabled" yaml:"enabled"`
 	Status       string                `json:"status" yaml:"status"`
 	Domains      []string              `json:"domains" yaml:"domains"`
+	Admins       []string              `json:"admins" yaml:"admins"`
 	EmailProfile BootstrapEmailProfile `json:"emailProfile" yaml:"emailProfile"`
 	SMSProfile   *BootstrapSMSProfile  `json:"smsProfile" yaml:"smsProfile"`
 }
@@ -63,8 +64,9 @@ func Bootstrap(ctx context.Context, db *gorm.DB, keeper *SecretKeeper, cfg Boots
 	if len(cfg.Tenants) == 0 {
 		return fmt.Errorf("tenant bootstrap: no tenants configured")
 	}
+	tenantSpecs := prepareBootstrapTenants(cfg.Tenants)
 	enabledCount := 0
-	for _, tenantSpec := range cfg.Tenants {
+	for _, tenantSpec := range tenantSpecs {
 		if tenantSpec.Enabled != nil && !*tenantSpec.Enabled {
 			continue
 		}
@@ -73,14 +75,27 @@ func Bootstrap(ctx context.Context, db *gorm.DB, keeper *SecretKeeper, cfg Boots
 	if enabledCount == 0 {
 		return fmt.Errorf("tenant bootstrap: no enabled tenants configured")
 	}
-	if err := validateBootstrapDomains(cfg.Tenants); err != nil {
+	if err := validateBootstrapDomains(tenantSpecs); err != nil {
 		return err
 	}
+	configuredTenantIDs := bootstrapTenantIDs(tenantSpecs)
 	transactionErr := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := resetTenantDomains(tx); err != nil {
 			return err
 		}
-		for _, tenantSpec := range cfg.Tenants {
+		if err := resetTenantAdmins(tx); err != nil {
+			return err
+		}
+		if err := resetTenantEmailProfiles(tx); err != nil {
+			return err
+		}
+		if err := resetTenantSMSProfiles(tx); err != nil {
+			return err
+		}
+		if err := removeStaleTenants(tx, configuredTenantIDs); err != nil {
+			return err
+		}
+		for _, tenantSpec := range tenantSpecs {
 			if err := upsertTenant(ctx, tx, keeper, tenantSpec); err != nil {
 				return err
 			}
@@ -95,9 +110,6 @@ func Bootstrap(ctx context.Context, db *gorm.DB, keeper *SecretKeeper, cfg Boots
 }
 
 func upsertTenant(ctx context.Context, tx *gorm.DB, keeper *SecretKeeper, spec BootstrapTenant) error {
-	if strings.TrimSpace(spec.ID) == "" {
-		spec.ID = uuid.NewString()
-	}
 	if strings.TrimSpace(spec.Status) != "" {
 		return fmt.Errorf("tenant bootstrap: tenants[].status is no longer supported; use tenants[].enabled (true|false)")
 	}
@@ -139,6 +151,10 @@ func upsertTenant(ctx context.Context, tx *gorm.DB, keeper *SecretKeeper, spec B
 		}
 	}
 
+	if err := upsertTenantAdmins(tx, spec.ID, spec.Admins); err != nil {
+		return err
+	}
+
 	usernameCipher, err := keeper.Encrypt(spec.EmailProfile.Username)
 	if err != nil {
 		return err
@@ -156,9 +172,6 @@ func upsertTenant(ctx context.Context, tx *gorm.DB, keeper *SecretKeeper, spec B
 		PasswordCipher: passwordCipher,
 		FromAddress:    spec.EmailProfile.FromAddress,
 		IsDefault:      true,
-	}
-	if err := tx.Where(&EmailProfile{TenantID: spec.ID}).Delete(&EmailProfile{}).Error; err != nil {
-		return err
 	}
 	if err := tx.Create(&emailProfile).Error; err != nil {
 		return fmt.Errorf("tenant bootstrap: email profile: %w", err)
@@ -181,15 +194,8 @@ func upsertTenant(ctx context.Context, tx *gorm.DB, keeper *SecretKeeper, spec B
 			FromNumber:       spec.SMSProfile.FromNumber,
 			IsDefault:        true,
 		}
-		if err := tx.Where(&SMSProfile{TenantID: spec.ID}).Delete(&SMSProfile{}).Error; err != nil {
-			return err
-		}
 		if err := tx.Create(&smsProfile).Error; err != nil {
 			return fmt.Errorf("tenant bootstrap: sms profile: %w", err)
-		}
-	} else {
-		if err := tx.Where(&SMSProfile{TenantID: spec.ID}).Delete(&SMSProfile{}).Error; err != nil {
-			return err
 		}
 	}
 
@@ -197,12 +203,50 @@ func upsertTenant(ctx context.Context, tx *gorm.DB, keeper *SecretKeeper, spec B
 }
 
 const (
-	bootstrapDuplicateDomainCode = "tenant.bootstrap.domain.duplicate"
-	bootstrapMissingDomainCode   = "tenant.bootstrap.domain.missing"
-	bootstrapDomainResetCode     = "tenant.bootstrap.domain.reset_failed"
-	bootstrapDomainConflictCode  = "tenant.bootstrap.domain.conflict"
-	bootstrapDomainErrorFormat   = "tenant bootstrap: domain %s: %w"
+	bootstrapDuplicateDomainCode   = "tenant.bootstrap.domain.duplicate"
+	bootstrapMissingDomainCode     = "tenant.bootstrap.domain.missing"
+	bootstrapDomainResetCode       = "tenant.bootstrap.domain.reset_failed"
+	bootstrapDomainConflictCode    = "tenant.bootstrap.domain.conflict"
+	bootstrapAdminResetCode        = "tenant.bootstrap.admin.reset_failed"
+	bootstrapAdminCreateCode       = "tenant.bootstrap.admin.create_failed"
+	bootstrapEmailProfileResetCode = "tenant.bootstrap.email_profile.reset_failed"
+	bootstrapSMSProfileResetCode   = "tenant.bootstrap.sms_profile.reset_failed"
+	bootstrapTenantCleanupCode     = "tenant.bootstrap.tenant.cleanup_failed"
+	bootstrapDomainErrorFormat     = "tenant bootstrap: domain %s: %w"
 )
+
+func upsertTenantAdmins(db *gorm.DB, tenantID string, admins []string) error {
+	for _, email := range normalizeAdminEmails(admins) {
+		admin := TenantAdmin{
+			TenantID: tenantID,
+			Email:    email,
+		}
+		if err := db.Create(&admin).Error; err != nil {
+			return fmt.Errorf("tenant bootstrap: %s: create tenant admin: %w", bootstrapAdminCreateCode, err)
+		}
+	}
+	return nil
+}
+
+func prepareBootstrapTenants(tenantSpecs []BootstrapTenant) []BootstrapTenant {
+	preparedTenantSpecs := make([]BootstrapTenant, len(tenantSpecs))
+	copy(preparedTenantSpecs, tenantSpecs)
+	for tenantIndex := range preparedTenantSpecs {
+		preparedTenantSpecs[tenantIndex].ID = strings.TrimSpace(preparedTenantSpecs[tenantIndex].ID)
+		if preparedTenantSpecs[tenantIndex].ID == "" {
+			preparedTenantSpecs[tenantIndex].ID = uuid.NewString()
+		}
+	}
+	return preparedTenantSpecs
+}
+
+func bootstrapTenantIDs(tenantSpecs []BootstrapTenant) []string {
+	tenantIDs := make([]string, 0, len(tenantSpecs))
+	for _, tenantSpec := range tenantSpecs {
+		tenantIDs = append(tenantIDs, tenantSpec.ID)
+	}
+	return tenantIDs
+}
 
 func validateBootstrapDomains(tenantSpecs []BootstrapTenant) error {
 	normalizedHosts := make(map[string]int, len(tenantSpecs))
@@ -226,6 +270,49 @@ func validateBootstrapDomains(tenantSpecs []BootstrapTenant) error {
 	return nil
 }
 
+func resetTenantAdmins(db *gorm.DB) error {
+	if err := db.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&TenantAdmin{}).Error; err != nil {
+		return fmt.Errorf("tenant bootstrap: %s: reset tenant admins: %w", bootstrapAdminResetCode, err)
+	}
+	return nil
+}
+
+func resetTenantEmailProfiles(db *gorm.DB) error {
+	if err := db.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&EmailProfile{}).Error; err != nil {
+		return fmt.Errorf("tenant bootstrap: %s: reset email profiles: %w", bootstrapEmailProfileResetCode, err)
+	}
+	return nil
+}
+
+func resetTenantSMSProfiles(db *gorm.DB) error {
+	if err := db.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&SMSProfile{}).Error; err != nil {
+		return fmt.Errorf("tenant bootstrap: %s: reset sms profiles: %w", bootstrapSMSProfileResetCode, err)
+	}
+	return nil
+}
+
+func removeStaleTenants(db *gorm.DB, configuredTenantIDs []string) error {
+	if err := db.Where(tenantIDNotInClause(tenantColumnID, configuredTenantIDs)).Delete(&Tenant{}).Error; err != nil {
+		return fmt.Errorf("tenant bootstrap: %s: remove stale tenants: %w", bootstrapTenantCleanupCode, err)
+	}
+	return nil
+}
+
+func tenantIDNotInClause(columnName string, tenantIDs []string) clause.Expression {
+	return clause.Not(clause.IN{
+		Column: clause.Column{Name: columnName},
+		Values: tenantIDClauseValues(tenantIDs),
+	})
+}
+
+func tenantIDClauseValues(tenantIDs []string) []interface{} {
+	values := make([]interface{}, 0, len(tenantIDs))
+	for _, tenantID := range tenantIDs {
+		values = append(values, tenantID)
+	}
+	return values
+}
+
 func resetTenantDomains(db *gorm.DB) error {
 	if err := db.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&TenantDomain{}).Error; err != nil {
 		return fmt.Errorf("tenant bootstrap: %s: reset tenant domains: %w", bootstrapDomainResetCode, err)
@@ -247,6 +334,27 @@ func normalizeDomainHosts(domains []string) []string {
 
 func normalizeDomainHost(host string) string {
 	return strings.ToLower(strings.TrimSpace(host))
+}
+
+func normalizeAdminEmails(emails []string) []string {
+	seenEmails := make(map[string]struct{}, len(emails))
+	normalizedEmails := make([]string, 0, len(emails))
+	for _, email := range emails {
+		normalizedEmail := normalizeAdminEmail(email)
+		if normalizedEmail == "" {
+			continue
+		}
+		if _, exists := seenEmails[normalizedEmail]; exists {
+			continue
+		}
+		seenEmails[normalizedEmail] = struct{}{}
+		normalizedEmails = append(normalizedEmails, normalizedEmail)
+	}
+	return normalizedEmails
+}
+
+func normalizeAdminEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
 }
 
 func clauseOnConflictUpdateAll() clause.Expression {

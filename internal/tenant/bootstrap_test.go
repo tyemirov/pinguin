@@ -19,6 +19,7 @@ func TestBootstrapFromFileCreatesTenantRecords(t *testing.T) {
 	dbInstance := newTestDatabase(t)
 	keeper := newTestSecretKeeper(t)
 	cfg := sampleBootstrapConfig()
+	cfg.Tenants[0].Admins = []string{" Admin@Alpha.Example ", "admin@alpha.example", ""}
 	configPath := writeBootstrapFile(t, cfg)
 
 	if err := BootstrapFromFile(context.Background(), dbInstance, keeper, configPath); err != nil {
@@ -39,6 +40,14 @@ func TestBootstrapFromFileCreatesTenantRecords(t *testing.T) {
 	}
 	if domainCount != 2 {
 		t.Fatalf("expected 2 domains, got %d", domainCount)
+	}
+
+	var adminCount int64
+	if err := dbInstance.Model(&TenantAdmin{}).Count(&adminCount).Error; err != nil {
+		t.Fatalf("count admins: %v", err)
+	}
+	if adminCount != 1 {
+		t.Fatalf("expected 1 admin, got %d", adminCount)
 	}
 
 	var emailProfile EmailProfile
@@ -120,6 +129,88 @@ func TestBootstrapReassignsDomain(t *testing.T) {
 	}
 	if domainCount != 1 {
 		t.Fatalf("expected 1 domain, got %d", domainCount)
+	}
+}
+
+func TestBootstrapRemovesTenantRecordsMissingFromConfig(t *testing.T) {
+	t.Helper()
+	dbInstance := newTestDatabase(t)
+	keeper := newTestSecretKeeper(t)
+	tenantOne := bootstrapTenantSpec("tenant-one", []string{"one.example"})
+	tenantOne.Admins = []string{"admin@one.example"}
+	tenantTwo := bootstrapTenantSpec("tenant-two", []string{"two.example"})
+	tenantTwo.Admins = []string{"admin@two.example"}
+	tenantTwo.SMSProfile = &BootstrapSMSProfile{
+		AccountSID: "AC456",
+		AuthToken:  "sms-secret-two",
+		FromNumber: "+15550002222",
+	}
+
+	if err := Bootstrap(context.Background(), dbInstance, keeper, BootstrapConfig{Tenants: []BootstrapTenant{tenantOne, tenantTwo}}); err != nil {
+		t.Fatalf("bootstrap initial config: %v", err)
+	}
+	initialRepo := NewRepository(dbInstance, keeper)
+	initialAdmin, initialAdminErr := initialRepo.IsActiveTenantAdmin(context.Background(), "admin@two.example")
+	if initialAdminErr != nil {
+		t.Fatalf("initial admin lookup: %v", initialAdminErr)
+	}
+	if !initialAdmin {
+		t.Fatalf("expected tenant-two admin before removal")
+	}
+
+	if err := Bootstrap(context.Background(), dbInstance, keeper, BootstrapConfig{Tenants: []BootstrapTenant{tenantOne}}); err != nil {
+		t.Fatalf("bootstrap updated config: %v", err)
+	}
+	updatedRepo := NewRepository(dbInstance, keeper)
+	removedAdmin, removedAdminErr := updatedRepo.IsActiveTenantAdmin(context.Background(), "admin@two.example")
+	if removedAdminErr != nil {
+		t.Fatalf("removed admin lookup: %v", removedAdminErr)
+	}
+	if removedAdmin {
+		t.Fatalf("expected removed tenant admin not to authorize")
+	}
+	activeTenants, activeTenantErr := updatedRepo.ListActiveTenants(context.Background())
+	if activeTenantErr != nil {
+		t.Fatalf("list active tenants: %v", activeTenantErr)
+	}
+	if len(activeTenants) != 1 || activeTenants[0].ID != "tenant-one" {
+		t.Fatalf("expected only tenant-one to remain active, got %+v", activeTenants)
+	}
+
+	var tenantCount int64
+	if err := dbInstance.Model(&Tenant{}).Where(&Tenant{ID: "tenant-two"}).Count(&tenantCount).Error; err != nil {
+		t.Fatalf("count removed tenants: %v", err)
+	}
+	if tenantCount != 0 {
+		t.Fatalf("expected removed tenant row cleanup, got %d", tenantCount)
+	}
+	var domainCount int64
+	if err := dbInstance.Model(&TenantDomain{}).Where(&TenantDomain{TenantID: "tenant-two"}).Count(&domainCount).Error; err != nil {
+		t.Fatalf("count removed domains: %v", err)
+	}
+	if domainCount != 0 {
+		t.Fatalf("expected removed tenant domain cleanup, got %d", domainCount)
+	}
+	var adminCount int64
+	if err := dbInstance.Model(&TenantAdmin{}).Where(&TenantAdmin{TenantID: "tenant-two"}).Count(&adminCount).Error; err != nil {
+		t.Fatalf("count removed admins: %v", err)
+	}
+	if adminCount != 0 {
+		t.Fatalf("expected removed tenant admin cleanup, got %d", adminCount)
+	}
+	var emailProfileCount int64
+	if err := dbInstance.Model(&EmailProfile{}).Where(&EmailProfile{TenantID: "tenant-two"}).Count(&emailProfileCount).Error; err != nil {
+		t.Fatalf("count removed email profiles: %v", err)
+	}
+	if emailProfileCount != 0 {
+		t.Fatalf("expected removed tenant email profile cleanup, got %d", emailProfileCount)
+	}
+	var smsProfileCount int64
+	if err := dbInstance.Model(&SMSProfile{}).Where(&SMSProfile{TenantID: "tenant-two"}).Count(&smsProfileCount).Error; err != nil {
+		t.Fatalf("count removed sms profiles: %v", err)
+	}
+	if smsProfileCount != 0 {
+		t.Fatalf("expected removed tenant sms profile cleanup, got %d", smsProfileCount)
 	}
 }
 
@@ -288,6 +379,37 @@ func TestBootstrapReportsStorageAndCredentialFailures(t *testing.T) {
 				registerTenantCallbackError(t, database, "query", "TenantDomain", errors.New("domain query failed"))
 			},
 			wantErr: "domain alpha.example",
+		},
+		{
+			name: "admin delete",
+			config: func() BootstrapConfig {
+				cfg := sampleBootstrapConfig()
+				cfg.Tenants[0].Admins = []string{"admin@alpha.example"}
+				return cfg
+			}(),
+			beforeCall: func(t *testing.T, database *gorm.DB) {
+				registerTenantCallbackError(t, database, "delete", "TenantAdmin", errors.New("admin delete failed"))
+			},
+			wantErr: bootstrapAdminResetCode,
+		},
+		{
+			name: "admin create",
+			config: func() BootstrapConfig {
+				cfg := sampleBootstrapConfig()
+				cfg.Tenants[0].Admins = []string{"admin@alpha.example"}
+				return cfg
+			}(),
+			beforeCall: func(t *testing.T, database *gorm.DB) {
+				registerTenantCallbackError(t, database, "create", "TenantAdmin", errors.New("admin create failed"))
+			},
+			wantErr: bootstrapAdminCreateCode,
+		},
+		{
+			name: "stale tenant cleanup",
+			beforeCall: func(t *testing.T, database *gorm.DB) {
+				registerTenantCallbackError(t, database, "delete", "Tenant", errors.New("tenant delete failed"))
+			},
+			wantErr: bootstrapTenantCleanupCode,
 		},
 		{
 			name:    "email username encrypt",

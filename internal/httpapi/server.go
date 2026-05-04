@@ -116,7 +116,7 @@ func NewServer(cfg Config) (*Server, error) {
 	protected.PATCH("/notifications/:id/schedule", handler.rescheduleNotification)
 	protected.POST("/notifications/:id/cancel", handler.cancelNotification)
 	if cfg.SMTPIdentityService != nil {
-		identityHandler := newSMTPIdentityHandler(cfg.SMTPIdentityService, cfg.Logger)
+		identityHandler := newSMTPIdentityHandler(cfg.SMTPIdentityService, cfg.TenantRepository, cfg.Logger)
 		protected.GET("/smtp-identities", identityHandler.listIdentities)
 		protected.POST("/smtp-identities", identityHandler.createIdentity)
 		protected.POST("/smtp-identities/:id/rotate", identityHandler.rotateIdentity)
@@ -362,7 +362,11 @@ func (handler *notificationHandler) resolveNotificationContext(contextGin *gin.C
 
 func (handler *notificationHandler) accessibleTenants(contextGin *gin.Context) ([]tenant.Tenant, error) {
 	claims := claimsFromContextGin(contextGin)
-	if sessionHasAdminRole(claims) {
+	admin, adminErr := sessionHasAdminAccess(contextGin, handler.repository, claims)
+	if adminErr != nil {
+		return nil, adminErr
+	}
+	if admin {
 		return handler.repository.ListActiveTenants(contextGin.Request.Context())
 	}
 	emailDomain, ok := sessionEmailDomain(claims)
@@ -374,7 +378,11 @@ func (handler *notificationHandler) accessibleTenants(contextGin *gin.Context) (
 
 func (handler *notificationHandler) authorizeNotificationTenant(contextGin *gin.Context, tenantID string) error {
 	claims := claimsFromContextGin(contextGin)
-	if sessionHasAdminRole(claims) {
+	admin, adminErr := sessionHasAdminAccess(contextGin, handler.repository, claims)
+	if adminErr != nil {
+		return adminErr
+	}
+	if admin {
 		return nil
 	}
 	emailDomain, ok := sessionEmailDomain(claims)
@@ -404,6 +412,13 @@ func sessionHasAdminRole(claims *sessionvalidator.Claims) bool {
 		}
 	}
 	return false
+}
+
+func sessionHasAdminAccess(contextGin *gin.Context, repository *tenant.Repository, claims *sessionvalidator.Claims) (bool, error) {
+	if sessionHasAdminRole(claims) {
+		return true, nil
+	}
+	return repository.IsActiveTenantAdmin(contextGin.Request.Context(), claims.GetUserEmail())
 }
 
 func sessionEmailDomain(claims *sessionvalidator.Claims) (string, bool) {

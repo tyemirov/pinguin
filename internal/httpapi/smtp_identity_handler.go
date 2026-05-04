@@ -2,26 +2,28 @@ package httpapi
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tyemirov/pinguin/internal/smtpidentity"
+	"github.com/tyemirov/pinguin/internal/tenant"
 	"gorm.io/gorm"
-	"log/slog"
 )
 
 type smtpIdentityHandler struct {
-	service *smtpidentity.Service
-	logger  *slog.Logger
+	service    *smtpidentity.Service
+	repository *tenant.Repository
+	logger     *slog.Logger
 }
 
-func newSMTPIdentityHandler(service *smtpidentity.Service, logger *slog.Logger) *smtpIdentityHandler {
-	return &smtpIdentityHandler{service: service, logger: logger}
+func newSMTPIdentityHandler(service *smtpidentity.Service, repository *tenant.Repository, logger *slog.Logger) *smtpIdentityHandler {
+	return &smtpIdentityHandler{service: service, repository: repository, logger: logger}
 }
 
 func (handler *smtpIdentityHandler) listIdentities(contextGin *gin.Context) {
-	if !requireAdminSession(contextGin) {
+	if !handler.requireAdminSession(contextGin) {
 		return
 	}
 	identities, err := handler.service.List(contextGin.Request.Context())
@@ -33,7 +35,7 @@ func (handler *smtpIdentityHandler) listIdentities(contextGin *gin.Context) {
 }
 
 func (handler *smtpIdentityHandler) createIdentity(contextGin *gin.Context) {
-	if !requireAdminSession(contextGin) {
+	if !handler.requireAdminSession(contextGin) {
 		return
 	}
 	var payload struct {
@@ -57,7 +59,7 @@ func (handler *smtpIdentityHandler) createIdentity(contextGin *gin.Context) {
 }
 
 func (handler *smtpIdentityHandler) rotateIdentity(contextGin *gin.Context) {
-	if !requireAdminSession(contextGin) {
+	if !handler.requireAdminSession(contextGin) {
 		return
 	}
 	identityID := strings.TrimSpace(contextGin.Param("id"))
@@ -74,7 +76,7 @@ func (handler *smtpIdentityHandler) rotateIdentity(contextGin *gin.Context) {
 }
 
 func (handler *smtpIdentityHandler) deleteIdentity(contextGin *gin.Context) {
-	if !requireAdminSession(contextGin) {
+	if !handler.requireAdminSession(contextGin) {
 		return
 	}
 	identityID := strings.TrimSpace(contextGin.Param("id"))
@@ -89,8 +91,14 @@ func (handler *smtpIdentityHandler) deleteIdentity(contextGin *gin.Context) {
 	contextGin.Status(http.StatusNoContent)
 }
 
-func requireAdminSession(contextGin *gin.Context) bool {
-	if sessionHasAdminRole(claimsFromContextGin(contextGin)) {
+func (handler *smtpIdentityHandler) requireAdminSession(contextGin *gin.Context) bool {
+	admin, adminErr := sessionHasAdminAccess(contextGin, handler.repository, claimsFromContextGin(contextGin))
+	if adminErr != nil {
+		handler.logger.Error("smtp_identity_admin_lookup_error", "error", adminErr)
+		contextGin.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return false
+	}
+	if admin {
 		return true
 	}
 	contextGin.JSON(http.StatusForbidden, gin.H{"error": errAdminAccessRequired.Error()})

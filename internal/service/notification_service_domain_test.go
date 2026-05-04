@@ -623,7 +623,7 @@ func TestRuntimeForTenantIDValidation(t *testing.T) {
 	}
 
 	database := openIsolatedDatabase(t)
-	if err := database.AutoMigrate(&tenant.Tenant{}, &tenant.TenantDomain{}, &tenant.EmailProfile{}, &tenant.SMSProfile{}); err != nil {
+	if err := database.AutoMigrate(&tenant.Tenant{}, &tenant.TenantDomain{}, &tenant.TenantAdmin{}, &tenant.EmailProfile{}, &tenant.SMSProfile{}); err != nil {
 		t.Fatalf("tenant migration: %v", err)
 	}
 	keeper, err := tenant.NewSecretKeeper(strings.Repeat("a", 64))

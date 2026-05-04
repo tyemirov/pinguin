@@ -357,6 +357,91 @@ func TestRepositoryListActiveTenantsByDomain(t *testing.T) {
 	}
 }
 
+func TestRepositoryIsActiveTenantAdmin(t *testing.T) {
+	t.Helper()
+	dbInstance := newTestDatabase(t)
+	keeper := newTestSecretKeeper(t)
+	cfg := sampleBootstrapConfig()
+	cfg.Tenants[0].Admins = []string{" Admin@Alpha.Example ", "admin@alpha.example", ""}
+	cfg.Tenants = append(cfg.Tenants, BootstrapTenant{
+		ID:           "tenant-suspended",
+		DisplayName:  "Suspended",
+		SupportEmail: "support@suspended.example",
+		Enabled:      ptrBool(false),
+		Domains:      []string{"suspended.example"},
+		Admins:       []string{"owner@suspended.example"},
+		EmailProfile: BootstrapEmailProfile{
+			Host:        "smtp.suspended.example",
+			Port:        25,
+			Username:    "suspended-user",
+			Password:    "suspended-pass",
+			FromAddress: "noreply@suspended.example",
+		},
+	})
+	if err := Bootstrap(context.Background(), dbInstance, keeper, cfg); err != nil {
+		t.Fatalf("bootstrap tenants: %v", err)
+	}
+
+	repo := NewRepository(dbInstance, keeper)
+	admin, adminErr := repo.IsActiveTenantAdmin(context.Background(), "ADMIN@ALPHA.EXAMPLE")
+	if adminErr != nil {
+		t.Fatalf("active admin lookup: %v", adminErr)
+	}
+	if !admin {
+		t.Fatalf("expected configured active tenant admin")
+	}
+	emptyAdmin, emptyErr := repo.IsActiveTenantAdmin(context.Background(), " ")
+	if emptyErr != nil {
+		t.Fatalf("empty admin lookup: %v", emptyErr)
+	}
+	if emptyAdmin {
+		t.Fatalf("expected empty email not to authorize")
+	}
+	missingAdmin, missingErr := repo.IsActiveTenantAdmin(context.Background(), "viewer@alpha.example")
+	if missingErr != nil {
+		t.Fatalf("missing admin lookup: %v", missingErr)
+	}
+	if missingAdmin {
+		t.Fatalf("expected viewer not to be admin")
+	}
+	suspendedAdmin, suspendedErr := repo.IsActiveTenantAdmin(context.Background(), "owner@suspended.example")
+	if suspendedErr != nil {
+		t.Fatalf("suspended admin lookup: %v", suspendedErr)
+	}
+	if suspendedAdmin {
+		t.Fatalf("expected suspended tenant admin not to authorize")
+	}
+
+	cfg.Tenants[0].Admins = []string{"new-admin@alpha.example"}
+	if err := Bootstrap(context.Background(), dbInstance, keeper, cfg); err != nil {
+		t.Fatalf("rebootstrap tenants: %v", err)
+	}
+	oldAdmin, oldAdminErr := repo.IsActiveTenantAdmin(context.Background(), "admin@alpha.example")
+	if oldAdminErr != nil {
+		t.Fatalf("old admin lookup: %v", oldAdminErr)
+	}
+	if oldAdmin {
+		t.Fatalf("expected old admin to be removed")
+	}
+	newAdmin, newAdminErr := repo.IsActiveTenantAdmin(context.Background(), "new-admin@alpha.example")
+	if newAdminErr != nil {
+		t.Fatalf("new admin lookup: %v", newAdminErr)
+	}
+	if !newAdmin {
+		t.Fatalf("expected new admin to authorize")
+	}
+}
+
+func TestRepositoryIsActiveTenantAdminReportsStorageFailure(t *testing.T) {
+	t.Helper()
+	dbInstance := newTestDatabase(t)
+	repo := NewRepository(dbInstance, newTestSecretKeeper(t))
+	closeTenantDatabase(t, dbInstance)
+	if _, err := repo.IsActiveTenantAdmin(context.Background(), "admin@example.com"); err == nil {
+		t.Fatalf("expected tenant admin lookup storage error")
+	}
+}
+
 func TestRepositoryListActiveTenantsByDomainReportsStorageFailure(t *testing.T) {
 	t.Helper()
 	dbInstance := newTestDatabase(t)

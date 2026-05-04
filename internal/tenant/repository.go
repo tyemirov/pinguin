@@ -45,6 +45,9 @@ const (
 	tenantDomainTableName      = "tenant_domains"
 	tenantDomainColumnTenantID = "tenant_id"
 	tenantDomainColumnHost     = "host"
+	tenantAdminTableName       = "tenant_admins"
+	tenantAdminColumnTenantID  = "tenant_id"
+	tenantAdminColumnEmail     = "email"
 )
 
 // Repository exposes tenant lookups.
@@ -135,6 +138,26 @@ func (repo *Repository) ListActiveTenantsByDomain(ctx context.Context, domain st
 		return nil, fmt.Errorf("tenant list: domain %s: %w", normalizedDomain, err)
 	}
 	return tenants, nil
+}
+
+// IsActiveTenantAdmin reports whether the email administers at least one active tenant.
+func (repo *Repository) IsActiveTenantAdmin(ctx context.Context, email string) (bool, error) {
+	normalizedEmail := normalizeAdminEmail(email)
+	if normalizedEmail == "" {
+		return false, nil
+	}
+	var matchingTenants int64
+	if err := repo.db.WithContext(ctx).
+		Model(&Tenant{}).
+		Clauses(activeTenantAdminJoinClause()).
+		Where(clause.And(
+			clause.Eq{Column: clause.Column{Table: tenantTableName, Name: tenantColumnStatus}, Value: TenantStatusActive},
+			clause.Eq{Column: clause.Column{Table: tenantAdminTableName, Name: tenantAdminColumnEmail}, Value: normalizedEmail},
+		)).
+		Count(&matchingTenants).Error; err != nil {
+		return false, fmt.Errorf("tenant admin lookup: %w", err)
+	}
+	return matchingTenants > 0, nil
 }
 
 func (repo *Repository) runtimeConfig(ctx context.Context, tenantID string) (RuntimeConfig, error) {
@@ -270,6 +293,23 @@ func activeTenantDomainJoinClause() clause.From {
 				ON: clause.Where{Exprs: []clause.Expression{
 					clause.Eq{
 						Column: clause.Column{Table: tenantDomainTableName, Name: tenantDomainColumnTenantID},
+						Value:  clause.Column{Table: tenantTableName, Name: tenantColumnID},
+					},
+				}},
+			},
+		},
+	}
+}
+
+func activeTenantAdminJoinClause() clause.From {
+	return clause.From{
+		Joins: []clause.Join{
+			{
+				Type:  clause.InnerJoin,
+				Table: clause.Table{Name: tenantAdminTableName},
+				ON: clause.Where{Exprs: []clause.Expression{
+					clause.Eq{
+						Column: clause.Column{Table: tenantAdminTableName, Name: tenantAdminColumnTenantID},
 						Value:  clause.Column{Table: tenantTableName, Name: tenantColumnID},
 					},
 				}},
