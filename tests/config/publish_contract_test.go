@@ -100,7 +100,7 @@ func TestDeployScriptDeploysBackendThenLegacyPages(t *testing.T) {
 
 	deployScript := string(readRepoFile(t, "scripts", "deploy.sh"))
 	requiredSnippets := []string{
-		"make -C \"${GATEWAY_DIR}\" deploy-pinguin",
+		"make -C \"${GATEWAY_DIR}\" deploy TARGET=pinguin",
 		"Verifying ${IMAGE_REPOSITORY}:latest matches ${TAG}",
 		"./scripts/publish_pages_branch.sh",
 		"\"build_type\":\"legacy\"",

@@ -121,6 +121,7 @@ make: *** [test-frontend] Error 1
 - [x] [PG-342] Enforce tenant authorization before honoring `tenant_id` query parameters on notification HTTP endpoints. Resolved with TAuth-role-based admin access, email-domain tenant scoping for regular users, filtered tenant listing, and passing `make test`, `make lint`, and `make ci`.
 - [x] [PG-344] Enforce admin-only authorization on global SMTP identity HTTP routes. Resolved by requiring the TAuth `admin` role before list/create/rotate/delete service access and adding backend coverage that non-admin sessions return 403 before touching identity storage; `make ci` passes.
 - [x] [PG-345] Production dashboard tenant dropdown is empty after login and `/api/smtp-identities` returns 403 because configured Pinguin tenant admin emails are validated by `pinguin-doctor` but ignored by runtime authorization after the TAuth role-based admin changes. Resolved by persisting configured tenant admins during bootstrap, authorizing dashboard/API admin access from either TAuth `admin` role or configured admin email, and passing `make test`, `make lint`, and `make ci`.
+- [x] [PG-346] Release `make ci` fails because Pinguin's local deployment contract drifted from the current gateway-owned dispatch model. Resolved by routing backend deployment through `make -C "${GATEWAY_DIR}" deploy TARGET=pinguin`, preserving backend-before-Pages sequencing while letting mprlab-gateway map the target to `deploy-pinguin`; `make test-fast`, Pinguin `make ci`, and gateway `make verify-app-workflows` pass.
 
 ## Maintenance (400–499)
 
