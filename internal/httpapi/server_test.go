@@ -536,6 +536,42 @@ func TestSMTPIdentityLifecycle(t *testing.T) {
 	}
 }
 
+func TestSMTPIdentityRoutesRequireAdminRole(t *testing.T) {
+	t.Helper()
+	server, _ := newTestHTTPServerWithBrokenSMTPIdentitiesAndValidator(t, &stubValidator{
+		email: "member@example.com",
+		roles: []string{"user"},
+	})
+
+	testCases := []struct {
+		name   string
+		method string
+		path   string
+		body   string
+	}{
+		{name: "list", method: http.MethodGet, path: "/api/smtp-identities"},
+		{name: "create", method: http.MethodPost, path: "/api/smtp-identities", body: `{"email_address":"alice@example.com"}`},
+		{name: "rotate", method: http.MethodPost, path: "/api/smtp-identities/identity/rotate"},
+		{name: "delete", method: http.MethodDelete, path: "/api/smtp-identities/identity"},
+	}
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(testCase.method, testCase.path, strings.NewReader(testCase.body))
+			request.Host = "unknown.example.com"
+			request.Header.Set("Content-Type", "application/json")
+			server.httpServer.Handler.ServeHTTP(recorder, request)
+			if recorder.Code != http.StatusForbidden {
+				t.Fatalf("expected 403 before service access, got %d body=%s", recorder.Code, recorder.Body.String())
+			}
+			if !strings.Contains(recorder.Body.String(), "admin access required") {
+				t.Fatalf("expected admin access error, got body=%s", recorder.Body.String())
+			}
+		})
+	}
+}
+
 func TestSMTPIdentityRejectsOutsideSenderDomain(t *testing.T) {
 	server, _ := newTestHTTPServerWithSMTPIdentities(t)
 
@@ -1285,6 +1321,11 @@ func newTestHTTPServerWithRepo(t *testing.T, svc service.NotificationService, va
 
 func newTestHTTPServerWithSMTPIdentities(t *testing.T) (*Server, *smtpidentity.Repository) {
 	t.Helper()
+	return newTestHTTPServerWithSMTPIdentitiesAndValidator(t, &stubValidator{})
+}
+
+func newTestHTTPServerWithSMTPIdentitiesAndValidator(t *testing.T, validator SessionValidator) (*Server, *smtpidentity.Repository) {
+	t.Helper()
 	secretKey := strings.Repeat("a", 64)
 	keeper, err := tenant.NewSecretKeeper(secretKey)
 	if err != nil {
@@ -1343,7 +1384,7 @@ func newTestHTTPServerWithSMTPIdentities(t *testing.T) (*Server, *smtpidentity.R
 		ListenAddr:          ":0",
 		NotificationService: &stubNotificationService{},
 		SMTPIdentityService: identityService,
-		SessionValidator:    &stubValidator{},
+		SessionValidator:    validator,
 		TenantRepository:    tenantRepo,
 		TAuthBaseURL:        "https://tauth.example.com",
 		TAuthTenantID:       "tauth-test",
@@ -1357,6 +1398,11 @@ func newTestHTTPServerWithSMTPIdentities(t *testing.T) (*Server, *smtpidentity.R
 }
 
 func newTestHTTPServerWithBrokenSMTPIdentities(t *testing.T) (*Server, *smtpidentity.Repository) {
+	t.Helper()
+	return newTestHTTPServerWithBrokenSMTPIdentitiesAndValidator(t, &stubValidator{})
+}
+
+func newTestHTTPServerWithBrokenSMTPIdentitiesAndValidator(t *testing.T, validator SessionValidator) (*Server, *smtpidentity.Repository) {
 	t.Helper()
 	secretKey := strings.Repeat("a", 64)
 	dbInstance, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "broken-httpapi.db")), &gorm.Config{})
@@ -1390,7 +1436,7 @@ func newTestHTTPServerWithBrokenSMTPIdentities(t *testing.T) (*Server, *smtpiden
 		ListenAddr:          ":0",
 		NotificationService: &stubNotificationService{},
 		SMTPIdentityService: identityService,
-		SessionValidator:    &stubValidator{},
+		SessionValidator:    validator,
 		TenantRepository:    newTestTenantRepository(t),
 		TAuthBaseURL:        "https://tauth.example.com",
 		TAuthTenantID:       "tauth-test",

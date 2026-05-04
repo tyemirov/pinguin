@@ -32,8 +32,9 @@ const (
 )
 
 var (
-	errTenantIDRequired   = errors.New("tenant_id is required")
-	errTenantAccessDenied = errors.New("tenant access denied")
+	errTenantIDRequired    = errors.New("tenant_id is required")
+	errTenantAccessDenied  = errors.New("tenant access denied")
+	errAdminAccessRequired = errors.New("admin access required")
 )
 
 // SessionValidator exposes the subset of validator behaviour we depend on.
