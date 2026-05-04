@@ -12,6 +12,7 @@
 - Enforce tenant authorization before honoring `tenant_id` on notification list, reschedule, and cancel endpoints.
 - Require the TAuth `admin` role before listing, creating, rotating, or deleting global SMTP identities.
 - Honor configured tenant admin emails for dashboard tenant access and global SMTP identity management.
+- Remove stale tenant bootstrap records so deleted tenants no longer leave active admin access behind.
 - Match the legacy failed-notification `errored` search alias only when the query exactly equals `errored`.
 - Keep the landing and dashboard header branded as `[logo] Pinguin` even when runtime tenant metadata belongs to a notification consumer, and serve the Pinguin favicon from `/favicon.svg`.
 - Restore production login rendering by moving the frontend onto the `mpr-ui` `/config-ui.yaml` orchestration contract and removing the direct `tauth.js` loader.
@@ -29,6 +30,7 @@
 - Add backend coverage for admin-wide notification tenant access and non-admin email-domain tenant restrictions.
 - Add backend coverage proving non-admin SMTP identity routes return 403 before touching identity storage.
 - Add backend coverage for configured tenant admin authorization.
+- Add backend coverage for pruning tenant bootstrap records that disappear from config.
 - Add backend coverage preventing partial search terms from broadening to legacy failed-notification aliases.
 - Add backend and browser coverage for explicit tenant notification listing and dashboard switching between tenant event views.
 - Add browser coverage for the Pinguin logo/favicon header contract, including a regression where runtime config returns `PoodleScanner` tenant metadata.

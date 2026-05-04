@@ -237,6 +237,7 @@ See `configs/config.yml` for a ready-to-use sample. `MASTER_ENCRYPTION_KEY` encr
 #### Tenant keys
 
 - `tenants`: list of tenant objects. Must contain at least one enabled tenant (`enabled: true`) or the server exits during startup.
+  - Bootstrap treats this list as the source of truth for tenant configuration. Removing a tenant from config removes its tenant, domain, admin, SMTP profile, and SMS profile records on the next startup.
 - `tenants[].id` (string, required): stable tenant identifier.
   - Used by gRPC callers (`tenant_id`) and as the database partition key.
   - Avoid leaving it empty: an empty id is auto-generated during bootstrap and will drift between runs.
