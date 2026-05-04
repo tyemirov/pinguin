@@ -250,6 +250,120 @@ func TestListNotificationsCanSwitchTenants(t *testing.T) {
 	}
 }
 
+func TestListNotificationsRejectsTenantOutsideUserDomain(t *testing.T) {
+	t.Helper()
+
+	repo := newMultiTenantRepository(t)
+	stubSvc := &stubNotificationService{
+		listResponse: []model.NotificationResponse{},
+	}
+	server := newTestHTTPServerWithRepo(t, stubSvc, &stubValidator{email: "member@alpha.localhost", roles: []string{"user"}}, repo)
+
+	allowedRecorder := httptest.NewRecorder()
+	allowedRequest := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-alpha", nil)
+	allowedRequest.Host = "unknown.localhost"
+	server.httpServer.Handler.ServeHTTP(allowedRecorder, allowedRequest)
+	if allowedRecorder.Code != http.StatusOK {
+		t.Fatalf("expected alpha access, got %d body=%s", allowedRecorder.Code, allowedRecorder.Body.String())
+	}
+	if stubSvc.lastTenantID != "tenant-alpha" {
+		t.Fatalf("expected tenant-alpha, got %s", stubSvc.lastTenantID)
+	}
+
+	deniedRecorder := httptest.NewRecorder()
+	deniedRequest := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-bravo", nil)
+	deniedRequest.Host = "unknown.localhost"
+	currentCalls := stubSvc.listCalls
+	server.httpServer.Handler.ServeHTTP(deniedRecorder, deniedRequest)
+	if deniedRecorder.Code != http.StatusForbidden {
+		t.Fatalf("expected forbidden bravo access, got %d body=%s", deniedRecorder.Code, deniedRecorder.Body.String())
+	}
+	if stubSvc.listCalls != currentCalls {
+		t.Fatalf("service should not be called for unauthorized tenant")
+	}
+}
+
+func TestListNotificationsRejectsSessionWithoutEmailDomain(t *testing.T) {
+	t.Helper()
+
+	repo := newMultiTenantRepository(t)
+	stubSvc := &stubNotificationService{}
+	server := newTestHTTPServerWithRepo(t, stubSvc, &stubValidator{email: "member", roles: []string{"user"}}, repo)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-alpha", nil)
+	request.Host = "unknown.localhost"
+	server.httpServer.Handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("expected forbidden, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if stubSvc.listCalls != 0 {
+		t.Fatalf("service should not be called")
+	}
+}
+
+func TestListNotificationsReportsTenantAuthorizationStorageError(t *testing.T) {
+	t.Helper()
+
+	repo := newClosedTenantRepository(t)
+	stubSvc := &stubNotificationService{}
+	server := newTestHTTPServerWithRepo(t, stubSvc, &stubValidator{email: "member@example.com", roles: []string{"user"}}, repo)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-alpha", nil)
+	request.Host = "unknown.localhost"
+	server.httpServer.Handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected internal server error, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if stubSvc.listCalls != 0 {
+		t.Fatalf("service should not be called")
+	}
+}
+
+func TestNotificationMutationsRejectTenantOutsideUserDomain(t *testing.T) {
+	t.Helper()
+
+	repo := newMultiTenantRepository(t)
+	stubSvc := &stubNotificationService{}
+	server := newTestHTTPServerWithRepo(t, stubSvc, &stubValidator{email: "member@alpha.localhost", roles: []string{"user"}}, repo)
+	scheduledTime := time.Now().UTC().Add(5 * time.Minute).Format(time.RFC3339)
+	testCases := []struct {
+		name   string
+		method string
+		path   string
+		body   string
+	}{
+		{
+			name:   "reschedule",
+			method: http.MethodPatch,
+			path:   "/api/notifications/notif-1/schedule?tenant_id=tenant-bravo",
+			body:   fmt.Sprintf(`{"scheduled_time":"%s"}`, scheduledTime),
+		},
+		{
+			name:   "cancel",
+			method: http.MethodPost,
+			path:   "/api/notifications/notif-1/cancel?tenant_id=tenant-bravo",
+		},
+	}
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(testCase.method, testCase.path, strings.NewReader(testCase.body))
+			request.Host = "unknown.localhost"
+			request.Header.Set("Content-Type", "application/json")
+			server.httpServer.Handler.ServeHTTP(recorder, request)
+			if recorder.Code != http.StatusForbidden {
+				t.Fatalf("expected forbidden, got %d body=%s", recorder.Code, recorder.Body.String())
+			}
+		})
+	}
+	if stubSvc.rescheduleCalls != 0 || stubSvc.cancelCalls != 0 {
+		t.Fatalf("service should not be called, got reschedule=%d cancel=%d", stubSvc.rescheduleCalls, stubSvc.cancelCalls)
+	}
+}
+
 func TestListTenantsReturnsActiveTenants(t *testing.T) {
 	t.Helper()
 
@@ -278,6 +392,47 @@ func TestListTenantsReturnsActiveTenants(t *testing.T) {
 	}
 }
 
+func TestListTenantsFiltersByUserDomain(t *testing.T) {
+	t.Helper()
+
+	repo := newMultiTenantRepository(t)
+	server := newTestHTTPServerWithRepo(t, &stubNotificationService{}, &stubValidator{email: "member@bravo.localhost", roles: []string{"user"}}, repo)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/tenants", nil)
+	request.Host = "unknown.localhost"
+
+	server.httpServer.Handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var payload struct {
+		Tenants []runtimeConfigTenant `json:"tenants"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode tenants: %v", err)
+	}
+	if len(payload.Tenants) != 1 || payload.Tenants[0].ID != "tenant-bravo" {
+		t.Fatalf("unexpected tenants %+v", payload.Tenants)
+	}
+}
+
+func TestListTenantsRejectsSessionWithoutEmailDomain(t *testing.T) {
+	t.Helper()
+
+	repo := newMultiTenantRepository(t)
+	server := newTestHTTPServerWithRepo(t, &stubNotificationService{}, &stubValidator{email: "member", roles: []string{"user"}}, repo)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/tenants", nil)
+	request.Host = "unknown.localhost"
+
+	server.httpServer.Handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("expected forbidden, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestListTenantsRequiresAuth(t *testing.T) {
 	t.Helper()
 
@@ -298,6 +453,20 @@ func TestListTenantsReportsRepositoryError(t *testing.T) {
 	t.Helper()
 	repo := newClosedTenantRepository(t)
 	server := newTestHTTPServerWithRepo(t, &stubNotificationService{}, &stubValidator{}, repo)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/tenants", nil)
+
+	server.httpServer.Handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", recorder.Code)
+	}
+}
+
+func TestListTenantsReportsDomainRepositoryError(t *testing.T) {
+	t.Helper()
+	repo := newClosedTenantRepository(t)
+	server := newTestHTTPServerWithRepo(t, &stubNotificationService{}, &stubValidator{email: "member@example.com", roles: []string{"user"}}, repo)
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/tenants", nil)
@@ -1350,6 +1519,7 @@ func bootstrapTenantRepository(t *testing.T, cfg tenant.BootstrapConfig) *tenant
 type stubValidator struct {
 	err   error
 	email string
+	roles []string
 }
 
 func (validator *stubValidator) ValidateRequest(_ *http.Request) (*sessionvalidator.Claims, error) {
@@ -1360,7 +1530,11 @@ func (validator *stubValidator) ValidateRequest(_ *http.Request) (*sessionvalida
 	if email == "" {
 		email = "user@example.com"
 	}
-	return &sessionvalidator.Claims{UserEmail: email}, nil
+	roles := validator.roles
+	if roles == nil {
+		roles = []string{"admin"}
+	}
+	return &sessionvalidator.Claims{UserEmail: email, UserRoles: roles}, nil
 }
 
 type stubNotificationService struct {

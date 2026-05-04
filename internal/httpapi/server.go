@@ -28,10 +28,12 @@ const (
 	notificationSearchParam  = "q"
 	notificationLimitParam   = "limit"
 	notificationCursorParam  = "cursor"
+	sessionAdminRole         = "admin"
 )
 
 var (
-	errTenantIDRequired = errors.New("tenant_id is required")
+	errTenantIDRequired   = errors.New("tenant_id is required")
+	errTenantAccessDenied = errors.New("tenant access denied")
 )
 
 // SessionValidator exposes the subset of validator behaviour we depend on.
@@ -232,10 +234,9 @@ func newNotificationHandler(svc service.NotificationService, repo *tenant.Reposi
 }
 
 func (handler *notificationHandler) listTenants(contextGin *gin.Context) {
-	tenants, err := handler.repository.ListActiveTenants(contextGin.Request.Context())
+	tenants, err := handler.accessibleTenants(contextGin)
 	if err != nil {
-		handler.logger.Error("http_handler_error", "error", err)
-		contextGin.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		handler.writeTenantListError(contextGin, err)
 		return
 	}
 	payload := make([]runtimeConfigTenant, 0, len(tenants))
@@ -348,6 +349,9 @@ func (handler *notificationHandler) resolveNotificationContext(contextGin *gin.C
 	if tenantID == "" {
 		return nil, errTenantIDRequired
 	}
+	if err := handler.authorizeNotificationTenant(contextGin, tenantID); err != nil {
+		return nil, err
+	}
 	targetCfg, err := handler.repository.ResolveByID(contextGin.Request.Context(), tenantID)
 	if err != nil {
 		return nil, err
@@ -355,10 +359,74 @@ func (handler *notificationHandler) resolveNotificationContext(contextGin *gin.C
 	return tenant.WithRuntime(contextGin.Request.Context(), targetCfg), nil
 }
 
+func (handler *notificationHandler) accessibleTenants(contextGin *gin.Context) ([]tenant.Tenant, error) {
+	claims := claimsFromContextGin(contextGin)
+	if sessionHasAdminRole(claims) {
+		return handler.repository.ListActiveTenants(contextGin.Request.Context())
+	}
+	emailDomain, ok := sessionEmailDomain(claims)
+	if !ok {
+		return nil, errTenantAccessDenied
+	}
+	return handler.repository.ListActiveTenantsByDomain(contextGin.Request.Context(), emailDomain)
+}
+
+func (handler *notificationHandler) authorizeNotificationTenant(contextGin *gin.Context, tenantID string) error {
+	claims := claimsFromContextGin(contextGin)
+	if sessionHasAdminRole(claims) {
+		return nil
+	}
+	emailDomain, ok := sessionEmailDomain(claims)
+	if !ok {
+		return errTenantAccessDenied
+	}
+	tenants, err := handler.repository.ListActiveTenantsByDomain(contextGin.Request.Context(), emailDomain)
+	if err != nil {
+		return err
+	}
+	for _, tenantModel := range tenants {
+		if tenantModel.ID == tenantID {
+			return nil
+		}
+	}
+	return errTenantAccessDenied
+}
+
+func claimsFromContextGin(contextGin *gin.Context) *sessionvalidator.Claims {
+	return contextGin.MustGet(contextKeyClaims).(*sessionvalidator.Claims)
+}
+
+func sessionHasAdminRole(claims *sessionvalidator.Claims) bool {
+	for _, role := range claims.GetUserRoles() {
+		if strings.EqualFold(strings.TrimSpace(role), sessionAdminRole) {
+			return true
+		}
+	}
+	return false
+}
+
+func sessionEmailDomain(claims *sessionvalidator.Claims) (string, bool) {
+	normalizedEmail := strings.ToLower(strings.TrimSpace(claims.GetUserEmail()))
+	_, domain, found := strings.Cut(normalizedEmail, "@")
+	normalizedDomain := strings.TrimSpace(domain)
+	return normalizedDomain, found && normalizedDomain != ""
+}
+
+func (handler *notificationHandler) writeTenantListError(contextGin *gin.Context, err error) {
+	if errors.Is(err, errTenantAccessDenied) {
+		contextGin.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		return
+	}
+	handler.logger.Error("http_handler_error", "error", err)
+	contextGin.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+}
+
 func (handler *notificationHandler) writeTenantResolutionError(contextGin *gin.Context, err error) {
 	switch {
 	case errors.Is(err, errTenantIDRequired):
 		contextGin.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	case errors.Is(err, errTenantAccessDenied):
+		contextGin.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 	case errors.Is(err, tenant.ErrInvalidTenantID), errors.Is(err, gorm.ErrRecordNotFound):
 		contextGin.JSON(http.StatusNotFound, gin.H{"error": "tenant not found"})
 	default:
