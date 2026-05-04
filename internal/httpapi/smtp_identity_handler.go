@@ -21,6 +21,9 @@ func newSMTPIdentityHandler(service *smtpidentity.Service, logger *slog.Logger) 
 }
 
 func (handler *smtpIdentityHandler) listIdentities(contextGin *gin.Context) {
+	if !requireAdminSession(contextGin) {
+		return
+	}
 	identities, err := handler.service.List(contextGin.Request.Context())
 	if err != nil {
 		handler.writeError(contextGin, err)
@@ -30,6 +33,9 @@ func (handler *smtpIdentityHandler) listIdentities(contextGin *gin.Context) {
 }
 
 func (handler *smtpIdentityHandler) createIdentity(contextGin *gin.Context) {
+	if !requireAdminSession(contextGin) {
+		return
+	}
 	var payload struct {
 		EmailAddress string `json:"email_address"`
 	}
@@ -51,6 +57,9 @@ func (handler *smtpIdentityHandler) createIdentity(contextGin *gin.Context) {
 }
 
 func (handler *smtpIdentityHandler) rotateIdentity(contextGin *gin.Context) {
+	if !requireAdminSession(contextGin) {
+		return
+	}
 	identityID := strings.TrimSpace(contextGin.Param("id"))
 	if identityID == "" {
 		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "identity_id is required"})
@@ -65,6 +74,9 @@ func (handler *smtpIdentityHandler) rotateIdentity(contextGin *gin.Context) {
 }
 
 func (handler *smtpIdentityHandler) deleteIdentity(contextGin *gin.Context) {
+	if !requireAdminSession(contextGin) {
+		return
+	}
 	identityID := strings.TrimSpace(contextGin.Param("id"))
 	if identityID == "" {
 		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "identity_id is required"})
@@ -75,6 +87,14 @@ func (handler *smtpIdentityHandler) deleteIdentity(contextGin *gin.Context) {
 		return
 	}
 	contextGin.Status(http.StatusNoContent)
+}
+
+func requireAdminSession(contextGin *gin.Context) bool {
+	if sessionHasAdminRole(claimsFromContextGin(contextGin)) {
+		return true
+	}
+	contextGin.JSON(http.StatusForbidden, gin.H{"error": errAdminAccessRequired.Error()})
+	return false
 }
 
 func (handler *smtpIdentityHandler) writeError(contextGin *gin.Context, err error) {

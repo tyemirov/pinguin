@@ -119,6 +119,7 @@ make: *** [test-frontend] Error 1
   ```
 
 - [x] [PG-342] Enforce tenant authorization before honoring `tenant_id` query parameters on notification HTTP endpoints. Resolved with TAuth-role-based admin access, email-domain tenant scoping for regular users, filtered tenant listing, and passing `make test`, `make lint`, and `make ci`.
+- [x] [PG-344] Enforce admin-only authorization on global SMTP identity HTTP routes. Resolved by requiring the TAuth `admin` role before list/create/rotate/delete service access and adding backend coverage that non-admin sessions return 403 before touching identity storage; `make ci` passes.
 
 ## Maintenance (400–499)
 
