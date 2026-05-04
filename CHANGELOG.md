@@ -44,6 +44,27 @@
 - Update README and architecture notes to describe `config-ui.yaml` as the browser auth source of truth.
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 
+## [v0.4.2] - 2026-05-04
+
+### Features ✨
+- Add deploy script to enable backend deployment through mprlab-gateway with verification and GitHub Pages publishing.
+- Improve release and publish workflows with enhanced scripts and Makefile targets.
+
+### Improvements ⚙️
+- Restore deploy script's gateway handoff to generic `deploy TARGET=pinguin` dispatcher before legacy GitHub Pages publication.
+- Update Makefile with new deploy target and improved publish target supporting branch and remote customization.
+- Enhance publish script by decoupling image publishing from GitHub Pages publishing, supporting dry-run and no-latest modes.
+- Update documentation including CHANGELOG and ISSUES with latest resolved issues and deployment improvements.
+
+### Bug Fixes 🐛
+- Fix release `make ci` failure by routing backend deployment through the gateway dispatch model to preserve backend-before-pages sequencing.
+
+### Testing 🧪
+- _No changes._
+
+### Docs 📚
+- Update CHANGELOG and ISSUES documents with details on deployment and release process improvements.
+
 ## [v0.4.1] - 2026-05-04
 
 ### Features ✨
