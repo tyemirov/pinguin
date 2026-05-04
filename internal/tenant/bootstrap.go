@@ -25,6 +25,7 @@ type BootstrapTenant struct {
 	Enabled      *bool                 `json:"enabled" yaml:"enabled"`
 	Status       string                `json:"status" yaml:"status"`
 	Domains      []string              `json:"domains" yaml:"domains"`
+	Admins       []string              `json:"admins" yaml:"admins"`
 	EmailProfile BootstrapEmailProfile `json:"emailProfile" yaml:"emailProfile"`
 	SMSProfile   *BootstrapSMSProfile  `json:"smsProfile" yaml:"smsProfile"`
 }
@@ -139,6 +140,10 @@ func upsertTenant(ctx context.Context, tx *gorm.DB, keeper *SecretKeeper, spec B
 		}
 	}
 
+	if err := upsertTenantAdmins(tx, spec.ID, spec.Admins); err != nil {
+		return err
+	}
+
 	usernameCipher, err := keeper.Encrypt(spec.EmailProfile.Username)
 	if err != nil {
 		return err
@@ -201,8 +206,26 @@ const (
 	bootstrapMissingDomainCode   = "tenant.bootstrap.domain.missing"
 	bootstrapDomainResetCode     = "tenant.bootstrap.domain.reset_failed"
 	bootstrapDomainConflictCode  = "tenant.bootstrap.domain.conflict"
+	bootstrapAdminResetCode      = "tenant.bootstrap.admin.reset_failed"
+	bootstrapAdminCreateCode     = "tenant.bootstrap.admin.create_failed"
 	bootstrapDomainErrorFormat   = "tenant bootstrap: domain %s: %w"
 )
+
+func upsertTenantAdmins(db *gorm.DB, tenantID string, admins []string) error {
+	if err := db.Where(&TenantAdmin{TenantID: tenantID}).Delete(&TenantAdmin{}).Error; err != nil {
+		return fmt.Errorf("tenant bootstrap: %s: reset tenant admins: %w", bootstrapAdminResetCode, err)
+	}
+	for _, email := range normalizeAdminEmails(admins) {
+		admin := TenantAdmin{
+			TenantID: tenantID,
+			Email:    email,
+		}
+		if err := db.Create(&admin).Error; err != nil {
+			return fmt.Errorf("tenant bootstrap: %s: create tenant admin: %w", bootstrapAdminCreateCode, err)
+		}
+	}
+	return nil
+}
 
 func validateBootstrapDomains(tenantSpecs []BootstrapTenant) error {
 	normalizedHosts := make(map[string]int, len(tenantSpecs))
@@ -247,6 +270,27 @@ func normalizeDomainHosts(domains []string) []string {
 
 func normalizeDomainHost(host string) string {
 	return strings.ToLower(strings.TrimSpace(host))
+}
+
+func normalizeAdminEmails(emails []string) []string {
+	seenEmails := make(map[string]struct{}, len(emails))
+	normalizedEmails := make([]string, 0, len(emails))
+	for _, email := range emails {
+		normalizedEmail := normalizeAdminEmail(email)
+		if normalizedEmail == "" {
+			continue
+		}
+		if _, exists := seenEmails[normalizedEmail]; exists {
+			continue
+		}
+		seenEmails[normalizedEmail] = struct{}{}
+		normalizedEmails = append(normalizedEmails, normalizedEmail)
+	}
+	return normalizedEmails
+}
+
+func normalizeAdminEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
 }
 
 func clauseOnConflictUpdateAll() clause.Expression {

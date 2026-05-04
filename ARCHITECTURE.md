@@ -16,7 +16,7 @@
   4. `web/js/app.js` listens for `mpr-ui:auth:*` events to sync profile state, drive redirects, and guard the dashboard.
   5. Successful sign-in yields an HttpOnly `app_session` cookie issued by TAuth; Pinguin validates that cookie on every `/api` request.
 - The Go backend needs the shared signing key (`TAUTH_SIGNING_KEY`) and optional cookie name override. TAuth issuer is handled inside the session validator; Pinguin should not configure it directly.
-- Pinguin reads TAuth session roles for dashboard authorization. Users with the `admin` role can list, reschedule, and cancel notifications for any active tenant; non-admin users are limited to tenants whose configured domain matches the user's email domain.
+- Pinguin reads TAuth session roles and configured tenant admin emails for dashboard authorization. Users with the `admin` role or a configured `tenants[].admins` email can list, reschedule, and cancel notifications for any active tenant; non-admin users are limited to tenants whose configured domain matches the user's email domain.
 
 ## HTTP Server Responsibilities
 - Routes defined in `internal/httpapi`:

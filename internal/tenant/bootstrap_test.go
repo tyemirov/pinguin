@@ -19,6 +19,7 @@ func TestBootstrapFromFileCreatesTenantRecords(t *testing.T) {
 	dbInstance := newTestDatabase(t)
 	keeper := newTestSecretKeeper(t)
 	cfg := sampleBootstrapConfig()
+	cfg.Tenants[0].Admins = []string{" Admin@Alpha.Example ", "admin@alpha.example", ""}
 	configPath := writeBootstrapFile(t, cfg)
 
 	if err := BootstrapFromFile(context.Background(), dbInstance, keeper, configPath); err != nil {
@@ -39,6 +40,14 @@ func TestBootstrapFromFileCreatesTenantRecords(t *testing.T) {
 	}
 	if domainCount != 2 {
 		t.Fatalf("expected 2 domains, got %d", domainCount)
+	}
+
+	var adminCount int64
+	if err := dbInstance.Model(&TenantAdmin{}).Count(&adminCount).Error; err != nil {
+		t.Fatalf("count admins: %v", err)
+	}
+	if adminCount != 1 {
+		t.Fatalf("expected 1 admin, got %d", adminCount)
 	}
 
 	var emailProfile EmailProfile
@@ -288,6 +297,30 @@ func TestBootstrapReportsStorageAndCredentialFailures(t *testing.T) {
 				registerTenantCallbackError(t, database, "query", "TenantDomain", errors.New("domain query failed"))
 			},
 			wantErr: "domain alpha.example",
+		},
+		{
+			name: "admin delete",
+			config: func() BootstrapConfig {
+				cfg := sampleBootstrapConfig()
+				cfg.Tenants[0].Admins = []string{"admin@alpha.example"}
+				return cfg
+			}(),
+			beforeCall: func(t *testing.T, database *gorm.DB) {
+				registerTenantCallbackError(t, database, "delete", "TenantAdmin", errors.New("admin delete failed"))
+			},
+			wantErr: bootstrapAdminResetCode,
+		},
+		{
+			name: "admin create",
+			config: func() BootstrapConfig {
+				cfg := sampleBootstrapConfig()
+				cfg.Tenants[0].Admins = []string{"admin@alpha.example"}
+				return cfg
+			}(),
+			beforeCall: func(t *testing.T, database *gorm.DB) {
+				registerTenantCallbackError(t, database, "create", "TenantAdmin", errors.New("admin create failed"))
+			},
+			wantErr: bootstrapAdminCreateCode,
 		},
 		{
 			name:    "email username encrypt",

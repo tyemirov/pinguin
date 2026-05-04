@@ -47,6 +47,7 @@ var migrateDatabaseSchema = func(database *gorm.DB) error {
 		&model.NotificationAttachment{},
 		&tenant.Tenant{},
 		&tenant.TenantDomain{},
+		&tenant.TenantAdmin{},
 		&tenant.EmailProfile{},
 		&tenant.SMSProfile{},
 		&smtpidentity.SenderDomain{},

@@ -34,6 +34,15 @@ type TenantDomain struct {
 	UpdatedAt time.Time
 }
 
+// TenantAdmin links dashboard administrator emails to tenants.
+type TenantAdmin struct {
+	ID        uint   `gorm:"primaryKey"`
+	TenantID  string `gorm:"index:idx_tenant_admin_email,unique"`
+	Email     string `gorm:"index:idx_tenant_admin_email,unique;index"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 // EmailProfile describes SMTP delivery credentials for a tenant.
 type EmailProfile struct {
 	ID             string `gorm:"primaryKey"`

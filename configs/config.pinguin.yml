@@ -22,6 +22,9 @@ tenants:
     domains:
       - ${TENANT_LOCAL_DOMAIN_PRIMARY}
       - ${TENANT_LOCAL_DOMAIN_SECONDARY}
+    admins:
+      - ${TENANT_LOCAL_ADMIN_EMAIL_1}
+      - ${TENANT_LOCAL_ADMIN_EMAIL_2}
     emailProfile:
       host: ${TENANT_LOCAL_SMTP_HOST}
       port: ${TENANT_LOCAL_SMTP_PORT}

@@ -283,6 +283,27 @@ func TestListNotificationsRejectsTenantOutsideUserDomain(t *testing.T) {
 	}
 }
 
+func TestListNotificationsAllowsConfiguredAdminAcrossTenants(t *testing.T) {
+	t.Helper()
+
+	repo := newMultiTenantRepository(t)
+	stubSvc := &stubNotificationService{
+		listResponse: []model.NotificationResponse{},
+	}
+	server := newTestHTTPServerWithRepo(t, stubSvc, &stubValidator{email: "admin@ops.localhost", roles: []string{"user"}}, repo)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-bravo", nil)
+	request.Host = "unknown.localhost"
+	server.httpServer.Handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected configured admin access, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if stubSvc.lastTenantID != "tenant-bravo" {
+		t.Fatalf("expected tenant-bravo, got %s", stubSvc.lastTenantID)
+	}
+}
+
 func TestListNotificationsRejectsSessionWithoutEmailDomain(t *testing.T) {
 	t.Helper()
 
@@ -306,6 +327,25 @@ func TestListNotificationsReportsTenantAuthorizationStorageError(t *testing.T) {
 	t.Helper()
 
 	repo := newClosedTenantRepository(t)
+	stubSvc := &stubNotificationService{}
+	server := newTestHTTPServerWithRepo(t, stubSvc, &stubValidator{email: "member@example.com", roles: []string{"user"}}, repo)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-alpha", nil)
+	request.Host = "unknown.localhost"
+	server.httpServer.Handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected internal server error, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if stubSvc.listCalls != 0 {
+		t.Fatalf("service should not be called")
+	}
+}
+
+func TestListNotificationsReportsDomainAuthorizationStorageError(t *testing.T) {
+	t.Helper()
+
+	repo := newTenantRepositoryWithoutDomains(t)
 	stubSvc := &stubNotificationService{}
 	server := newTestHTTPServerWithRepo(t, stubSvc, &stubValidator{email: "member@example.com", roles: []string{"user"}}, repo)
 
@@ -414,6 +454,31 @@ func TestListTenantsFiltersByUserDomain(t *testing.T) {
 	}
 	if len(payload.Tenants) != 1 || payload.Tenants[0].ID != "tenant-bravo" {
 		t.Fatalf("unexpected tenants %+v", payload.Tenants)
+	}
+}
+
+func TestListTenantsAllowsConfiguredAdmin(t *testing.T) {
+	t.Helper()
+
+	repo := newMultiTenantRepository(t)
+	server := newTestHTTPServerWithRepo(t, &stubNotificationService{}, &stubValidator{email: "admin@ops.localhost", roles: []string{"user"}}, repo)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/tenants", nil)
+	request.Host = "unknown.localhost"
+
+	server.httpServer.Handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var payload struct {
+		Tenants []runtimeConfigTenant `json:"tenants"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode tenants: %v", err)
+	}
+	if len(payload.Tenants) != 2 {
+		t.Fatalf("expected all tenants for configured admin, got %+v", payload.Tenants)
 	}
 }
 
@@ -572,6 +637,41 @@ func TestSMTPIdentityRoutesRequireAdminRole(t *testing.T) {
 	}
 }
 
+func TestSMTPIdentityRoutesAllowConfiguredTenantAdmin(t *testing.T) {
+	t.Helper()
+	server, _ := newTestHTTPServerWithSMTPIdentitiesAndValidator(t, &stubValidator{
+		email: "admin@example.com",
+		roles: []string{"user"},
+	})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/smtp-identities", nil)
+	request.Host = "unknown.example.com"
+	server.httpServer.Handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected configured admin SMTP identity access, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestSMTPIdentityAdminLookupReportsStorageError(t *testing.T) {
+	t.Helper()
+	recorder := httptest.NewRecorder()
+	contextGin, _ := gin.CreateTestContext(recorder)
+	contextGin.Request = httptest.NewRequest(http.MethodGet, "/api/smtp-identities", nil)
+	contextGin.Set(contextKeyClaims, &sessionvalidator.Claims{
+		UserEmail: "admin@example.com",
+		UserRoles: []string{"user"},
+	})
+	handler := newSMTPIdentityHandler(nil, newClosedTenantRepository(t), slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	if handler.requireAdminSession(contextGin) {
+		t.Fatalf("expected admin lookup to fail")
+	}
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestSMTPIdentityRejectsOutsideSenderDomain(t *testing.T) {
 	server, _ := newTestHTTPServerWithSMTPIdentities(t)
 
@@ -634,7 +734,7 @@ func TestSMTPIdentityValidationAndErrorMapping(t *testing.T) {
 		t.Fatalf("expected duplicate conflict, got %d", duplicateRecorder.Code)
 	}
 
-	handler := newSMTPIdentityHandler(nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	handler := newSMTPIdentityHandler(nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	invalidAddressRecorder := httptest.NewRecorder()
 	invalidAddressContext, _ := gin.CreateTestContext(invalidAddressRecorder)
 	handler.writeError(invalidAddressContext, smtpidentity.ErrInvalidAddress)
@@ -1338,6 +1438,7 @@ func newTestHTTPServerWithSMTPIdentitiesAndValidator(t *testing.T, validator Ses
 	if err := dbInstance.AutoMigrate(
 		&tenant.Tenant{},
 		&tenant.TenantDomain{},
+		&tenant.TenantAdmin{},
 		&tenant.EmailProfile{},
 		&tenant.SMSProfile{},
 		&smtpidentity.SenderDomain{},
@@ -1353,6 +1454,7 @@ func newTestHTTPServerWithSMTPIdentitiesAndValidator(t *testing.T, validator Ses
 				SupportEmail: "support@example.com",
 				Enabled:      ptrBool(true),
 				Domains:      []string{"example.com"},
+				Admins:       []string{"admin@example.com"},
 				EmailProfile: tenant.BootstrapEmailProfile{
 					Host:        "smtp.example.com",
 					Port:        587,
@@ -1482,6 +1584,7 @@ func newMultiTenantRepository(t *testing.T) *tenant.Repository {
 				SupportEmail: "alpha@example.com",
 				Enabled:      ptrBool(true),
 				Domains:      []string{"alpha.localhost"},
+				Admins:       []string{"admin@ops.localhost"},
 				EmailProfile: tenant.BootstrapEmailProfile{
 					Host:        "smtp.alpha.localhost",
 					Port:        587,
@@ -1496,6 +1599,7 @@ func newMultiTenantRepository(t *testing.T) *tenant.Repository {
 				SupportEmail: "bravo@example.com",
 				Enabled:      ptrBool(true),
 				Domains:      []string{"bravo.localhost"},
+				Admins:       []string{"admin@ops.localhost"},
 				EmailProfile: tenant.BootstrapEmailProfile{
 					Host:        "smtp.bravo.localhost",
 					Port:        2525,
@@ -1529,6 +1633,22 @@ func newClosedTenantRepository(t *testing.T) *tenant.Repository {
 	return tenant.NewRepository(dbInstance, keeper)
 }
 
+func newTenantRepositoryWithoutDomains(t *testing.T) *tenant.Repository {
+	t.Helper()
+	keeper, err := tenant.NewSecretKeeper(strings.Repeat("a", 64))
+	if err != nil {
+		t.Fatalf("secret keeper error: %v", err)
+	}
+	dbInstance, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "missing-domains.db")), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := dbInstance.AutoMigrate(&tenant.Tenant{}, &tenant.TenantAdmin{}); err != nil {
+		t.Fatalf("migrate sqlite: %v", err)
+	}
+	return tenant.NewRepository(dbInstance, keeper)
+}
+
 func bootstrapTenantRepository(t *testing.T, cfg tenant.BootstrapConfig) *tenant.Repository {
 	t.Helper()
 	keeper, err := tenant.NewSecretKeeper(strings.Repeat("a", 64))
@@ -1543,6 +1663,7 @@ func bootstrapTenantRepository(t *testing.T, cfg tenant.BootstrapConfig) *tenant
 	if err := dbInstance.AutoMigrate(
 		&tenant.Tenant{},
 		&tenant.TenantDomain{},
+		&tenant.TenantAdmin{},
 		&tenant.EmailProfile{},
 		&tenant.SMSProfile{},
 	); err != nil {
