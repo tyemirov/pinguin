@@ -294,6 +294,79 @@ func TestRepositoryListActiveTenantsOrdersByDisplayName(t *testing.T) {
 	}
 }
 
+func TestRepositoryListActiveTenantsByDomain(t *testing.T) {
+	t.Helper()
+	dbInstance := newTestDatabase(t)
+	keeper := newTestSecretKeeper(t)
+	cfg := sampleBootstrapConfig()
+	cfg.Tenants = append(cfg.Tenants,
+		BootstrapTenant{
+			ID:           "tenant-two",
+			DisplayName:  "Beta",
+			SupportEmail: "support@beta.example",
+			Enabled:      ptrBool(true),
+			Domains:      []string{"beta.example"},
+			EmailProfile: BootstrapEmailProfile{
+				Host:        "smtp.beta.example",
+				Port:        25,
+				Username:    "beta-user",
+				Password:    "beta-pass",
+				FromAddress: "noreply@beta.example",
+			},
+		},
+		BootstrapTenant{
+			ID:           "tenant-three",
+			DisplayName:  "Gamma",
+			SupportEmail: "support@gamma.example",
+			Enabled:      ptrBool(false),
+			Domains:      []string{"gamma.example"},
+			EmailProfile: BootstrapEmailProfile{
+				Host:        "smtp.gamma.example",
+				Port:        25,
+				Username:    "gamma-user",
+				Password:    "gamma-pass",
+				FromAddress: "noreply@gamma.example",
+			},
+		},
+	)
+	if err := Bootstrap(context.Background(), dbInstance, keeper, cfg); err != nil {
+		t.Fatalf("bootstrap tenants: %v", err)
+	}
+
+	repo := NewRepository(dbInstance, keeper)
+	tenants, err := repo.ListActiveTenantsByDomain(context.Background(), " PORTAL.ALPHA.EXAMPLE:443 ")
+	if err != nil {
+		t.Fatalf("list active tenants by domain: %v", err)
+	}
+	if len(tenants) != 1 || tenants[0].ID != "tenant-one" {
+		t.Fatalf("expected tenant-one, got %+v", tenants)
+	}
+	suspendedTenants, suspendedErr := repo.ListActiveTenantsByDomain(context.Background(), "gamma.example")
+	if suspendedErr != nil {
+		t.Fatalf("list suspended domain tenants: %v", suspendedErr)
+	}
+	if len(suspendedTenants) != 0 {
+		t.Fatalf("expected suspended tenant domain to be hidden, got %+v", suspendedTenants)
+	}
+	missingTenants, missingErr := repo.ListActiveTenantsByDomain(context.Background(), "missing.example")
+	if missingErr != nil {
+		t.Fatalf("list missing domain tenants: %v", missingErr)
+	}
+	if len(missingTenants) != 0 {
+		t.Fatalf("expected no missing domain tenants, got %+v", missingTenants)
+	}
+}
+
+func TestRepositoryListActiveTenantsByDomainReportsStorageFailure(t *testing.T) {
+	t.Helper()
+	dbInstance := newTestDatabase(t)
+	repo := NewRepository(dbInstance, newTestSecretKeeper(t))
+	closeTenantDatabase(t, dbInstance)
+	if _, err := repo.ListActiveTenantsByDomain(context.Background(), "alpha.example"); err == nil {
+		t.Fatalf("expected list active tenants by domain storage error")
+	}
+}
+
 func TestRepositoryListActiveTenantsReportsStorageFailure(t *testing.T) {
 	dbInstance := newTestDatabase(t)
 	repo := NewRepository(dbInstance, newTestSecretKeeper(t))

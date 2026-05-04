@@ -468,7 +468,7 @@ func notificationSearchCondition(query NotificationSearchQuery) clause.Expressio
 	for _, columnName := range columns {
 		expressions = append(expressions, clause.Like{Column: clause.Column{Name: columnName}, Value: pattern})
 	}
-	if strings.Contains(string(StatusErrored), strings.ToLower(value)) {
+	if strings.EqualFold(value, string(StatusErrored)) {
 		expressions = append(expressions, clause.Eq{Column: clause.Column{Name: notificationStatusColumn}, Value: StatusFailed})
 	}
 	return clause.Or(expressions...)

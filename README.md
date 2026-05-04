@@ -167,7 +167,7 @@ Export the referenced environment variables before starting the server. The defa
 - **TAUTH_GOOGLE_CLIENT_ID:**  
   Google OAuth Web Client ID that TAuth validates and `mpr-ui` uses for GIS.
 - **Authorization:**  
-  The dashboard treats any valid TAuth session as an admin. Restrict who can sign in via `configs/config.tauth.yml`.
+  Pinguin reads TAuth `user_roles` from the signed session. Sessions with the `admin` role can view and manage notifications for every tenant. Other authenticated sessions can only list, reschedule, or cancel notifications for tenants whose `tenants[].domains` entry matches the user's email domain.
 
 - **MAX_RETRIES:**  
   Maximum number of times the background worker will retry sending a failed notification.
@@ -247,6 +247,7 @@ See `configs/config.yml` for a ready-to-use sample. `MASTER_ENCRYPTION_KEY` encr
 - `tenants[].domains` (list of strings, required): hostnames that map HTTP requests to this tenant.
   - The first domain is treated as the tenant’s default domain.
   - Matching is case-insensitive; ports are ignored (e.g. `localhost:8080` matches `localhost`).
+  - The same normalized values authorize non-admin dashboard users by email domain.
 - `tenants[].emailProfile` (required): tenant SMTP settings.
   - `host` (string), `port` (int), `username` (string), `password` (string), `fromAddress` (string).
   - `username` and `password` are encrypted with `MASTER_ENCRYPTION_KEY` before storing in SQLite.

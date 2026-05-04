@@ -35,6 +35,7 @@ Read @AGENTS.md, @ARCHITECTURE.md, @README.md, @issues.md/POLICY.md, @issues.md/
 
 ## BugFixes (308–399)
 
+- [x] [PG-343] Match the legacy failed-notification `errored` search alias only when the query exactly equals `errored`, preventing partial strings such as `or` from broadening notification search results; `make ci` passes.
 - [x] [PG-341] Replace the incorrect generated Pinguin logo with the canonical turquoise envelope mark from the Marco Polo project catalog. Resolved by updating the served `/favicon.svg` used by both the browser favicon and header brand slot.
 - [x] [PG-340] Keep the Pinguin UI chrome branded as `[logo] Pinguin` on local and production Pages, independent of notification tenant display names, and serve a Pinguin favicon. Resolved with a served SVG favicon/logo, brand slots on landing and dashboard, frontend metadata handling that no longer renames product chrome from tenant display names, and passing `make ci`.
 - [x] [PG-332] Stop the auth bootstrap loop by waiting for tauth.js/mpr-ui readiness, removing fallback redirects, and expanding TAuth CORS allowlist defaults for the UI + GIS origins; `make ci` passes.
@@ -116,6 +117,8 @@ make: *** [test-frontend] Error 1
   tauth        | {"level":"info","ts":1767482804.4681065,"caller":"server/main.go:364","msg":"http","method":"POST","path":"/auth/nonce","status":200,"ip":"172.217.78.95","elapsed":0.008144772}
   tauth        | {"level":"info","ts":1767482804.4876297,"caller":"server/main.go:364","msg":"http","method":"GET","path":"/me","status":200,"ip":"172.217.78.95","elapsed":0.000222615}
   ```
+
+- [x] [PG-342] Enforce tenant authorization before honoring `tenant_id` query parameters on notification HTTP endpoints. Resolved with TAuth-role-based admin access, email-domain tenant scoping for regular users, filtered tenant listing, and passing `make test`, `make lint`, and `make ci`.
 
 ## Maintenance (400–499)
 
