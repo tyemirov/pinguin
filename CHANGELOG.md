@@ -39,6 +39,36 @@
 - Update README and architecture notes to describe `config-ui.yaml` as the browser auth source of truth.
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 
+## [v0.4.0] - 2026-05-03
+
+### Features ✨
+- Decouple authenticated SMTP submission from notification tenants with an independent sender-domain allowlist, identity credentials, and upstream relay profile.
+- Add tenant switcher for admins to view and manage notifications across tenants from the dashboard.
+- Implement backend-supported search and infinite scroll for notifications with cursor pagination and a global refresh control.
+
+### Improvements ⚙️
+- Enforce tenant authorization on notification list, reschedule, and cancel endpoints based on session roles.
+- Keep Pinguin branding consistent across tenant UIs and serve the official favicon.
+- Publish multi-platform Docker images for amd64 and arm64 architectures.
+- Update Makefile to require 100% Go statement coverage and gate it in CI.
+- Align local Docker browser origins and services for improved OAuth integration and development experience.
+
+### Bug Fixes 🐛
+- Fix SMTP identity admin authorization to require the admin role.
+- Match legacy errored alias only on exact search to avoid query broadening.
+- Fix tenant query authorization enforcing session role checks.
+- Correct Docker build context variable usage during publishing.
+
+### Testing 🧪
+- Add comprehensive backend and frontend tests covering notification search, pagination, tenant authorization, and SMTP identity access control.
+- Restore and enforce 100% Go statement coverage across all packages.
+- Add CI coverage gate to fail if coverage falls below 100%.
+
+### Docs 📚
+- Update architecture and README docs to clarify SMTP submission independence from tenants and dashboard tenant role authorization.
+- Document the use of `smtpSubmission.relay` and global sender domain allowlist.
+- Clarify TAuth role semantics for tenant and SMTP identity authorization in UI and API.
+
 ## [v0.3.1] - 2026-05-03
 
 ### Features ✨
