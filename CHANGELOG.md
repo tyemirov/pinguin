@@ -12,6 +12,7 @@
 - Enforce tenant authorization before honoring `tenant_id` on notification list, reschedule, and cancel endpoints.
 - Require the TAuth `admin` role before listing, creating, rotating, or deleting global SMTP identities.
 - Honor configured tenant admin emails for dashboard tenant access and global SMTP identity management.
+- Restore the deploy script's gateway handoff to the generic `deploy TARGET=pinguin` dispatcher before legacy Pages publication.
 - Remove stale tenant bootstrap records so deleted tenants no longer leave active admin access behind.
 - Match the legacy failed-notification `errored` search alias only when the query exactly equals `errored`.
 - Keep the landing and dashboard header branded as `[logo] Pinguin` even when runtime tenant metadata belongs to a notification consumer, and serve the Pinguin favicon from `/favicon.svg`.
