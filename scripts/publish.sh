@@ -9,15 +9,18 @@ Usage:
 Publishes from master by:
   1. validating clean local master matches origin/master
   2. running make ci
-  3. configuring GitHub Pages for legacy gh-pages branch-root publishing
+  3. validating a pushed release tag points at HEAD
   4. building and pushing the linux/amd64 and linux/arm64 Docker image manifest to GHCR
-  5. publishing web/ to the gh-pages branch root
+
+This command does not publish GitHub Pages. Run make deploy after make publish.
 
 Options:
   --image <value>       Full image name without tag. Default: $DOCKER_IMAGE or ghcr.io/tyemirov/pinguin
   --platforms <value>   Docker platforms. Default: $PUBLISH_PLATFORMS or linux/amd64,linux/arm64
-  --tag <value>         Docker tag. Default: $DOCKER_TAG or latest
+  --tag <value>         Docker tag. Default: $DOCKER_TAG or v* tag at HEAD
   --context <value>     Docker build context directory. Default: $DOCKER_BUILD_CONTEXT or .
+  --no-latest           Do not push :latest
+  --dry-run             Validate and print image tags without pushing
   --username <value>    Registry username. Default: $GHCR_USERNAME or gh authenticated user
   --token <value>       Registry token/password. Default: $GHCR_TOKEN, $GITHUB_TOKEN, $GH_TOKEN, or gh auth token
   --skip-docker-login   Use the existing Docker credential store without logging in
@@ -26,7 +29,7 @@ USAGE
 }
 
 IMAGE="${DOCKER_IMAGE:-ghcr.io/tyemirov/pinguin}"
-TAG="${DOCKER_TAG:-latest}"
+TAG="${DOCKER_TAG:-}"
 PLATFORMS="${PUBLISH_PLATFORMS:-linux/amd64,linux/arm64}"
 BUILDER="${DOCKER_BUILDX_BUILDER:-pinguin-builder}"
 DOCKERFILE_PATH="${DOCKERFILE:-Dockerfile}"
@@ -34,10 +37,10 @@ DOCKER_CONTEXT_DIR="${DOCKER_BUILD_CONTEXT:-.}"
 USERNAME="${GHCR_USERNAME:-}"
 TOKEN="${GHCR_TOKEN:-${GITHUB_TOKEN:-${GH_TOKEN:-}}}"
 SKIP_DOCKER_LOGIN="${PUBLISH_SKIP_DOCKER_LOGIN:-0}"
-PUBLISH_BRANCH="${PAGES_PUBLISH_SOURCE_BRANCH:-master}"
-PUBLISH_REMOTE="${PAGES_PUBLISH_REMOTE:-origin}"
-PAGES_BRANCH="${PAGES_PUBLISH_BRANCH:-gh-pages}"
-PAGES_REPOSITORY="${PAGES_REPOSITORY:-tyemirov/pinguin}"
+PUSH_LATEST="${PUBLISH_LATEST:-1}"
+DRY_RUN="${PUBLISH_DRY_RUN:-0}"
+PUBLISH_BRANCH="${PUBLISH_BRANCH:-master}"
+PUBLISH_REMOTE="${PUBLISH_REMOTE:-origin}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -60,6 +63,14 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || { echo "error: $1 requires a value" >&2; exit 1; }
       DOCKER_CONTEXT_DIR="$2"
       shift 2
+      ;;
+    --no-latest)
+      PUSH_LATEST="0"
+      shift
+      ;;
+    --dry-run)
+      DRY_RUN="1"
+      shift
       ;;
     --username)
       [[ $# -ge 2 ]] || { echo "error: --username requires a value" >&2; exit 1; }
@@ -88,30 +99,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 command -v docker >/dev/null 2>&1 || { echo "error: docker is required" >&2; exit 1; }
-command -v gh >/dev/null 2>&1 || { echo "error: gh is required to configure legacy GitHub Pages" >&2; exit 1; }
-
-configure_legacy_pages() {
-  echo "==> [publish] Configuring GitHub Pages legacy source ${PAGES_BRANCH}/ for ${PAGES_REPOSITORY}"
-  pages_payload="$(mktemp)"
-  trap 'rm -f "${pages_payload}"' EXIT
-  cat > "${pages_payload}" <<JSON
-{"build_type":"legacy","source":{"branch":"${PAGES_BRANCH}","path":"/"}}
-JSON
-
-  if gh api "repos/${PAGES_REPOSITORY}/pages" >/dev/null 2>&1; then
-    gh api --method PUT "repos/${PAGES_REPOSITORY}/pages" --input "${pages_payload}" >/dev/null
-  else
-    gh api --method POST "repos/${PAGES_REPOSITORY}/pages" --input "${pages_payload}" >/dev/null
-  fi
-
-  pages_build_type="$(gh api "repos/${PAGES_REPOSITORY}/pages" --jq ".build_type")"
-  pages_branch="$(gh api "repos/${PAGES_REPOSITORY}/pages" --jq ".source.branch")"
-  pages_path="$(gh api "repos/${PAGES_REPOSITORY}/pages" --jq ".source.path")"
-  if [[ "${pages_build_type}" != "legacy" || "${pages_branch}" != "${PAGES_BRANCH}" || "${pages_path}" != "/" ]]; then
-    echo "error: GitHub Pages is not configured for legacy ${PAGES_BRANCH}/ publishing; got build_type=${pages_build_type} source=${pages_branch}${pages_path}" >&2
-    exit 1
-  fi
-}
+command -v gh >/dev/null 2>&1 || { echo "error: gh is required for registry authentication" >&2; exit 1; }
 
 timeout -k 30s -s SIGKILL 30s git fetch "${PUBLISH_REMOTE}" "${PUBLISH_BRANCH}" --prune
 
@@ -133,13 +121,38 @@ if [[ "${head_sha}" != "${remote_sha}" ]]; then
   exit 1
 fi
 
-[[ -f "web/index.html" ]] || { echo "error: web/index.html is required for Pages publishing" >&2; exit 1; }
-[[ -f "web/dashboard.html" ]] || { echo "error: web/dashboard.html is required for Pages publishing" >&2; exit 1; }
-[[ -f "web/CNAME" ]] || { echo "error: web/CNAME is required for Pages custom domain publishing" >&2; exit 1; }
-[[ -f "web/.nojekyll" ]] || { echo "error: web/.nojekyll is required for branch Pages publishing without Jekyll" >&2; exit 1; }
+if [[ -z "${TAG}" ]]; then
+  TAG="$(git tag --points-at HEAD --list 'v*' --sort=-version:refname | head -n 1)"
+fi
+[[ -n "${TAG}" ]] || { echo "error: no v* release tag points at HEAD; create/push a release tag before publishing" >&2; exit 1; }
+
+git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null || { echo "error: release tag ${TAG} does not exist locally" >&2; exit 1; }
+tag_sha="$(git rev-list -n 1 "${TAG}")"
+if [[ "${tag_sha}" != "${head_sha}" ]]; then
+  echo "error: release tag ${TAG} does not point at HEAD" >&2
+  exit 1
+fi
+
+remote_tag_refs="$(git ls-remote --tags "${PUBLISH_REMOTE}" "refs/tags/${TAG}" "refs/tags/${TAG}^{}")"
+remote_tag_sha="$(awk '$2 ~ /\^\{\}$/ { peeled = $1 } $2 !~ /\^\{\}$/ { direct = $1 } END { if (peeled != "") print peeled; else print direct }' <<<"${remote_tag_refs}")"
+if [[ "${remote_tag_sha}" != "${head_sha}" ]]; then
+  echo "error: release tag ${TAG} is not pushed to ${PUBLISH_REMOTE} at HEAD" >&2
+  exit 1
+fi
 
 echo "==> [publish] Running make ci before publishing"
 timeout -k 350s -s SIGKILL 350s make ci
+
+if [[ "${DRY_RUN}" == "1" || "${DRY_RUN}" == "true" ]]; then
+  echo "publish_dry_run=true"
+  echo "release_branch=${PUBLISH_BRANCH}"
+  echo "release_tag=${TAG}"
+  echo "image=${IMAGE}:${TAG}"
+  if [[ "${PUSH_LATEST}" == "1" || "${PUSH_LATEST}" == "true" ]]; then
+    echo "image=${IMAGE}:latest"
+  fi
+  exit 0
+fi
 
 registry_host="$(printf '%s' "${IMAGE}" | cut -d'/' -f1)"
 [[ -n "${registry_host}" ]] || { echo "error: unable to determine registry host from image: ${IMAGE}" >&2; exit 1; }
@@ -162,19 +175,22 @@ if ! docker buildx inspect "${BUILDER}" >/dev/null 2>&1; then
 fi
 docker buildx inspect --bootstrap --builder "${BUILDER}" >/dev/null
 
+tag_args=(--tag "${IMAGE}:${TAG}")
+if [[ "${PUSH_LATEST}" == "1" || "${PUSH_LATEST}" == "true" ]]; then
+  tag_args+=(--tag "${IMAGE}:latest")
+fi
+
 echo "==> [publish] Building and pushing ${IMAGE}:${TAG} for ${PLATFORMS}"
 timeout -k 1200s -s SIGKILL 1200s docker buildx build \
   --builder "${BUILDER}" \
   --pull \
   --platform "${PLATFORMS}" \
   --file "${DOCKERFILE_PATH}" \
-  --tag "${IMAGE}:${TAG}" \
+  "${tag_args[@]}" \
   --push \
   "${DOCKER_CONTEXT_DIR}"
 
 echo "Published image: ${IMAGE}:${TAG}"
-
-echo "==> [publish] Publishing GitHub Pages artifact to ${PUBLISH_REMOTE}/${PAGES_BRANCH}"
-PAGES_PUBLISH_SOURCE_BRANCH="${PUBLISH_BRANCH}" PAGES_PUBLISH_REMOTE="${PUBLISH_REMOTE}" PAGES_PUBLISH_BRANCH="${PAGES_BRANCH}" ./scripts/publish_pages_branch.sh
-configure_legacy_pages
-echo "Published Pages: https://pinguin.mprlab.com/"
+if [[ "${PUSH_LATEST}" == "1" || "${PUSH_LATEST}" == "true" ]]; then
+  echo "Published image: ${IMAGE}:latest"
+fi
