@@ -16,13 +16,14 @@
   4. `web/js/app.js` listens for `mpr-ui:auth:*` events to sync profile state, drive redirects, and guard the dashboard.
   5. Successful sign-in yields an HttpOnly `app_session` cookie issued by TAuth; Pinguin validates that cookie on every `/api` request.
 - The Go backend needs the shared signing key (`TAUTH_SIGNING_KEY`) and optional cookie name override. TAuth issuer is handled inside the session validator; Pinguin should not configure it directly.
-- Pinguin assumes any valid TAuth session is an admin; configure access control in `configs/config.tauth.yml`.
+- Pinguin reads TAuth session roles for dashboard authorization. Users with the `admin` role can list, reschedule, and cancel notifications for any active tenant; non-admin users are limited to tenants whose configured domain matches the user's email domain.
 
 ## HTTP Server Responsibilities
 - Routes defined in `internal/httpapi`:
 - `GET /runtime-config` → `{ apiBaseUrl, tauthBaseUrl, tauthTenantId, googleClientId, tenant }`. The UI uses this to derive absolute API URLs and tenant display metadata; `mpr-ui` auth attributes come from `web/config-ui.yaml`.
   - `GET /healthz` – unauthenticated health probe.
   - Authenticated `/api/notifications` list/reschedule/cancel handlers guarded by the session middleware.
+  - `/api/notifications*` accepts an explicit `tenant_id`, but the handler authorizes that tenant against the authenticated session before resolving tenant runtime config.
   - Authenticated `/api/smtp-identities` list/create/rotate/delete handlers for exact SMTP submission sender credentials.
 - Static assets do not come from the Gin stack anymore; ghttp serves `/web` while the Go HTTP server keeps `/api/**` and `/runtime-config` free of wildcard conflicts.
 - CORS defaults:

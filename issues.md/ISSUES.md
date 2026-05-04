@@ -117,6 +117,8 @@ make: *** [test-frontend] Error 1
   tauth        | {"level":"info","ts":1767482804.4876297,"caller":"server/main.go:364","msg":"http","method":"GET","path":"/me","status":200,"ip":"172.217.78.95","elapsed":0.000222615}
   ```
 
+- [x] [PG-342] Enforce tenant authorization before honoring `tenant_id` query parameters on notification HTTP endpoints. Resolved with TAuth-role-based admin access, email-domain tenant scoping for regular users, filtered tenant listing, and passing `make test`, `make lint`, and `make ci`.
+
 ## Maintenance (400–499)
 
 - [x] [PS-404] Add `pinguin-doctor` command for configuration validation. Validates Pinguin configurations with comprehensive checks for server requirements (database, auth, encryption), web interface settings, and tenant requirements (domains, identity, admins). Supports multiple config files with cross-config validation (`--cross-validate`), environment variable expansion (`--expand-env`), and JSON output for CI/CD (`--json`). Pinguin is now the authoritative source for Pinguin configuration correctness.
