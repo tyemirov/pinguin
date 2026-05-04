@@ -113,7 +113,7 @@ func TestSendCommandSubmitsEmailWithScheduleAndAttachment(t *testing.T) {
 	}
 }
 
-func TestSendCommandUsesEnvironmentDefaultsForSMS(t *testing.T) {
+func TestSendCommandUsesExplicitFlagsForSMS(t *testing.T) {
 	t.Setenv("GRPC_SERVER_ADDR", "env.local:50051")
 	t.Setenv("GRPC_AUTH_TOKEN", "env-token")
 	t.Setenv("TENANT_ID", "tenant-env")
@@ -124,8 +124,8 @@ func TestSendCommandUsesEnvironmentDefaultsForSMS(t *testing.T) {
 	sender := &recordingSender{}
 	command := NewRootCommand(Dependencies{
 		NewSender: func(_ *slog.Logger, settings client.Settings) (NotificationSender, io.Closer, error) {
-			if settings.ServerAddress() != "env.local:50051" || settings.AuthToken() != "env-token" || settings.TenantID() != "tenant-env" {
-				t.Fatalf("unexpected settings from env")
+			if settings.ServerAddress() != "flag.local:50051" || settings.AuthToken() != "flag-token" || settings.TenantID() != "tenant-flag" {
+				t.Fatalf("unexpected settings from flags")
 			}
 			return sender, nil, nil
 		},
@@ -134,6 +134,9 @@ func TestSendCommandUsesEnvironmentDefaultsForSMS(t *testing.T) {
 	command.SetErr(io.Discard)
 	command.SetArgs([]string{
 		"send",
+		"--grpc-server-addr", "flag.local:50051",
+		"--grpc-auth-token", "flag-token",
+		"--tenant-id", "tenant-flag",
 		"--type", "sms",
 		"--recipient", "+15551234567",
 		"--message", "OTP",

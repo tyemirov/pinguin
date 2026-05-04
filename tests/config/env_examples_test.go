@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -30,6 +31,42 @@ func TestServiceEnvExamplesCoverConfigTemplates(t *testing.T) {
 	}
 }
 
+func TestPinguinSMTPSubmissionTemplateSupportsFourSenderDomains(t *testing.T) {
+	templateKeys := parseTemplateEnvKeys(string(readRepoFile(t, "configs/config.pinguin.yml")))
+	exampleKeys := parseEnvExampleKeys(string(readRepoFile(t, "configs/.env.pinguin.example")))
+
+	for _, requiredKey := range []string{
+		"SMTP_SUBMISSION_SENDER_DOMAIN_1",
+		"SMTP_SUBMISSION_SENDER_DOMAIN_2",
+		"SMTP_SUBMISSION_SENDER_DOMAIN_3",
+		"SMTP_SUBMISSION_SENDER_DOMAIN_4",
+	} {
+		if !stringSliceContains(templateKeys, requiredKey) {
+			t.Fatalf("configs/config.pinguin.yml does not reference %s", requiredKey)
+		}
+		if !exampleKeys[requiredKey] {
+			t.Fatalf("configs/.env.pinguin.example does not define %s", requiredKey)
+		}
+	}
+}
+
+func TestLocalPinguinEnvCoversConfigTemplateWhenPresent(t *testing.T) {
+	envPath := "configs/.env.pinguin"
+	if _, statErr := os.Stat(repoPath(envPath)); statErr != nil {
+		if os.IsNotExist(statErr) {
+			t.Skipf("%s is local-only and not present", envPath)
+		}
+		t.Fatalf("stat %s: %v", envPath, statErr)
+	}
+
+	envKeys := parseEnvExampleKeys(string(readRepoFile(t, envPath)))
+	for _, requiredKey := range parseTemplateEnvKeys(string(readRepoFile(t, "configs/config.pinguin.yml"))) {
+		if !envKeys[requiredKey] {
+			t.Fatalf("%s does not define %s required by configs/config.pinguin.yml", envPath, requiredKey)
+		}
+	}
+}
+
 func parseEnvExampleKeys(contents string) map[string]bool {
 	keys := make(map[string]bool)
 	for _, line := range strings.Split(contents, "\n") {
@@ -43,6 +80,15 @@ func parseEnvExampleKeys(contents string) map[string]bool {
 		}
 	}
 	return keys
+}
+
+func stringSliceContains(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
 }
 
 func parseTemplateEnvKeys(contents string) []string {

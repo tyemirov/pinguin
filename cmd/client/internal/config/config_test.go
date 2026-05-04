@@ -48,7 +48,7 @@ func TestLoadSuccessful(t *testing.T) {
 	}
 }
 
-func TestLoadBindsUnprefixedEnvFallbacks(t *testing.T) {
+func TestLoadIgnoresEnvironmentFallbacks(t *testing.T) {
 	t.Helper()
 	t.Setenv("GRPC_SERVER_ADDR", "localhost:6060")
 	t.Setenv("GRPC_AUTH_TOKEN", "secret")
@@ -62,22 +62,22 @@ func TestLoadBindsUnprefixedEnvFallbacks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
-	if cfg.ServerAddress() != "localhost:6060" {
+	if cfg.ServerAddress() != "localhost:50051" {
 		t.Fatalf("unexpected server address: %s", cfg.ServerAddress())
 	}
-	if cfg.AuthToken() != "secret" {
+	if cfg.AuthToken() != "" {
 		t.Fatalf("unexpected auth token: %s", cfg.AuthToken())
 	}
-	if cfg.TenantID() != "tenant-cli" {
+	if cfg.TenantID() != "" {
 		t.Fatalf("unexpected tenant id: %s", cfg.TenantID())
 	}
-	if cfg.ConnectionTimeoutSeconds() != 9 {
+	if cfg.ConnectionTimeoutSeconds() != 5 {
 		t.Fatalf("unexpected connection timeout seconds: %d", cfg.ConnectionTimeoutSeconds())
 	}
-	if cfg.OperationTimeoutSeconds() != 11 {
+	if cfg.OperationTimeoutSeconds() != 30 {
 		t.Fatalf("unexpected operation timeout seconds: %d", cfg.OperationTimeoutSeconds())
 	}
-	if cfg.LogLevel() != "WARN" {
+	if cfg.LogLevel() != "INFO" {
 		t.Fatalf("unexpected log level: %s", cfg.LogLevel())
 	}
 }

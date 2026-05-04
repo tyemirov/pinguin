@@ -31,15 +31,6 @@ func Load(provider *viper.Viper) (Config, error) {
 		return Config{}, fmt.Errorf("nil config provider")
 	}
 
-	provider.SetEnvPrefix("PINGUIN")
-	provider.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	_ = provider.BindEnv(serverAddressKey, "PINGUIN_GRPC_SERVER_ADDR", "GRPC_SERVER_ADDR")
-	_ = provider.BindEnv(authTokenKey, "PINGUIN_GRPC_AUTH_TOKEN", "GRPC_AUTH_TOKEN")
-	_ = provider.BindEnv(tenantIDKey, "PINGUIN_TENANT_ID", "TENANT_ID")
-	_ = provider.BindEnv(connectionTimeoutKey, "PINGUIN_CONNECTION_TIMEOUT_SEC", "CONNECTION_TIMEOUT_SEC")
-	_ = provider.BindEnv(operationTimeoutKey, "PINGUIN_OPERATION_TIMEOUT_SEC", "OPERATION_TIMEOUT_SEC")
-	_ = provider.BindEnv(logLevelKey, "PINGUIN_LOG_LEVEL", "LOG_LEVEL")
-	provider.AutomaticEnv()
 	provider.SetDefault(serverAddressKey, "localhost:50051")
 	provider.SetDefault(connectionTimeoutKey, 5)
 	provider.SetDefault(operationTimeoutKey, 30)

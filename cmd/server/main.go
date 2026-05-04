@@ -387,7 +387,7 @@ type httpServerRunner interface {
 }
 
 type serverDependencies struct {
-	loadConfig                func(bool) (config.Config, error)
+	loadConfig                func() (config.Config, error)
 	newLogger                 func(string) *slog.Logger
 	initDB                    func(string, *slog.Logger) (*gorm.DB, error)
 	newSecretKeeper           func(string) (*tenant.SecretKeeper, error)
@@ -456,7 +456,6 @@ func runServer(args []string, dependencies serverDependencies) int {
 	dependencies = withServerDependencyDefaults(dependencies)
 	flags := flag.NewFlagSet("pinguin-server", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
-	disableWebFlag := flags.Bool("disable-web-interface", false, "disable the HTTP web interface and static asset server (env: DISABLE_WEB_INTERFACE)")
 	if parseErr := flags.Parse(args); parseErr != nil {
 		if errors.Is(parseErr, flag.ErrHelp) {
 			return 0
@@ -464,7 +463,7 @@ func runServer(args []string, dependencies serverDependencies) int {
 		return 1
 	}
 
-	configuration, configErr := dependencies.loadConfig(*disableWebFlag)
+	configuration, configErr := dependencies.loadConfig()
 	if configErr != nil {
 		fallbackLogger := dependencies.newLogger("INFO")
 		for _, errMsg := range strings.Split(configErr.Error(), ", ") {

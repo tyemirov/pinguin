@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/tyemirov/pinguin/internal/tenant"
@@ -10,6 +11,11 @@ import (
 )
 
 const defaultConfigPath = "configs/config.yml"
+
+var defaultConfigPaths = []string{
+	defaultConfigPath,
+	"/config/config.yml",
+}
 
 type Config struct {
 	DatabasePath     string
@@ -167,17 +173,28 @@ func (cfg *tenantConfig) UnmarshalYAML(value *yaml.Node) error {
 }
 
 // LoadConfig reads the YAML config file (with environment expansion) into Config.
-func LoadConfig(disableWebInterface bool) (Config, error) {
-	configPath := strings.TrimSpace(os.Getenv("PINGUIN_CONFIG_PATH"))
-	if configPath == "" {
-		configPath = defaultConfigPath
-	}
+func LoadConfig() (Config, error) {
+	return loadConfigFromPath(defaultConfigFilePath())
+}
 
+func defaultConfigFilePath() string {
+	for _, configPath := range defaultConfigPaths {
+		if _, err := os.Stat(configPath); err == nil {
+			return configPath
+		}
+	}
+	return defaultConfigPath
+}
+
+func loadConfigFromPath(configPath string) (Config, error) {
 	rawContents, err := os.ReadFile(configPath)
 	if err != nil {
 		return Config{}, fmt.Errorf("configuration: read %s: %w", configPath, err)
 	}
-	expanded := os.ExpandEnv(string(rawContents))
+	expanded, expandErr := ExpandConfigEnvironment(string(rawContents))
+	if expandErr != nil {
+		return Config{}, expandErr
+	}
 
 	var fileCfg fileConfig
 	if err := yaml.Unmarshal([]byte(expanded), &fileCfg); err != nil {
@@ -188,10 +205,6 @@ func LoadConfig(disableWebInterface bool) (Config, error) {
 	if fileCfg.Web.Enabled != nil {
 		webEnabled = *fileCfg.Web.Enabled
 	}
-	if disableWebInterface || parseDisabledEnv("DISABLE_WEB_INTERFACE") {
-		webEnabled = false
-	}
-
 	configuration := Config{
 		DatabasePath:        strings.TrimSpace(fileCfg.Server.DatabasePath),
 		GRPCAuthToken:       strings.TrimSpace(fileCfg.Server.GRPCAuthToken),
@@ -257,17 +270,26 @@ func (configuration Config) TwilioConfigured() bool {
 	return configuration.TwilioAccountSID != "" && configuration.TwilioAuthToken != "" && configuration.TwilioFromNumber != ""
 }
 
-func parseDisabledEnv(environmentKey string) bool {
-	rawValue := strings.TrimSpace(os.Getenv(environmentKey))
-	if rawValue == "" {
-		return false
+// ExpandConfigEnvironment expands shell-style placeholders and rejects absent variables.
+func ExpandConfigEnvironment(contents string) (string, error) {
+	var missing []string
+	seenMissing := make(map[string]bool)
+	expanded := os.Expand(contents, func(key string) string {
+		value, found := os.LookupEnv(key)
+		if !found {
+			if !seenMissing[key] {
+				seenMissing[key] = true
+				missing = append(missing, key)
+			}
+			return ""
+		}
+		return value
+	})
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return "", fmt.Errorf("configuration: missing environment variables: %s", strings.Join(missing, ", "))
 	}
-	switch strings.ToLower(rawValue) {
-	case "1", "true", "yes", "on":
-		return true
-	default:
-		return false
-	}
+	return expanded, nil
 }
 
 func normalizeStrings(values []string) []string {

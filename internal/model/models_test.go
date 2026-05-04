@@ -100,7 +100,7 @@ func TestNotificationListCursorRoundTripAndValidation(t *testing.T) {
 		t.Fatalf("expected empty cursor to parse as nil, got cursor=%+v err=%v", empty, emptyErr)
 	}
 	for name, rawCursor := range map[string]string{
-		"decode":     "not-base64",
+		"decode":     "!!!",
 		"payload":    "bm90LWpzb24",
 		"created_at": "eyJjcmVhdGVkX2F0Ijoibm90LXRpbWUiLCJpZCI6MX0",
 		"id":         "eyJjcmVhdGVkX2F0IjoiMjAzMC0wMS0wMlQwMzowNDowNVoiLCJpZCI6MH0",

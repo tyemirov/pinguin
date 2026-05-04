@@ -2,7 +2,7 @@
 
 Pinguin is a notification service written in Go. It exposes a gRPC interface for sending **email** and **SMS** notifications. The service uses SQLite (via GORM) for persistent storage and runs a background worker to retry failed notifications using exponential backoff. Structured logging is provided using Go’s built‑in `slog` package.
 
-Pinguin also ships an optional HTTP + browser dashboard for inspecting and managing queued notifications; set `DISABLE_WEB_INTERFACE=true` (or start with `--disable-web-interface`) to run gRPC-only.
+Pinguin also ships an optional HTTP + browser dashboard for inspecting and managing queued notifications; set `web.enabled: false` in `config.yml` to run gRPC-only.
 
 ---
 
@@ -93,7 +93,7 @@ go build -o pinguin ./cmd/server
 
 ## Configuration
 
-Pinguin loads settings from `configs/config.yml` (override with `PINGUIN_CONFIG_PATH`). The YAML supports `${VAR}` expansion so you can keep secrets in your shell or `.env` file instead of the repository. A minimal example:
+Pinguin loads settings from `configs/config.yml` locally or `/config/config.yml` in container deployments. The YAML supports `${VAR}` expansion so you can keep secrets in your shell or `.env` file instead of the repository. A minimal example:
 
 ```yaml
 server:
@@ -121,12 +121,9 @@ tenants:
       fromNumber: ${TWILIO_FROM_NUMBER}
 ```
 
-Export the referenced environment variables before starting the server. The default config references or sets the following keys:
+Export the referenced environment variables before starting the server only when `config.yml` contains `${VAR}` placeholders. Pinguin does not read these keys directly; `internal/config.LoadConfig` expands the YAML and then all runtime values come from the parsed config. Missing placeholder variables are startup errors; define intentionally unused optional placeholders as `KEY=` so the parser can distinguish blank values from absent configuration. The default config references or sets the following keys:
 
 - See `configs/.env.pinguin.example` for a full list of variables to seed your environment when using the default config template.
-- **PINGUIN_CONFIG_PATH:**  
-  Optional override for the service configuration file (defaults to `configs/config.yml`).
-
 - **DATABASE_PATH:**  
   Path to the SQLite database file (e.g., `app.db`).
 
@@ -146,8 +143,8 @@ Export the referenced environment variables before starting the server. The defa
   Address used by the Gin HTTP server that exposes runtime config and the JSON `/api/*` endpoints (local Compose uses `:8081`). The HTTP stack no longer serves static assets directly—use a separate host such as GitHub Pages at `https://pinguin.mprlab.com` (production) or ghttp (`http://localhost:8080`) for `/web`.
 - **HTTP_ALLOWED_ORIGINS:**  
   Comma-separated list of origins allowed to call the JSON API when running cross-origin (leave empty to allow same-origin only). The docker-compose workflow serves the UI via ghttp on `http://localhost:8080`, and production uses `https://pinguin.mprlab.com`, so include the relevant UI origins here.
-- **DISABLE_WEB_INTERFACE:**  
-  Set to `true`, `1`, `yes`, or `on` (or start the server with `--disable-web-interface`) to skip booting the Gin/HTML stack entirely. When disabled, Pinguin runs the gRPC service only and skips Google Identity/TAuth/HTTP configuration checks, which is useful for backends that never expose the dashboard.
+- **web.enabled:**
+  Set to `false` in `config.yml` to skip booting the Gin/HTML stack entirely. When disabled, Pinguin runs the gRPC service only and skips Google Identity/TAuth/HTTP configuration checks, which is useful for backends that never expose the dashboard.
 - **MASTER_ENCRYPTION_KEY:**  
   Hex-encoded 32-byte key used to encrypt SMTP/Twilio secrets stored in the tenant config. Generate one with `openssl rand -hex 32` and keep it secret.
 - **TAuth CORS allowlist:**  
@@ -326,7 +323,7 @@ Dashboard workflow:
 
 Pinguin validates that the SMTP login, envelope sender, and RFC 5322 `From` header all match the exact identity. Accepted messages are relayed through `smtpSubmission.relay`; direct-to-recipient-MX delivery, mailbox hosting, bounce processing, DKIM signing, and domain reputation management remain with the upstream SMTP provider.
 
-Load the environment variables:
+If your `config.yml` uses a companion `.env` file for placeholder values, load it before starting Pinguin so the YAML expansion has concrete values:
 
 ```bash
 export $(cat .env | xargs)
@@ -367,7 +364,7 @@ make publish
    ${EDITOR:-vi} configs/.env.pinguin configs/.env.tauth
    ```
 
-  - `configs/.env.pinguin` configures the environment variables referenced by `configs/config.pinguin.yml` (including `PINGUIN_CONFIG_PATH=/config/config.yml`, tenant domains, SMTP/Twilio credentials, and `TAUTH_SIGNING_KEY`).
+  - `configs/.env.pinguin` configures the environment variables referenced by `configs/config.pinguin.yml` (including tenant domains, SMTP/Twilio credentials, and `TAUTH_SIGNING_KEY`).
    - If `GET http://localhost:8081/runtime-config` returns `{"error":"tenant_not_found"}`, the tenant domain env vars (`TENANT_LOCAL_DOMAIN_PRIMARY` / `TENANT_LOCAL_DOMAIN_SECONDARY`) are missing/mismatched.
    - `configs/.env.tauth` configures the Google OAuth client, signing key, and CORS settings for local development. Compose expands these values into `configs/config.tauth.yml` and passes that file to TAuth via `TAUTH_CONFIG_FILE`.
    - Keep `TAUTH_SIGNING_KEY` (Pinguin) identical to `TAUTH_TENANT_JWT_SIGNING_KEY_PINGUIN` (TAuth) so cookie validation succeeds.
@@ -486,7 +483,7 @@ The doctor command performs comprehensive validation including:
 
 ### Pinguin CLI
 
-The repository includes an interactive CLI at `cmd/client` built with Cobra and Viper. It lives alongside the server so you can build it directly from the repository root:
+The repository includes an interactive CLI at `cmd/client` built with Cobra. It lives alongside the server so you can build it directly from the repository root:
 
 ```bash
 go build -o pinguin-cli ./cmd/client
@@ -494,25 +491,23 @@ go build -o pinguin-cli ./cmd/client
 go run ./cmd/client send --help
 ```
 
-Configuration values are read from environment variables prefixed with `PINGUIN_`:
+Configuration values are passed explicitly as flags:
 
-| Variable | Purpose | Default |
+| Flag | Purpose | Default |
 | --- | --- | --- |
-| `PINGUIN_GRPC_SERVER_ADDR` | Target gRPC endpoint | `localhost:50051` |
-| `PINGUIN_GRPC_AUTH_TOKEN` | Bearer token used for authentication | _required_ |
-| `PINGUIN_TENANT_ID` | Tenant identifier for the authenticated user | _required_ |
-| `PINGUIN_CONNECTION_TIMEOUT_SEC` | Dial timeout in seconds | `5` |
-| `PINGUIN_OPERATION_TIMEOUT_SEC` | Per-command timeout in seconds | `30` |
-| `PINGUIN_LOG_LEVEL` | CLI log level (`DEBUG`, `INFO`, `WARN`, `ERROR`) | `INFO` |
-
-The CLI also accepts the unprefixed variants (`GRPC_SERVER_ADDR`, `GRPC_AUTH_TOKEN`, `TENANT_ID`, `CONNECTION_TIMEOUT_SEC`, `OPERATION_TIMEOUT_SEC`, `LOG_LEVEL`) which is handy for ad-hoc testing and CI scripts.
+| `--grpc-server-addr` | Target gRPC endpoint | `localhost:50051` |
+| `--grpc-auth-token` | Bearer token used for authentication | _required_ |
+| `--tenant-id` | Tenant identifier for the authenticated user | _required_ |
+| `--connection-timeout-sec` | Dial timeout in seconds | `5` |
+| `--operation-timeout-sec` | Per-command timeout in seconds | `30` |
+| `--log-level` | CLI log level (`DEBUG`, `INFO`, `WARN`, `ERROR`) | `INFO` |
 
 Example command that schedules an email:
 
 ```bash
-PINGUIN_GRPC_AUTH_TOKEN=my-secret-token \
-PINGUIN_TENANT_ID=tenant-acme \
 ./pinguin-cli send \
+  --grpc-auth-token my-secret-token \
+  --tenant-id tenant-acme \
   --type email \
   --to someone@example.com \
   --subject "Meeting Reminder" \
@@ -523,9 +518,9 @@ PINGUIN_TENANT_ID=tenant-acme \
 Attachments are added with the repeatable `--attachment` flag. Each value accepts either `path` or `path::content-type`. When the MIME type is omitted, the CLI infers it from the file extension (falling back to `application/octet-stream`).
 
 ```bash
-PINGUIN_GRPC_AUTH_TOKEN=my-secret-token \
-PINGUIN_TENANT_ID=tenant-acme \
 ./pinguin-cli send \
+  --grpc-auth-token my-secret-token \
+  --tenant-id tenant-acme \
   --type email \
   --recipient someone@example.com \
   --subject "Weekly Report" \
@@ -638,10 +633,10 @@ The Playwright harness spins up a lightweight local server that mocks the `/api/
 ## Logging and Debugging
 
 - **Structured Logging:**  
-  Pinguin uses Go’s `slog` package for structured logging. Set the logging level via the `LOG_LEVEL` environment variable.
+  Pinguin uses Go’s `slog` package for structured logging. Set the logging level with `server.logLevel` in `config.yml`.
 
 - **Debug Output:**  
-  When `LOG_LEVEL` is set to `DEBUG`, detailed messages (including SMTP debug output and fallback warnings) are logged. Sensitive data (such as API keys) is masked in the logs.
+  When `server.logLevel` resolves to `DEBUG`, detailed messages (including SMTP debug output and fallback warnings) are logged. Sensitive data (such as API keys) is masked in the logs.
 
 ---
 

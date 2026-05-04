@@ -98,7 +98,7 @@ func TestCLISendUsesFlagsAndToAlias(t *testing.T) {
 	}
 }
 
-func TestCLISendReadsUnprefixedEnv(t *testing.T) {
+func TestCLISendUsesExplicitFlags(t *testing.T) {
 	t.Helper()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -120,14 +120,12 @@ func TestCLISendReadsUnprefixedEnv(t *testing.T) {
 	cmd := exec.Command(
 		cliBinary,
 		"send",
+		"--grpc-server-addr", listener.Addr().String(),
+		"--grpc-auth-token", "token-456",
+		"--tenant-id", "tenant-456",
 		"--type", "sms",
 		"--recipient", "+15551234567",
 		"--message", "OTP",
-	)
-	cmd.Env = append(os.Environ(),
-		"GRPC_SERVER_ADDR="+listener.Addr().String(),
-		"GRPC_AUTH_TOKEN=token-456",
-		"TENANT_ID=tenant-456",
 	)
 
 	output, runErr := cmd.CombinedOutput()
