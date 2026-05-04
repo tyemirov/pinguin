@@ -2,6 +2,8 @@ package model
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,6 +34,107 @@ func TestNotificationListFiltersNormalizeStatuses(t *testing.T) {
 	for index, status := range normalized {
 		if status != expected[index] {
 			t.Fatalf("status mismatch at %d: want %s got %s", index, expected[index], status)
+		}
+	}
+}
+
+func TestCanonicalStatusCoversAllStatuses(t *testing.T) {
+	testCases := map[NotificationStatus]NotificationStatus{
+		StatusQueued:    StatusQueued,
+		StatusSent:      StatusSent,
+		StatusErrored:   StatusErrored,
+		StatusCancelled: StatusCancelled,
+		StatusUnknown:   StatusUnknown,
+		StatusFailed:    StatusErrored,
+		"invalid":       "",
+	}
+	for input, expected := range testCases {
+		if got := CanonicalStatus(input); got != expected {
+			t.Fatalf("canonical status for %s: want %s got %s", input, expected, got)
+		}
+	}
+	if (NotificationListFilters{}).NormalizedStatuses() != nil {
+		t.Fatalf("expected nil normalized statuses for empty filters")
+	}
+}
+
+func TestNotificationSearchQueryValidation(t *testing.T) {
+	query, err := NewNotificationSearchQuery("  body needle  ")
+	if err != nil {
+		t.Fatalf("search query: %v", err)
+	}
+	if query.Value() != "body needle" {
+		t.Fatalf("unexpected query value %q", query.Value())
+	}
+	emptyQuery, emptyErr := NewNotificationSearchQuery("  ")
+	if emptyErr != nil {
+		t.Fatalf("empty query: %v", emptyErr)
+	}
+	if !emptyQuery.IsZero() {
+		t.Fatalf("expected empty query to be zero")
+	}
+	if _, longErr := NewNotificationSearchQuery(strings.Repeat("a", 201)); !errors.Is(longErr, ErrInvalidNotificationSearch) {
+		t.Fatalf("expected invalid search error, got %v", longErr)
+	}
+}
+
+func TestNotificationListCursorRoundTripAndValidation(t *testing.T) {
+	createdAt := time.Date(2030, 1, 2, 3, 4, 5, 6, time.UTC)
+	if _, err := NewNotificationListCursor(createdAt, 0); !errors.Is(err, ErrInvalidNotificationCursor) {
+		t.Fatalf("expected invalid cursor id, got %v", err)
+	}
+	cursor, err := NewNotificationListCursor(createdAt, 42)
+	if err != nil {
+		t.Fatalf("cursor: %v", err)
+	}
+	encoded := cursor.Encode()
+	parsed, parseErr := ParseNotificationListCursor(encoded)
+	if parseErr != nil {
+		t.Fatalf("parse cursor: %v", parseErr)
+	}
+	if parsed == nil || parsed.ID() != 42 || !parsed.CreatedAt().Equal(createdAt) {
+		t.Fatalf("unexpected parsed cursor %+v", parsed)
+	}
+	empty, emptyErr := ParseNotificationListCursor(" ")
+	if emptyErr != nil || empty != nil {
+		t.Fatalf("expected empty cursor to parse as nil, got cursor=%+v err=%v", empty, emptyErr)
+	}
+	for name, rawCursor := range map[string]string{
+		"decode":     "not-base64",
+		"payload":    "bm90LWpzb24",
+		"created_at": "eyJjcmVhdGVkX2F0Ijoibm90LXRpbWUiLCJpZCI6MX0",
+		"id":         "eyJjcmVhdGVkX2F0IjoiMjAzMC0wMS0wMlQwMzowNDowNVoiLCJpZCI6MH0",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := ParseNotificationListCursor(rawCursor); !errors.Is(err, ErrInvalidNotificationCursor) {
+				t.Fatalf("expected invalid cursor error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestNotificationListPageRequestValidation(t *testing.T) {
+	defaultRequest := DefaultNotificationListPageRequest()
+	if defaultRequest.Limit() != 50 {
+		t.Fatalf("unexpected default limit %d", defaultRequest.Limit())
+	}
+	if defaultRequest.Cursor() != nil {
+		t.Fatalf("expected default cursor to be nil")
+	}
+	cursor, cursorErr := NewNotificationListCursor(time.Now().UTC(), 7)
+	if cursorErr != nil {
+		t.Fatalf("cursor: %v", cursorErr)
+	}
+	request, requestErr := NewNotificationListPageRequest(25, &cursor)
+	if requestErr != nil {
+		t.Fatalf("page request: %v", requestErr)
+	}
+	if request.Limit() != 25 || request.Cursor() == nil || request.Cursor().ID() != 7 {
+		t.Fatalf("unexpected page request %+v", request)
+	}
+	for _, limit := range []int{0, 101} {
+		if _, err := NewNotificationListPageRequest(limit, nil); !errors.Is(err, ErrInvalidNotificationLimit) {
+			t.Fatalf("expected invalid limit for %d, got %v", limit, err)
 		}
 	}
 }
@@ -153,6 +256,19 @@ func TestNewNotificationResponseCopiesScheduledTime(t *testing.T) {
 	}
 }
 
+func TestNewNotificationResponseDefaultsUnknownStatus(t *testing.T) {
+	response := NewNotificationResponse(Notification{
+		NotificationID:   "notif-unknown",
+		Status:           "not-real",
+		NotificationType: NotificationEmail,
+		CreatedAt:        time.Now().UTC(),
+		UpdatedAt:        time.Now().UTC(),
+	})
+	if response.Status != StatusUnknown {
+		t.Fatalf("expected unknown status, got %s", response.Status)
+	}
+}
+
 func TestDatabaseHelpersFilterAndRetrieve(t *testing.T) {
 	t.Helper()
 
@@ -197,10 +313,208 @@ func TestDatabaseHelpersFilterAndRetrieve(t *testing.T) {
 	if fetched.NotificationID != "queued-now" {
 		t.Fatalf("unexpected fetched id %s", fetched.NotificationID)
 	}
+	fetchedDirect, directFetchError := GetNotificationByID(ctx, database, modelTestTenantID, "queued-now")
+	if directFetchError != nil || fetchedDirect.NotificationID != "queued-now" {
+		t.Fatalf("direct fetch notification=%+v error=%v", fetchedDirect, directFetchError)
+	}
+	fetchedDirect.Status = StatusSent
+	if saveError := SaveNotification(ctx, database, fetchedDirect); saveError != nil {
+		t.Fatalf("save notification: %v", saveError)
+	}
+
+	listed, listError := ListNotifications(ctx, database, modelTestTenantID, NotificationListFilters{})
+	if listError != nil {
+		t.Fatalf("list notifications: %v", listError)
+	}
+	if len(listed) != 3 {
+		t.Fatalf("expected three tenant notifications, got %d", len(listed))
+	}
+	listedErrored, listErroredError := ListNotifications(ctx, database, modelTestTenantID, NotificationListFilters{Statuses: []NotificationStatus{StatusErrored}})
+	if listErroredError != nil {
+		t.Fatalf("list errored notifications: %v", listErroredError)
+	}
+	if len(listedErrored) != 1 || listedErrored[0].Status != StatusFailed {
+		t.Fatalf("expected legacy failed record through errored filter, got %+v", listedErrored)
+	}
+	allNotifications, listAllError := ListNotificationsAll(ctx, database, NotificationListFilters{Statuses: []NotificationStatus{StatusSent}})
+	if listAllError != nil {
+		t.Fatalf("list all notifications: %v", listAllError)
+	}
+	if len(allNotifications) != 1 || allNotifications[0].NotificationID != "queued-now" {
+		t.Fatalf("unexpected list all result %+v", allNotifications)
+	}
+	allErroredNotifications, listAllErroredError := ListNotificationsAll(ctx, database, NotificationListFilters{Statuses: []NotificationStatus{StatusErrored}})
+	if listAllErroredError != nil {
+		t.Fatalf("list all errored notifications: %v", listAllErroredError)
+	}
+	if len(allErroredNotifications) != 1 || allErroredNotifications[0].Status != StatusFailed {
+		t.Fatalf("expected failed record through all errored filter, got %+v", allErroredNotifications)
+	}
 
 	_, missingError := MustGetNotificationByID(ctx, database, modelTestTenantID, "missing")
-	if missingError == nil {
-		t.Fatalf("expected missing error")
+	if !errors.Is(missingError, ErrNotificationNotFound) {
+		t.Fatalf("expected missing error, got %v", missingError)
+	}
+}
+
+func TestListNotificationsPageSearchesAndPaginates(t *testing.T) {
+	t.Helper()
+
+	database := openModelTestDatabase(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	records := []Notification{
+		{
+			TenantID:         modelTestTenantID,
+			NotificationID:   "notif-oldest",
+			NotificationType: NotificationEmail,
+			Recipient:        "oldest@example.com",
+			Subject:          "Oldest",
+			Message:          "launch body",
+			Status:           StatusQueued,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		},
+		{
+			TenantID:         modelTestTenantID,
+			NotificationID:   "notif-middle",
+			NotificationType: NotificationEmail,
+			Recipient:        "middle@example.com",
+			Subject:          "Middle",
+			Message:          "launch body",
+			Status:           StatusQueued,
+			CreatedAt:        now.Add(time.Second),
+			UpdatedAt:        now.Add(time.Second),
+		},
+		{
+			TenantID:         modelTestTenantID,
+			NotificationID:   "notif-newest",
+			NotificationType: NotificationEmail,
+			Recipient:        "newest@example.com",
+			Subject:          "Newest",
+			Message:          "launch body",
+			Status:           StatusQueued,
+			CreatedAt:        now.Add(2 * time.Second),
+			UpdatedAt:        now.Add(2 * time.Second),
+		},
+		{
+			TenantID:         modelTestTenantID,
+			NotificationID:   "notif-failed",
+			NotificationType: NotificationEmail,
+			Recipient:        "failed@example.com",
+			Subject:          "Failed",
+			Message:          "other body",
+			Status:           StatusFailed,
+			CreatedAt:        now.Add(3 * time.Second),
+			UpdatedAt:        now.Add(3 * time.Second),
+		},
+	}
+	for index := range records {
+		if err := CreateNotification(ctx, database, &records[index]); err != nil {
+			t.Fatalf("create notification: %v", err)
+		}
+	}
+	searchQuery, searchErr := NewNotificationSearchQuery("launch")
+	if searchErr != nil {
+		t.Fatalf("search query: %v", searchErr)
+	}
+	firstRequest, firstRequestErr := NewNotificationListPageRequest(2, nil)
+	if firstRequestErr != nil {
+		t.Fatalf("first request: %v", firstRequestErr)
+	}
+	firstPage, firstPageErr := ListNotificationsPage(ctx, database, modelTestTenantID, NotificationListFilters{SearchQuery: searchQuery}, firstRequest)
+	if firstPageErr != nil {
+		t.Fatalf("first page: %v", firstPageErr)
+	}
+	if len(firstPage.Notifications) != 2 {
+		t.Fatalf("expected two first-page records, got %d", len(firstPage.Notifications))
+	}
+	if firstPage.Notifications[0].NotificationID != "notif-newest" || firstPage.Notifications[1].NotificationID != "notif-middle" {
+		t.Fatalf("unexpected first page %+v", firstPage.Notifications)
+	}
+	if firstPage.NextCursor == "" {
+		t.Fatalf("expected next cursor")
+	}
+	cursor, cursorErr := ParseNotificationListCursor(firstPage.NextCursor)
+	if cursorErr != nil {
+		t.Fatalf("parse cursor: %v", cursorErr)
+	}
+	secondRequest, secondRequestErr := NewNotificationListPageRequest(2, cursor)
+	if secondRequestErr != nil {
+		t.Fatalf("second request: %v", secondRequestErr)
+	}
+	secondPage, secondPageErr := ListNotificationsPage(ctx, database, modelTestTenantID, NotificationListFilters{SearchQuery: searchQuery}, secondRequest)
+	if secondPageErr != nil {
+		t.Fatalf("second page: %v", secondPageErr)
+	}
+	if len(secondPage.Notifications) != 1 || secondPage.Notifications[0].NotificationID != "notif-oldest" {
+		t.Fatalf("unexpected second page %+v", secondPage.Notifications)
+	}
+	if secondPage.NextCursor != "" {
+		t.Fatalf("expected empty next cursor")
+	}
+	statusSearch, statusSearchErr := NewNotificationSearchQuery("errored")
+	if statusSearchErr != nil {
+		t.Fatalf("status search: %v", statusSearchErr)
+	}
+	statusPage, statusPageErr := ListNotificationsPage(ctx, database, modelTestTenantID, NotificationListFilters{SearchQuery: statusSearch}, DefaultNotificationListPageRequest())
+	if statusPageErr != nil {
+		t.Fatalf("status page: %v", statusPageErr)
+	}
+	if len(statusPage.Notifications) != 1 || statusPage.Notifications[0].NotificationID != "notif-failed" {
+		t.Fatalf("expected legacy failed record through errored search, got %+v", statusPage.Notifications)
+	}
+	partialAliasSearch, partialAliasSearchErr := NewNotificationSearchQuery("or")
+	if partialAliasSearchErr != nil {
+		t.Fatalf("partial alias search: %v", partialAliasSearchErr)
+	}
+	partialAliasPage, partialAliasPageErr := ListNotificationsPage(ctx, database, modelTestTenantID, NotificationListFilters{SearchQuery: partialAliasSearch}, DefaultNotificationListPageRequest())
+	if partialAliasPageErr != nil {
+		t.Fatalf("partial alias page: %v", partialAliasPageErr)
+	}
+	if len(partialAliasPage.Notifications) != 0 {
+		t.Fatalf("expected partial alias search to skip legacy failed record, got %+v", partialAliasPage.Notifications)
+	}
+}
+
+func TestNotificationPageFromRecordsRejectsInvalidCursorRecord(t *testing.T) {
+	_, err := notificationPageFromRecords([]Notification{
+		{ID: 0, CreatedAt: time.Now().UTC()},
+		{ID: 1, CreatedAt: time.Now().UTC().Add(-time.Second)},
+	}, 1)
+	if !errors.Is(err, ErrInvalidNotificationCursor) {
+		t.Fatalf("expected invalid cursor error, got %v", err)
+	}
+}
+
+func TestDatabaseHelpersReturnStorageErrors(t *testing.T) {
+	database := openModelTestDatabase(t)
+	ctx := context.Background()
+	closeModelDatabase(t, database)
+
+	if err := CreateNotification(ctx, database, &Notification{}); err == nil {
+		t.Fatalf("expected create storage error")
+	}
+	if _, err := GetNotificationByID(ctx, database, modelTestTenantID, "notif"); err == nil {
+		t.Fatalf("expected get storage error")
+	}
+	if err := SaveNotification(ctx, database, &Notification{}); err == nil {
+		t.Fatalf("expected save storage error")
+	}
+	if _, err := GetQueuedOrFailedNotifications(ctx, database, modelTestTenantID, 3, time.Now().UTC()); err == nil {
+		t.Fatalf("expected pending storage error")
+	}
+	if _, err := ListNotifications(ctx, database, modelTestTenantID, NotificationListFilters{}); err == nil {
+		t.Fatalf("expected list storage error")
+	}
+	if _, err := ListNotificationsPage(ctx, database, modelTestTenantID, NotificationListFilters{}, DefaultNotificationListPageRequest()); err == nil {
+		t.Fatalf("expected list page storage error")
+	}
+	if _, err := ListNotificationsAll(ctx, database, NotificationListFilters{}); err == nil {
+		t.Fatalf("expected list all storage error")
+	}
+	if _, err := MustGetNotificationByID(ctx, database, modelTestTenantID, "notif"); err == nil || errors.Is(err, ErrNotificationNotFound) {
+		t.Fatalf("expected wrapped storage error, got %v", err)
 	}
 }
 
@@ -238,4 +552,15 @@ func mergeNotification(base Notification, override Notification) Notification {
 func timePointer(value time.Time) *time.Time {
 	copiedValue := value
 	return &copiedValue
+}
+
+func closeModelDatabase(t *testing.T, database *gorm.DB) {
+	t.Helper()
+	sqlDatabase, err := database.DB()
+	if err != nil {
+		t.Fatalf("database handle: %v", err)
+	}
+	if closeErr := sqlDatabase.Close(); closeErr != nil {
+		t.Fatalf("close database: %v", closeErr)
+	}
 }

@@ -4,6 +4,7 @@ import {
   configureRuntime,
   expectSharedHeaderUserMenu,
   expectHeaderGoogleButton,
+  expectPinguinHeaderBrand,
   resetNotifications,
   stubExternalAssets,
 } from './utils';
@@ -18,6 +19,7 @@ test.describe('Landing page auth flow', () => {
   test('shows a focused sign-in page and login button', async ({ page }) => {
     await page.goto('/index.html');
     await expect(page.getByRole('heading', { name: /notification delivery/i })).toBeVisible();
+    await expectPinguinHeaderBrand(page);
     await expectHeaderGoogleButton(page);
     await expect(page.getByLabel('Notification workspace preview')).toBeVisible();
   });
@@ -59,12 +61,13 @@ test.describe('Landing page auth flow', () => {
     );
   });
 
-  test('updates header brand label with tenant display name', async ({ page }) => {
+  test('keeps the Pinguin header brand when tenant metadata is present', async ({ page }) => {
     await page.goto('/index.html');
-    await page.waitForFunction((expected) => {
-      const header = document.querySelector('mpr-header');
-      return header && header.getAttribute('brand-label') === expected;
-    }, 'Playwright Tenant');
+    await expectPinguinHeaderBrand(page);
+    await page.waitForFunction(
+      (expected) => document.documentElement.dataset.tenantId === expected,
+      'tenant-playwright',
+    );
   });
 
   test.describe('Tenant branding variants', () => {
@@ -74,28 +77,29 @@ test.describe('Landing page auth flow', () => {
       await configureRuntime(page, {
         authenticated: false,
         tenant: {
-          id: 'tenant-bravo',
-          displayName: 'Bravo Labs',
+          id: 'ps',
+          displayName: 'PoodleScanner',
         },
         tauth: {
-          baseUrl: 'https://auth.bravo.test',
-          googleClientId: 'bravo-google-client',
-          tenantId: 'tauth-bravo',
+          baseUrl: 'https://tauth-api.mprlab.com',
+          googleClientId: 'production-google-client',
+          tenantId: 'pinguin',
         },
       });
     });
 
-    test('applies runtime tenant display name while auth stays config-ui owned', async ({ page }) => {
+    test('preserves product chrome when runtime config returns another tenant display name', async ({ page }) => {
       await page.goto('/index.html');
-      await page.waitForFunction((expected) => {
-        const header = document.querySelector('mpr-header');
-        return header && header.getAttribute('brand-label') === expected;
-      }, 'Bravo Labs');
+      await expectPinguinHeaderBrand(page);
+      await page.waitForFunction(
+        (expected) => document.documentElement.dataset.tenantId === expected,
+        'ps',
+      );
       await expect(
         page.locator('mpr-header').first(),
       ).toHaveAttribute('google-site-id', 'playwright-client');
       const id = await page.evaluate(() => (window as any).__PINGUIN_CONFIG__?.tenant?.id || '');
-      expect(id).toBe('tenant-bravo');
+      expect(id).toBe('ps');
     });
   });
 

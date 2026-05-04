@@ -22,10 +22,6 @@ tenants:
     domains:
       - ${TENANT_LOCAL_DOMAIN_PRIMARY}
       - ${TENANT_LOCAL_DOMAIN_SECONDARY}
-    senderDomains:
-      - ${TENANT_LOCAL_SENDER_DOMAIN_1}
-      - ${TENANT_LOCAL_SENDER_DOMAIN_2}
-      - ${TENANT_LOCAL_SENDER_DOMAIN_3}
     emailProfile:
       host: ${TENANT_LOCAL_SMTP_HOST}
       port: ${TENANT_LOCAL_SMTP_PORT}
@@ -55,3 +51,12 @@ smtpSubmission:
   maxMessageBytes: ${SMTP_SUBMISSION_MAX_MESSAGE_BYTES}
   maxRecipients: ${SMTP_SUBMISSION_MAX_RECIPIENTS}
   allowInsecureAuth: ${SMTP_SUBMISSION_ALLOW_INSECURE_AUTH}
+  senderDomains:
+    - ${SMTP_SUBMISSION_SENDER_DOMAIN_1}
+    - ${SMTP_SUBMISSION_SENDER_DOMAIN_2}
+    - ${SMTP_SUBMISSION_SENDER_DOMAIN_3}
+  relay:
+    host: ${SMTP_SUBMISSION_RELAY_HOST}
+    port: ${SMTP_SUBMISSION_RELAY_PORT}
+    username: ${SMTP_SUBMISSION_RELAY_USERNAME}
+    password: ${SMTP_SUBMISSION_RELAY_PASSWORD}

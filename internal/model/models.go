@@ -2,9 +2,13 @@ package model
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -37,14 +41,28 @@ const (
 )
 
 const (
-	notificationTenantIDColumn     = "tenant_id"
-	notificationStatusColumn       = "status"
-	notificationRetryCountColumn   = "retry_count"
-	notificationScheduledForColumn = "scheduled_for"
-	notificationCreatedAtColumn    = "created_at"
+	notificationTenantIDColumn       = "tenant_id"
+	notificationIDColumn             = "id"
+	notificationNotificationIDColumn = "notification_id"
+	notificationTypeColumn           = "notification_type"
+	notificationRecipientColumn      = "recipient"
+	notificationSubjectColumn        = "subject"
+	notificationMessageColumn        = "message"
+	notificationStatusColumn         = "status"
+	notificationRetryCountColumn     = "retry_count"
+	notificationScheduledForColumn   = "scheduled_for"
+	notificationCreatedAtColumn      = "created_at"
+	defaultNotificationListLimit     = 50
+	maxNotificationListLimit         = 100
+	maxNotificationSearchLength      = 200
 )
 
-var ErrNotificationNotFound = errors.New("notification not found")
+var (
+	ErrNotificationNotFound      = errors.New("notification not found")
+	ErrInvalidNotificationCursor = errors.New("invalid notification list cursor")
+	ErrInvalidNotificationLimit  = errors.New("invalid notification list limit")
+	ErrInvalidNotificationSearch = errors.New("invalid notification search query")
+)
 
 func CanonicalStatus(status NotificationStatus) NotificationStatus {
 	switch status {
@@ -59,7 +77,146 @@ func CanonicalStatus(status NotificationStatus) NotificationStatus {
 
 // NotificationListFilters constrain List operations (e.g., by status).
 type NotificationListFilters struct {
-	Statuses []NotificationStatus
+	Statuses    []NotificationStatus
+	SearchQuery NotificationSearchQuery
+}
+
+// NotificationSearchQuery is a validated optional list-search query.
+type NotificationSearchQuery struct {
+	value string
+}
+
+// NewNotificationSearchQuery trims and validates a list-search query.
+func NewNotificationSearchQuery(rawValue string) (NotificationSearchQuery, error) {
+	normalized := strings.TrimSpace(rawValue)
+	if utf8.RuneCountInString(normalized) > maxNotificationSearchLength {
+		return NotificationSearchQuery{}, fmt.Errorf("%w: max length is %d", ErrInvalidNotificationSearch, maxNotificationSearchLength)
+	}
+	return NotificationSearchQuery{value: normalized}, nil
+}
+
+// Value returns the normalized search string.
+func (query NotificationSearchQuery) Value() string {
+	return query.value
+}
+
+// IsZero reports whether the query should be ignored.
+func (query NotificationSearchQuery) IsZero() bool {
+	return query.value == ""
+}
+
+// NotificationListCursor identifies the last record emitted by a page.
+type NotificationListCursor struct {
+	createdAt time.Time
+	id        uint
+}
+
+type notificationListCursorPayload struct {
+	CreatedAt string `json:"created_at"`
+	ID        uint   `json:"id"`
+}
+
+// NewNotificationListCursor constructs a keyset cursor from a persisted row.
+func NewNotificationListCursor(createdAt time.Time, id uint) (NotificationListCursor, error) {
+	if id == 0 {
+		return NotificationListCursor{}, fmt.Errorf("%w: id is required", ErrInvalidNotificationCursor)
+	}
+	return NotificationListCursor{createdAt: createdAt.UTC(), id: id}, nil
+}
+
+// ParseNotificationListCursor decodes a cursor previously returned by Encode.
+func ParseNotificationListCursor(rawValue string) (*NotificationListCursor, error) {
+	normalized := strings.TrimSpace(rawValue)
+	if normalized == "" {
+		return nil, nil
+	}
+	decoded, decodeErr := base64.RawURLEncoding.DecodeString(normalized)
+	if decodeErr != nil {
+		return nil, fmt.Errorf("%w: decode", ErrInvalidNotificationCursor)
+	}
+	var payload notificationListCursorPayload
+	if unmarshalErr := json.Unmarshal(decoded, &payload); unmarshalErr != nil {
+		return nil, fmt.Errorf("%w: payload", ErrInvalidNotificationCursor)
+	}
+	createdAt, parseErr := time.Parse(time.RFC3339Nano, payload.CreatedAt)
+	if parseErr != nil {
+		return nil, fmt.Errorf("%w: created_at", ErrInvalidNotificationCursor)
+	}
+	cursor, cursorErr := NewNotificationListCursor(createdAt, payload.ID)
+	if cursorErr != nil {
+		return nil, cursorErr
+	}
+	return &cursor, nil
+}
+
+// Encode serializes the cursor for HTTP clients.
+func (cursor NotificationListCursor) Encode() string {
+	payload := notificationListCursorPayload{
+		CreatedAt: cursor.createdAt.UTC().Format(time.RFC3339Nano),
+		ID:        cursor.id,
+	}
+	encoded, _ := json.Marshal(payload)
+	return base64.RawURLEncoding.EncodeToString(encoded)
+}
+
+// CreatedAt returns the cursor timestamp.
+func (cursor NotificationListCursor) CreatedAt() time.Time {
+	return cursor.createdAt
+}
+
+// ID returns the cursor row id.
+func (cursor NotificationListCursor) ID() uint {
+	return cursor.id
+}
+
+// NotificationListPageRequest contains validated pagination inputs.
+type NotificationListPageRequest struct {
+	limit  int
+	cursor *NotificationListCursor
+}
+
+// NewNotificationListPageRequest constructs pagination inputs.
+func NewNotificationListPageRequest(limit int, cursor *NotificationListCursor) (NotificationListPageRequest, error) {
+	if limit < 1 || limit > maxNotificationListLimit {
+		return NotificationListPageRequest{}, fmt.Errorf("%w: limit must be between 1 and %d", ErrInvalidNotificationLimit, maxNotificationListLimit)
+	}
+	var cursorCopy *NotificationListCursor
+	if cursor != nil {
+		clonedCursor := *cursor
+		cursorCopy = &clonedCursor
+	}
+	return NotificationListPageRequest{limit: limit, cursor: cursorCopy}, nil
+}
+
+// DefaultNotificationListPageRequest returns the standard first page request.
+func DefaultNotificationListPageRequest() NotificationListPageRequest {
+	return NotificationListPageRequest{limit: defaultNotificationListLimit}
+}
+
+// Limit returns the validated row limit.
+func (request NotificationListPageRequest) Limit() int {
+	return request.limit
+}
+
+// Cursor returns a copy of the cursor.
+func (request NotificationListPageRequest) Cursor() *NotificationListCursor {
+	if request.cursor == nil {
+		return nil
+	}
+	cursorCopy := *request.cursor
+	return &cursorCopy
+}
+
+// NotificationListPage is a persisted notification page.
+type NotificationListPage struct {
+	Notifications []Notification
+	NextCursor    string
+}
+
+// NotificationListResponsePage is a client-facing notification page.
+type NotificationListResponsePage struct {
+	Notifications []NotificationResponse
+	NextCursor    string
 }
 
 // NormalizedStatuses removes duplicates and legacy aliases while preserving order.
@@ -242,21 +399,8 @@ func GetQueuedOrFailedNotifications(ctx context.Context, db *gorm.DB, tenantID s
 }
 
 func ListNotifications(ctx context.Context, db *gorm.DB, tenantID string, filters NotificationListFilters) ([]Notification, error) {
-	query := db.WithContext(ctx).
-		Preload("Attachments").
-		Order(clause.OrderByColumn{Column: clause.Column{Name: notificationCreatedAtColumn}, Desc: true}).
+	query := notificationListQuery(ctx, db, filters).
 		Where(&Notification{TenantID: tenantID})
-	statuses := filters.NormalizedStatuses()
-	if len(statuses) > 0 {
-		statusValues := make([]interface{}, 0, len(statuses))
-		for _, status := range statuses {
-			statusValues = append(statusValues, status)
-			if status == StatusErrored {
-				statusValues = append(statusValues, StatusFailed)
-			}
-		}
-		query = query.Where(clause.IN{Column: clause.Column{Name: notificationStatusColumn}, Values: statusValues})
-	}
 	var notifications []Notification
 	if err := query.Find(&notifications).Error; err != nil {
 		return nil, err
@@ -264,10 +408,33 @@ func ListNotifications(ctx context.Context, db *gorm.DB, tenantID string, filter
 	return notifications, nil
 }
 
+func ListNotificationsPage(ctx context.Context, db *gorm.DB, tenantID string, filters NotificationListFilters, pageRequest NotificationListPageRequest) (NotificationListPage, error) {
+	query := notificationListQuery(ctx, db, filters).
+		Where(&Notification{TenantID: tenantID})
+	if cursor := pageRequest.Cursor(); cursor != nil {
+		query = query.Where(notificationCursorCondition(*cursor))
+	}
+	var notifications []Notification
+	if err := query.Limit(pageRequest.Limit() + 1).Find(&notifications).Error; err != nil {
+		return NotificationListPage{}, err
+	}
+	return notificationPageFromRecords(notifications, pageRequest.Limit())
+}
+
 func ListNotificationsAll(ctx context.Context, db *gorm.DB, filters NotificationListFilters) ([]Notification, error) {
+	query := notificationListQuery(ctx, db, filters)
+	var notifications []Notification
+	if err := query.Find(&notifications).Error; err != nil {
+		return nil, err
+	}
+	return notifications, nil
+}
+
+func notificationListQuery(ctx context.Context, db *gorm.DB, filters NotificationListFilters) *gorm.DB {
 	query := db.WithContext(ctx).
 		Preload("Attachments").
-		Order(clause.OrderByColumn{Column: clause.Column{Name: notificationCreatedAtColumn}, Desc: true})
+		Order(clause.OrderByColumn{Column: clause.Column{Name: notificationCreatedAtColumn}, Desc: true}).
+		Order(clause.OrderByColumn{Column: clause.Column{Name: notificationIDColumn}, Desc: true})
 	statuses := filters.NormalizedStatuses()
 	if len(statuses) > 0 {
 		statusValues := make([]interface{}, 0, len(statuses))
@@ -279,11 +446,60 @@ func ListNotificationsAll(ctx context.Context, db *gorm.DB, filters Notification
 		}
 		query = query.Where(clause.IN{Column: clause.Column{Name: notificationStatusColumn}, Values: statusValues})
 	}
-	var notifications []Notification
-	if err := query.Find(&notifications).Error; err != nil {
-		return nil, err
+	if !filters.SearchQuery.IsZero() {
+		query = query.Where(notificationSearchCondition(filters.SearchQuery))
 	}
-	return notifications, nil
+	return query
+}
+
+func notificationSearchCondition(query NotificationSearchQuery) clause.Expression {
+	value := query.Value()
+	pattern := "%" + value + "%"
+	columns := []string{
+		notificationNotificationIDColumn,
+		notificationTenantIDColumn,
+		notificationTypeColumn,
+		notificationStatusColumn,
+		notificationRecipientColumn,
+		notificationSubjectColumn,
+		notificationMessageColumn,
+	}
+	expressions := make([]clause.Expression, 0, len(columns)+1)
+	for _, columnName := range columns {
+		expressions = append(expressions, clause.Like{Column: clause.Column{Name: columnName}, Value: pattern})
+	}
+	if strings.EqualFold(value, string(StatusErrored)) {
+		expressions = append(expressions, clause.Eq{Column: clause.Column{Name: notificationStatusColumn}, Value: StatusFailed})
+	}
+	return clause.Or(expressions...)
+}
+
+func notificationCursorCondition(cursor NotificationListCursor) clause.Expression {
+	createdAtColumn := clause.Column{Name: notificationCreatedAtColumn}
+	idColumn := clause.Column{Name: notificationIDColumn}
+	return clause.Or(
+		clause.Lt{Column: createdAtColumn, Value: cursor.CreatedAt()},
+		clause.And(
+			clause.Eq{Column: createdAtColumn, Value: cursor.CreatedAt()},
+			clause.Lt{Column: idColumn, Value: cursor.ID()},
+		),
+	)
+}
+
+func notificationPageFromRecords(records []Notification, limit int) (NotificationListPage, error) {
+	if len(records) <= limit {
+		return NotificationListPage{Notifications: records}, nil
+	}
+	pageRecords := records[:limit]
+	lastRecord := pageRecords[len(pageRecords)-1]
+	cursor, cursorErr := NewNotificationListCursor(lastRecord.CreatedAt, lastRecord.ID)
+	if cursorErr != nil {
+		return NotificationListPage{}, cursorErr
+	}
+	return NotificationListPage{
+		Notifications: pageRecords,
+		NextCursor:    cursor.Encode(),
+	}, nil
 }
 
 func MustGetNotificationByID(ctx context.Context, db *gorm.DB, tenantID string, notificationID string) (*Notification, error) {

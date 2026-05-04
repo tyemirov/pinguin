@@ -99,13 +99,12 @@ type NotificationClient struct {
 	settings   Settings
 }
 
+var newGRPCClient = grpc.NewClient
+
 // NewNotificationClient dials the configured server and returns a ready-to-use
 // NotificationClient.
 func NewNotificationClient(logger *slog.Logger, settings Settings) (*NotificationClient, error) {
-	dialCtx, cancel := context.WithTimeout(context.Background(), settings.ConnectionTimeout())
-	defer cancel()
-
-	conn, err := grpc.NewClient(
+	conn, err := newGRPCClient(
 		settings.ServerAddress(),
 		grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
 			dialer := &net.Dialer{}
@@ -119,11 +118,6 @@ func NewNotificationClient(logger *slog.Logger, settings Settings) (*Notificatio
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial gRPC server: %w", err)
-	}
-
-	if dialCtx.Err() != nil {
-		_ = conn.Close()
-		return nil, fmt.Errorf("dialing gRPC server timed out: %w", dialCtx.Err())
 	}
 
 	grpcClient := grpcapi.NewNotificationServiceClient(conn)

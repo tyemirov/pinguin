@@ -131,3 +131,24 @@ func TestLoadErrorConditions(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadRejectsNilProvider(t *testing.T) {
+	_, err := Load(nil)
+	if err == nil || !strings.Contains(err.Error(), "nil config provider") {
+		t.Fatalf("expected nil provider error, got %v", err)
+	}
+}
+
+func TestLoadDefaultsBlankLogLevel(t *testing.T) {
+	v := viper.New()
+	v.Set(serverAddressKey, "localhost:5050")
+	v.Set(logLevelKey, " ")
+
+	cfg, err := Load(v)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.LogLevel() != "INFO" {
+		t.Fatalf("expected INFO log level, got %s", cfg.LogLevel())
+	}
+}

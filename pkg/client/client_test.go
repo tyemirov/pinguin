@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -49,9 +50,16 @@ type fakeNotificationServer struct {
 	initialStatus grpcapi.Status
 	polledStatus  grpcapi.Status
 	statusCalls   int
+	sendErr       error
+	statusErr     error
+	lastRequest   *grpcapi.NotificationRequest
 }
 
-func (s *fakeNotificationServer) SendNotification(context.Context, *grpcapi.NotificationRequest) (*grpcapi.NotificationResponse, error) {
+func (s *fakeNotificationServer) SendNotification(_ context.Context, request *grpcapi.NotificationRequest) (*grpcapi.NotificationResponse, error) {
+	if s.sendErr != nil {
+		return nil, s.sendErr
+	}
+	s.lastRequest = request
 	return &grpcapi.NotificationResponse{
 		NotificationId: "notif-123",
 		Status:         s.initialStatus,
@@ -59,6 +67,9 @@ func (s *fakeNotificationServer) SendNotification(context.Context, *grpcapi.Noti
 }
 
 func (s *fakeNotificationServer) GetNotificationStatus(context.Context, *grpcapi.GetNotificationStatusRequest) (*grpcapi.NotificationResponse, error) {
+	if s.statusErr != nil {
+		return nil, s.statusErr
+	}
 	s.statusCalls++
 	status := s.polledStatus
 	return &grpcapi.NotificationResponse{
@@ -165,6 +176,92 @@ func TestNotificationClientFailurePaths(t *testing.T) {
 	_, timeoutErr := timeoutClient.SendNotificationAndWait(&grpcapi.NotificationRequest{})
 	if timeoutErr == nil {
 		t.Fatalf("expected timeout error")
+	}
+}
+
+func TestNotificationClientPropagatesRPCErrors(t *testing.T) {
+	t.Helper()
+	t.Cleanup(func() { sendPollInterval = 2 * time.Second })
+	sendPollInterval = 5 * time.Millisecond
+
+	sendFailureServer := &fakeNotificationServer{sendErr: errors.New("send failed")}
+	sendFailureAddr, stopSendFailure := startFakeServer(t, sendFailureServer)
+	defer stopSendFailure()
+	settings, err := NewSettings(sendFailureAddr, "token", "tenant-default", 5, 1)
+	if err != nil {
+		t.Fatalf("NewSettings error: %v", err)
+	}
+	clientInstance, err := NewNotificationClient(newTestLogger(), settings)
+	if err != nil {
+		t.Fatalf("NewNotificationClient error: %v", err)
+	}
+	defer clientInstance.Close()
+	if _, err := clientInstance.SendNotification(context.Background(), &grpcapi.NotificationRequest{}); err == nil {
+		t.Fatalf("expected send error")
+	}
+	if _, err := clientInstance.SendNotificationAndWait(&grpcapi.NotificationRequest{}); err == nil {
+		t.Fatalf("expected send-and-wait send error")
+	}
+
+	statusFailureServer := &fakeNotificationServer{
+		initialStatus: grpcapi.Status_QUEUED,
+		statusErr:     errors.New("status failed"),
+	}
+	statusFailureAddr, stopStatusFailure := startFakeServer(t, statusFailureServer)
+	defer stopStatusFailure()
+	statusSettings, err := NewSettings(statusFailureAddr, "token", "tenant-default", 5, 1)
+	if err != nil {
+		t.Fatalf("NewSettings error: %v", err)
+	}
+	statusClient, err := NewNotificationClient(newTestLogger(), statusSettings)
+	if err != nil {
+		t.Fatalf("NewNotificationClient error: %v", err)
+	}
+	defer statusClient.Close()
+	if _, err := statusClient.GetNotificationStatus("notif-123"); err == nil {
+		t.Fatalf("expected status error")
+	}
+	if _, err := statusClient.SendNotificationAndWait(&grpcapi.NotificationRequest{}); err == nil {
+		t.Fatalf("expected poll status error")
+	}
+}
+
+func TestNotificationClientPreservesExplicitTenantID(t *testing.T) {
+	t.Helper()
+	server := &fakeNotificationServer{initialStatus: grpcapi.Status_SENT}
+	address, stop := startFakeServer(t, server)
+	defer stop()
+	settings, err := NewSettings(address, "token", "tenant-default", 5, 5)
+	if err != nil {
+		t.Fatalf("NewSettings error: %v", err)
+	}
+	clientInstance, err := NewNotificationClient(newTestLogger(), settings)
+	if err != nil {
+		t.Fatalf("NewNotificationClient error: %v", err)
+	}
+	defer clientInstance.Close()
+
+	if _, err := clientInstance.SendNotification(context.Background(), &grpcapi.NotificationRequest{TenantId: "tenant-explicit"}); err != nil {
+		t.Fatalf("SendNotification failed: %v", err)
+	}
+	if server.lastRequest.GetTenantId() != "tenant-explicit" {
+		t.Fatalf("expected explicit tenant id to be preserved, got %q", server.lastRequest.GetTenantId())
+	}
+}
+
+func TestNewNotificationClientReportsConstructorError(t *testing.T) {
+	originalNewClient := newGRPCClient
+	t.Cleanup(func() { newGRPCClient = originalNewClient })
+	expectedErr := errors.New("constructor failed")
+	newGRPCClient = func(string, ...grpc.DialOption) (*grpc.ClientConn, error) {
+		return nil, expectedErr
+	}
+	settings, err := NewSettings("localhost:50051", "token", "tenant", 5, 5)
+	if err != nil {
+		t.Fatalf("NewSettings error: %v", err)
+	}
+	if _, err := NewNotificationClient(newTestLogger(), settings); !errors.Is(err, expectedErr) {
+		t.Fatalf("expected constructor error, got %v", err)
 	}
 }
 

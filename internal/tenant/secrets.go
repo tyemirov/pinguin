@@ -11,7 +11,8 @@ import (
 
 // SecretKeeper encrypts and decrypts sensitive strings at rest.
 type SecretKeeper struct {
-	key []byte
+	key    []byte
+	random io.Reader
 }
 
 // NewSecretKeeper builds a keeper from a raw key. The key must be 32 bytes.
@@ -23,7 +24,7 @@ func NewSecretKeeper(rawKey string) (*SecretKeeper, error) {
 	if len(keyBytes) != 32 {
 		return nil, fmt.Errorf("tenant: encryption key must decode to 32 bytes")
 	}
-	return &SecretKeeper{key: keyBytes}, nil
+	return &SecretKeeper{key: keyBytes, random: rand.Reader}, nil
 }
 
 // Encrypt converts plaintext into ciphertext bytes using AES-GCM.
@@ -32,12 +33,9 @@ func (keeper *SecretKeeper) Encrypt(plaintext string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("tenant: init cipher: %w", err)
 	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, fmt.Errorf("tenant: init gcm: %w", err)
-	}
+	gcm, _ := cipher.NewGCM(block)
 	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+	if _, err := io.ReadFull(keeper.random, nonce); err != nil {
 		return nil, fmt.Errorf("tenant: nonce: %w", err)
 	}
 	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
@@ -50,10 +48,7 @@ func (keeper *SecretKeeper) Decrypt(ciphertext []byte) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("tenant: init cipher: %w", err)
 	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", fmt.Errorf("tenant: init gcm: %w", err)
-	}
+	gcm, _ := cipher.NewGCM(block)
 	nonceSize := gcm.NonceSize()
 	if len(ciphertext) < nonceSize {
 		return "", fmt.Errorf("tenant: ciphertext too short")

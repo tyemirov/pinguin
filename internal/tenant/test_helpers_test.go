@@ -1,8 +1,10 @@
 package tenant
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -22,14 +24,14 @@ func newTestDatabaseWithLogger(t *testing.T, customLogger logger.Interface) *gor
 	if customLogger != nil {
 		config.Logger = customLogger
 	}
-	dbInstance, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), config)
+	databaseName := strings.NewReplacer("/", "_", " ", "_", ":", "_").Replace(t.Name())
+	dbInstance, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", databaseName)), config)
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	if err := dbInstance.AutoMigrate(
 		&Tenant{},
 		&TenantDomain{},
-		&SenderDomain{},
 		&EmailProfile{},
 		&SMSProfile{},
 	); err != nil {

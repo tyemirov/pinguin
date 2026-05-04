@@ -2,6 +2,7 @@ package grpcapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -12,10 +13,14 @@ import (
 
 type fakeConn struct {
 	lastMethod string
+	err        error
 }
 
 func (c *fakeConn) Invoke(ctx context.Context, method string, args interface{}, reply interface{}, opts ...grpc.CallOption) error {
 	c.lastMethod = method
+	if c.err != nil {
+		return c.err
+	}
 	switch out := reply.(type) {
 	case *NotificationResponse:
 		out.NotificationId = "notif"
@@ -49,6 +54,40 @@ func TestNotificationServiceClientCoverage(t *testing.T) {
 	}
 	if _, err := client.CancelNotification(ctx, &CancelNotificationRequest{}); err != nil {
 		t.Fatalf("CancelNotification error: %v", err)
+	}
+}
+
+func TestNotificationServiceClientErrors(t *testing.T) {
+	t.Helper()
+	expectedErr := errors.New("rpc failed")
+	client := NewNotificationServiceClient(&fakeConn{err: expectedErr})
+	ctx := context.Background()
+	calls := []func() error{
+		func() error {
+			_, err := client.SendNotification(ctx, &NotificationRequest{})
+			return err
+		},
+		func() error {
+			_, err := client.GetNotificationStatus(ctx, &GetNotificationStatusRequest{})
+			return err
+		},
+		func() error {
+			_, err := client.ListNotifications(ctx, &ListNotificationsRequest{})
+			return err
+		},
+		func() error {
+			_, err := client.RescheduleNotification(ctx, &RescheduleNotificationRequest{})
+			return err
+		},
+		func() error {
+			_, err := client.CancelNotification(ctx, &CancelNotificationRequest{})
+			return err
+		},
+	}
+	for _, call := range calls {
+		if err := call(); !errors.Is(err, expectedErr) {
+			t.Fatalf("expected rpc error, got %v", err)
+		}
 	}
 }
 
@@ -111,6 +150,60 @@ func TestNotificationServiceServerHandlers(t *testing.T) {
 
 	if !(server.sendCalled && server.statusCalled && server.listCalled && server.rescheduleCalled && server.cancelCalled) {
 		t.Fatalf("expected all server methods to be called")
+	}
+}
+
+func TestNotificationServiceServerHandlersWithInterceptorsAndDecoderErrors(t *testing.T) {
+	server := &coverageServer{}
+	ctx := context.Background()
+	decoderErr := errors.New("decode failed")
+	failDecoder := func(interface{}) error { return decoderErr }
+	passDecoder := func(interface{}) error { return nil }
+	interceptorCalled := 0
+	interceptor := func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		interceptorCalled++
+		if info.FullMethod == "" {
+			t.Fatalf("expected full method")
+		}
+		return handler(ctx, req)
+	}
+
+	handlerCalls := []struct {
+		name string
+		call func(func(interface{}) error, grpc.UnaryServerInterceptor) (interface{}, error)
+	}{
+		{name: "send", call: func(dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+			return _NotificationService_SendNotification_Handler(server, ctx, dec, interceptor)
+		}},
+		{name: "status", call: func(dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+			return _NotificationService_GetNotificationStatus_Handler(server, ctx, dec, interceptor)
+		}},
+		{name: "list", call: func(dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+			return _NotificationService_ListNotifications_Handler(server, ctx, dec, interceptor)
+		}},
+		{name: "reschedule", call: func(dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+			return _NotificationService_RescheduleNotification_Handler(server, ctx, dec, interceptor)
+		}},
+		{name: "cancel", call: func(dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+			return _NotificationService_CancelNotification_Handler(server, ctx, dec, interceptor)
+		}},
+	}
+	for _, handlerCall := range handlerCalls {
+		handlerCall := handlerCall
+		t.Run(handlerCall.name+" decoder error", func(t *testing.T) {
+			_, err := handlerCall.call(failDecoder, nil)
+			if !errors.Is(err, decoderErr) {
+				t.Fatalf("expected decoder error, got %v", err)
+			}
+		})
+		t.Run(handlerCall.name+" interceptor", func(t *testing.T) {
+			if _, err := handlerCall.call(passDecoder, interceptor); err != nil {
+				t.Fatalf("handler with interceptor: %v", err)
+			}
+		})
+	}
+	if interceptorCalled != len(handlerCalls) {
+		t.Fatalf("expected %d interceptor calls, got %d", len(handlerCalls), interceptorCalled)
 	}
 }
 

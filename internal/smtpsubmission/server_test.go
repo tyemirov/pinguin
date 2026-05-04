@@ -2,6 +2,7 @@ package smtpsubmission
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -12,8 +13,11 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -78,6 +82,79 @@ func TestSMTPSubmissionLoginAuthRelaysMessage(t *testing.T) {
 	client.expectCode(t, "235")
 }
 
+func TestSMTPSubmissionPlainAuthChallengeRelaysMessage(t *testing.T) {
+	fixture := newSMTPServerFixture(t, true, nil)
+	client := fixture.dial(t)
+	defer client.close()
+	client.expectCode(t, "220")
+	client.send(t, "AUTH PLAIN")
+	client.expectCode(t, "334")
+	client.send(t, plainAuthPayload("smtp-user", "smtp-pass"))
+	client.expectCode(t, "235")
+	client.send(t, "AUTH PLAIN "+plainAuthPayload("smtp-user", "smtp-pass"))
+	client.expectCode(t, "503")
+}
+
+func TestSMTPSubmissionCommandOrderingAndSessionCommands(t *testing.T) {
+	fixture := newSMTPServerFixture(t, true, nil)
+	client := fixture.dial(t)
+	defer client.close()
+	client.expectCode(t, "220")
+	client.send(t, "EHLO gmail.example")
+	client.expectCode(t, "250")
+	client.send(t, "NOOP")
+	client.expectCode(t, "250")
+	client.send(t, "DATA")
+	client.expectCode(t, "503")
+	client.send(t, "RCPT TO:<recipient@example.net>")
+	client.expectCode(t, "503")
+	client.send(t, "MAIL FROM:<alice@example.com>")
+	client.expectCode(t, "530")
+	client.send(t, "AUTH CRAM-MD5")
+	client.expectCode(t, "504")
+	client.send(t, "AUTH PLAIN "+plainAuthPayload("smtp-user", "smtp-pass"))
+	client.expectCode(t, "235")
+	client.send(t, "MAIL FROM:alice@example.com extra")
+	client.expectCode(t, "250")
+	client.send(t, "RCPT TO:recipient@example.net extra")
+	client.expectCode(t, "250")
+	client.send(t, "RSET")
+	client.expectCode(t, "250")
+	client.send(t, "DATA")
+	client.expectCode(t, "503")
+	client.send(t, "VRFY alice")
+	client.expectCode(t, "502")
+	client.send(t, "QUIT")
+	client.expectCode(t, "221")
+}
+
+func TestSMTPSubmissionRejectsMalformedAuthAndPaths(t *testing.T) {
+	fixture := newSMTPServerFixture(t, true, nil)
+	client := fixture.dial(t)
+	defer client.close()
+	client.expectCode(t, "220")
+	client.send(t, "AUTH PLAIN not-base64")
+	client.expectCode(t, "535")
+	client.send(t, "AUTH PLAIN "+base64.StdEncoding.EncodeToString([]byte("missing-separators")))
+	client.expectCode(t, "535")
+	client.send(t, "AUTH LOGIN not-base64")
+	client.expectCode(t, "535")
+	client.send(t, "AUTH LOGIN "+base64.StdEncoding.EncodeToString([]byte("smtp-user")))
+	client.expectCode(t, "334")
+	client.send(t, "not-base64")
+	client.expectCode(t, "535")
+	client.send(t, "AUTH PLAIN "+plainAuthPayload("smtp-user", "smtp-pass"))
+	client.expectCode(t, "235")
+	client.send(t, "MAIL BODY:<alice@example.com>")
+	client.expectCode(t, "501")
+	client.send(t, "MAIL FROM:<alice@example.com")
+	client.expectCode(t, "501")
+	client.send(t, "MAIL FROM:<alice@example.com>")
+	client.expectCode(t, "250")
+	client.send(t, "RCPT BODY:<recipient@example.net>")
+	client.expectCode(t, "501")
+}
+
 func TestSMTPSubmissionRejectsAuthBeforeTLS(t *testing.T) {
 	fixture := newSMTPServerFixture(t, false, nil)
 	client := fixture.dial(t)
@@ -87,6 +164,61 @@ func TestSMTPSubmissionRejectsAuthBeforeTLS(t *testing.T) {
 	client.expectCode(t, "250")
 	client.send(t, "AUTH PLAIN "+plainAuthPayload("smtp-user", "smtp-pass"))
 	client.expectCode(t, "530")
+}
+
+func TestSMTPSubmissionStartTLSUnavailableAndAlreadyActive(t *testing.T) {
+	address, addressErr := smtpidentity.NewAddress("alice@example.com")
+	if addressErr != nil {
+		t.Fatalf("identity address: %v", addressErr)
+	}
+	server, serverErr := NewServer(Config{
+		Hostname:          "smtp.test",
+		MaxMessageBytes:   1024 * 1024,
+		MaxRecipients:     10,
+		AllowInsecureAuth: true,
+		Authenticator: &staticAuthenticator{
+			username: "smtp-user",
+			password: "smtp-pass",
+			identity: smtpidentity.AuthenticatedIdentity{
+				ID:           "identity-1",
+				EmailAddress: address,
+				Username:     "smtp-user",
+			},
+		},
+		Relay:  &recordingRelay{},
+		Logger: slog.New(slog.NewTextHandler(ioDiscard{}, nil)),
+	})
+	if serverErr != nil {
+		t.Fatalf("new server: %v", serverErr)
+	}
+	listener, listenErr := net.Listen("tcp", "127.0.0.1:0")
+	if listenErr != nil {
+		t.Fatalf("listen: %v", listenErr)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(func() {
+		cancel()
+		listener.Close()
+	})
+	go func() {
+		_ = server.Serve(ctx, listener, false)
+	}()
+
+	client := newSMTPTestClient(mustDial(t, listener.Addr().String()))
+	defer client.close()
+	client.expectCode(t, "220")
+	client.send(t, "STARTTLS")
+	client.expectCode(t, "454")
+
+	secureFixture := newSMTPServerFixture(t, false, nil)
+	secureClient := secureFixture.dial(t)
+	defer secureClient.close()
+	secureClient.expectCode(t, "220")
+	secureClient.send(t, "STARTTLS")
+	secureClient.expectCode(t, "220")
+	secureClient.startTLS(t)
+	secureClient.send(t, "STARTTLS")
+	secureClient.expectCode(t, "503")
 }
 
 func TestSMTPSubmissionRejectsWrongPassword(t *testing.T) {
@@ -129,6 +261,40 @@ func TestSMTPSubmissionRejectsHeaderFromMismatchAfterData(t *testing.T) {
 	client.expectCode(t, "553")
 	if len(fixture.relay.messages) != 0 {
 		t.Fatalf("expected no relay on header mismatch")
+	}
+}
+
+func TestSMTPSubmissionRejectsMalformedMessageFromHeader(t *testing.T) {
+	fixture := newSMTPServerFixture(t, true, nil)
+	client := fixture.authenticatedClient(t)
+	defer client.close()
+	client.send(t, "MAIL FROM:<alice@example.com>")
+	client.expectCode(t, "250")
+	client.send(t, "RCPT TO:<recipient@example.net>")
+	client.expectCode(t, "250")
+	client.send(t, "DATA")
+	client.expectCode(t, "354")
+	client.sendData(t, "Subject: Missing From\r\n\r\nHello")
+	client.expectCode(t, "553")
+}
+
+func TestSMTPSubmissionUnescapesDotStuffedData(t *testing.T) {
+	fixture := newSMTPServerFixture(t, true, nil)
+	client := fixture.authenticatedClient(t)
+	defer client.close()
+	client.send(t, "MAIL FROM:<alice@example.com>")
+	client.expectCode(t, "250")
+	client.send(t, "RCPT TO:<recipient@example.net>")
+	client.expectCode(t, "250")
+	client.send(t, "DATA")
+	client.expectCode(t, "354")
+	client.sendData(t, "From: alice@example.com\r\n\r\n..dot-started")
+	client.expectCode(t, "250")
+	if len(fixture.relay.messages) != 1 {
+		t.Fatalf("expected relayed message")
+	}
+	if !strings.Contains(string(fixture.relay.messages[0].Data), "\r\n.dot-started") {
+		t.Fatalf("expected dot-stuffed line to be unescaped, got %q", string(fixture.relay.messages[0].Data))
 	}
 }
 
@@ -221,7 +387,6 @@ func TestSMTPSubmissionStartReturnsFatalListenerError(t *testing.T) {
 			password: "smtp-pass",
 			identity: smtpidentity.AuthenticatedIdentity{
 				ID:           "identity-1",
-				TenantID:     "tenant-1",
 				EmailAddress: address,
 				Username:     "smtp-user",
 			},
@@ -261,6 +426,306 @@ func TestSMTPSubmissionStartReturnsFatalListenerError(t *testing.T) {
 	}
 }
 
+func TestSMTPSubmissionStartTLSListenerStopsWithContext(t *testing.T) {
+	server := newBareSMTPSubmissionServer(t)
+	server.config.TLSListenAddr = "127.0.0.1:0"
+	server.config.TLSConfig = testTLSConfig(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := server.Start(ctx); err != nil {
+		t.Fatalf("expected canceled TLS listener start to stop cleanly, got %v", err)
+	}
+}
+
+func TestSMTPSubmissionServeListenersReturnsNilWhenClosed(t *testing.T) {
+	server := newBareSMTPSubmissionServer(t)
+	first := newBlockingAcceptListener()
+	second := newBlockingAcceptListener()
+	ctx, cancel := context.WithCancel(context.Background())
+	errChan := make(chan error, 1)
+	go func() {
+		errChan <- server.serveListeners(ctx, []smtpListener{
+			{listener: first},
+			{listener: second, implicitTLS: true},
+		})
+	}()
+	cancel()
+	select {
+	case err := <-errChan:
+		if err != nil {
+			t.Fatalf("expected nil serve listener result, got %v", err)
+		}
+	case <-time.After(time.Second):
+		first.Close()
+		second.Close()
+		t.Fatalf("expected listeners to stop after context cancellation")
+	}
+}
+
+func TestSMTPSubmissionConstructorAndStartValidation(t *testing.T) {
+	address, addressErr := smtpidentity.NewAddress("alice@example.com")
+	if addressErr != nil {
+		t.Fatalf("identity address: %v", addressErr)
+	}
+	authenticator := &staticAuthenticator{
+		username: "smtp-user",
+		password: "smtp-pass",
+		identity: smtpidentity.AuthenticatedIdentity{
+			ID:           "identity-1",
+			EmailAddress: address,
+			Username:     "smtp-user",
+		},
+	}
+	validConfig := Config{
+		Hostname:          "smtp.test",
+		MaxMessageBytes:   1024,
+		MaxRecipients:     5,
+		AllowInsecureAuth: true,
+		Authenticator:     authenticator,
+		Relay:             &recordingRelay{},
+		Logger:            slog.New(slog.NewTextHandler(ioDiscard{}, nil)),
+	}
+	testCases := []struct {
+		name   string
+		mutate func(*Config)
+	}{
+		{name: "hostname", mutate: func(cfg *Config) { cfg.Hostname = "" }},
+		{name: "authenticator", mutate: func(cfg *Config) { cfg.Authenticator = nil }},
+		{name: "relay", mutate: func(cfg *Config) { cfg.Relay = nil }},
+		{name: "logger", mutate: func(cfg *Config) { cfg.Logger = nil }},
+		{name: "tls listener config", mutate: func(cfg *Config) { cfg.TLSListenAddr = "127.0.0.1:0" }},
+		{name: "starttls config", mutate: func(cfg *Config) {
+			cfg.ListenAddr = "127.0.0.1:0"
+			cfg.AllowInsecureAuth = false
+		}},
+	}
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			cfg := validConfig
+			testCase.mutate(&cfg)
+			if _, err := NewServer(cfg); err == nil {
+				t.Fatalf("expected constructor error")
+			}
+		})
+	}
+
+	defaulted, defaultErr := NewServer(Config{
+		Hostname:          "smtp.test",
+		AllowInsecureAuth: true,
+		Authenticator:     authenticator,
+		Relay:             &recordingRelay{},
+		Logger:            slog.New(slog.NewTextHandler(ioDiscard{}, nil)),
+	})
+	if defaultErr != nil {
+		t.Fatalf("defaulted server: %v", defaultErr)
+	}
+	if defaulted.config.MaxMessageBytes != defaultMaxMessageBytes || defaulted.config.MaxRecipients != defaultMaxRecipients {
+		t.Fatalf("expected default limits, got %d/%d", defaulted.config.MaxMessageBytes, defaulted.config.MaxRecipients)
+	}
+	if err := defaulted.Start(context.Background()); err == nil || !strings.Contains(err.Error(), "no listeners configured") {
+		t.Fatalf("expected no listeners error, got %v", err)
+	}
+	defaulted.config.ListenAddr = "bad address"
+	if err := defaulted.Start(context.Background()); err == nil || !strings.Contains(err.Error(), "listen") {
+		t.Fatalf("expected listen error, got %v", err)
+	}
+	defaulted.config.ListenAddr = "127.0.0.1:0"
+	defaulted.config.TLSListenAddr = "bad address"
+	defaulted.config.TLSConfig = testTLSConfig(t)
+	if err := defaulted.Start(context.Background()); err == nil || !strings.Contains(err.Error(), "tls listen") {
+		t.Fatalf("expected tls listen error, got %v", err)
+	}
+}
+
+func TestSMTPSubmissionReaderAndWriterErrorPaths(t *testing.T) {
+	server := newBareSMTPSubmissionServer(t)
+	t.Run("plain auth challenge write error", func(t *testing.T) {
+		_, _, err := server.readPlainAuth(bufio.NewReader(strings.NewReader("")), bufio.NewWriterSize(failingSMTPWriter{}, 1), "")
+		if err == nil {
+			t.Fatalf("expected plain auth write error")
+		}
+	})
+	t.Run("plain auth challenge read error", func(t *testing.T) {
+		var output bytes.Buffer
+		_, _, err := server.readPlainAuth(bufio.NewReader(strings.NewReader("")), bufio.NewWriter(&output), "")
+		if err == nil {
+			t.Fatalf("expected plain auth read error")
+		}
+	})
+	t.Run("login username prompt write error", func(t *testing.T) {
+		_, _, err := server.readLoginAuth(bufio.NewReader(strings.NewReader("")), bufio.NewWriterSize(failingSMTPWriter{}, 1), "")
+		if err == nil {
+			t.Fatalf("expected login username prompt write error")
+		}
+	})
+	t.Run("login username read error", func(t *testing.T) {
+		var output bytes.Buffer
+		_, _, err := server.readLoginAuth(bufio.NewReader(strings.NewReader("")), bufio.NewWriter(&output), "")
+		if err == nil {
+			t.Fatalf("expected login username read error")
+		}
+	})
+	t.Run("login password prompt write error", func(t *testing.T) {
+		_, _, err := server.readLoginAuth(
+			bufio.NewReader(strings.NewReader("")),
+			bufio.NewWriterSize(failingSMTPWriter{}, 1),
+			base64.StdEncoding.EncodeToString([]byte("smtp-user")),
+		)
+		if err == nil {
+			t.Fatalf("expected login password prompt write error")
+		}
+	})
+	t.Run("login password read error", func(t *testing.T) {
+		var output bytes.Buffer
+		_, _, err := server.readLoginAuth(
+			bufio.NewReader(strings.NewReader("")),
+			bufio.NewWriter(&output),
+			base64.StdEncoding.EncodeToString([]byte("smtp-user")),
+		)
+		if err == nil {
+			t.Fatalf("expected login password read error")
+		}
+	})
+	t.Run("data prompt write error", func(t *testing.T) {
+		from := mustSMTPSubmissionAddress(t, "alice@example.com")
+		session := &sessionState{
+			authenticated: &smtpidentity.AuthenticatedIdentity{ID: "identity", EmailAddress: from},
+			mailFrom:      &from,
+			recipients:    []smtpidentity.Address{mustSMTPSubmissionAddress(t, "recipient@example.net")},
+		}
+		server.handleData(context.Background(), bufio.NewReader(strings.NewReader("")), bufio.NewWriterSize(failingSMTPWriter{}, 1), session)
+	})
+	t.Run("data read error after prompt", func(t *testing.T) {
+		from := mustSMTPSubmissionAddress(t, "alice@example.com")
+		session := &sessionState{
+			authenticated: &smtpidentity.AuthenticatedIdentity{ID: "identity", EmailAddress: from},
+			mailFrom:      &from,
+			recipients:    []smtpidentity.Address{mustSMTPSubmissionAddress(t, "recipient@example.net")},
+		}
+		var output bytes.Buffer
+		server.handleData(context.Background(), bufio.NewReader(strings.NewReader("unterminated")), bufio.NewWriter(&output), session)
+		if !strings.Contains(output.String(), "354") {
+			t.Fatalf("expected data prompt before read error, got %q", output.String())
+		}
+	})
+	t.Run("data read eof", func(t *testing.T) {
+		if _, _, err := server.readData(bufio.NewReader(strings.NewReader("unterminated"))); !errors.Is(err, io.EOF) {
+			t.Fatalf("expected EOF from unterminated data, got %v", err)
+		}
+	})
+	t.Run("data read non eof", func(t *testing.T) {
+		readErr := errors.New("read failed")
+		if _, _, err := server.readData(bufio.NewReader(smtpErrorReader{err: readErr})); !errors.Is(err, readErr) {
+			t.Fatalf("expected custom read error, got %v", err)
+		}
+	})
+	t.Run("message parse read error", func(t *testing.T) {
+		if _, err := parseMessageFrom([]byte("not a message")); err == nil {
+			t.Fatalf("expected message parse error")
+		}
+	})
+	t.Run("write string error", func(t *testing.T) {
+		if err := writeSMTPLine(bufio.NewWriterSize(failingSMTPWriter{}, 1), strings.Repeat("x", 32)); err == nil {
+			t.Fatalf("expected write string error")
+		}
+	})
+}
+
+func TestSMTPSubmissionConnectionHandshakeFailure(t *testing.T) {
+	fixture := newSMTPServerFixture(t, false, nil)
+	client := fixture.dial(t)
+	defer client.close()
+	client.expectCode(t, "220")
+	client.send(t, "STARTTLS")
+	client.expectCode(t, "220")
+	client.close()
+	time.Sleep(25 * time.Millisecond)
+}
+
+func TestSMTPSubmissionStartTLSResponseWriteFailure(t *testing.T) {
+	server := newBareSMTPSubmissionServer(t)
+	server.config.TLSConfig = testTLSConfig(t)
+	server.handleConnection(context.Background(), &failingAfterGreetingConn{reader: strings.NewReader("STARTTLS\r\n")}, false)
+}
+
+func TestSMTPSubmissionInitialGreetingWriteFailure(t *testing.T) {
+	server := newBareSMTPSubmissionServer(t)
+	server.handleConnection(context.Background(), failingSMTPConn{}, false)
+}
+
+func TestLoadTLSConfig(t *testing.T) {
+	certPath, keyPath := writeTLSFiles(t)
+	tlsConfig, err := LoadTLSConfig(certPath, keyPath)
+	if err != nil {
+		t.Fatalf("load tls config: %v", err)
+	}
+	if tlsConfig.MinVersion != tls.VersionTLS12 || len(tlsConfig.Certificates) != 1 {
+		t.Fatalf("unexpected tls config %+v", tlsConfig)
+	}
+	if _, err := LoadTLSConfig(filepath.Join(t.TempDir(), "missing.pem"), keyPath); err == nil {
+		t.Fatalf("expected missing cert error")
+	}
+}
+
+func TestSMTPParsingHelpers(t *testing.T) {
+	if _, err := parseSMTPPath("BODY:<alice@example.com>", "FROM:"); err == nil {
+		t.Fatalf("expected missing prefix error")
+	}
+	if _, err := parseSMTPPath("FROM:<alice@example.com", "FROM:"); err == nil {
+		t.Fatalf("expected unterminated path error")
+	}
+	address, err := parseSMTPPath("FROM:alice@example.com SIZE=1", "FROM:")
+	if err != nil {
+		t.Fatalf("parse bare path: %v", err)
+	}
+	if address.String() != "alice@example.com" {
+		t.Fatalf("unexpected address %s", address.String())
+	}
+	var buffer bytes.Buffer
+	if err := writeSMTPLine(bufio.NewWriter(failingSMTPWriter{}), "250 OK"); err == nil {
+		t.Fatalf("expected write error")
+	}
+	if err := writeSMTPLine(bufio.NewWriter(&buffer), "250 OK"); err != nil {
+		t.Fatalf("write smtp line: %v", err)
+	}
+	if buffer.String() != "250 OK\r\n" {
+		t.Fatalf("unexpected line %q", buffer.String())
+	}
+}
+
+func newBareSMTPSubmissionServer(t *testing.T) *Server {
+	t.Helper()
+	address := mustSMTPSubmissionAddress(t, "alice@example.com")
+	server, serverErr := NewServer(Config{
+		Hostname:          "smtp.test",
+		AllowInsecureAuth: true,
+		Authenticator: &staticAuthenticator{
+			username: "smtp-user",
+			password: "smtp-pass",
+			identity: smtpidentity.AuthenticatedIdentity{
+				ID:           "identity-1",
+				EmailAddress: address,
+				Username:     "smtp-user",
+			},
+		},
+		Relay:  &recordingRelay{},
+		Logger: slog.New(slog.NewTextHandler(ioDiscard{}, nil)),
+	})
+	if serverErr != nil {
+		t.Fatalf("new server: %v", serverErr)
+	}
+	return server
+}
+
+type smtpErrorReader struct {
+	err error
+}
+
+func (reader smtpErrorReader) Read([]byte) (int, error) {
+	return 0, reader.err
+}
+
 type smtpServerFixture struct {
 	server *Server
 	relay  *recordingRelay
@@ -286,7 +751,6 @@ func newSMTPServerFixture(t *testing.T, allowInsecureAuth bool, relayError error
 			password: "smtp-pass",
 			identity: smtpidentity.AuthenticatedIdentity{
 				ID:           "identity-1",
-				TenantID:     "tenant-1",
 				EmailAddress: address,
 				Username:     "smtp-user",
 			},
@@ -319,11 +783,7 @@ func newSMTPServerFixture(t *testing.T, allowInsecureAuth bool, relayError error
 
 func (fixture *smtpServerFixture) dial(t *testing.T) *smtpTestClient {
 	t.Helper()
-	connection, dialErr := net.Dial("tcp", fixture.addr)
-	if dialErr != nil {
-		t.Fatalf("dial smtp server: %v", dialErr)
-	}
-	return newSMTPTestClient(connection)
+	return newSMTPTestClient(mustDial(t, fixture.addr))
 }
 
 func (fixture *smtpServerFixture) authenticatedClient(t *testing.T) *smtpTestClient {
@@ -444,6 +904,87 @@ func (ioDiscard) Write(bytes []byte) (int, error) {
 	return len(bytes), nil
 }
 
+type failingSMTPWriter struct{}
+
+func (failingSMTPWriter) Write([]byte) (int, error) {
+	return 0, io.ErrClosedPipe
+}
+
+type failingSMTPConn struct{}
+
+func (failingSMTPConn) Read([]byte) (int, error) {
+	return 0, io.EOF
+}
+
+func (failingSMTPConn) Write([]byte) (int, error) {
+	return 0, io.ErrClosedPipe
+}
+
+func (failingSMTPConn) Close() error {
+	return nil
+}
+
+func (failingSMTPConn) LocalAddr() net.Addr {
+	return testListenerAddr("local")
+}
+
+func (failingSMTPConn) RemoteAddr() net.Addr {
+	return testListenerAddr("remote")
+}
+
+func (failingSMTPConn) SetDeadline(time.Time) error {
+	return nil
+}
+
+func (failingSMTPConn) SetReadDeadline(time.Time) error {
+	return nil
+}
+
+func (failingSMTPConn) SetWriteDeadline(time.Time) error {
+	return nil
+}
+
+type failingAfterGreetingConn struct {
+	reader *strings.Reader
+	writes int
+}
+
+func (conn *failingAfterGreetingConn) Read(payload []byte) (int, error) {
+	return conn.reader.Read(payload)
+}
+
+func (conn *failingAfterGreetingConn) Write(payload []byte) (int, error) {
+	if conn.writes == 0 {
+		conn.writes++
+		return len(payload), nil
+	}
+	return 0, io.ErrClosedPipe
+}
+
+func (conn *failingAfterGreetingConn) Close() error {
+	return nil
+}
+
+func (conn *failingAfterGreetingConn) LocalAddr() net.Addr {
+	return testListenerAddr("local")
+}
+
+func (conn *failingAfterGreetingConn) RemoteAddr() net.Addr {
+	return testListenerAddr("remote")
+}
+
+func (conn *failingAfterGreetingConn) SetDeadline(time.Time) error {
+	return nil
+}
+
+func (conn *failingAfterGreetingConn) SetReadDeadline(time.Time) error {
+	return nil
+}
+
+func (conn *failingAfterGreetingConn) SetWriteDeadline(time.Time) error {
+	return nil
+}
+
 func plainAuthPayload(username string, password string) string {
 	return base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("\x00%s\x00%s", username, password)))
 }
@@ -552,4 +1093,48 @@ func testTLSConfig(t *testing.T) *tls.Config {
 		Certificates: []tls.Certificate{certificate},
 		MinVersion:   tls.VersionTLS12,
 	}
+}
+
+func writeTLSFiles(t *testing.T) (string, string) {
+	t.Helper()
+	privateKey, keyErr := rsa.GenerateKey(rand.Reader, 2048)
+	if keyErr != nil {
+		t.Fatalf("generate tls key: %v", keyErr)
+	}
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName: "smtp.test",
+		},
+		NotBefore: time.Now().Add(-time.Hour),
+		NotAfter:  time.Now().Add(time.Hour),
+		DNSNames:  []string{"smtp.test"},
+		KeyUsage:  x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage: []x509.ExtKeyUsage{
+			x509.ExtKeyUsageServerAuth,
+		},
+	}
+	certificateBytes, certErr := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
+	if certErr != nil {
+		t.Fatalf("create tls cert: %v", certErr)
+	}
+	tempDir := t.TempDir()
+	certPath := filepath.Join(tempDir, "cert.pem")
+	keyPath := filepath.Join(tempDir, "key.pem")
+	if err := os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificateBytes}), 0o600); err != nil {
+		t.Fatalf("write cert: %v", err)
+	}
+	if err := os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(privateKey)}), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+	return certPath, keyPath
+}
+
+func mustDial(t *testing.T, address string) net.Conn {
+	t.Helper()
+	connection, dialErr := net.Dial("tcp", address)
+	if dialErr != nil {
+		t.Fatalf("dial smtp server: %v", dialErr)
+	}
+	return connection
 }

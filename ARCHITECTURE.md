@@ -2,7 +2,7 @@
 
 ## System Overview
 - Pinguin exposes two surfaces inside a single Go process: a gRPC notification service (port `50051`) and a Gin HTTP server that serves the REST-ish `/api` endpoints plus `/runtime-config`; static assets are hosted separately (GitHub Pages at `https://pinguin.mprlab.com` in production, or the ghttp container on `8080` for local dev).
-- When enabled, the same process also exposes SMTP submission listeners for Gmail-compatible Send-As clients. The SMTP listener authenticates exact sender identities, accepts raw RFC 5322 messages, and relays them through the tenant’s existing upstream SMTP profile.
+- When enabled, the same process also exposes SMTP submission listeners for Gmail-compatible Send-As clients. The SMTP listener authenticates exact sender identities, accepts raw RFC 5322 messages, and relays them through the independent `smtpSubmission.relay` upstream profile.
 - Docker Compose runs Pinguin alongside two support services:
   - **ghttp** (`:8080`) serves the static front-end when developing locally. Browsers always load the UI from this host; API traffic targets the Pinguin HTTP server on `:8081`.
   - **TAuth** (`:8082`) issues Google-backed sessions and signs `app_session` cookies.
@@ -16,13 +16,14 @@
   4. `web/js/app.js` listens for `mpr-ui:auth:*` events to sync profile state, drive redirects, and guard the dashboard.
   5. Successful sign-in yields an HttpOnly `app_session` cookie issued by TAuth; Pinguin validates that cookie on every `/api` request.
 - The Go backend needs the shared signing key (`TAUTH_SIGNING_KEY`) and optional cookie name override. TAuth issuer is handled inside the session validator; Pinguin should not configure it directly.
-- Pinguin assumes any valid TAuth session is an admin; configure access control in `configs/config.tauth.yml`.
+- Pinguin reads TAuth session roles for dashboard authorization. Users with the `admin` role can list, reschedule, and cancel notifications for any active tenant; non-admin users are limited to tenants whose configured domain matches the user's email domain.
 
 ## HTTP Server Responsibilities
 - Routes defined in `internal/httpapi`:
 - `GET /runtime-config` → `{ apiBaseUrl, tauthBaseUrl, tauthTenantId, googleClientId, tenant }`. The UI uses this to derive absolute API URLs and tenant display metadata; `mpr-ui` auth attributes come from `web/config-ui.yaml`.
   - `GET /healthz` – unauthenticated health probe.
   - Authenticated `/api/notifications` list/reschedule/cancel handlers guarded by the session middleware.
+  - `/api/notifications*` accepts an explicit `tenant_id`, but the handler authorizes that tenant against the authenticated session before resolving tenant runtime config.
   - Authenticated `/api/smtp-identities` list/create/rotate/delete handlers for exact SMTP submission sender credentials.
 - Static assets do not come from the Gin stack anymore; ghttp serves `/web` while the Go HTTP server keeps `/api/**` and `/runtime-config` free of wildcard conflicts.
 - CORS defaults:
@@ -48,7 +49,7 @@
 
 ## Configuration Files
 - `configs/.env.pinguin.example`: defines the environment variables referenced by `configs/config.pinguin.yml` (database path, master encryption key, tenant bootstrap values, shared TAuth signing key, optional Twilio credentials).
-- `smtpSubmission` controls optional STARTTLS/implicit-TLS SMTP submission listeners. `tenants[].senderDomains` gates which exact sender identities dashboard users may create.
+- `smtpSubmission` controls optional STARTTLS/implicit-TLS SMTP submission listeners, the global sender-domain allowlist, and the upstream SMTP relay profile used for accepted messages.
 - `configs/.env.tauth.example`: holds the Google OAuth client ID, signing key, cookie domain, and CORS allowlist (must include the UI origin such as `http://localhost:8080` or `https://pinguin.mprlab.com`, plus `https://accounts.google.com`, so GIS nonce exchanges succeed).
 - Front-end TAuth details for `mpr-ui` live in `web/config-ui.yaml`; Pinguin runtime metadata still comes from `/runtime-config`.
 

@@ -301,6 +301,23 @@ export async function expectHeaderGoogleButton(page: Page) {
   expect(metrics.label.toLowerCase()).toContain('sign');
 }
 
+export async function expectPinguinHeaderBrand(page: Page) {
+  const header = page.locator('mpr-header').first();
+  await expect(header).toBeVisible();
+  await expect(header).toHaveAttribute('brand-label', 'Pinguin');
+  const brand = header.locator('.pinguin-brand').first();
+  await expect(brand).toBeVisible();
+  await expect(brand).toHaveText('Pinguin');
+  await expect(brand.locator('img.pinguin-brand__mark')).toHaveAttribute(
+    'src',
+    '/favicon.svg',
+  );
+  await expect(page.locator('head link[rel="icon"][href="/favicon.svg"]')).toHaveAttribute(
+    'type',
+    'image/svg+xml',
+  );
+}
+
 export async function expectSharedHeaderUserMenu(page: Page) {
   const legacyProfileChip = page.getByTestId('profile-chip');
   await expect(legacyProfileChip).toHaveCount(0);

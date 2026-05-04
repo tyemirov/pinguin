@@ -5,6 +5,12 @@
  */
 
 /**
+ * @typedef {Object} TenantOption
+ * @property {string} id
+ * @property {string} displayName
+ */
+
+/**
  * @typedef {Object} NotificationItem
  * @property {string} id
  * @property {string} tenantId
@@ -20,9 +26,21 @@
  */
 
 /**
+ * @typedef {Object} NotificationListPage
+ * @property {NotificationItem[]} notifications
+ * @property {string} nextCursor
+ */
+
+/**
+ * @typedef {Object} NotificationListOptions
+ * @property {string=} query
+ * @property {string=} cursor
+ * @property {number=} limit
+ */
+
+/**
  * @typedef {Object} SMTPIdentity
  * @property {string} id
- * @property {string} tenantId
  * @property {string} emailAddress
  * @property {string} username
  * @property {string} status

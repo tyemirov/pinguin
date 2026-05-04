@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // RuntimeConfig aggregates tenant data required at runtime.
@@ -35,6 +36,16 @@ type SMSCredentials struct {
 
 // ErrInvalidTenantID indicates the provided tenant identifier cannot be processed.
 var ErrInvalidTenantID = errors.New("tenant: invalid tenant id")
+
+const (
+	tenantTableName            = "tenants"
+	tenantColumnID             = "id"
+	tenantColumnDisplayName    = "display_name"
+	tenantColumnStatus         = "status"
+	tenantDomainTableName      = "tenant_domains"
+	tenantDomainColumnTenantID = "tenant_id"
+	tenantDomainColumnHost     = "host"
+)
 
 // Repository exposes tenant lookups.
 type Repository struct {
@@ -101,8 +112,27 @@ func (repo *Repository) ListActiveTenants(ctx context.Context) ([]Tenant, error)
 	var tenants []Tenant
 	if err := repo.db.WithContext(ctx).
 		Where(&Tenant{Status: TenantStatusActive}).
+		Order(clause.OrderByColumn{Column: clause.Column{Name: tenantColumnDisplayName}}).
 		Find(&tenants).Error; err != nil {
 		return nil, fmt.Errorf("tenant list: %w", err)
+	}
+	return tenants, nil
+}
+
+// ListActiveTenantsByDomain returns active tenants associated with the provided domain.
+func (repo *Repository) ListActiveTenantsByDomain(ctx context.Context, domain string) ([]Tenant, error) {
+	normalizedDomain := normalizeHost(domain)
+	var tenants []Tenant
+	if err := repo.db.WithContext(ctx).
+		Model(&Tenant{}).
+		Clauses(activeTenantDomainJoinClause()).
+		Where(clause.And(
+			clause.Eq{Column: clause.Column{Table: tenantTableName, Name: tenantColumnStatus}, Value: TenantStatusActive},
+			clause.Eq{Column: clause.Column{Table: tenantDomainTableName, Name: tenantDomainColumnHost}, Value: normalizedDomain},
+		)).
+		Order(clause.OrderByColumn{Column: clause.Column{Table: tenantTableName, Name: tenantColumnDisplayName}}).
+		Find(&tenants).Error; err != nil {
+		return nil, fmt.Errorf("tenant list: domain %s: %w", normalizedDomain, err)
 	}
 	return tenants, nil
 }
@@ -228,6 +258,23 @@ func invalidateRegisteredRepositories() {
 	defer repositoryRegistry.Unlock()
 	for repo := range repositoryRegistry.repos {
 		repo.clearCaches()
+	}
+}
+
+func activeTenantDomainJoinClause() clause.From {
+	return clause.From{
+		Joins: []clause.Join{
+			{
+				Type:  clause.InnerJoin,
+				Table: clause.Table{Name: tenantDomainTableName},
+				ON: clause.Where{Exprs: []clause.Expression{
+					clause.Eq{
+						Column: clause.Column{Table: tenantDomainTableName, Name: tenantDomainColumnTenantID},
+						Value:  clause.Column{Table: tenantTableName, Name: tenantColumnID},
+					},
+				}},
+			},
+		},
 	}
 }
 

@@ -26,7 +26,6 @@ type RawRelay interface {
 
 // RawMessage carries a validated submission payload.
 type RawMessage struct {
-	TenantID   string
 	IdentityID string
 	From       smtpidentity.Address
 	Recipients []smtpidentity.Address
