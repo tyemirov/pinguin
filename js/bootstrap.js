@@ -128,23 +128,14 @@ function mergeConfig(base, overrides) {
   window.__PINGUIN_CONFIG__ = finalConfig;
   window.dispatchEvent(new CustomEvent('pinguin:config-updated', { detail: finalConfig }));
   if (finalConfig.tenant) {
-    applyTenantBranding(finalConfig.tenant);
+    applyTenantMetadata(finalConfig.tenant);
   }
   await import('./app.js');
 })();
 
-function applyTenantBranding(tenantConfig) {
-  const label =
-    (tenantConfig && typeof tenantConfig.displayName === 'string' && tenantConfig.displayName.trim()) ||
-    'Pinguin';
+function applyTenantMetadata(tenantConfig) {
   const update = () => {
-    document.querySelectorAll('mpr-header').forEach((header) => {
-      header.setAttribute('brand-label', label);
-    });
     document.documentElement.dataset.tenantId = tenantConfig?.id || '';
-    if (document.title && document.title.toLowerCase().includes('pinguin')) {
-      document.title = `${label} — Notification Service`;
-    }
   };
   requestAnimationFrame(update);
 }

@@ -261,6 +261,16 @@ main {
   overflow-x: auto;
 }
 
+.table-scroll-sentinel {
+  height: 1px;
+}
+
+.table-page-status {
+  margin: 0.85rem 0 0;
+  text-align: center;
+  font-size: 0.9rem;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -434,6 +444,25 @@ mpr-header [data-mpr-header="google-signin"] [data-test="google-signin"],
 mpr-header [data-mpr-header="google-signin"] button {
   min-width: 180px;
   min-height: 40px;
+}
+
+.pinguin-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.pinguin-brand:hover {
+  text-decoration: none;
+}
+
+.pinguin-brand__mark {
+  display: block;
+  width: 1.8rem;
+  height: 1.8rem;
+  flex: 0 0 1.8rem;
 }
 
 .dashboard-header {
