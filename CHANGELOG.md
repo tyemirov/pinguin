@@ -43,6 +43,32 @@
 - Update README and architecture notes to describe `config-ui.yaml` as the browser auth source of truth.
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 
+## [v0.4.1] - 2026-05-04
+
+### Features ✨
+- Support tenant admin emails configured in `tenants[].admins` to grant dashboard admin access.
+- Remove tenant bootstrap records when tenants are removed from configuration to clean up stale data.
+
+### Improvements ⚙️
+- Update authorization to consider both TAuth `admin` role and configured tenant admin emails.
+- Enhance SMTP identity management to allow access for configured tenant admins.
+- Add backend and browser test coverage for tenant admin authorization and bootstrap record pruning.
+- Update documentation to reflect tenant admin email configuration and behavior.
+- Inject tenant repository into SMTP identity handler for admin checks.
+- Migrate database schema to include TenantAdmin entity.
+
+### Bug Fixes 🐛
+- Fix admin authorization logic for tenant and SMTP identity access to include configured tenant admin emails.
+
+### Testing 🧪
+- Add comprehensive tests for tenant admin email authorization in notifications and SMTP identity routes.
+- Add tests for error conditions during admin email lookups.
+- Enhance integration tests for multi-tenancy with configured tenant admins.
+
+### Docs 📚
+- Update README and ARCHITECTURE.md to document tenant admin email configuration and authorization behavior.
+- Add examples for tenant admin email entries in configuration files.
+
 ## [v0.4.0] - 2026-05-03
 
 ### Features ✨
