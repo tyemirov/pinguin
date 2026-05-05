@@ -357,8 +357,8 @@ test.describe('Dashboard', () => {
     await expect(panel.getByText('alice@example.com')).toBeVisible();
     const credentials = panel.getByTestId('smtp-credentials');
     await expect(credentials.locator('input').nth(0)).toHaveValue('smtp.pinguin.test');
-    await expect(credentials.locator('input').nth(1)).toHaveValue('587');
-    await expect(credentials.locator('input').nth(2)).toHaveValue('starttls');
+    await expect(credentials.locator('input').nth(1)).toHaveValue('465');
+    await expect(credentials.locator('input').nth(2)).toHaveValue('ssl');
     await expect(credentials.locator('input').nth(3)).toHaveValue('smtp_test_1');
     await expect(credentials.locator('input').nth(4)).toHaveValue('pgsmtp_test_password');
     await expectToast(page, 'SMTP identity created');

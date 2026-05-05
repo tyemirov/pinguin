@@ -435,6 +435,9 @@ func productionServerDependencies() serverDependencies {
 		newNotificationService:    service.NewNotificationService,
 		loadTLSConfig:             smtpsubmission.LoadTLSConfig,
 		newSMTPRelay: func(logger *slog.Logger, cfg config.Config) smtpsubmission.RawRelay {
+			if cfg.SMTPSubmission.DeliveryMode == "direct" {
+				return smtpsubmission.NewDirectMXRelay(logger, cfg)
+			}
 			return smtpsubmission.NewUpstreamRelay(logger, cfg)
 		},
 		newSMTPSubmissionServer: func(cfg smtpsubmission.Config) (smtpSubmissionStarter, error) {
@@ -714,6 +717,12 @@ func smtpPublicSettings(cfg config.SMTPSubmissionConfig) smtpidentity.PublicSett
 	if strings.TrimSpace(cfg.ListenAddr) == "" && strings.TrimSpace(cfg.TLSListenAddr) != "" {
 		port = smtpPortFromAddr(cfg.TLSListenAddr, 465)
 		securityMode = "ssl"
+	}
+	if cfg.PublicPort > 0 {
+		port = cfg.PublicPort
+	}
+	if strings.TrimSpace(cfg.PublicSecurityMode) != "" {
+		securityMode = strings.ToLower(strings.TrimSpace(cfg.PublicSecurityMode))
 	}
 	return smtpidentity.PublicSettings{
 		Host:         cfg.Hostname,

@@ -2,7 +2,7 @@
 
 Pinguin delivers email notifications through `SMTPEmailSender`, a provider-agnostic implementation that speaks the SMTP protocol directly. This document captures the agreed plan for how the sender is configured, how it connects to remote servers, and how we will extend and test the functionality.
 
-Pinguin can also expose an authenticated SMTP submission listener for Gmail Send-As. That listener does not deliver directly to recipient MX hosts; it validates the authenticated exact sender, preserves the raw submitted message, and relays it through the independent `smtpSubmission.relay` upstream profile.
+Pinguin can also expose an authenticated SMTP submission listener for Gmail Send-As. That listener validates the authenticated exact sender, preserves the raw submitted message, and either relays it through the independent `smtpSubmission.relay` upstream profile or delivers it directly to recipient-domain MX hosts.
 
 ## Components
 
@@ -16,8 +16,10 @@ Pinguin can also expose an authenticated SMTP submission listener for Gmail Send
   - `FROM_EMAIL`
   - `CONNECTION_TIMEOUT_SEC`
   - `OPERATION_TIMEOUT_SEC`
-- **smtpSubmission.relay** exposes the upstream SMTP account used only by the authenticated SMTP submission listener.
+- **smtpSubmission.deliveryMode** selects `upstream` provider relay or `direct` recipient-MX delivery for authenticated SMTP submissions.
+- **smtpSubmission.relay** exposes the upstream SMTP account used only when `smtpSubmission.deliveryMode` is `upstream`.
 - **smtpSubmission.senderDomains** defines the global domain allowlist for exact sender identities.
+- **smtpSubmission.publicPort** and **smtpSubmission.publicSecurityMode** control the Gmail-facing settings shown with one-time SMTP identity credentials. These can differ from the private listener when Caddy owns public TLS termination.
 
 ## Delivery Sequence
 
@@ -30,6 +32,8 @@ Pinguin can also expose an authenticated SMTP submission listener for Gmail Send
 5. **Envelope commands** (`MAIL FROM`, `RCPT TO`, `DATA`) are issued sequentially. The implementation writes the composed message bytes to the SMTP data stream and closes the writer to finalize the transaction.
 6. **Error handling** wraps failures with context using `%w` so callers receive actionable diagnostics (e.g., connect failures, auth failures, write failures). Failures propagate back to the notification worker so they can trigger retries.
 7. **Cleanup** always closes the SMTP client or TLS connection to free sockets quickly.
+
+For authenticated SMTP submission in direct mode, Pinguin groups recipients by domain, resolves MX records, falls back to the domain host when no MX is present, connects to each target on port `25`, uses the authenticated identity as `MAIL FROM`, and writes the exact submitted RFC 5322 payload through SMTP `DATA`. Domains using this mode must publish SPF records that authorize the gateway IP so DMARC can align with the RFC 5322 `From` domain.
 
 ## Timeout Strategy
 

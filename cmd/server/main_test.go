@@ -474,6 +474,13 @@ func TestSMTPPublicSettings(testHandle *testing.T) {
 	if implicitTLS.Port != 2465 || implicitTLS.SecurityMode != "ssl" {
 		testHandle.Fatalf("unexpected implicit tls settings %+v", implicitTLS)
 	}
+	caddyTerminated := configSMTPSubmission(":587", "")
+	caddyTerminated.PublicPort = 465
+	caddyTerminated.PublicSecurityMode = "ssl"
+	publicSettings := smtpPublicSettings(caddyTerminated)
+	if publicSettings.Port != 465 || publicSettings.SecurityMode != "ssl" {
+		testHandle.Fatalf("unexpected caddy-terminated public settings %+v", publicSettings)
+	}
 	defaultStartTLS := smtpPublicSettings(configSMTPSubmission("bad", ""))
 	if defaultStartTLS.Port != 587 {
 		testHandle.Fatalf("expected starttls fallback port, got %d", defaultStartTLS.Port)
@@ -753,7 +760,16 @@ func TestServerDependencyDefaultsAndProductionWrappers(testHandle *testing.T) {
 
 	production := productionServerDependencies()
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
-	_ = production.newSMTPRelay(logger, serverTestConfig())
+	upstreamRelay := production.newSMTPRelay(logger, serverTestConfig())
+	if _, ok := upstreamRelay.(*smtpsubmission.UpstreamRelay); !ok {
+		testHandle.Fatalf("expected upstream relay default, got %T", upstreamRelay)
+	}
+	directConfig := serverTestConfig()
+	directConfig.SMTPSubmission.DeliveryMode = "direct"
+	directRelay := production.newSMTPRelay(logger, directConfig)
+	if _, ok := directRelay.(*smtpsubmission.DirectMXRelay); !ok {
+		testHandle.Fatalf("expected direct relay, got %T", directRelay)
+	}
 	if _, err := production.newSMTPSubmissionServer(smtpsubmission.Config{}); err == nil {
 		testHandle.Fatalf("expected invalid SMTP submission config error")
 	}

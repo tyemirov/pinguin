@@ -499,8 +499,8 @@ function credentialsForIdentity(identity, password = 'pgsmtp_test_password') {
     identity,
     smtp_settings: {
       host: 'smtp.pinguin.test',
-      port: 587,
-      security_mode: 'starttls',
+      port: 465,
+      security_mode: 'ssl',
     },
     username: identity.username,
     password,

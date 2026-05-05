@@ -2,7 +2,7 @@
 
 ## System Overview
 - Pinguin exposes two surfaces inside a single Go process: a gRPC notification service (port `50051`) and a Gin HTTP server that serves the REST-ish `/api` endpoints plus `/runtime-config`; static assets are hosted separately (GitHub Pages at `https://pinguin.mprlab.com` in production, or the ghttp container on `8080` for local dev).
-- When enabled, the same process also exposes SMTP submission listeners for Gmail-compatible Send-As clients. The SMTP listener authenticates exact sender identities, accepts raw RFC 5322 messages, and relays them through the independent `smtpSubmission.relay` upstream profile.
+- When enabled, the same process also exposes SMTP submission listeners for Gmail-compatible Send-As clients. The SMTP listener authenticates exact sender identities, accepts raw RFC 5322 messages, and either relays them through the independent `smtpSubmission.relay` upstream profile or delivers them directly to recipient-domain MX hosts in `smtpSubmission.deliveryMode: direct`.
 - Docker Compose runs Pinguin alongside two support services:
   - **ghttp** (`:8080`) serves the static front-end when developing locally. Browsers always load the UI from this host; API traffic targets the Pinguin HTTP server on `:8081`.
   - **TAuth** (`:8082`) issues Google-backed sessions and signs `app_session` cookies.
@@ -49,7 +49,7 @@
 
 ## Configuration Files
 - `configs/.env.pinguin.example`: defines the environment variables referenced by `configs/config.pinguin.yml` (database path, master encryption key, tenant bootstrap values, shared TAuth signing key, optional Twilio credentials).
-- `smtpSubmission` controls optional STARTTLS/implicit-TLS SMTP submission listeners, the global sender-domain allowlist, and the upstream SMTP relay profile used for accepted messages.
+- `smtpSubmission` controls optional SMTP submission listeners, the global sender-domain allowlist, public Gmail-facing SMTP settings, and the selected delivery mode. Production can run behind Caddy Layer 4 SMTPS termination by advertising `publicPort: 465` / `publicSecurityMode: ssl` while Pinguin listens privately on plaintext SMTP inside the Docker network.
 - `configs/.env.tauth.example`: holds the Google OAuth client ID, signing key, cookie domain, and CORS allowlist (must include the UI origin such as `http://localhost:8080` or `https://pinguin.mprlab.com`, plus `https://accounts.google.com`, so GIS nonce exchanges succeed).
 - Front-end TAuth details for `mpr-ui` live in `web/config-ui.yaml`; Pinguin runtime metadata still comes from `/runtime-config`.
 

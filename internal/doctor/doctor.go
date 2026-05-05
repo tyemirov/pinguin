@@ -97,17 +97,20 @@ type pinguinTAuth struct {
 }
 
 type pinguinSMTPSubmission struct {
-	Enabled           bool             `yaml:"enabled"`
-	Hostname          string           `yaml:"hostname"`
-	ListenAddr        string           `yaml:"listenAddr"`
-	TLSListenAddr     string           `yaml:"tlsListenAddr"`
-	TLSCertPath       string           `yaml:"tlsCertPath"`
-	TLSKeyPath        string           `yaml:"tlsKeyPath"`
-	MaxMessageBytes   int64            `yaml:"maxMessageBytes"`
-	MaxRecipients     int              `yaml:"maxRecipients"`
-	AllowInsecureAuth bool             `yaml:"allowInsecureAuth"`
-	SenderDomains     []string         `yaml:"senderDomains"`
-	Relay             pinguinSMTPRelay `yaml:"relay"`
+	Enabled            bool             `yaml:"enabled"`
+	Hostname           string           `yaml:"hostname"`
+	ListenAddr         string           `yaml:"listenAddr"`
+	TLSListenAddr      string           `yaml:"tlsListenAddr"`
+	TLSCertPath        string           `yaml:"tlsCertPath"`
+	TLSKeyPath         string           `yaml:"tlsKeyPath"`
+	PublicPort         int              `yaml:"publicPort"`
+	PublicSecurityMode string           `yaml:"publicSecurityMode"`
+	DeliveryMode       string           `yaml:"deliveryMode"`
+	MaxMessageBytes    int64            `yaml:"maxMessageBytes"`
+	MaxRecipients      int              `yaml:"maxRecipients"`
+	AllowInsecureAuth  bool             `yaml:"allowInsecureAuth"`
+	SenderDomains      []string         `yaml:"senderDomains"`
+	Relay              pinguinSMTPRelay `yaml:"relay"`
 }
 
 type pinguinSMTPRelay struct {
@@ -342,21 +345,40 @@ func validateSMTPSubmissionConfig(submission pinguinSMTPSubmission, result *Diag
 		result.Valid = false
 		result.Errors = append(result.Errors, "smtpSubmission.senderDomains is required when SMTP submission is enabled")
 	}
-	if strings.TrimSpace(submission.Relay.Host) == "" {
+	deliveryMode := normalizeSMTPDeliveryMode(submission.DeliveryMode)
+	switch deliveryMode {
+	case "upstream":
+		if strings.TrimSpace(submission.Relay.Host) == "" {
+			result.Valid = false
+			result.Errors = append(result.Errors, "smtpSubmission.relay.host is required when SMTP submission is enabled")
+		}
+		if submission.Relay.Port <= 0 {
+			result.Valid = false
+			result.Errors = append(result.Errors, "smtpSubmission.relay.port must be positive")
+		}
+		if strings.TrimSpace(submission.Relay.Username) == "" {
+			result.Valid = false
+			result.Errors = append(result.Errors, "smtpSubmission.relay.username is required when SMTP submission is enabled")
+		}
+		if strings.TrimSpace(submission.Relay.Password) == "" {
+			result.Valid = false
+			result.Errors = append(result.Errors, "smtpSubmission.relay.password is required when SMTP submission is enabled")
+		}
+	case "direct":
+	default:
 		result.Valid = false
-		result.Errors = append(result.Errors, "smtpSubmission.relay.host is required when SMTP submission is enabled")
+		result.Errors = append(result.Errors, "smtpSubmission.deliveryMode must be upstream or direct")
 	}
-	if submission.Relay.Port <= 0 {
+	if submission.PublicPort < 0 {
 		result.Valid = false
-		result.Errors = append(result.Errors, "smtpSubmission.relay.port must be positive")
+		result.Errors = append(result.Errors, "smtpSubmission.publicPort must be positive")
 	}
-	if strings.TrimSpace(submission.Relay.Username) == "" {
-		result.Valid = false
-		result.Errors = append(result.Errors, "smtpSubmission.relay.username is required when SMTP submission is enabled")
-	}
-	if strings.TrimSpace(submission.Relay.Password) == "" {
-		result.Valid = false
-		result.Errors = append(result.Errors, "smtpSubmission.relay.password is required when SMTP submission is enabled")
+	if strings.TrimSpace(submission.PublicSecurityMode) != "" {
+		securityMode := strings.ToLower(strings.TrimSpace(submission.PublicSecurityMode))
+		if securityMode != "starttls" && securityMode != "ssl" {
+			result.Valid = false
+			result.Errors = append(result.Errors, "smtpSubmission.publicSecurityMode must be starttls or ssl")
+		}
 	}
 	if !submission.AllowInsecureAuth {
 		if strings.TrimSpace(submission.TLSCertPath) == "" {
@@ -368,6 +390,14 @@ func validateSMTPSubmissionConfig(submission pinguinSMTPSubmission, result *Diag
 			result.Errors = append(result.Errors, "smtpSubmission.tlsKeyPath is required when SMTP submission is enabled")
 		}
 	}
+}
+
+func normalizeSMTPDeliveryMode(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if normalized == "" {
+		return "upstream"
+	}
+	return normalized
 }
 
 func countNonEmpty(values []string) int {
