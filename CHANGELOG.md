@@ -44,6 +44,34 @@
 - Update README and architecture notes to describe `config-ui.yaml` as the browser auth source of truth.
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 
+## [v0.4.4] - 2026-05-05
+
+### Features ✨
+- Add SMTP submission throttle mechanism limiting sessions, auth attempts, and messages.
+- Support new SMTP submission delivery mode `direct` for sending to recipient MX servers.
+- Add SMTP credential copy controls to enhance security.
+
+### Improvements ⚙️
+- Count message quota only after relay acceptance to improve accuracy.
+- Apply SMTP timeouts to reads only for better handling.
+- Update direct relay logic and tests to support direct MX delivery mode.
+- Enhance SMTP throttling tests for robustness.
+- Expose public SMTP port and security mode for Gmail-facing settings.
+- Accept insecure auth when running behind TLS-terminating proxy (Caddy).
+
+### Bug Fixes 🐛
+- Fix duplicate auth probes causing unnecessary failures.
+- Correct issues in direct relay implementation and add related tests.
+
+### Testing 🧪
+- Strengthen and expand tests for SMTP submission throttling and direct relay.
+- Add CI coverage for SMTP public settings and server startup scenarios.
+
+### Docs 📚
+- Update README and docs with instructions for `direct` delivery mode and SMTP throttling.
+- Clarify configuration options for SMTP submission public port, security mode, and delivery mode.
+- Document architecture changes supporting direct MX delivery and precise throttling controls.
+
 ## [v0.4.3] - 2026-05-04
 
 ### Features ✨
