@@ -415,6 +415,27 @@ func TestSMTPSubmissionThrottlesRepeatedAuthFailures(t *testing.T) {
 	client.expectCode(t, "235")
 }
 
+func TestSMTPSubmissionThrottlesMalformedAuthFailuresByRemoteHost(t *testing.T) {
+	fixture := newSMTPServerFixtureWithConfig(t, true, nil, func(cfg *Config) {
+		cfg.AuthFailureLimit = 2
+		cfg.AuthFailureWindow = time.Hour
+	})
+	currentTime := time.Date(2026, time.May, 5, 12, 0, 0, 0, time.UTC)
+	fixture.server.throttle.clockFunc = func() time.Time { return currentTime }
+	client := fixture.dial(t)
+	defer client.close()
+	client.expectCode(t, "220")
+	client.send(t, "AUTH PLAIN not-base64")
+	client.expectCode(t, "535")
+	client.send(t, "AUTH PLAIN not-base64")
+	client.expectCode(t, "535")
+	client.send(t, "AUTH PLAIN not-base64")
+	client.expectCode(t, "454")
+	currentTime = currentTime.Add(2 * time.Hour)
+	client.send(t, "AUTH PLAIN not-base64")
+	client.expectCode(t, "535")
+}
+
 func TestSMTPSubmissionAuthFailureThrottleSpansSessions(t *testing.T) {
 	fixture := newSMTPServerFixtureWithConfig(t, true, nil, func(cfg *Config) {
 		cfg.AuthFailureLimit = 1
@@ -961,23 +982,23 @@ func TestSMTPThrottleHelpers(t *testing.T) {
 	if throttle.activeSessionCount() != 0 {
 		t.Fatalf("expected no active sessions after second release")
 	}
-	cancelReservation, messageAllowed := throttle.reserveMessage("")
+	messageReservation, messageAllowed := throttle.reserveAcceptedMessage("")
 	if !messageAllowed {
 		t.Fatalf("expected empty identity message to be allowed")
 	}
-	cancelReservation()
-	if _, messageAllowed := throttle.reserveMessage(""); !messageAllowed {
+	messageReservation.cancel()
+	if _, messageAllowed := throttle.reserveAcceptedMessage(""); !messageAllowed {
 		t.Fatalf("expected canceled empty identity reservation to be allowed again")
 	}
-	cancelFirstIdentityReservation, firstIdentityAllowed := throttle.reserveMessage("identity")
+	firstIdentityReservation, firstIdentityAllowed := throttle.reserveAcceptedMessage("identity")
 	if !firstIdentityAllowed {
 		t.Fatalf("expected first identity message reservation to be allowed")
 	}
-	if _, secondIdentityAllowed := throttle.reserveMessage("identity"); !secondIdentityAllowed {
+	if _, secondIdentityAllowed := throttle.reserveAcceptedMessage("identity"); !secondIdentityAllowed {
 		t.Fatalf("expected second identity message reservation to be allowed")
 	}
-	cancelFirstIdentityReservation()
-	if _, thirdIdentityAllowed := throttle.reserveMessage("identity"); !thirdIdentityAllowed {
+	firstIdentityReservation.cancel()
+	if _, thirdIdentityAllowed := throttle.reserveAcceptedMessage("identity"); !thirdIdentityAllowed {
 		t.Fatalf("expected third identity message reservation after cancellation to be allowed")
 	}
 	if key := authThrottleKey("", ""); key != "remote:unknown" {

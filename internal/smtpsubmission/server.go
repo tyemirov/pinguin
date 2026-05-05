@@ -66,6 +66,28 @@ type sessionState struct {
 	recipients    []smtpidentity.Address
 }
 
+type smtpAuthStatus int
+
+const (
+	smtpAuthAccepted smtpAuthStatus = iota
+	smtpAuthRejected
+	smtpAuthThrottled
+)
+
+type smtpAuthResult struct {
+	status   smtpAuthStatus
+	identity smtpidentity.AuthenticatedIdentity
+}
+
+type smtpRelayStatus int
+
+const (
+	smtpRelayAccepted smtpRelayStatus = iota
+	smtpRelayThrottled
+	smtpRelayRejectedPermanent
+	smtpRelayRejectedTemporary
+)
+
 type smtpListener struct {
 	listener    net.Listener
 	implicitTLS bool
@@ -313,25 +335,35 @@ func (server *Server) handleAuth(ctx context.Context, reader *bufio.Reader, writ
 		writeSMTPLine(writer, "504 Authentication mechanism unsupported")
 		return
 	}
-	if parseErr != nil {
-		server.throttle.recordAuthFailure(authThrottleKey(remoteHost, username))
-		writeSMTPLine(writer, "535 Authentication failed")
-		return
-	}
-	authKey := authThrottleKey(remoteHost, username)
-	if server.throttle.authBlocked(authKey) {
+	authResult := server.completeAuthAttempt(ctx, remoteHost, username, password, parseErr)
+	switch authResult.status {
+	case smtpAuthThrottled:
 		writeSMTPLine(writer, "454 Authentication temporarily throttled")
 		return
+	case smtpAuthRejected:
+		writeSMTPLine(writer, "535 Authentication failed")
+		return
+	case smtpAuthAccepted:
+		session.authenticated = &authResult.identity
+		writeSMTPLine(writer, "235 Authentication successful")
+		return
+	}
+}
+
+func (server *Server) completeAuthAttempt(ctx context.Context, remoteHost string, username string, password string, parseErr error) smtpAuthResult {
+	authReservation, authAllowed := server.throttle.reserveAuthAttempt(remoteHost, username)
+	if !authAllowed {
+		return smtpAuthResult{status: smtpAuthThrottled}
+	}
+	if parseErr != nil {
+		return smtpAuthResult{status: smtpAuthRejected}
 	}
 	identity, authErr := server.config.Authenticator.Authenticate(ctx, username, password)
 	if authErr != nil {
-		server.throttle.recordAuthFailure(authKey)
-		writeSMTPLine(writer, "535 Authentication failed")
-		return
+		return smtpAuthResult{status: smtpAuthRejected}
 	}
-	server.throttle.clearAuthFailures(authKey)
-	session.authenticated = &identity
-	writeSMTPLine(writer, "235 Authentication successful")
+	authReservation.accept()
+	return smtpAuthResult{status: smtpAuthAccepted, identity: identity}
 }
 
 func (server *Server) readPlainAuth(reader *bufio.Reader, writer *bufio.Writer, payload string) (string, string, error) {
@@ -451,14 +483,7 @@ func (server *Server) handleData(ctx context.Context, connection net.Conn, reade
 		writeSMTPLine(writer, "553 Sender not authorized")
 		return
 	}
-	cancelMessageReservation, messageAllowed := server.throttle.reserveMessage(session.authenticated.ID)
-	if !messageAllowed {
-		session.mailFrom = nil
-		session.recipients = nil
-		writeSMTPLine(writer, "452 Message rate limit exceeded")
-		return
-	}
-	relayErr := server.config.Relay.Relay(ctx, RawMessage{
+	relayStatus := server.relayAcceptedMessage(ctx, RawMessage{
 		IdentityID: session.authenticated.ID,
 		From:       session.authenticated.EmailAddress,
 		Recipients: append([]smtpidentity.Address(nil), session.recipients...),
@@ -466,16 +491,36 @@ func (server *Server) handleData(ctx context.Context, connection net.Conn, reade
 	})
 	session.mailFrom = nil
 	session.recipients = nil
-	if relayErr != nil {
-		cancelMessageReservation()
-		if errors.Is(relayErr, ErrRelayPermanent) {
-			writeSMTPLine(writer, "554 Message rejected")
-			return
-		}
+	switch relayStatus {
+	case smtpRelayThrottled:
+		writeSMTPLine(writer, "452 Message rate limit exceeded")
+		return
+	case smtpRelayRejectedPermanent:
+		writeSMTPLine(writer, "554 Message rejected")
+		return
+	case smtpRelayRejectedTemporary:
 		writeSMTPLine(writer, "451 Requested action aborted")
 		return
+	case smtpRelayAccepted:
+		writeSMTPLine(writer, "250 Message accepted")
+		return
 	}
-	writeSMTPLine(writer, "250 Message accepted")
+}
+
+func (server *Server) relayAcceptedMessage(ctx context.Context, message RawMessage) smtpRelayStatus {
+	messageReservation, messageAllowed := server.throttle.reserveAcceptedMessage(message.IdentityID)
+	if !messageAllowed {
+		return smtpRelayThrottled
+	}
+	relayErr := server.config.Relay.Relay(ctx, message)
+	if relayErr == nil {
+		return smtpRelayAccepted
+	}
+	messageReservation.cancel()
+	if errors.Is(relayErr, ErrRelayPermanent) {
+		return smtpRelayRejectedPermanent
+	}
+	return smtpRelayRejectedTemporary
 }
 
 func (server *Server) readData(reader *bufio.Reader) ([]byte, bool, error) {
@@ -595,164 +640,4 @@ func closeListeners(listeners []smtpListener) {
 	for _, listenerConfig := range listeners {
 		listenerConfig.listener.Close()
 	}
-}
-
-type smtpThrottle struct {
-	mutex                    sync.Mutex
-	activeSessions           int
-	activeSessionsByHost     map[string]int
-	authFailuresByKey        map[string][]time.Time
-	acceptedMessagesByKey    map[string][]time.Time
-	maxConcurrentSessions    int
-	maxSessionsPerRemoteHost int
-	authFailureLimit         int
-	authFailureWindow        time.Duration
-	messageLimit             int
-	messageWindow            time.Duration
-	clockFunc                func() time.Time
-}
-
-func newSMTPThrottle(cfg Config) *smtpThrottle {
-	return &smtpThrottle{
-		activeSessionsByHost:     make(map[string]int),
-		authFailuresByKey:        make(map[string][]time.Time),
-		acceptedMessagesByKey:    make(map[string][]time.Time),
-		maxConcurrentSessions:    cfg.MaxConcurrentSessions,
-		maxSessionsPerRemoteHost: cfg.MaxSessionsPerRemoteHost,
-		authFailureLimit:         cfg.AuthFailureLimit,
-		authFailureWindow:        cfg.AuthFailureWindow,
-		messageLimit:             cfg.MessageLimit,
-		messageWindow:            cfg.MessageWindow,
-		clockFunc:                func() time.Time { return time.Now().UTC() },
-	}
-}
-
-func (throttle *smtpThrottle) acquireSession(remoteHost string) (func(), error) {
-	normalizedRemoteHost := strings.TrimSpace(remoteHost)
-	if normalizedRemoteHost == "" {
-		normalizedRemoteHost = "unknown"
-	}
-	throttle.mutex.Lock()
-	defer throttle.mutex.Unlock()
-	if throttle.activeSessions >= throttle.maxConcurrentSessions {
-		return nil, errors.New("smtp_submission.concurrent_sessions_exceeded")
-	}
-	if throttle.activeSessionsByHost[normalizedRemoteHost] >= throttle.maxSessionsPerRemoteHost {
-		return nil, errors.New("smtp_submission.remote_sessions_exceeded")
-	}
-	throttle.activeSessions++
-	throttle.activeSessionsByHost[normalizedRemoteHost]++
-	return func() {
-		throttle.releaseSession(normalizedRemoteHost)
-	}, nil
-}
-
-func (throttle *smtpThrottle) releaseSession(remoteHost string) {
-	throttle.mutex.Lock()
-	defer throttle.mutex.Unlock()
-	if throttle.activeSessions > 0 {
-		throttle.activeSessions--
-	}
-	if throttle.activeSessionsByHost[remoteHost] <= 1 {
-		delete(throttle.activeSessionsByHost, remoteHost)
-		return
-	}
-	throttle.activeSessionsByHost[remoteHost]--
-}
-
-func (throttle *smtpThrottle) authBlocked(key string) bool {
-	throttle.mutex.Lock()
-	defer throttle.mutex.Unlock()
-	now := throttle.clockFunc()
-	failures := pruneWindow(throttle.authFailuresByKey[key], now.Add(-throttle.authFailureWindow))
-	if len(failures) == 0 {
-		delete(throttle.authFailuresByKey, key)
-		return false
-	}
-	throttle.authFailuresByKey[key] = failures
-	return len(failures) >= throttle.authFailureLimit
-}
-
-func (throttle *smtpThrottle) recordAuthFailure(key string) {
-	throttle.mutex.Lock()
-	defer throttle.mutex.Unlock()
-	now := throttle.clockFunc()
-	failures := pruneWindow(throttle.authFailuresByKey[key], now.Add(-throttle.authFailureWindow))
-	throttle.authFailuresByKey[key] = append(failures, now)
-}
-
-func (throttle *smtpThrottle) clearAuthFailures(key string) {
-	throttle.mutex.Lock()
-	defer throttle.mutex.Unlock()
-	delete(throttle.authFailuresByKey, key)
-}
-
-func (throttle *smtpThrottle) reserveMessage(identityID string) (func(), bool) {
-	key := messageThrottleKey(identityID)
-	throttle.mutex.Lock()
-	defer throttle.mutex.Unlock()
-	now := throttle.clockFunc()
-	messages := pruneWindow(throttle.acceptedMessagesByKey[key], now.Add(-throttle.messageWindow))
-	if len(messages) >= throttle.messageLimit {
-		throttle.acceptedMessagesByKey[key] = messages
-		return nil, false
-	}
-	throttle.acceptedMessagesByKey[key] = append(messages, now)
-	return func() {
-		throttle.cancelMessageReservation(key, now)
-	}, true
-}
-
-func (throttle *smtpThrottle) cancelMessageReservation(key string, reservedAt time.Time) {
-	throttle.mutex.Lock()
-	defer throttle.mutex.Unlock()
-	messages := throttle.acceptedMessagesByKey[key]
-	for messageIndex, messageTime := range messages {
-		if messageTime.Equal(reservedAt) {
-			messages = append(messages[:messageIndex], messages[messageIndex+1:]...)
-			break
-		}
-	}
-	if len(messages) == 0 {
-		delete(throttle.acceptedMessagesByKey, key)
-		return
-	}
-	throttle.acceptedMessagesByKey[key] = messages
-}
-
-func (throttle *smtpThrottle) activeSessionCount() int {
-	throttle.mutex.Lock()
-	defer throttle.mutex.Unlock()
-	return throttle.activeSessions
-}
-
-func pruneWindow(events []time.Time, cutoff time.Time) []time.Time {
-	firstKeptIndex := 0
-	for firstKeptIndex < len(events) && !events[firstKeptIndex].After(cutoff) {
-		firstKeptIndex++
-	}
-	if firstKeptIndex == 0 {
-		return events
-	}
-	return append([]time.Time(nil), events[firstKeptIndex:]...)
-}
-
-func authThrottleKey(remoteHost string, username string) string {
-	normalizedUsername := strings.ToLower(strings.TrimSpace(username))
-	if normalizedUsername != "" {
-		return "username:" + normalizedUsername
-	}
-	normalizedRemoteHost := strings.TrimSpace(remoteHost)
-	if normalizedRemoteHost == "" {
-		normalizedRemoteHost = "unknown"
-	}
-	return "remote:" + normalizedRemoteHost
-}
-
-func messageThrottleKey(identityID string) string {
-	key := strings.TrimSpace(identityID)
-	if key == "" {
-		return "unknown"
-	}
-	return key
 }
