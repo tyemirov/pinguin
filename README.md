@@ -355,18 +355,24 @@ Open `http://localhost:8080` in your browser for the landing/dashboard UI. The H
 
 The Pinguin Docker image declares `/web` as a separate volume for the UI bundle; the compose workflow mounts the `pinguin-web` volume (bound to `./web`) at `/web` for you.
 
-### Publish Docker and Pages
+### Publish Docker, then deploy backend and Pages
 
 GitHub Actions are disabled for Pinguin. Publication is an explicit local operation from a clean `master` checkout that matches `origin/master`.
 
-Use the publish target to run validation, build and push the `linux/amd64,linux/arm64` Docker image manifest to GHCR, switch GitHub Pages to legacy `gh-pages` branch-root publishing, and push the current `web/` assets to `gh-pages`:
+Use the publish target to run validation, then build and push the `linux/amd64,linux/arm64` Docker image manifest to GHCR:
 
 ```bash
 docker login ghcr.io
 make publish
 ```
 
-`make publish` defaults to `ghcr.io/tyemirov/pinguin:latest`, `linux/amd64,linux/arm64`, and `tyemirov/pinguin` Pages configuration. Override `DOCKER_IMAGE`, `DOCKER_TAG`, `PUBLISH_PLATFORMS`, `PAGES_REPOSITORY`, `PAGES_PUBLISH_REMOTE`, or `PAGES_PUBLISH_BRANCH` if you need a different target. `gh` must be authenticated with Pages write access so the target can verify/update the legacy Pages source.
+Use the deploy target after `make publish` to deploy the backend through `mprlab-gateway`, publish the current `web/` assets to the legacy `gh-pages` branch root, and verify the live Pages source marker matches the deployed commit:
+
+```bash
+make deploy
+```
+
+`make publish` defaults to `ghcr.io/tyemirov/pinguin:latest` and `linux/amd64,linux/arm64`. `make deploy` defaults to the `tyemirov/pinguin` Pages repository and `gh-pages` branch. Override `DOCKER_IMAGE`, `DOCKER_TAG`, `PUBLISH_PLATFORMS`, `PAGES_REPOSITORY`, `PAGES_PUBLISH_REMOTE`, or `PAGES_PUBLISH_BRANCH` if you need a different target. `gh` must be authenticated with Pages write access so deploy can verify/update the legacy Pages source.
 
 1. Copy the sample environment files and update the placeholders. **Use the same signing key in both files** so TAuth and Pinguin agree on JWT validation.
 

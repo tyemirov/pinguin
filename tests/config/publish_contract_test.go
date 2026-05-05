@@ -1,7 +1,9 @@
 package tests
 
 import (
+	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -106,11 +108,48 @@ func TestDeployScriptDeploysBackendThenLegacyPages(t *testing.T) {
 		"\"build_type\":\"legacy\"",
 		"\"path\":\"/\"",
 		"curl --fail --silent --show-error --location --max-time 30 \"${PAGES_URL}\"",
+		"pinguin-pages-build.json?source=",
+		"verify_live_pages_source_commit",
+		"sourceCommit",
+		"expected_commit",
 	}
 	for _, requiredSnippet := range requiredSnippets {
 		if !strings.Contains(deployScript, requiredSnippet) {
 			t.Fatalf("deploy script missing contract snippet %q", requiredSnippet)
 		}
+	}
+}
+
+func TestBuildPagesArtifactWritesSourceCommitMarker(t *testing.T) {
+	t.Helper()
+
+	outputDirectory := t.TempDir()
+	sourceCommit := strings.Repeat("a", 40)
+	command := exec.Command("bash", "scripts/build_pages_artifact.sh", outputDirectory)
+	command.Dir = repoPath()
+	command.Env = append(os.Environ(), "PAGES_SOURCE_COMMIT="+sourceCommit)
+	output, runErr := command.CombinedOutput()
+	if runErr != nil {
+		t.Fatalf("build pages artifact failed: %v\n%s", runErr, string(output))
+	}
+
+	markerBytes, readErr := os.ReadFile(filepath.Join(outputDirectory, "pinguin-pages-build.json"))
+	if readErr != nil {
+		t.Fatalf("read pages build marker: %v", readErr)
+	}
+
+	var marker struct {
+		SourceCommit string `json:"sourceCommit"`
+		SourceShort  string `json:"sourceShort"`
+	}
+	if decodeErr := json.Unmarshal(markerBytes, &marker); decodeErr != nil {
+		t.Fatalf("decode pages build marker: %v", decodeErr)
+	}
+	if marker.SourceCommit != sourceCommit {
+		t.Fatalf("sourceCommit = %q, want %q", marker.SourceCommit, sourceCommit)
+	}
+	if marker.SourceShort != sourceCommit[:12] {
+		t.Fatalf("sourceShort = %q, want %q", marker.SourceShort, sourceCommit[:12])
 	}
 }
 
