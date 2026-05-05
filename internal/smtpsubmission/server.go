@@ -451,7 +451,8 @@ func (server *Server) handleData(ctx context.Context, connection net.Conn, reade
 		writeSMTPLine(writer, "553 Sender not authorized")
 		return
 	}
-	if !server.throttle.allowMessage(session.authenticated.ID) {
+	cancelMessageReservation, messageAllowed := server.throttle.reserveMessage(session.authenticated.ID)
+	if !messageAllowed {
 		session.mailFrom = nil
 		session.recipients = nil
 		writeSMTPLine(writer, "452 Message rate limit exceeded")
@@ -466,6 +467,7 @@ func (server *Server) handleData(ctx context.Context, connection net.Conn, reade
 	session.mailFrom = nil
 	session.recipients = nil
 	if relayErr != nil {
+		cancelMessageReservation()
 		if errors.Is(relayErr, ErrRelayPermanent) {
 			writeSMTPLine(writer, "554 Message rejected")
 			return
@@ -685,21 +687,37 @@ func (throttle *smtpThrottle) clearAuthFailures(key string) {
 	delete(throttle.authFailuresByKey, key)
 }
 
-func (throttle *smtpThrottle) allowMessage(identityID string) bool {
-	key := strings.TrimSpace(identityID)
-	if key == "" {
-		key = "unknown"
-	}
+func (throttle *smtpThrottle) reserveMessage(identityID string) (func(), bool) {
+	key := messageThrottleKey(identityID)
 	throttle.mutex.Lock()
 	defer throttle.mutex.Unlock()
 	now := throttle.clockFunc()
 	messages := pruneWindow(throttle.acceptedMessagesByKey[key], now.Add(-throttle.messageWindow))
 	if len(messages) >= throttle.messageLimit {
 		throttle.acceptedMessagesByKey[key] = messages
-		return false
+		return nil, false
 	}
 	throttle.acceptedMessagesByKey[key] = append(messages, now)
-	return true
+	return func() {
+		throttle.cancelMessageReservation(key, now)
+	}, true
+}
+
+func (throttle *smtpThrottle) cancelMessageReservation(key string, reservedAt time.Time) {
+	throttle.mutex.Lock()
+	defer throttle.mutex.Unlock()
+	messages := throttle.acceptedMessagesByKey[key]
+	for messageIndex, messageTime := range messages {
+		if messageTime.Equal(reservedAt) {
+			messages = append(messages[:messageIndex], messages[messageIndex+1:]...)
+			break
+		}
+	}
+	if len(messages) == 0 {
+		delete(throttle.acceptedMessagesByKey, key)
+		return
+	}
+	throttle.acceptedMessagesByKey[key] = messages
 }
 
 func (throttle *smtpThrottle) activeSessionCount() int {
@@ -729,4 +747,12 @@ func authThrottleKey(remoteHost string, username string) string {
 		normalizedRemoteHost = "unknown"
 	}
 	return "remote:" + normalizedRemoteHost
+}
+
+func messageThrottleKey(identityID string) string {
+	key := strings.TrimSpace(identityID)
+	if key == "" {
+		return "unknown"
+	}
+	return key
 }

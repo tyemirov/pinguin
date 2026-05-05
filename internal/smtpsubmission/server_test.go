@@ -480,6 +480,27 @@ func TestSMTPSubmissionMessageThrottleSpansSessions(t *testing.T) {
 	}
 }
 
+func TestSMTPSubmissionRelayFailureDoesNotConsumeMessageQuota(t *testing.T) {
+	fixture := newSMTPServerFixtureWithConfig(t, true, ErrRelayTemporary, func(cfg *Config) {
+		cfg.MessageLimit = 1
+		cfg.MessageWindow = time.Hour
+	})
+	currentTime := time.Date(2026, time.May, 5, 12, 0, 0, 0, time.UTC)
+	fixture.server.throttle.clockFunc = func() time.Time { return currentTime }
+	client := fixture.authenticatedClient(t)
+	defer client.close()
+	sendAcceptedSMTPMessage(t, client, "Temporary failure")
+	client.expectCode(t, "451")
+	fixture.relay.err = nil
+	sendAcceptedSMTPMessage(t, client, "Accepted after failure")
+	client.expectCode(t, "250")
+	sendAcceptedSMTPMessage(t, client, "Throttled after accepted message")
+	client.expectCode(t, "452")
+	if len(fixture.relay.messages) != 2 {
+		t.Fatalf("expected failed and accepted relay attempts only, got %d", len(fixture.relay.messages))
+	}
+}
+
 func TestSMTPSubmissionClosesSlowDataSessions(t *testing.T) {
 	fixture := newSMTPServerFixtureWithConfig(t, true, nil, func(cfg *Config) {
 		cfg.CommandTimeout = 30 * time.Millisecond
@@ -899,6 +920,11 @@ func TestSMTPThrottleHelpers(t *testing.T) {
 		MessageLimit:             2,
 		MessageWindow:            time.Minute,
 	})
+	currentTime := time.Date(2026, time.May, 5, 12, 0, 0, 0, time.UTC)
+	throttle.clockFunc = func() time.Time {
+		currentTime = currentTime.Add(time.Second)
+		return currentTime
+	}
 	releaseFirst, firstErr := throttle.acquireSession("")
 	if firstErr != nil {
 		t.Fatalf("acquire first session: %v", firstErr)
@@ -915,8 +941,24 @@ func TestSMTPThrottleHelpers(t *testing.T) {
 	if throttle.activeSessionCount() != 0 {
 		t.Fatalf("expected no active sessions after second release")
 	}
-	if !throttle.allowMessage("") {
+	cancelReservation, messageAllowed := throttle.reserveMessage("")
+	if !messageAllowed {
 		t.Fatalf("expected empty identity message to be allowed")
+	}
+	cancelReservation()
+	if _, messageAllowed := throttle.reserveMessage(""); !messageAllowed {
+		t.Fatalf("expected canceled empty identity reservation to be allowed again")
+	}
+	cancelFirstIdentityReservation, firstIdentityAllowed := throttle.reserveMessage("identity")
+	if !firstIdentityAllowed {
+		t.Fatalf("expected first identity message reservation to be allowed")
+	}
+	if _, secondIdentityAllowed := throttle.reserveMessage("identity"); !secondIdentityAllowed {
+		t.Fatalf("expected second identity message reservation to be allowed")
+	}
+	cancelFirstIdentityReservation()
+	if _, thirdIdentityAllowed := throttle.reserveMessage("identity"); !thirdIdentityAllowed {
+		t.Fatalf("expected third identity message reservation after cancellation to be allowed")
 	}
 	if key := authThrottleKey("", ""); key != "remote:unknown" {
 		t.Fatalf("unexpected empty auth key %q", key)
