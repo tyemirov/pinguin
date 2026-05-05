@@ -415,6 +415,26 @@ func TestSMTPSubmissionThrottlesRepeatedAuthFailures(t *testing.T) {
 	client.expectCode(t, "235")
 }
 
+func TestSMTPSubmissionAuthFailureThrottleSpansSessions(t *testing.T) {
+	fixture := newSMTPServerFixtureWithConfig(t, true, nil, func(cfg *Config) {
+		cfg.AuthFailureLimit = 1
+		cfg.AuthFailureWindow = time.Hour
+	})
+	currentTime := time.Date(2026, time.May, 5, 12, 0, 0, 0, time.UTC)
+	fixture.server.throttle.clockFunc = func() time.Time { return currentTime }
+	firstClient := fixture.dial(t)
+	firstClient.expectCode(t, "220")
+	firstClient.send(t, "AUTH PLAIN "+plainAuthPayload("smtp-user", "wrong-pass"))
+	firstClient.expectCode(t, "535")
+	firstClient.close()
+
+	secondClient := fixture.dial(t)
+	defer secondClient.close()
+	secondClient.expectCode(t, "220")
+	secondClient.send(t, "AUTH PLAIN "+plainAuthPayload("smtp-user", "smtp-pass"))
+	secondClient.expectCode(t, "454")
+}
+
 func TestSMTPSubmissionThrottlesAcceptedMessagesPerIdentity(t *testing.T) {
 	fixture := newSMTPServerFixtureWithConfig(t, true, nil, func(cfg *Config) {
 		cfg.MessageLimit = 1
@@ -436,6 +456,54 @@ func TestSMTPSubmissionThrottlesAcceptedMessagesPerIdentity(t *testing.T) {
 	client.expectCode(t, "250")
 	if len(fixture.relay.messages) != 2 {
 		t.Fatalf("expected third message after window reset, got %d", len(fixture.relay.messages))
+	}
+}
+
+func TestSMTPSubmissionMessageThrottleSpansSessions(t *testing.T) {
+	fixture := newSMTPServerFixtureWithConfig(t, true, nil, func(cfg *Config) {
+		cfg.MessageLimit = 1
+		cfg.MessageWindow = time.Hour
+	})
+	currentTime := time.Date(2026, time.May, 5, 12, 0, 0, 0, time.UTC)
+	fixture.server.throttle.clockFunc = func() time.Time { return currentTime }
+	firstClient := fixture.authenticatedClient(t)
+	sendAcceptedSMTPMessage(t, firstClient, "First")
+	firstClient.expectCode(t, "250")
+	firstClient.close()
+
+	secondClient := fixture.authenticatedClient(t)
+	defer secondClient.close()
+	sendAcceptedSMTPMessage(t, secondClient, "Second")
+	secondClient.expectCode(t, "452")
+	if len(fixture.relay.messages) != 1 {
+		t.Fatalf("expected only first message to relay, got %d", len(fixture.relay.messages))
+	}
+}
+
+func TestSMTPSubmissionClosesSlowDataSessions(t *testing.T) {
+	fixture := newSMTPServerFixtureWithConfig(t, true, nil, func(cfg *Config) {
+		cfg.CommandTimeout = 30 * time.Millisecond
+	})
+	client := fixture.authenticatedClient(t)
+	defer client.close()
+	client.send(t, "MAIL FROM:<alice@example.com>")
+	client.expectCode(t, "250")
+	client.send(t, "RCPT TO:<recipient@example.net>")
+	client.expectCode(t, "250")
+	client.send(t, "DATA")
+	client.expectCode(t, "354")
+	if _, writeErr := client.connection.Write([]byte("From: alice@example.com")); writeErr != nil {
+		t.Fatalf("write partial data: %v", writeErr)
+	}
+	if deadlineErr := client.connection.SetReadDeadline(time.Now().Add(time.Second)); deadlineErr != nil {
+		t.Fatalf("set client read deadline: %v", deadlineErr)
+	}
+	_, readErr := client.reader.ReadString('\n')
+	if readErr == nil {
+		t.Fatalf("expected slow data session to close")
+	}
+	if netErr, ok := readErr.(net.Error); ok && netErr.Timeout() {
+		t.Fatalf("expected server to close slow data session before client deadline")
 	}
 }
 
