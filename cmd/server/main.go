@@ -544,6 +544,7 @@ func runServer(args []string, dependencies serverDependencies) int {
 			TLSConfig:         tlsConfig,
 			MaxMessageBytes:   configuration.SMTPSubmission.MaxMessageBytes,
 			MaxRecipients:     configuration.SMTPSubmission.MaxRecipients,
+			CommandTimeout:    time.Duration(configuration.OperationTimeoutSec) * time.Second,
 			AllowInsecureAuth: configuration.SMTPSubmission.AllowInsecureAuth,
 			Authenticator:     smtpIdentityRepo,
 			Relay:             dependencies.newSMTPRelay(mainLogger, configuration),

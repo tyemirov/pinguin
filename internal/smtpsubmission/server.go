@@ -14,33 +14,49 @@ import (
 	"net/mail"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/tyemirov/pinguin/internal/smtpidentity"
 )
 
 const (
-	defaultMaxMessageBytes = int64(25 * 1024 * 1024)
-	defaultMaxRecipients   = 100
+	defaultMaxMessageBytes          = int64(25 * 1024 * 1024)
+	defaultMaxRecipients            = 100
+	defaultCommandTimeout           = 2 * time.Minute
+	defaultMaxConcurrentSessions    = 200
+	defaultMaxSessionsPerRemoteHost = 20
+	defaultAuthFailureLimit         = 5
+	defaultAuthFailureWindow        = 10 * time.Minute
+	defaultMessageLimit             = 60
+	defaultMessageWindow            = time.Hour
 )
 
 // Config defines the SMTP submission server dependencies.
 type Config struct {
-	Hostname          string
-	ListenAddr        string
-	TLSListenAddr     string
-	TLSConfig         *tls.Config
-	MaxMessageBytes   int64
-	MaxRecipients     int
-	AllowInsecureAuth bool
-	Authenticator     Authenticator
-	Relay             RawRelay
-	Logger            *slog.Logger
+	Hostname                 string
+	ListenAddr               string
+	TLSListenAddr            string
+	TLSConfig                *tls.Config
+	MaxMessageBytes          int64
+	MaxRecipients            int
+	CommandTimeout           time.Duration
+	MaxConcurrentSessions    int
+	MaxSessionsPerRemoteHost int
+	AuthFailureLimit         int
+	AuthFailureWindow        time.Duration
+	MessageLimit             int
+	MessageWindow            time.Duration
+	AllowInsecureAuth        bool
+	Authenticator            Authenticator
+	Relay                    RawRelay
+	Logger                   *slog.Logger
 }
 
 // Server accepts authenticated SMTP submissions.
 type Server struct {
-	config Config
-	logger *slog.Logger
+	config   Config
+	logger   *slog.Logger
+	throttle *smtpThrottle
 }
 
 type sessionState struct {
@@ -81,7 +97,28 @@ func NewServer(cfg Config) (*Server, error) {
 	if cfg.MaxRecipients <= 0 {
 		cfg.MaxRecipients = defaultMaxRecipients
 	}
-	return &Server{config: cfg, logger: cfg.Logger}, nil
+	if cfg.CommandTimeout <= 0 {
+		cfg.CommandTimeout = defaultCommandTimeout
+	}
+	if cfg.MaxConcurrentSessions <= 0 {
+		cfg.MaxConcurrentSessions = defaultMaxConcurrentSessions
+	}
+	if cfg.MaxSessionsPerRemoteHost <= 0 {
+		cfg.MaxSessionsPerRemoteHost = defaultMaxSessionsPerRemoteHost
+	}
+	if cfg.AuthFailureLimit <= 0 {
+		cfg.AuthFailureLimit = defaultAuthFailureLimit
+	}
+	if cfg.AuthFailureWindow <= 0 {
+		cfg.AuthFailureWindow = defaultAuthFailureWindow
+	}
+	if cfg.MessageLimit <= 0 {
+		cfg.MessageLimit = defaultMessageLimit
+	}
+	if cfg.MessageWindow <= 0 {
+		cfg.MessageWindow = defaultMessageWindow
+	}
+	return &Server{config: cfg, logger: cfg.Logger, throttle: newSMTPThrottle(cfg)}, nil
 }
 
 // LoadTLSConfig loads certificate files for STARTTLS and implicit TLS.
@@ -160,11 +197,21 @@ func (server *Server) Serve(ctx context.Context, listener net.Listener, implicit
 			}
 			return acceptErr
 		}
-		go server.handleConnection(ctx, connection, implicitTLS)
+		remoteHost := remoteHostForConnection(connection)
+		releaseSession, acquireErr := server.throttle.acquireSession(remoteHost)
+		if acquireErr != nil {
+			server.logger.Warn("smtp_submission_session_throttled", "remote_host", remoteHost, "error", acquireErr)
+			rejectSMTPConnection(connection, "421 Too many concurrent SMTP sessions")
+			continue
+		}
+		go func() {
+			defer releaseSession()
+			server.handleConnection(ctx, connection, implicitTLS, remoteHost)
+		}()
 	}
 }
 
-func (server *Server) handleConnection(ctx context.Context, connection net.Conn, implicitTLS bool) {
+func (server *Server) handleConnection(ctx context.Context, connection net.Conn, implicitTLS bool, remoteHost string) {
 	defer connection.Close()
 	session := &sessionState{secure: implicitTLS}
 	reader := bufio.NewReader(connection)
@@ -173,6 +220,9 @@ func (server *Server) handleConnection(ctx context.Context, connection net.Conn,
 		return
 	}
 	for {
+		if deadlineErr := setSMTPDeadline(connection, server.config.CommandTimeout); deadlineErr != nil {
+			return
+		}
 		line, readErr := reader.ReadString('\n')
 		if readErr != nil {
 			return
@@ -202,13 +252,13 @@ func (server *Server) handleConnection(ctx context.Context, connection net.Conn,
 			writer = bufio.NewWriter(connection)
 			*session = sessionState{secure: true}
 		case "AUTH":
-			server.handleAuth(ctx, reader, writer, session, argument)
+			server.handleAuth(ctx, reader, writer, session, argument, remoteHost)
 		case "MAIL":
 			server.handleMail(writer, session, argument)
 		case "RCPT":
 			server.handleRecipient(writer, session, argument)
 		case "DATA":
-			server.handleData(ctx, reader, writer, session)
+			server.handleData(ctx, connection, reader, writer, session)
 		case "RSET":
 			session.mailFrom = nil
 			session.recipients = nil
@@ -241,7 +291,7 @@ func (server *Server) handleHello(writer *bufio.Writer, session *sessionState) {
 	}
 }
 
-func (server *Server) handleAuth(ctx context.Context, reader *bufio.Reader, writer *bufio.Writer, session *sessionState, argument string) {
+func (server *Server) handleAuth(ctx context.Context, reader *bufio.Reader, writer *bufio.Writer, session *sessionState, argument string, remoteHost string) {
 	if session.authenticated != nil {
 		writeSMTPLine(writer, "503 Already authenticated")
 		return
@@ -264,14 +314,22 @@ func (server *Server) handleAuth(ctx context.Context, reader *bufio.Reader, writ
 		return
 	}
 	if parseErr != nil {
+		server.throttle.recordAuthFailure(authThrottleKey(remoteHost, username))
 		writeSMTPLine(writer, "535 Authentication failed")
+		return
+	}
+	authKey := authThrottleKey(remoteHost, username)
+	if server.throttle.authBlocked(authKey) {
+		writeSMTPLine(writer, "454 Authentication temporarily throttled")
 		return
 	}
 	identity, authErr := server.config.Authenticator.Authenticate(ctx, username, password)
 	if authErr != nil {
+		server.throttle.recordAuthFailure(authKey)
 		writeSMTPLine(writer, "535 Authentication failed")
 		return
 	}
+	server.throttle.clearAuthFailures(authKey)
 	session.authenticated = &identity
 	writeSMTPLine(writer, "235 Authentication successful")
 }
@@ -365,12 +423,15 @@ func (server *Server) handleRecipient(writer *bufio.Writer, session *sessionStat
 	writeSMTPLine(writer, "250 OK")
 }
 
-func (server *Server) handleData(ctx context.Context, reader *bufio.Reader, writer *bufio.Writer, session *sessionState) {
+func (server *Server) handleData(ctx context.Context, connection net.Conn, reader *bufio.Reader, writer *bufio.Writer, session *sessionState) {
 	if session.authenticated == nil || session.mailFrom == nil || len(session.recipients) == 0 {
 		writeSMTPLine(writer, "503 Need MAIL FROM and RCPT TO first")
 		return
 	}
 	if writeSMTPLine(writer, "354 End data with <CR><LF>.<CR><LF>") != nil {
+		return
+	}
+	if deadlineErr := setSMTPDeadline(connection, server.config.CommandTimeout); deadlineErr != nil {
 		return
 	}
 	data, tooLarge, readErr := server.readData(reader)
@@ -388,6 +449,12 @@ func (server *Server) handleData(ctx context.Context, reader *bufio.Reader, writ
 		session.mailFrom = nil
 		session.recipients = nil
 		writeSMTPLine(writer, "553 Sender not authorized")
+		return
+	}
+	if !server.throttle.allowMessage(session.authenticated.ID) {
+		session.mailFrom = nil
+		session.recipients = nil
+		writeSMTPLine(writer, "452 Message rate limit exceeded")
 		return
 	}
 	relayErr := server.config.Relay.Relay(ctx, RawMessage{
@@ -498,8 +565,168 @@ func writeSMTPLine(writer *bufio.Writer, line string) error {
 	return writer.Flush()
 }
 
+func rejectSMTPConnection(connection net.Conn, line string) {
+	defer connection.Close()
+	writer := bufio.NewWriter(connection)
+	_ = writeSMTPLine(writer, line)
+}
+
+func remoteHostForConnection(connection net.Conn) string {
+	if tcpAddress, ok := connection.RemoteAddr().(*net.TCPAddr); ok {
+		return tcpAddress.IP.String()
+	}
+	host, _, splitErr := net.SplitHostPort(connection.RemoteAddr().String())
+	if splitErr == nil {
+		return host
+	}
+	return strings.TrimSpace(connection.RemoteAddr().String())
+}
+
+func setSMTPDeadline(connection net.Conn, timeout time.Duration) error {
+	if timeout <= 0 {
+		return nil
+	}
+	return connection.SetDeadline(time.Now().Add(timeout))
+}
+
 func closeListeners(listeners []smtpListener) {
 	for _, listenerConfig := range listeners {
 		listenerConfig.listener.Close()
 	}
+}
+
+type smtpThrottle struct {
+	mutex                    sync.Mutex
+	activeSessions           int
+	activeSessionsByHost     map[string]int
+	authFailuresByKey        map[string][]time.Time
+	acceptedMessagesByKey    map[string][]time.Time
+	maxConcurrentSessions    int
+	maxSessionsPerRemoteHost int
+	authFailureLimit         int
+	authFailureWindow        time.Duration
+	messageLimit             int
+	messageWindow            time.Duration
+	clockFunc                func() time.Time
+}
+
+func newSMTPThrottle(cfg Config) *smtpThrottle {
+	return &smtpThrottle{
+		activeSessionsByHost:     make(map[string]int),
+		authFailuresByKey:        make(map[string][]time.Time),
+		acceptedMessagesByKey:    make(map[string][]time.Time),
+		maxConcurrentSessions:    cfg.MaxConcurrentSessions,
+		maxSessionsPerRemoteHost: cfg.MaxSessionsPerRemoteHost,
+		authFailureLimit:         cfg.AuthFailureLimit,
+		authFailureWindow:        cfg.AuthFailureWindow,
+		messageLimit:             cfg.MessageLimit,
+		messageWindow:            cfg.MessageWindow,
+		clockFunc:                func() time.Time { return time.Now().UTC() },
+	}
+}
+
+func (throttle *smtpThrottle) acquireSession(remoteHost string) (func(), error) {
+	normalizedRemoteHost := strings.TrimSpace(remoteHost)
+	if normalizedRemoteHost == "" {
+		normalizedRemoteHost = "unknown"
+	}
+	throttle.mutex.Lock()
+	defer throttle.mutex.Unlock()
+	if throttle.activeSessions >= throttle.maxConcurrentSessions {
+		return nil, errors.New("smtp_submission.concurrent_sessions_exceeded")
+	}
+	if throttle.activeSessionsByHost[normalizedRemoteHost] >= throttle.maxSessionsPerRemoteHost {
+		return nil, errors.New("smtp_submission.remote_sessions_exceeded")
+	}
+	throttle.activeSessions++
+	throttle.activeSessionsByHost[normalizedRemoteHost]++
+	return func() {
+		throttle.releaseSession(normalizedRemoteHost)
+	}, nil
+}
+
+func (throttle *smtpThrottle) releaseSession(remoteHost string) {
+	throttle.mutex.Lock()
+	defer throttle.mutex.Unlock()
+	if throttle.activeSessions > 0 {
+		throttle.activeSessions--
+	}
+	if throttle.activeSessionsByHost[remoteHost] <= 1 {
+		delete(throttle.activeSessionsByHost, remoteHost)
+		return
+	}
+	throttle.activeSessionsByHost[remoteHost]--
+}
+
+func (throttle *smtpThrottle) authBlocked(key string) bool {
+	throttle.mutex.Lock()
+	defer throttle.mutex.Unlock()
+	now := throttle.clockFunc()
+	failures := pruneWindow(throttle.authFailuresByKey[key], now.Add(-throttle.authFailureWindow))
+	if len(failures) == 0 {
+		delete(throttle.authFailuresByKey, key)
+		return false
+	}
+	throttle.authFailuresByKey[key] = failures
+	return len(failures) >= throttle.authFailureLimit
+}
+
+func (throttle *smtpThrottle) recordAuthFailure(key string) {
+	throttle.mutex.Lock()
+	defer throttle.mutex.Unlock()
+	now := throttle.clockFunc()
+	failures := pruneWindow(throttle.authFailuresByKey[key], now.Add(-throttle.authFailureWindow))
+	throttle.authFailuresByKey[key] = append(failures, now)
+}
+
+func (throttle *smtpThrottle) clearAuthFailures(key string) {
+	throttle.mutex.Lock()
+	defer throttle.mutex.Unlock()
+	delete(throttle.authFailuresByKey, key)
+}
+
+func (throttle *smtpThrottle) allowMessage(identityID string) bool {
+	key := strings.TrimSpace(identityID)
+	if key == "" {
+		key = "unknown"
+	}
+	throttle.mutex.Lock()
+	defer throttle.mutex.Unlock()
+	now := throttle.clockFunc()
+	messages := pruneWindow(throttle.acceptedMessagesByKey[key], now.Add(-throttle.messageWindow))
+	if len(messages) >= throttle.messageLimit {
+		throttle.acceptedMessagesByKey[key] = messages
+		return false
+	}
+	throttle.acceptedMessagesByKey[key] = append(messages, now)
+	return true
+}
+
+func (throttle *smtpThrottle) activeSessionCount() int {
+	throttle.mutex.Lock()
+	defer throttle.mutex.Unlock()
+	return throttle.activeSessions
+}
+
+func pruneWindow(events []time.Time, cutoff time.Time) []time.Time {
+	firstKeptIndex := 0
+	for firstKeptIndex < len(events) && !events[firstKeptIndex].After(cutoff) {
+		firstKeptIndex++
+	}
+	if firstKeptIndex == 0 {
+		return events
+	}
+	return append([]time.Time(nil), events[firstKeptIndex:]...)
+}
+
+func authThrottleKey(remoteHost string, username string) string {
+	normalizedUsername := strings.ToLower(strings.TrimSpace(username))
+	if normalizedUsername != "" {
+		return "username:" + normalizedUsername
+	}
+	normalizedRemoteHost := strings.TrimSpace(remoteHost)
+	if normalizedRemoteHost == "" {
+		normalizedRemoteHost = "unknown"
+	}
+	return "remote:" + normalizedRemoteHost
 }

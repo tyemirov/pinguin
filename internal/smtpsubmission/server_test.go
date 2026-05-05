@@ -345,6 +345,100 @@ func TestSMTPSubmissionRejectsTooManyRecipients(t *testing.T) {
 	client.expectCode(t, "452")
 }
 
+func TestSMTPSubmissionRejectsConcurrentSessionsOverGlobalLimit(t *testing.T) {
+	fixture := newSMTPServerFixtureWithConfig(t, true, nil, func(cfg *Config) {
+		cfg.MaxConcurrentSessions = 1
+		cfg.MaxSessionsPerRemoteHost = 10
+	})
+	firstClient := fixture.dial(t)
+	firstClient.expectCode(t, "220")
+	secondClient := fixture.dial(t)
+	secondClient.expectCode(t, "421")
+	secondClient.close()
+	firstClient.close()
+	waitForActiveSMTPSessions(t, fixture.server, 0)
+	thirdClient := fixture.dial(t)
+	defer thirdClient.close()
+	thirdClient.expectCode(t, "220")
+}
+
+func TestSMTPSubmissionRejectsConcurrentSessionsOverRemoteHostLimit(t *testing.T) {
+	fixture := newSMTPServerFixtureWithConfig(t, true, nil, func(cfg *Config) {
+		cfg.MaxConcurrentSessions = 10
+		cfg.MaxSessionsPerRemoteHost = 1
+	})
+	firstClient := fixture.dial(t)
+	defer firstClient.close()
+	firstClient.expectCode(t, "220")
+	secondClient := fixture.dial(t)
+	defer secondClient.close()
+	secondClient.expectCode(t, "421")
+}
+
+func TestSMTPSubmissionClosesIdleSessions(t *testing.T) {
+	fixture := newSMTPServerFixtureWithConfig(t, true, nil, func(cfg *Config) {
+		cfg.CommandTimeout = 20 * time.Millisecond
+	})
+	client := fixture.dial(t)
+	defer client.close()
+	client.expectCode(t, "220")
+	if deadlineErr := client.connection.SetReadDeadline(time.Now().Add(time.Second)); deadlineErr != nil {
+		t.Fatalf("set client read deadline: %v", deadlineErr)
+	}
+	_, readErr := client.reader.ReadString('\n')
+	if readErr == nil {
+		t.Fatalf("expected idle session to close")
+	}
+	if netErr, ok := readErr.(net.Error); ok && netErr.Timeout() {
+		t.Fatalf("expected server to close idle session before client deadline")
+	}
+}
+
+func TestSMTPSubmissionThrottlesRepeatedAuthFailures(t *testing.T) {
+	fixture := newSMTPServerFixtureWithConfig(t, true, nil, func(cfg *Config) {
+		cfg.AuthFailureLimit = 2
+		cfg.AuthFailureWindow = time.Hour
+	})
+	currentTime := time.Date(2026, time.May, 5, 12, 0, 0, 0, time.UTC)
+	fixture.server.throttle.clockFunc = func() time.Time { return currentTime }
+	client := fixture.dial(t)
+	defer client.close()
+	client.expectCode(t, "220")
+	client.send(t, "AUTH PLAIN "+plainAuthPayload("smtp-user", "wrong-pass"))
+	client.expectCode(t, "535")
+	client.send(t, "AUTH PLAIN "+plainAuthPayload("smtp-user", "wrong-pass"))
+	client.expectCode(t, "535")
+	client.send(t, "AUTH PLAIN "+plainAuthPayload("smtp-user", "smtp-pass"))
+	client.expectCode(t, "454")
+	currentTime = currentTime.Add(2 * time.Hour)
+	client.send(t, "AUTH PLAIN "+plainAuthPayload("smtp-user", "smtp-pass"))
+	client.expectCode(t, "235")
+}
+
+func TestSMTPSubmissionThrottlesAcceptedMessagesPerIdentity(t *testing.T) {
+	fixture := newSMTPServerFixtureWithConfig(t, true, nil, func(cfg *Config) {
+		cfg.MessageLimit = 1
+		cfg.MessageWindow = time.Hour
+	})
+	currentTime := time.Date(2026, time.May, 5, 12, 0, 0, 0, time.UTC)
+	fixture.server.throttle.clockFunc = func() time.Time { return currentTime }
+	client := fixture.authenticatedClient(t)
+	defer client.close()
+	sendAcceptedSMTPMessage(t, client, "First")
+	client.expectCode(t, "250")
+	sendAcceptedSMTPMessage(t, client, "Second")
+	client.expectCode(t, "452")
+	if len(fixture.relay.messages) != 1 {
+		t.Fatalf("expected only first message to relay, got %d", len(fixture.relay.messages))
+	}
+	currentTime = currentTime.Add(2 * time.Hour)
+	sendAcceptedSMTPMessage(t, client, "Third")
+	client.expectCode(t, "250")
+	if len(fixture.relay.messages) != 2 {
+		t.Fatalf("expected third message after window reset, got %d", len(fixture.relay.messages))
+	}
+}
+
 func TestSMTPSubmissionMapsRelayFailures(t *testing.T) {
 	testCases := []struct {
 		name         string
@@ -523,6 +617,15 @@ func TestSMTPSubmissionConstructorAndStartValidation(t *testing.T) {
 	if defaulted.config.MaxMessageBytes != defaultMaxMessageBytes || defaulted.config.MaxRecipients != defaultMaxRecipients {
 		t.Fatalf("expected default limits, got %d/%d", defaulted.config.MaxMessageBytes, defaulted.config.MaxRecipients)
 	}
+	if defaulted.config.CommandTimeout != defaultCommandTimeout ||
+		defaulted.config.MaxConcurrentSessions != defaultMaxConcurrentSessions ||
+		defaulted.config.MaxSessionsPerRemoteHost != defaultMaxSessionsPerRemoteHost ||
+		defaulted.config.AuthFailureLimit != defaultAuthFailureLimit ||
+		defaulted.config.AuthFailureWindow != defaultAuthFailureWindow ||
+		defaulted.config.MessageLimit != defaultMessageLimit ||
+		defaulted.config.MessageWindow != defaultMessageWindow {
+		t.Fatalf("expected default throttle limits, got %+v", defaulted.config)
+	}
 	if err := defaulted.Start(context.Background()); err == nil || !strings.Contains(err.Error(), "no listeners configured") {
 		t.Fatalf("expected no listeners error, got %v", err)
 	}
@@ -594,7 +697,7 @@ func TestSMTPSubmissionReaderAndWriterErrorPaths(t *testing.T) {
 			mailFrom:      &from,
 			recipients:    []smtpidentity.Address{mustSMTPSubmissionAddress(t, "recipient@example.net")},
 		}
-		server.handleData(context.Background(), bufio.NewReader(strings.NewReader("")), bufio.NewWriterSize(failingSMTPWriter{}, 1), session)
+		server.handleData(context.Background(), failingSMTPConn{}, bufio.NewReader(strings.NewReader("")), bufio.NewWriterSize(failingSMTPWriter{}, 1), session)
 	})
 	t.Run("data read error after prompt", func(t *testing.T) {
 		from := mustSMTPSubmissionAddress(t, "alice@example.com")
@@ -604,7 +707,7 @@ func TestSMTPSubmissionReaderAndWriterErrorPaths(t *testing.T) {
 			recipients:    []smtpidentity.Address{mustSMTPSubmissionAddress(t, "recipient@example.net")},
 		}
 		var output bytes.Buffer
-		server.handleData(context.Background(), bufio.NewReader(strings.NewReader("unterminated")), bufio.NewWriter(&output), session)
+		server.handleData(context.Background(), failingSMTPConn{}, bufio.NewReader(strings.NewReader("unterminated")), bufio.NewWriter(&output), session)
 		if !strings.Contains(output.String(), "354") {
 			t.Fatalf("expected data prompt before read error, got %q", output.String())
 		}
@@ -646,12 +749,28 @@ func TestSMTPSubmissionConnectionHandshakeFailure(t *testing.T) {
 func TestSMTPSubmissionStartTLSResponseWriteFailure(t *testing.T) {
 	server := newBareSMTPSubmissionServer(t)
 	server.config.TLSConfig = testTLSConfig(t)
-	server.handleConnection(context.Background(), &failingAfterGreetingConn{reader: strings.NewReader("STARTTLS\r\n")}, false)
+	server.handleConnection(context.Background(), &failingAfterGreetingConn{reader: strings.NewReader("STARTTLS\r\n")}, false, "remote")
 }
 
 func TestSMTPSubmissionInitialGreetingWriteFailure(t *testing.T) {
 	server := newBareSMTPSubmissionServer(t)
-	server.handleConnection(context.Background(), failingSMTPConn{}, false)
+	server.handleConnection(context.Background(), failingSMTPConn{}, false, "remote")
+}
+
+func TestSMTPSubmissionDeadlineErrorPaths(t *testing.T) {
+	server := newBareSMTPSubmissionServer(t)
+	server.handleConnection(context.Background(), &smtpDeadlineFailingConn{reader: strings.NewReader("NOOP\r\n")}, false, "remote")
+	from := mustSMTPSubmissionAddress(t, "alice@example.com")
+	session := &sessionState{
+		authenticated: &smtpidentity.AuthenticatedIdentity{ID: "identity", EmailAddress: from},
+		mailFrom:      &from,
+		recipients:    []smtpidentity.Address{mustSMTPSubmissionAddress(t, "recipient@example.net")},
+	}
+	var output bytes.Buffer
+	server.handleData(context.Background(), smtpDeadlineFailingConn{}, bufio.NewReader(strings.NewReader("From: alice@example.com\r\n\r\nHello\r\n.\r\n")), bufio.NewWriter(&output), session)
+	if !strings.Contains(output.String(), "354") {
+		t.Fatalf("expected data prompt before deadline error, got %q", output.String())
+	}
 }
 
 func TestLoadTLSConfig(t *testing.T) {
@@ -691,6 +810,48 @@ func TestSMTPParsingHelpers(t *testing.T) {
 	}
 	if buffer.String() != "250 OK\r\n" {
 		t.Fatalf("unexpected line %q", buffer.String())
+	}
+}
+
+func TestSMTPThrottleHelpers(t *testing.T) {
+	if remoteHost := remoteHostForConnection(splitRemoteSMTPConn{remoteAddress: "192.0.2.10:2525"}); remoteHost != "192.0.2.10" {
+		t.Fatalf("unexpected split remote host %q", remoteHost)
+	}
+	if remoteHost := remoteHostForConnection(splitRemoteSMTPConn{remoteAddress: "opaque"}); remoteHost != "opaque" {
+		t.Fatalf("unexpected opaque remote host %q", remoteHost)
+	}
+	if deadlineErr := setSMTPDeadline(failingSMTPConn{}, 0); deadlineErr != nil {
+		t.Fatalf("expected disabled deadline to be ignored, got %v", deadlineErr)
+	}
+	throttle := newSMTPThrottle(Config{
+		MaxConcurrentSessions:    3,
+		MaxSessionsPerRemoteHost: 3,
+		AuthFailureLimit:         2,
+		AuthFailureWindow:        time.Minute,
+		MessageLimit:             2,
+		MessageWindow:            time.Minute,
+	})
+	releaseFirst, firstErr := throttle.acquireSession("")
+	if firstErr != nil {
+		t.Fatalf("acquire first session: %v", firstErr)
+	}
+	releaseSecond, secondErr := throttle.acquireSession("")
+	if secondErr != nil {
+		t.Fatalf("acquire second session: %v", secondErr)
+	}
+	releaseFirst()
+	if throttle.activeSessionCount() != 1 {
+		t.Fatalf("expected one active session after first release")
+	}
+	releaseSecond()
+	if throttle.activeSessionCount() != 0 {
+		t.Fatalf("expected no active sessions after second release")
+	}
+	if !throttle.allowMessage("") {
+		t.Fatalf("expected empty identity message to be allowed")
+	}
+	if key := authThrottleKey("", ""); key != "remote:unknown" {
+		t.Fatalf("unexpected empty auth key %q", key)
 	}
 }
 
@@ -735,12 +896,17 @@ type smtpServerFixture struct {
 
 func newSMTPServerFixture(t *testing.T, allowInsecureAuth bool, relayError error) *smtpServerFixture {
 	t.Helper()
+	return newSMTPServerFixtureWithConfig(t, allowInsecureAuth, relayError, nil)
+}
+
+func newSMTPServerFixtureWithConfig(t *testing.T, allowInsecureAuth bool, relayError error, mutate func(*Config)) *smtpServerFixture {
+	t.Helper()
 	address, addressErr := smtpidentity.NewAddress("alice@example.com")
 	if addressErr != nil {
 		t.Fatalf("identity address: %v", addressErr)
 	}
 	relay := &recordingRelay{err: relayError}
-	server, serverErr := NewServer(Config{
+	serverConfig := Config{
 		Hostname:          "smtp.test",
 		TLSConfig:         testTLSConfig(t),
 		MaxMessageBytes:   1024 * 1024,
@@ -757,7 +923,11 @@ func newSMTPServerFixture(t *testing.T, allowInsecureAuth bool, relayError error
 		},
 		Relay:  relay,
 		Logger: slog.New(slog.NewTextHandler(ioDiscard{}, nil)),
-	})
+	}
+	if mutate != nil {
+		mutate(&serverConfig)
+	}
+	server, serverErr := NewServer(serverConfig)
 	if serverErr != nil {
 		t.Fatalf("new server: %v", serverErr)
 	}
@@ -793,6 +963,31 @@ func (fixture *smtpServerFixture) authenticatedClient(t *testing.T) *smtpTestCli
 	client.send(t, "AUTH PLAIN "+plainAuthPayload("smtp-user", "smtp-pass"))
 	client.expectCode(t, "235")
 	return client
+}
+
+func sendAcceptedSMTPMessage(t *testing.T, client *smtpTestClient, subject string) {
+	t.Helper()
+	client.send(t, "MAIL FROM:<alice@example.com>")
+	client.expectCode(t, "250")
+	client.send(t, "RCPT TO:<recipient@example.net>")
+	client.expectCode(t, "250")
+	client.send(t, "DATA")
+	client.expectCode(t, "354")
+	client.sendData(t, "From: alice@example.com\r\nTo: recipient@example.net\r\nSubject: "+subject+"\r\n\r\nHello")
+}
+
+func waitForActiveSMTPSessions(t *testing.T, server *Server, expectedCount int) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for {
+		if server.throttle.activeSessionCount() == expectedCount {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("expected %d active SMTP sessions, got %d", expectedCount, server.throttle.activeSessionCount())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 type smtpTestClient struct {
@@ -941,6 +1136,81 @@ func (failingSMTPConn) SetReadDeadline(time.Time) error {
 }
 
 func (failingSMTPConn) SetWriteDeadline(time.Time) error {
+	return nil
+}
+
+type splitRemoteSMTPConn struct {
+	remoteAddress string
+}
+
+func (conn splitRemoteSMTPConn) Read([]byte) (int, error) {
+	return 0, io.EOF
+}
+
+func (conn splitRemoteSMTPConn) Write(payload []byte) (int, error) {
+	return len(payload), nil
+}
+
+func (conn splitRemoteSMTPConn) Close() error {
+	return nil
+}
+
+func (conn splitRemoteSMTPConn) LocalAddr() net.Addr {
+	return testListenerAddr("local")
+}
+
+func (conn splitRemoteSMTPConn) RemoteAddr() net.Addr {
+	return testListenerAddr(conn.remoteAddress)
+}
+
+func (conn splitRemoteSMTPConn) SetDeadline(time.Time) error {
+	return nil
+}
+
+func (conn splitRemoteSMTPConn) SetReadDeadline(time.Time) error {
+	return nil
+}
+
+func (conn splitRemoteSMTPConn) SetWriteDeadline(time.Time) error {
+	return nil
+}
+
+type smtpDeadlineFailingConn struct {
+	reader *strings.Reader
+}
+
+func (conn smtpDeadlineFailingConn) Read(payload []byte) (int, error) {
+	if conn.reader == nil {
+		return 0, io.EOF
+	}
+	return conn.reader.Read(payload)
+}
+
+func (conn smtpDeadlineFailingConn) Write(payload []byte) (int, error) {
+	return len(payload), nil
+}
+
+func (conn smtpDeadlineFailingConn) Close() error {
+	return nil
+}
+
+func (conn smtpDeadlineFailingConn) LocalAddr() net.Addr {
+	return testListenerAddr("local")
+}
+
+func (conn smtpDeadlineFailingConn) RemoteAddr() net.Addr {
+	return testListenerAddr("remote")
+}
+
+func (conn smtpDeadlineFailingConn) SetDeadline(time.Time) error {
+	return errors.New("set deadline failed")
+}
+
+func (conn smtpDeadlineFailingConn) SetReadDeadline(time.Time) error {
+	return nil
+}
+
+func (conn smtpDeadlineFailingConn) SetWriteDeadline(time.Time) error {
 	return nil
 }
 

@@ -551,6 +551,9 @@ func TestRunServerStartsWebAndSMTPSubmission(testHandle *testing.T) {
 	if state.smtpConfig.TLSConfig == nil || state.smtpConfig.Relay == nil {
 		testHandle.Fatalf("expected SMTP config to include TLS and relay")
 	}
+	if state.smtpConfig.CommandTimeout != 30*time.Second {
+		testHandle.Fatalf("expected SMTP command timeout from operation timeout, got %s", state.smtpConfig.CommandTimeout)
+	}
 }
 
 func TestRunServerErrorPaths(testHandle *testing.T) {
