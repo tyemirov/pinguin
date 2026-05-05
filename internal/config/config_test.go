@@ -131,6 +131,7 @@ smtpSubmission:
 			Enabled:           true,
 			Hostname:          "smtp.one.test",
 			ListenAddr:        ":587",
+			DeliveryMode:      "upstream",
 			MaxMessageBytes:   1048576,
 			MaxRecipients:     25,
 			AllowInsecureAuth: true,
@@ -247,6 +248,51 @@ web:
 	}
 	if cfg.TAuthCookieName != "app_session" {
 		t.Fatalf("expected default cookie, got %q", cfg.TAuthCookieName)
+	}
+}
+
+func TestLoadConfigAllowsDirectSMTPSubmissionWithoutUpstreamRelay(t *testing.T) {
+	configPath := writeConfigFile(t, `
+server:
+  databasePath: app.db
+  grpcAuthToken: token
+  logLevel: INFO
+  maxRetries: 3
+  retryIntervalSec: 30
+  masterEncryptionKey: ${MASTER_ENCRYPTION_KEY}
+  connectionTimeoutSec: 5
+  operationTimeoutSec: 10
+tenants:
+  configPath: tenants.yml
+web:
+  enabled: false
+smtpSubmission:
+  enabled: true
+  hostname: pinguin-api.mprlab.com
+  listenAddr: :587
+  publicPort: 465
+  publicSecurityMode: ssl
+  deliveryMode: direct
+  maxMessageBytes: 26214400
+  maxRecipients: 100
+  allowInsecureAuth: true
+  senderDomains:
+    - mprlab.com
+`)
+	t.Setenv("MASTER_ENCRYPTION_KEY", "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+
+	cfg, err := loadConfigFromPath(configPath)
+	if err != nil {
+		t.Fatalf("LoadConfig returned error: %v", err)
+	}
+	if cfg.SMTPSubmission.DeliveryMode != "direct" {
+		t.Fatalf("expected direct delivery mode, got %q", cfg.SMTPSubmission.DeliveryMode)
+	}
+	if cfg.SMTPSubmission.PublicPort != 465 || cfg.SMTPSubmission.PublicSecurityMode != "ssl" {
+		t.Fatalf("unexpected public SMTP settings %+v", cfg.SMTPSubmission)
+	}
+	if cfg.SMTPSubmission.Relay.Host != "" || cfg.SMTPSubmission.Relay.Port != 0 {
+		t.Fatalf("expected direct mode not to require upstream relay, got %+v", cfg.SMTPSubmission.Relay)
 	}
 }
 
@@ -498,6 +544,46 @@ func TestValidateConfigAggregatesMissingFields(t *testing.T) {
 		"smtpSubmission.senderDomains",
 		"tenants[0].displayName",
 		"tenants[0].domains",
+	} {
+		if !strings.Contains(err.Error(), expected) {
+			t.Fatalf("expected error to contain %s, got %v", expected, err)
+		}
+	}
+}
+
+func TestValidateConfigRejectsInvalidSMTPSubmissionModeAndPublicSettings(t *testing.T) {
+	cfg := Config{
+		DatabasePath:         "app.db",
+		GRPCAuthToken:        "token",
+		LogLevel:             "INFO",
+		MaxRetries:           3,
+		RetryIntervalSec:     30,
+		MasterEncryptionKey:  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		ConnectionTimeoutSec: 5,
+		OperationTimeoutSec:  10,
+		TenantConfigPath:     "tenants.yml",
+		WebInterfaceEnabled:  false,
+		SMTPSubmission: SMTPSubmissionConfig{
+			Enabled:            true,
+			Hostname:           "smtp.example.com",
+			ListenAddr:         ":587",
+			DeliveryMode:       "bogus",
+			PublicPort:         -1,
+			PublicSecurityMode: "plaintext",
+			MaxMessageBytes:    1048576,
+			MaxRecipients:      25,
+			AllowInsecureAuth:  true,
+			SenderDomains:      []string{"example.com"},
+		},
+	}
+	err := validateConfig(cfg)
+	if err == nil {
+		t.Fatalf("expected validation error")
+	}
+	for _, expected := range []string{
+		"smtpSubmission.deliveryMode",
+		"smtpSubmission.publicPort",
+		"smtpSubmission.publicSecurityMode",
 	} {
 		if !strings.Contains(err.Error(), expected) {
 			t.Fatalf("expected error to contain %s, got %v", expected, err)

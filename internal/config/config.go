@@ -56,17 +56,20 @@ type Config struct {
 
 // SMTPSubmissionConfig controls Gmail-facing SMTP submission listeners.
 type SMTPSubmissionConfig struct {
-	Enabled           bool
-	Hostname          string
-	ListenAddr        string
-	TLSListenAddr     string
-	TLSCertPath       string
-	TLSKeyPath        string
-	MaxMessageBytes   int64
-	MaxRecipients     int
-	AllowInsecureAuth bool
-	SenderDomains     []string
-	Relay             SMTPSubmissionRelayConfig
+	Enabled            bool
+	Hostname           string
+	ListenAddr         string
+	TLSListenAddr      string
+	TLSCertPath        string
+	TLSKeyPath         string
+	PublicPort         int
+	PublicSecurityMode string
+	DeliveryMode       string
+	MaxMessageBytes    int64
+	MaxRecipients      int
+	AllowInsecureAuth  bool
+	SenderDomains      []string
+	Relay              SMTPSubmissionRelayConfig
 }
 
 // SMTPSubmissionRelayConfig controls the upstream relay used by SMTP submission.
@@ -111,17 +114,20 @@ type tauthSection struct {
 }
 
 type smtpSubmissionSection struct {
-	Enabled           bool                       `yaml:"enabled"`
-	Hostname          string                     `yaml:"hostname"`
-	ListenAddr        string                     `yaml:"listenAddr"`
-	TLSListenAddr     string                     `yaml:"tlsListenAddr"`
-	TLSCertPath       string                     `yaml:"tlsCertPath"`
-	TLSKeyPath        string                     `yaml:"tlsKeyPath"`
-	MaxMessageBytes   int64                      `yaml:"maxMessageBytes"`
-	MaxRecipients     int                        `yaml:"maxRecipients"`
-	AllowInsecureAuth bool                       `yaml:"allowInsecureAuth"`
-	SenderDomains     []string                   `yaml:"senderDomains"`
-	Relay             smtpSubmissionRelaySection `yaml:"relay"`
+	Enabled            bool                       `yaml:"enabled"`
+	Hostname           string                     `yaml:"hostname"`
+	ListenAddr         string                     `yaml:"listenAddr"`
+	TLSListenAddr      string                     `yaml:"tlsListenAddr"`
+	TLSCertPath        string                     `yaml:"tlsCertPath"`
+	TLSKeyPath         string                     `yaml:"tlsKeyPath"`
+	PublicPort         int                        `yaml:"publicPort"`
+	PublicSecurityMode string                     `yaml:"publicSecurityMode"`
+	DeliveryMode       string                     `yaml:"deliveryMode"`
+	MaxMessageBytes    int64                      `yaml:"maxMessageBytes"`
+	MaxRecipients      int                        `yaml:"maxRecipients"`
+	AllowInsecureAuth  bool                       `yaml:"allowInsecureAuth"`
+	SenderDomains      []string                   `yaml:"senderDomains"`
+	Relay              smtpSubmissionRelaySection `yaml:"relay"`
 }
 
 type smtpSubmissionRelaySection struct {
@@ -217,16 +223,19 @@ func loadConfigFromPath(configPath string) (Config, error) {
 		HTTPListenAddr:      strings.TrimSpace(fileCfg.Web.ListenAddr),
 		HTTPAllowedOrigins:  normalizeStrings(fileCfg.Web.AllowedOrigins),
 		SMTPSubmission: SMTPSubmissionConfig{
-			Enabled:           fileCfg.SMTPSubmission.Enabled,
-			Hostname:          strings.TrimSpace(fileCfg.SMTPSubmission.Hostname),
-			ListenAddr:        strings.TrimSpace(fileCfg.SMTPSubmission.ListenAddr),
-			TLSListenAddr:     strings.TrimSpace(fileCfg.SMTPSubmission.TLSListenAddr),
-			TLSCertPath:       strings.TrimSpace(fileCfg.SMTPSubmission.TLSCertPath),
-			TLSKeyPath:        strings.TrimSpace(fileCfg.SMTPSubmission.TLSKeyPath),
-			MaxMessageBytes:   fileCfg.SMTPSubmission.MaxMessageBytes,
-			MaxRecipients:     fileCfg.SMTPSubmission.MaxRecipients,
-			AllowInsecureAuth: fileCfg.SMTPSubmission.AllowInsecureAuth,
-			SenderDomains:     normalizeStrings(fileCfg.SMTPSubmission.SenderDomains),
+			Enabled:            fileCfg.SMTPSubmission.Enabled,
+			Hostname:           strings.TrimSpace(fileCfg.SMTPSubmission.Hostname),
+			ListenAddr:         strings.TrimSpace(fileCfg.SMTPSubmission.ListenAddr),
+			TLSListenAddr:      strings.TrimSpace(fileCfg.SMTPSubmission.TLSListenAddr),
+			TLSCertPath:        strings.TrimSpace(fileCfg.SMTPSubmission.TLSCertPath),
+			TLSKeyPath:         strings.TrimSpace(fileCfg.SMTPSubmission.TLSKeyPath),
+			PublicPort:         fileCfg.SMTPSubmission.PublicPort,
+			PublicSecurityMode: strings.ToLower(strings.TrimSpace(fileCfg.SMTPSubmission.PublicSecurityMode)),
+			DeliveryMode:       normalizeSMTPDeliveryMode(fileCfg.SMTPSubmission.DeliveryMode),
+			MaxMessageBytes:    fileCfg.SMTPSubmission.MaxMessageBytes,
+			MaxRecipients:      fileCfg.SMTPSubmission.MaxRecipients,
+			AllowInsecureAuth:  fileCfg.SMTPSubmission.AllowInsecureAuth,
+			SenderDomains:      normalizeStrings(fileCfg.SMTPSubmission.SenderDomains),
 			Relay: SMTPSubmissionRelayConfig{
 				Host:     strings.TrimSpace(fileCfg.SMTPSubmission.Relay.Host),
 				Port:     fileCfg.SMTPSubmission.Relay.Port,
@@ -336,10 +345,23 @@ func validateConfig(cfg Config) error {
 		if countNonEmptyStrings(cfg.SMTPSubmission.SenderDomains) == 0 {
 			errors = append(errors, "missing smtpSubmission.senderDomains")
 		}
-		requireString(cfg.SMTPSubmission.Relay.Host, "smtpSubmission.relay.host", &errors)
-		requirePositive(cfg.SMTPSubmission.Relay.Port, "smtpSubmission.relay.port", &errors)
-		requireString(cfg.SMTPSubmission.Relay.Username, "smtpSubmission.relay.username", &errors)
-		requireString(cfg.SMTPSubmission.Relay.Password, "smtpSubmission.relay.password", &errors)
+		deliveryMode := normalizeSMTPDeliveryMode(cfg.SMTPSubmission.DeliveryMode)
+		switch deliveryMode {
+		case "upstream":
+			requireString(cfg.SMTPSubmission.Relay.Host, "smtpSubmission.relay.host", &errors)
+			requirePositive(cfg.SMTPSubmission.Relay.Port, "smtpSubmission.relay.port", &errors)
+			requireString(cfg.SMTPSubmission.Relay.Username, "smtpSubmission.relay.username", &errors)
+			requireString(cfg.SMTPSubmission.Relay.Password, "smtpSubmission.relay.password", &errors)
+		case "direct":
+		default:
+			errors = append(errors, "smtpSubmission.deliveryMode must be upstream or direct")
+		}
+		if cfg.SMTPSubmission.PublicPort < 0 {
+			errors = append(errors, "smtpSubmission.publicPort must be positive")
+		}
+		if cfg.SMTPSubmission.PublicSecurityMode != "" && cfg.SMTPSubmission.PublicSecurityMode != "starttls" && cfg.SMTPSubmission.PublicSecurityMode != "ssl" {
+			errors = append(errors, "smtpSubmission.publicSecurityMode must be starttls or ssl")
+		}
 		if !cfg.SMTPSubmission.AllowInsecureAuth {
 			requireString(cfg.SMTPSubmission.TLSCertPath, "smtpSubmission.tlsCertPath", &errors)
 			requireString(cfg.SMTPSubmission.TLSKeyPath, "smtpSubmission.tlsKeyPath", &errors)
@@ -360,6 +382,14 @@ func validateConfig(cfg Config) error {
 		return fmt.Errorf("configuration errors: %s", strings.Join(errors, ", "))
 	}
 	return nil
+}
+
+func normalizeSMTPDeliveryMode(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if normalized == "" {
+		return "upstream"
+	}
+	return normalized
 }
 
 func requireString(value string, name string, errors *[]string) {

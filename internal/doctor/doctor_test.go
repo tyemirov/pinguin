@@ -129,6 +129,22 @@ func TestRunValidatesSMTPSubmissionConfig(t *testing.T) {
 	}
 }
 
+func TestRunAllowsDirectSMTPSubmissionConfig(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yml")
+	writeTestConfig(t, configPath, directSMTPSubmissionConfigYAML)
+
+	report, err := Run(context.Background(), Options{
+		ConfigPaths: []string{configPath},
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if report.Summary.ValidConfigs != 1 {
+		t.Fatalf("expected direct SMTP submission config to be valid, got %+v", report.Diagnostics)
+	}
+}
+
 func TestRunReturnsErrorWithNoConfigs(t *testing.T) {
 	_, err := Run(context.Background(), Options{
 		ConfigPaths: []string{},
@@ -342,6 +358,28 @@ func TestDoctorValidationHelpersCoverErrorBranches(t *testing.T) {
 	} {
 		if !containsDiagnosticError(smtpResult.Errors, expected) {
 			t.Fatalf("expected SMTP validation error %q in %v", expected, smtpResult.Errors)
+		}
+	}
+	invalidSMTPResult := DiagnosticResult{Valid: true}
+	validateSMTPSubmissionConfig(pinguinSMTPSubmission{
+		Enabled:            true,
+		Hostname:           "smtp.example.com",
+		ListenAddr:         ":587",
+		DeliveryMode:       "bogus",
+		PublicPort:         -1,
+		PublicSecurityMode: "plaintext",
+		MaxMessageBytes:    1048576,
+		MaxRecipients:      25,
+		AllowInsecureAuth:  true,
+		SenderDomains:      []string{"example.com"},
+	}, &invalidSMTPResult)
+	for _, expected := range []string{
+		"smtpSubmission.deliveryMode",
+		"smtpSubmission.publicPort",
+		"smtpSubmission.publicSecurityMode",
+	} {
+		if !containsDiagnosticError(invalidSMTPResult.Errors, expected) {
+			t.Fatalf("expected SMTP validation error %q in %v", expected, invalidSMTPResult.Errors)
 		}
 	}
 
@@ -662,6 +700,40 @@ smtpSubmission:
   maxMessageBytes: 1048576
   maxRecipients: 25
   allowInsecureAuth: true
+
+tenants:
+  - id: demo
+    displayName: Demo Tenant
+    domains:
+      - demo.example.com
+`
+
+const directSMTPSubmissionConfigYAML = `
+server:
+  databasePath: /data/pinguin.db
+  grpcAuthToken: test-token-123
+  logLevel: INFO
+  maxRetries: 3
+  retryIntervalSec: 60
+  masterEncryptionKey: test-encryption-key-at-least-32-chars
+  connectionTimeoutSec: 30
+  operationTimeoutSec: 60
+
+web:
+  enabled: false
+
+smtpSubmission:
+  enabled: true
+  hostname: pinguin-api.mprlab.com
+  listenAddr: ":587"
+  publicPort: 465
+  publicSecurityMode: ssl
+  deliveryMode: direct
+  maxMessageBytes: 26214400
+  maxRecipients: 100
+  allowInsecureAuth: true
+  senderDomains:
+    - mprlab.com
 
 tenants:
   - id: demo
