@@ -64,6 +64,34 @@ func TestDirectMXRelayDeliversToRecipientMX(t *testing.T) {
 	}
 }
 
+func TestDirectMXRelayRejectsMultipleRecipientDomainsBeforeDelivery(t *testing.T) {
+	dialer := &fakeSMTPDialer{err: errors.New("should not dial multiple recipient domains")}
+	relay := &DirectMXRelay{
+		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		hostname:         "pinguin-api.mprlab.com",
+		resolver:         fakeMXResolver{records: map[string][]*net.MX{}},
+		dialer:           dialer,
+		operationTimeout: time.Second,
+	}
+
+	err := relay.Relay(context.Background(), RawMessage{
+		IdentityID: "identity-one",
+		From:       mustSMTPSubmissionAddress(t, "alice@example.com"),
+		Recipients: []smtpidentity.Address{
+			mustSMTPSubmissionAddress(t, "one@example.net"),
+			mustSMTPSubmissionAddress(t, "two@example.org"),
+		},
+		Data: []byte("From: alice@example.com\r\n\r\nHello\r\n"),
+	})
+
+	if !errors.Is(err, ErrRelayPermanent) {
+		t.Fatalf("expected permanent relay error, got %v", err)
+	}
+	if dialer.lastAddress != "" {
+		t.Fatalf("expected multi-domain message not to dial, got %q", dialer.lastAddress)
+	}
+}
+
 func TestDirectMXRelayFallsBackToDomainWhenMXIsAbsent(t *testing.T) {
 	smtpServer := startFakeDirectSMTPServer(t, fakeSMTPBehavior{})
 	relay := &DirectMXRelay{
@@ -151,6 +179,32 @@ func TestDirectMXRelayMapsFailures(t *testing.T) {
 	}
 }
 
+func TestDirectMXRelayTreatsAcceptedDataAsDeliveredWhenQuitFails(t *testing.T) {
+	smtpServer := startFakeDirectSMTPServer(t, fakeSMTPBehavior{quitResponse: "421 closing"})
+	relay := &DirectMXRelay{
+		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		hostname:         "pinguin-api.mprlab.com",
+		resolver:         fakeMXResolver{records: map[string][]*net.MX{"example.net": {{Host: "mx.example.net.", Pref: 10}}}},
+		dialer:           &fakeSMTPDialer{targetAddress: smtpServer.address},
+		operationTimeout: time.Second,
+	}
+
+	err := relay.Relay(context.Background(), RawMessage{
+		IdentityID: "identity-one",
+		From:       mustSMTPSubmissionAddress(t, "alice@example.com"),
+		Recipients: []smtpidentity.Address{mustSMTPSubmissionAddress(t, "recipient@example.net")},
+		Data:       []byte("From: alice@example.com\r\n\r\nHello\r\n"),
+	})
+
+	if err != nil {
+		t.Fatalf("expected accepted DATA to count as delivered despite QUIT error, got %v", err)
+	}
+	commands, data := smtpServer.result(t)
+	if !stringListContains(commands, "QUIT") || !strings.Contains(data, "Hello") {
+		t.Fatalf("expected DATA and best-effort QUIT, commands=%v data=%q", commands, data)
+	}
+}
+
 func TestDirectMXRelayCoversTargetAndLookupErrorBranches(t *testing.T) {
 	testCases := []struct {
 		name    string
@@ -167,6 +221,17 @@ func TestDirectMXRelayCoversTargetAndLookupErrorBranches(t *testing.T) {
 				operationTimeout: time.Second,
 			},
 			wantErr: ErrRelayTemporary,
+		},
+		{
+			name: "null mx records",
+			relay: &DirectMXRelay{
+				logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+				hostname:         "pinguin-api.mprlab.com",
+				resolver:         fakeMXResolver{records: map[string][]*net.MX{"example.net": {{Host: ".", Pref: 0}}}},
+				dialer:           &fakeSMTPDialer{err: errors.New("should not dial null mx")},
+				operationTimeout: time.Second,
+			},
+			wantErr: ErrRelayPermanent,
 		},
 		{
 			name: "dial error",
@@ -383,6 +448,7 @@ type fakeSMTPBehavior struct {
 	rcptResponse        string
 	dataCommandResponse string
 	dataResponse        string
+	quitResponse        string
 	closeAfterDataReady bool
 }
 
@@ -534,7 +600,11 @@ func startFakeDirectSMTPServer(t *testing.T, behavior fakeSMTPBehavior) *fakeDir
 					return
 				}
 			case command == "QUIT":
-				_ = writer.PrintfLine("221 bye")
+				response := behavior.quitResponse
+				if response == "" {
+					response = "221 bye"
+				}
+				_ = writer.PrintfLine("%s", response)
 				return
 			default:
 				if writeErr := writer.PrintfLine("502 unsupported"); writeErr != nil {

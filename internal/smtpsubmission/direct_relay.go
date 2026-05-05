@@ -68,6 +68,9 @@ func (relay *DirectMXRelay) Relay(ctx context.Context, message RawMessage) error
 		domains = append(domains, domain)
 	}
 	sort.Strings(domains)
+	if len(domains) > 1 {
+		return fmt.Errorf("%w: direct smtp supports one recipient domain per message", ErrRelayPermanent)
+	}
 
 	for _, domain := range domains {
 		if err := relay.relayDomain(ctx, domain, message.From, recipientsByDomain[domain], message.Data); err != nil {
@@ -81,6 +84,9 @@ func (relay *DirectMXRelay) Relay(ctx context.Context, message RawMessage) error
 func (relay *DirectMXRelay) relayDomain(ctx context.Context, domain string, from smtpidentity.Address, recipients []smtpidentity.Address, data []byte) error {
 	targets, resolveErr := relay.lookupTargets(ctx, domain)
 	if resolveErr != nil {
+		if errors.Is(resolveErr, ErrRelayPermanent) {
+			return resolveErr
+		}
 		return fmt.Errorf("%w: resolve recipient mx %s: %v", ErrRelayTemporary, domain, resolveErr)
 	}
 	var lastErr error
@@ -123,6 +129,9 @@ func (relay *DirectMXRelay) lookupTargets(ctx context.Context, domain string) ([
 	targets := make([]string, 0, len(records))
 	for _, record := range records {
 		host := strings.TrimSpace(record.Host)
+		if host == "." {
+			return nil, fmt.Errorf("%w: recipient domain %s publishes null mx", ErrRelayPermanent, domain)
+		}
 		if host == "" {
 			continue
 		}
@@ -185,7 +194,8 @@ func (relay *DirectMXRelay) relayTarget(ctx context.Context, target string, from
 	if finishErr := finishSMTPData(writer, writeErr); finishErr != nil {
 		return finishErr
 	}
-	return client.Quit()
+	_ = client.Quit()
+	return nil
 }
 
 type smtpDataCloser interface {
