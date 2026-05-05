@@ -3,6 +3,7 @@ package smtpsubmission
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -97,8 +98,17 @@ func (relay *DirectMXRelay) relayDomain(ctx context.Context, domain string, from
 }
 
 func (relay *DirectMXRelay) lookupTargets(ctx context.Context, domain string) ([]string, error) {
-	records, lookupErr := relay.resolver.LookupMX(ctx, domain)
+	lookupCtx := ctx
+	var cancel context.CancelFunc
+	if relay.operationTimeout > 0 {
+		lookupCtx, cancel = context.WithTimeout(ctx, relay.operationTimeout)
+		defer cancel()
+	}
+	records, lookupErr := relay.resolver.LookupMX(lookupCtx, domain)
 	if lookupErr != nil {
+		if !shouldFallbackToDomainHost(lookupErr) {
+			return nil, lookupErr
+		}
 		return []string{domain}, nil
 	}
 	if len(records) == 0 {
@@ -122,6 +132,11 @@ func (relay *DirectMXRelay) lookupTargets(ctx context.Context, domain string) ([
 		return nil, fmt.Errorf("recipient mx records for %s contain no hosts", domain)
 	}
 	return targets, nil
+}
+
+func shouldFallbackToDomainHost(lookupErr error) bool {
+	var dnsErr *net.DNSError
+	return errors.As(lookupErr, &dnsErr) && dnsErr.IsNotFound
 }
 
 func (relay *DirectMXRelay) relayTarget(ctx context.Context, target string, from smtpidentity.Address, recipients []smtpidentity.Address, data []byte) error {

@@ -85,6 +85,38 @@ func TestDirectMXRelayFallsBackToDomainWhenMXIsAbsent(t *testing.T) {
 	}
 }
 
+func TestDirectMXRelayBoundsMXLookupWithOperationTimeout(t *testing.T) {
+	dialer := &fakeSMTPDialer{err: errors.New("should not dial after lookup timeout")}
+	relay := &DirectMXRelay{
+		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		hostname:         "pinguin-api.mprlab.com",
+		resolver:         blockingMXResolver{},
+		dialer:           dialer,
+		operationTimeout: 10 * time.Millisecond,
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- relay.Relay(context.Background(), RawMessage{
+			IdentityID: "identity-one",
+			From:       mustSMTPSubmissionAddress(t, "alice@example.com"),
+			Recipients: []smtpidentity.Address{mustSMTPSubmissionAddress(t, "recipient@example.net")},
+			Data:       []byte("From: alice@example.com\r\n\r\nHello\r\n"),
+		})
+	}()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrRelayTemporary) {
+			t.Fatalf("expected temporary relay error, got %v", err)
+		}
+		if dialer.lastAddress != "" {
+			t.Fatalf("expected DNS timeout not to fall back to domain dial, got %q", dialer.lastAddress)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("direct relay did not bound MX lookup with operation timeout")
+	}
+}
+
 func TestDirectMXRelayMapsFailures(t *testing.T) {
 	permanentServer := startFakeDirectSMTPServer(t, fakeSMTPBehavior{rcptResponse: "550 no such user"})
 	temporaryServer := startFakeDirectSMTPServer(t, fakeSMTPBehavior{dataResponse: "451 try later"})
@@ -314,6 +346,13 @@ func (resolver fakeMXResolver) LookupMX(_ context.Context, name string) ([]*net.
 		return nil, resolver.lookupErr
 	}
 	return resolver.records[name], nil
+}
+
+type blockingMXResolver struct{}
+
+func (blockingMXResolver) LookupMX(ctx context.Context, _ string) ([]*net.MX, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
 }
 
 type fakeSMTPDialer struct {
