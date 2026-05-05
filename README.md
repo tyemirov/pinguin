@@ -310,6 +310,8 @@ smtpSubmission:
 
 The Marco Polo gateway deployment terminates public SMTPS in Caddy on port `465` and proxies the decrypted SMTP session to Pinguin's private `listenAddr` on the Docker network. That is why production direct-relay config leaves `tlsListenAddr`, `tlsCertPath`, and `tlsKeyPath` empty and sets `allowInsecureAuth: true`; do not publish the private Pinguin SMTP listener directly to the internet.
 
+The public SMTPS listener does not inherit the shared HTTP Caddy request limiter because it is routed through Caddy Layer 4. Pinguin applies SMTP-aware controls in the submission server instead: idle command/data deadlines use `server.operationTimeoutSec`, concurrent sessions are capped globally and per backend-visible remote host, repeated SMTP AUTH failures are throttled by credential username, and accepted messages are rate-limited per SMTP identity. Built-in defaults allow 200 concurrent SMTP sessions globally, 20 per backend-visible remote host, 5 AUTH failures per credential username per 10 minutes, and 60 accepted messages per SMTP identity per hour.
+
 If you still have a provider SMTP account, set `deliveryMode: upstream` and provide:
 
 ```yaml

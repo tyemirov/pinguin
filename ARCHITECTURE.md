@@ -50,6 +50,7 @@
 ## Configuration Files
 - `configs/.env.pinguin.example`: defines the environment variables referenced by `configs/config.pinguin.yml` (database path, master encryption key, tenant bootstrap values, shared TAuth signing key, optional Twilio credentials).
 - `smtpSubmission` controls optional SMTP submission listeners, the global sender-domain allowlist, public Gmail-facing SMTP settings, and the selected delivery mode. Production can run behind Caddy Layer 4 SMTPS termination by advertising `publicPort: 465` / `publicSecurityMode: ssl` while Pinguin listens privately on plaintext SMTP inside the Docker network.
+- Caddy's shared HTTP `rate_limit` snippet applies to the HTTPS API route, not to the Layer 4 SMTPS route. The SMTP submission server owns protocol-aware throttling: command/data deadlines, global and backend-visible per-remote-host session caps, SMTP AUTH failure windows keyed by credential username, and accepted-message windows keyed by SMTP identity.
 - `configs/.env.tauth.example`: holds the Google OAuth client ID, signing key, cookie domain, and CORS allowlist (must include the UI origin such as `http://localhost:8080` or `https://pinguin.mprlab.com`, plus `https://accounts.google.com`, so GIS nonce exchanges succeed).
 - Front-end TAuth details for `mpr-ui` live in `web/config-ui.yaml`; Pinguin runtime metadata still comes from `/runtime-config`.
 
