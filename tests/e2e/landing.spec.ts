@@ -61,6 +61,30 @@ test.describe('Landing page auth flow', () => {
     );
   });
 
+  test('deduplicates unauthenticated shared-header profile checks', async ({ page }) => {
+    let profileRequestCount = 0;
+    let refreshRequestCount = 0;
+    page.on('request', (request) => {
+      const requestUrl = new URL(request.url());
+      if (request.method() === 'GET' && requestUrl.pathname === '/me') {
+        profileRequestCount += 1;
+      }
+      if (request.method() === 'POST' && requestUrl.pathname === '/auth/refresh') {
+        refreshRequestCount += 1;
+      }
+    });
+
+    await page.goto('/index.html');
+    await expectHeaderGoogleButton(page);
+    await page.waitForFunction(
+      () => (window as any).__PINGUIN_AUTH_STATE__?.status === 'unauthenticated',
+    );
+    await page.waitForTimeout(250);
+
+    expect(profileRequestCount).toBe(1);
+    expect(refreshRequestCount).toBe(1);
+  });
+
   test('keeps the Pinguin header brand when tenant metadata is present', async ({ page }) => {
     await page.goto('/index.html');
     await expectPinguinHeaderBrand(page);

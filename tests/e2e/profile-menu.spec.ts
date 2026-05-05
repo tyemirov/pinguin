@@ -8,16 +8,15 @@ import {
 } from './utils';
 
 test.describe('Profile Menu Integration', () => {
-  test.beforeEach(async ({ page, request }) => {
+  test.beforeEach(async ({ page }) => {
     await stubExternalAssets(page);
-    // Seed a profile with an avatar URL to test both cases
+  });
+
+  test('uses the shared mpr-ui header user menu', async ({ page }) => {
     await configureRuntime(page, {
       authenticated: true,
       tenant: { id: 'tenant-test', displayName: 'Test Tenant' },
     });
-  });
-
-  test('uses the shared mpr-ui header user menu', async ({ page }) => {
     await page.goto('/dashboard.html');
 
     await expectSharedHeaderUserMenu(page);
