@@ -8,6 +8,7 @@ import { dispatchRefresh } from './core/events.js';
 import { createToastCenter } from './ui/toastCenter.js';
 
 const AUTH_STATUS_TIMEOUT_MS = 12000;
+const PINGUIN_AUTH_STATE_EVENT = 'pinguin:auth-state';
 
 window.Alpine = Alpine;
 
@@ -34,7 +35,6 @@ Alpine.data('smtpIdentities', () =>
 );
 Alpine.data('toastCenter', () => createToastCenter());
 
-registerThemePersistence();
 Alpine.start();
 
 function startApp() {
@@ -60,24 +60,6 @@ function createAuthStore() {
       this.isAuthenticated = false;
     },
   };
-}
-
-function registerThemePersistence() {
-  if (typeof document === 'undefined') {
-    return;
-  }
-  const THEME_STORAGE_KEY = 'pinguin.theme';
-  document.addEventListener('mpr-ui:theme-change', (event) => {
-    const mode = event?.detail?.mode;
-    if (mode !== 'light' && mode !== 'dark') {
-      return;
-    }
-    try {
-      window.localStorage.setItem(THEME_STORAGE_KEY, mode);
-    } catch {
-      // Storage might be unavailable in private sessions.
-    }
-  });
 }
 
 function createLandingAuthPanel(controller) {
@@ -297,6 +279,35 @@ function createSessionBridge() {
     }, AUTH_STATUS_TIMEOUT_MS);
   };
 
+  const applyProfileResult = (profileResult, handleProfile, handleMissingProfile) => {
+    if (profileResult && typeof profileResult.then === 'function') {
+      profileResult
+        .then((profile) => {
+          if (profile) {
+            handleProfile(profile);
+            return;
+          }
+          if (typeof handleMissingProfile === 'function') {
+            handleMissingProfile();
+          }
+        })
+        .catch(() => {
+          if (!hasResolved) {
+            setStatus('error');
+            clearStatusTimer();
+          }
+        });
+      return;
+    }
+    if (profileResult) {
+      handleProfile(profileResult);
+      return;
+    }
+    if (typeof handleMissingProfile === 'function') {
+      handleMissingProfile();
+    }
+  };
+
   const sessionChannel =
     typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('auth') : null;
   if (sessionChannel) {
@@ -308,10 +319,17 @@ function createSessionBridge() {
       if (event.data === 'refreshed') {
         if (typeof window.getCurrentUser === 'function') {
           const refreshedProfile = window.getCurrentUser();
-          if (refreshedProfile) {
-            applyProfile(refreshedProfile);
-            invokeCallback('onAuthenticated', refreshedProfile);
-          }
+          applyProfileResult(
+            refreshedProfile,
+            (profile) => {
+              applyProfile(profile);
+              invokeCallback('onAuthenticated', profile);
+            },
+            () => {
+              applyProfile(null);
+              invokeCallback('onUnauthenticated');
+            },
+          );
         }
       }
     });
@@ -345,10 +363,22 @@ function createSessionBridge() {
     }
   };
 
+  const handlePinguinAuthState = (event) => {
+    const status = event?.detail?.status || '';
+    if (status === 'authenticated') {
+      handleHeaderAuthenticated({ detail: { profile: event?.detail?.profile || null } });
+      return;
+    }
+    if (status === 'unauthenticated') {
+      handleHeaderUnauthenticated();
+    }
+  };
+
   if (typeof document !== 'undefined') {
     document.addEventListener('mpr-ui:auth:authenticated', handleHeaderAuthenticated);
     document.addEventListener('mpr-ui:auth:unauthenticated', handleHeaderUnauthenticated);
     document.addEventListener('mpr-ui:auth:status-change', handleHeaderStatusChange);
+    document.addEventListener(PINGUIN_AUTH_STATE_EVENT, handlePinguinAuthState);
     document.addEventListener('mpr-ui:auth:error', () => {
       if (!hasResolved) {
         setStatus('error');
@@ -385,9 +415,19 @@ function createSessionBridge() {
     startStatusTimer();
     if (typeof window.getCurrentUser === 'function') {
       const seededProfile = window.getCurrentUser();
-      if (seededProfile) {
-        handleHeaderAuthenticated({ detail: { profile: seededProfile } });
-      }
+      applyProfileResult(
+        seededProfile,
+        (profile) => {
+          if (!hasResolved) {
+            handleHeaderAuthenticated({ detail: { profile } });
+          }
+        },
+        () => {
+          if (!hasResolved) {
+            handleHeaderUnauthenticated();
+          }
+        },
+      );
     }
   }
 

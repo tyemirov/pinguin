@@ -14,33 +14,49 @@ import (
 	"net/mail"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/tyemirov/pinguin/internal/smtpidentity"
 )
 
 const (
-	defaultMaxMessageBytes = int64(25 * 1024 * 1024)
-	defaultMaxRecipients   = 100
+	defaultMaxMessageBytes          = int64(25 * 1024 * 1024)
+	defaultMaxRecipients            = 100
+	defaultCommandTimeout           = 2 * time.Minute
+	defaultMaxConcurrentSessions    = 200
+	defaultMaxSessionsPerRemoteHost = 20
+	defaultAuthFailureLimit         = 5
+	defaultAuthFailureWindow        = 10 * time.Minute
+	defaultMessageLimit             = 60
+	defaultMessageWindow            = time.Hour
 )
 
 // Config defines the SMTP submission server dependencies.
 type Config struct {
-	Hostname          string
-	ListenAddr        string
-	TLSListenAddr     string
-	TLSConfig         *tls.Config
-	MaxMessageBytes   int64
-	MaxRecipients     int
-	AllowInsecureAuth bool
-	Authenticator     Authenticator
-	Relay             RawRelay
-	Logger            *slog.Logger
+	Hostname                 string
+	ListenAddr               string
+	TLSListenAddr            string
+	TLSConfig                *tls.Config
+	MaxMessageBytes          int64
+	MaxRecipients            int
+	CommandTimeout           time.Duration
+	MaxConcurrentSessions    int
+	MaxSessionsPerRemoteHost int
+	AuthFailureLimit         int
+	AuthFailureWindow        time.Duration
+	MessageLimit             int
+	MessageWindow            time.Duration
+	AllowInsecureAuth        bool
+	Authenticator            Authenticator
+	Relay                    RawRelay
+	Logger                   *slog.Logger
 }
 
 // Server accepts authenticated SMTP submissions.
 type Server struct {
-	config Config
-	logger *slog.Logger
+	config   Config
+	logger   *slog.Logger
+	throttle *smtpThrottle
 }
 
 type sessionState struct {
@@ -49,6 +65,28 @@ type sessionState struct {
 	mailFrom      *smtpidentity.Address
 	recipients    []smtpidentity.Address
 }
+
+type smtpAuthStatus int
+
+const (
+	smtpAuthAccepted smtpAuthStatus = iota
+	smtpAuthRejected
+	smtpAuthThrottled
+)
+
+type smtpAuthResult struct {
+	status   smtpAuthStatus
+	identity smtpidentity.AuthenticatedIdentity
+}
+
+type smtpRelayStatus int
+
+const (
+	smtpRelayAccepted smtpRelayStatus = iota
+	smtpRelayThrottled
+	smtpRelayRejectedPermanent
+	smtpRelayRejectedTemporary
+)
 
 type smtpListener struct {
 	listener    net.Listener
@@ -81,7 +119,28 @@ func NewServer(cfg Config) (*Server, error) {
 	if cfg.MaxRecipients <= 0 {
 		cfg.MaxRecipients = defaultMaxRecipients
 	}
-	return &Server{config: cfg, logger: cfg.Logger}, nil
+	if cfg.CommandTimeout <= 0 {
+		cfg.CommandTimeout = defaultCommandTimeout
+	}
+	if cfg.MaxConcurrentSessions <= 0 {
+		cfg.MaxConcurrentSessions = defaultMaxConcurrentSessions
+	}
+	if cfg.MaxSessionsPerRemoteHost <= 0 {
+		cfg.MaxSessionsPerRemoteHost = defaultMaxSessionsPerRemoteHost
+	}
+	if cfg.AuthFailureLimit <= 0 {
+		cfg.AuthFailureLimit = defaultAuthFailureLimit
+	}
+	if cfg.AuthFailureWindow <= 0 {
+		cfg.AuthFailureWindow = defaultAuthFailureWindow
+	}
+	if cfg.MessageLimit <= 0 {
+		cfg.MessageLimit = defaultMessageLimit
+	}
+	if cfg.MessageWindow <= 0 {
+		cfg.MessageWindow = defaultMessageWindow
+	}
+	return &Server{config: cfg, logger: cfg.Logger, throttle: newSMTPThrottle(cfg)}, nil
 }
 
 // LoadTLSConfig loads certificate files for STARTTLS and implicit TLS.
@@ -160,11 +219,21 @@ func (server *Server) Serve(ctx context.Context, listener net.Listener, implicit
 			}
 			return acceptErr
 		}
-		go server.handleConnection(ctx, connection, implicitTLS)
+		remoteHost := remoteHostForConnection(connection)
+		releaseSession, acquireErr := server.throttle.acquireSession(remoteHost)
+		if acquireErr != nil {
+			server.logger.Warn("smtp_submission_session_throttled", "remote_host", remoteHost, "error", acquireErr)
+			rejectSMTPConnection(connection, "421 Too many concurrent SMTP sessions")
+			continue
+		}
+		go func() {
+			defer releaseSession()
+			server.handleConnection(ctx, connection, implicitTLS, remoteHost)
+		}()
 	}
 }
 
-func (server *Server) handleConnection(ctx context.Context, connection net.Conn, implicitTLS bool) {
+func (server *Server) handleConnection(ctx context.Context, connection net.Conn, implicitTLS bool, remoteHost string) {
 	defer connection.Close()
 	session := &sessionState{secure: implicitTLS}
 	reader := bufio.NewReader(connection)
@@ -173,6 +242,9 @@ func (server *Server) handleConnection(ctx context.Context, connection net.Conn,
 		return
 	}
 	for {
+		if deadlineErr := setSMTPReadDeadline(connection, server.config.CommandTimeout); deadlineErr != nil {
+			return
+		}
 		line, readErr := reader.ReadString('\n')
 		if readErr != nil {
 			return
@@ -202,13 +274,13 @@ func (server *Server) handleConnection(ctx context.Context, connection net.Conn,
 			writer = bufio.NewWriter(connection)
 			*session = sessionState{secure: true}
 		case "AUTH":
-			server.handleAuth(ctx, reader, writer, session, argument)
+			server.handleAuth(ctx, reader, writer, session, argument, remoteHost)
 		case "MAIL":
 			server.handleMail(writer, session, argument)
 		case "RCPT":
 			server.handleRecipient(writer, session, argument)
 		case "DATA":
-			server.handleData(ctx, reader, writer, session)
+			server.handleData(ctx, connection, reader, writer, session)
 		case "RSET":
 			session.mailFrom = nil
 			session.recipients = nil
@@ -241,7 +313,7 @@ func (server *Server) handleHello(writer *bufio.Writer, session *sessionState) {
 	}
 }
 
-func (server *Server) handleAuth(ctx context.Context, reader *bufio.Reader, writer *bufio.Writer, session *sessionState, argument string) {
+func (server *Server) handleAuth(ctx context.Context, reader *bufio.Reader, writer *bufio.Writer, session *sessionState, argument string, remoteHost string) {
 	if session.authenticated != nil {
 		writeSMTPLine(writer, "503 Already authenticated")
 		return
@@ -263,17 +335,35 @@ func (server *Server) handleAuth(ctx context.Context, reader *bufio.Reader, writ
 		writeSMTPLine(writer, "504 Authentication mechanism unsupported")
 		return
 	}
-	if parseErr != nil {
+	authResult := server.completeAuthAttempt(ctx, remoteHost, username, password, parseErr)
+	switch authResult.status {
+	case smtpAuthThrottled:
+		writeSMTPLine(writer, "454 Authentication temporarily throttled")
+		return
+	case smtpAuthRejected:
 		writeSMTPLine(writer, "535 Authentication failed")
 		return
+	case smtpAuthAccepted:
+		session.authenticated = &authResult.identity
+		writeSMTPLine(writer, "235 Authentication successful")
+		return
+	}
+}
+
+func (server *Server) completeAuthAttempt(ctx context.Context, remoteHost string, username string, password string, parseErr error) smtpAuthResult {
+	authReservation, authAllowed := server.throttle.reserveAuthAttempt(remoteHost, username)
+	if !authAllowed {
+		return smtpAuthResult{status: smtpAuthThrottled}
+	}
+	if parseErr != nil {
+		return smtpAuthResult{status: smtpAuthRejected}
 	}
 	identity, authErr := server.config.Authenticator.Authenticate(ctx, username, password)
 	if authErr != nil {
-		writeSMTPLine(writer, "535 Authentication failed")
-		return
+		return smtpAuthResult{status: smtpAuthRejected}
 	}
-	session.authenticated = &identity
-	writeSMTPLine(writer, "235 Authentication successful")
+	authReservation.accept()
+	return smtpAuthResult{status: smtpAuthAccepted, identity: identity}
 }
 
 func (server *Server) readPlainAuth(reader *bufio.Reader, writer *bufio.Writer, payload string) (string, string, error) {
@@ -365,12 +455,15 @@ func (server *Server) handleRecipient(writer *bufio.Writer, session *sessionStat
 	writeSMTPLine(writer, "250 OK")
 }
 
-func (server *Server) handleData(ctx context.Context, reader *bufio.Reader, writer *bufio.Writer, session *sessionState) {
+func (server *Server) handleData(ctx context.Context, connection net.Conn, reader *bufio.Reader, writer *bufio.Writer, session *sessionState) {
 	if session.authenticated == nil || session.mailFrom == nil || len(session.recipients) == 0 {
 		writeSMTPLine(writer, "503 Need MAIL FROM and RCPT TO first")
 		return
 	}
 	if writeSMTPLine(writer, "354 End data with <CR><LF>.<CR><LF>") != nil {
+		return
+	}
+	if deadlineErr := setSMTPReadDeadline(connection, server.config.CommandTimeout); deadlineErr != nil {
 		return
 	}
 	data, tooLarge, readErr := server.readData(reader)
@@ -390,7 +483,7 @@ func (server *Server) handleData(ctx context.Context, reader *bufio.Reader, writ
 		writeSMTPLine(writer, "553 Sender not authorized")
 		return
 	}
-	relayErr := server.config.Relay.Relay(ctx, RawMessage{
+	relayStatus := server.relayAcceptedMessage(ctx, RawMessage{
 		IdentityID: session.authenticated.ID,
 		From:       session.authenticated.EmailAddress,
 		Recipients: append([]smtpidentity.Address(nil), session.recipients...),
@@ -398,15 +491,36 @@ func (server *Server) handleData(ctx context.Context, reader *bufio.Reader, writ
 	})
 	session.mailFrom = nil
 	session.recipients = nil
-	if relayErr != nil {
-		if errors.Is(relayErr, ErrRelayPermanent) {
-			writeSMTPLine(writer, "554 Message rejected")
-			return
-		}
+	switch relayStatus {
+	case smtpRelayThrottled:
+		writeSMTPLine(writer, "452 Message rate limit exceeded")
+		return
+	case smtpRelayRejectedPermanent:
+		writeSMTPLine(writer, "554 Message rejected")
+		return
+	case smtpRelayRejectedTemporary:
 		writeSMTPLine(writer, "451 Requested action aborted")
 		return
+	case smtpRelayAccepted:
+		writeSMTPLine(writer, "250 Message accepted")
+		return
 	}
-	writeSMTPLine(writer, "250 Message accepted")
+}
+
+func (server *Server) relayAcceptedMessage(ctx context.Context, message RawMessage) smtpRelayStatus {
+	messageReservation, messageAllowed := server.throttle.reserveAcceptedMessage(message.IdentityID)
+	if !messageAllowed {
+		return smtpRelayThrottled
+	}
+	relayErr := server.config.Relay.Relay(ctx, message)
+	if relayErr == nil {
+		return smtpRelayAccepted
+	}
+	messageReservation.cancel()
+	if errors.Is(relayErr, ErrRelayPermanent) {
+		return smtpRelayRejectedPermanent
+	}
+	return smtpRelayRejectedTemporary
 }
 
 func (server *Server) readData(reader *bufio.Reader) ([]byte, bool, error) {
@@ -496,6 +610,30 @@ func writeSMTPLine(writer *bufio.Writer, line string) error {
 		return writeErr
 	}
 	return writer.Flush()
+}
+
+func rejectSMTPConnection(connection net.Conn, line string) {
+	defer connection.Close()
+	writer := bufio.NewWriter(connection)
+	_ = writeSMTPLine(writer, line)
+}
+
+func remoteHostForConnection(connection net.Conn) string {
+	if tcpAddress, ok := connection.RemoteAddr().(*net.TCPAddr); ok {
+		return tcpAddress.IP.String()
+	}
+	host, _, splitErr := net.SplitHostPort(connection.RemoteAddr().String())
+	if splitErr == nil {
+		return host
+	}
+	return strings.TrimSpace(connection.RemoteAddr().String())
+}
+
+func setSMTPReadDeadline(connection net.Conn, timeout time.Duration) error {
+	if timeout <= 0 {
+		return nil
+	}
+	return connection.SetReadDeadline(time.Now().Add(timeout))
 }
 
 func closeListeners(listeners []smtpListener) {

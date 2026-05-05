@@ -35,3 +35,15 @@ if (storedTheme === 'light' || storedTheme === 'dark') {
     document.documentElement.setAttribute('data-mpr-theme', storedTheme);
   }
 }
+
+document.addEventListener('mpr-ui:theme-change', (event) => {
+  const mode = event?.detail?.mode;
+  if (mode !== 'light' && mode !== 'dark') {
+    return;
+  }
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, mode);
+  } catch {
+    // Storage might be unavailable in private sessions.
+  }
+});

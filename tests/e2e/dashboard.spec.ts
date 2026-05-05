@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import {
   configureRuntime,
   resetNotifications,
@@ -10,6 +10,12 @@ import {
 } from './utils';
 
 const LANDING_URL_PATTERN = /\/(?:index\.html)?$/;
+
+async function expectClipboardText(page: Page, expectedText: string) {
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe(expectedText);
+}
 
 test.describe('Dashboard', () => {
   test.beforeEach(async ({ page, request }) => {
@@ -347,6 +353,7 @@ test.describe('Dashboard', () => {
   });
 
   test('creates SMTP identity and shows Gmail settings once', async ({ page }) => {
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
     await configureRuntime(page, { authenticated: true });
     await page.goto('/dashboard.html');
     const panel = page.getByTestId('smtp-identities');
@@ -361,6 +368,15 @@ test.describe('Dashboard', () => {
     await expect(credentials.locator('input').nth(2)).toHaveValue('ssl');
     await expect(credentials.locator('input').nth(3)).toHaveValue('smtp_test_1');
     await expect(credentials.locator('input').nth(4)).toHaveValue('pgsmtp_test_password');
+    await credentials.getByRole('button', { name: 'Copy SMTP server' }).click();
+    await expectClipboardText(page, 'smtp.pinguin.test');
+    await expectToast(page, 'SMTP server copied');
+    await credentials.getByRole('button', { name: 'Copy username' }).click();
+    await expectClipboardText(page, 'smtp_test_1');
+    await expectToast(page, 'Username copied');
+    await credentials.getByRole('button', { name: 'Copy password' }).click();
+    await expectClipboardText(page, 'pgsmtp_test_password');
+    await expectToast(page, 'Password copied');
     await expectToast(page, 'SMTP identity created');
   });
 
