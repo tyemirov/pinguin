@@ -501,6 +501,26 @@ func TestSMTPSubmissionRelayFailureDoesNotConsumeMessageQuota(t *testing.T) {
 	}
 }
 
+func TestSMTPSubmissionSlowRelayCanWriteAcceptedResponseAfterReadTimeout(t *testing.T) {
+	fixture := newSMTPServerFixtureWithConfig(t, true, nil, func(cfg *Config) {
+		cfg.CommandTimeout = 20 * time.Millisecond
+	})
+	fixture.relay.delay = 60 * time.Millisecond
+	client := fixture.authenticatedClient(t)
+	defer client.close()
+	client.send(t, "MAIL FROM:<alice@example.com>")
+	client.expectCode(t, "250")
+	client.send(t, "RCPT TO:<recipient@example.net>")
+	client.expectCode(t, "250")
+	client.send(t, "DATA")
+	client.expectCode(t, "354")
+	client.sendData(t, "From: alice@example.com\r\nTo: recipient@example.net\r\nSubject: Slow relay\r\n\r\nHello")
+	if deadlineErr := client.connection.SetReadDeadline(time.Now().Add(time.Second)); deadlineErr != nil {
+		t.Fatalf("set client read deadline: %v", deadlineErr)
+	}
+	client.expectCode(t, "250")
+}
+
 func TestSMTPSubmissionClosesSlowDataSessions(t *testing.T) {
 	fixture := newSMTPServerFixtureWithConfig(t, true, nil, func(cfg *Config) {
 		cfg.CommandTimeout = 30 * time.Millisecond
@@ -909,7 +929,7 @@ func TestSMTPThrottleHelpers(t *testing.T) {
 	if remoteHost := remoteHostForConnection(splitRemoteSMTPConn{remoteAddress: "opaque"}); remoteHost != "opaque" {
 		t.Fatalf("unexpected opaque remote host %q", remoteHost)
 	}
-	if deadlineErr := setSMTPDeadline(failingSMTPConn{}, 0); deadlineErr != nil {
+	if deadlineErr := setSMTPReadDeadline(failingSMTPConn{}, 0); deadlineErr != nil {
 		t.Fatalf("expected disabled deadline to be ignored, got %v", deadlineErr)
 	}
 	throttle := newSMTPThrottle(Config{
@@ -1193,9 +1213,13 @@ func (authenticator *staticAuthenticator) Authenticate(_ context.Context, userna
 type recordingRelay struct {
 	messages []RawMessage
 	err      error
+	delay    time.Duration
 }
 
 func (relay *recordingRelay) Relay(_ context.Context, message RawMessage) error {
+	if relay.delay > 0 {
+		time.Sleep(relay.delay)
+	}
 	relay.messages = append(relay.messages, message)
 	if relay.err != nil {
 		return relay.err
@@ -1313,11 +1337,11 @@ func (conn smtpDeadlineFailingConn) RemoteAddr() net.Addr {
 }
 
 func (conn smtpDeadlineFailingConn) SetDeadline(time.Time) error {
-	return errors.New("set deadline failed")
+	return nil
 }
 
 func (conn smtpDeadlineFailingConn) SetReadDeadline(time.Time) error {
-	return nil
+	return errors.New("set read deadline failed")
 }
 
 func (conn smtpDeadlineFailingConn) SetWriteDeadline(time.Time) error {

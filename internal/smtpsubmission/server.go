@@ -220,7 +220,7 @@ func (server *Server) handleConnection(ctx context.Context, connection net.Conn,
 		return
 	}
 	for {
-		if deadlineErr := setSMTPDeadline(connection, server.config.CommandTimeout); deadlineErr != nil {
+		if deadlineErr := setSMTPReadDeadline(connection, server.config.CommandTimeout); deadlineErr != nil {
 			return
 		}
 		line, readErr := reader.ReadString('\n')
@@ -431,7 +431,7 @@ func (server *Server) handleData(ctx context.Context, connection net.Conn, reade
 	if writeSMTPLine(writer, "354 End data with <CR><LF>.<CR><LF>") != nil {
 		return
 	}
-	if deadlineErr := setSMTPDeadline(connection, server.config.CommandTimeout); deadlineErr != nil {
+	if deadlineErr := setSMTPReadDeadline(connection, server.config.CommandTimeout); deadlineErr != nil {
 		return
 	}
 	data, tooLarge, readErr := server.readData(reader)
@@ -584,11 +584,11 @@ func remoteHostForConnection(connection net.Conn) string {
 	return strings.TrimSpace(connection.RemoteAddr().String())
 }
 
-func setSMTPDeadline(connection net.Conn, timeout time.Duration) error {
+func setSMTPReadDeadline(connection net.Conn, timeout time.Duration) error {
 	if timeout <= 0 {
 		return nil
 	}
-	return connection.SetDeadline(time.Now().Add(timeout))
+	return connection.SetReadDeadline(time.Now().Add(timeout))
 }
 
 func closeListeners(listeners []smtpListener) {
