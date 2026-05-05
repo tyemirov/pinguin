@@ -317,7 +317,16 @@
               <div class="credentials-grid" data-testid="smtp-credentials">
                 <label>
                   <span x-text="strings.hostLabel"></span>
-                  <input type="text" readonly :value="credentials.smtpSettings.host" />
+                  <span class="copy-field">
+                    <input type="text" readonly :value="credentials.smtpSettings.host" />
+                    <button
+                      class="copy-field__button"
+                      type="button"
+                      :aria-label="strings.hostCopyLabel"
+                      x-on:click="copyCredentialValue(credentials.smtpSettings.host, strings.hostCopySuccess)"
+                      x-text="actions.copy"
+                    ></button>
+                  </span>
                 </label>
                 <label>
                   <span x-text="strings.portLabel"></span>
@@ -329,11 +338,29 @@
                 </label>
                 <label>
                   <span x-text="strings.usernameLabel"></span>
-                  <input type="text" readonly :value="credentials.username" />
+                  <span class="copy-field">
+                    <input type="text" readonly :value="credentials.username" />
+                    <button
+                      class="copy-field__button"
+                      type="button"
+                      :aria-label="strings.usernameCopyLabel"
+                      x-on:click="copyCredentialValue(credentials.username, strings.usernameCopySuccess)"
+                      x-text="actions.copy"
+                    ></button>
+                  </span>
                 </label>
                 <label class="credentials-grid__full">
                   <span x-text="strings.passwordLabel"></span>
-                  <input type="text" readonly :value="credentials.password" />
+                  <span class="copy-field">
+                    <input type="text" readonly :value="credentials.password" />
+                    <button
+                      class="copy-field__button"
+                      type="button"
+                      :aria-label="strings.passwordCopyLabel"
+                      x-on:click="copyCredentialValue(credentials.password, strings.passwordCopySuccess)"
+                      x-text="actions.copy"
+                    ></button>
+                  </span>
                 </label>
               </div>
             </template>

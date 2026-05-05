@@ -124,6 +124,17 @@ export function createSMTPIdentities(options) {
         this.isSubmitting = false;
       }
     },
+    async copyCredentialValue(value, successMessage) {
+      try {
+        if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+          throw new Error('clipboard_unavailable');
+        }
+        await navigator.clipboard.writeText(String(value ?? ''));
+        dispatchToast({ variant: 'success', message: successMessage });
+      } catch (error) {
+        dispatchToast({ variant: 'error', message: this.strings.copyError });
+      }
+    },
     openCredentialsDialog() {
       const dialog = this.$refs.credentialsDialog;
       if (dialog && typeof dialog.showModal === 'function') {
