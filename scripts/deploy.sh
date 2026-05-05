@@ -80,6 +80,12 @@ configure_legacy_pages() {
   fi
 }
 
+trigger_legacy_pages_deploy() {
+  command -v gh >/dev/null 2>&1 || { echo "error: gh is required to trigger GitHub Pages deployment" >&2; exit 1; }
+  echo "==> [deploy] Triggering GitHub Pages build for ${PAGES_REPOSITORY}"
+  gh api --method POST "repos/${PAGES_REPOSITORY}/pages/builds" >/dev/null
+}
+
 pages_build_marker_url() {
   local base_url="${PAGES_URL%/}"
   printf "%s/pinguin-pages-build.json?source=%s\n" "${base_url}" "${source_short}"
@@ -229,6 +235,7 @@ if [[ "${SKIP_PAGES}" != "true" ]]; then
   echo "==> [deploy] Publishing GitHub Pages after backend verification"
   PAGES_PUBLISH_SOURCE_BRANCH="${PUBLISH_BRANCH}" PAGES_PUBLISH_REMOTE="${PUBLISH_REMOTE}" PAGES_PUBLISH_BRANCH="${PAGES_BRANCH}" ./scripts/publish_pages_branch.sh
   configure_legacy_pages
+  trigger_legacy_pages_deploy
 fi
 
 if [[ "${SKIP_PAGES_VERIFY}" != "true" ]]; then

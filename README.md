@@ -366,7 +366,7 @@ docker login ghcr.io
 make publish
 ```
 
-Use the deploy target after `make publish` to deploy the backend through `mprlab-gateway`, publish the current `web/` assets to the legacy `gh-pages` branch root, and verify the live Pages source marker matches the deployed commit:
+Use the deploy target after `make publish` to deploy the backend through `mprlab-gateway`, publish the current `web/` assets to the legacy `gh-pages` branch root, trigger a GitHub Pages build, and verify the live Pages source marker matches the deployed commit:
 
 ```bash
 make deploy

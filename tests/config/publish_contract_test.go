@@ -105,6 +105,8 @@ func TestDeployScriptDeploysBackendThenLegacyPages(t *testing.T) {
 		"make -C \"${GATEWAY_DIR}\" deploy TARGET=pinguin",
 		"Verifying ${IMAGE_REPOSITORY}:latest matches ${TAG}",
 		"./scripts/publish_pages_branch.sh",
+		"trigger_legacy_pages_deploy",
+		"gh api --method POST \"repos/${PAGES_REPOSITORY}/pages/builds\"",
 		"\"build_type\":\"legacy\"",
 		"\"path\":\"/\"",
 		"curl --fail --silent --show-error --location --max-time 30 \"${PAGES_URL}\"",
@@ -117,6 +119,9 @@ func TestDeployScriptDeploysBackendThenLegacyPages(t *testing.T) {
 		if !strings.Contains(deployScript, requiredSnippet) {
 			t.Fatalf("deploy script missing contract snippet %q", requiredSnippet)
 		}
+	}
+	if strings.Contains(deployScript, "PAGES_PUBLISH_FORCE") {
+		t.Fatalf("deploy script must not force empty Pages publish commits")
 	}
 }
 
