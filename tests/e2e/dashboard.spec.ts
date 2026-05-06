@@ -363,11 +363,18 @@ test.describe('Dashboard', () => {
     await expect(panel.getByTestId('smtp-identity-row')).toHaveCount(1);
     await expect(panel.getByText('alice@example.com')).toBeVisible();
     const credentials = panel.getByTestId('smtp-credentials');
-    await expect(credentials.locator('input').nth(0)).toHaveValue('smtp.pinguin.test');
-    await expect(credentials.locator('input').nth(1)).toHaveValue('465');
-    await expect(credentials.locator('input').nth(2)).toHaveValue('ssl');
-    await expect(credentials.locator('input').nth(3)).toHaveValue('smtp_test_1');
-    await expect(credentials.locator('input').nth(4)).toHaveValue('pgsmtp_test_password');
+    const credentialInputs = credentials.locator('input');
+    await expect(credentialInputs).toHaveCount(5);
+    await expect(credentials.locator('input:not([readonly])')).toHaveCount(0);
+    await expect(credentialInputs.nth(0)).toHaveValue('smtp.pinguin.test');
+    await expect(credentialInputs.nth(1)).toHaveValue('465');
+    await expect(credentialInputs.nth(2)).toHaveValue('ssl');
+    await expect(credentialInputs.nth(3)).toHaveValue('smtp_test_1');
+    await expect(credentialInputs.nth(4)).toHaveValue('pgsmtp_test_password');
+    const copyButtons = credentials.locator('.copy-field__button');
+    await expect(copyButtons).toHaveCount(3);
+    await expect(copyButtons).toHaveText(['', '', '']);
+    await expect(credentials.getByRole('button', { name: /^Copy$/ })).toHaveCount(0);
     await credentials.getByRole('button', { name: 'Copy SMTP server' }).click();
     await expectClipboardText(page, 'smtp.pinguin.test');
     await expectToast(page, 'SMTP server copied');
@@ -378,6 +385,8 @@ test.describe('Dashboard', () => {
     await expectClipboardText(page, 'pgsmtp_test_password');
     await expectToast(page, 'Password copied');
     await expectToast(page, 'SMTP identity created');
+    await panel.getByRole('button', { name: 'Close Gmail SMTP settings' }).click();
+    await expect(credentials).toBeHidden();
   });
 
   test('rotates SMTP identity credentials', async ({ page, request }) => {
