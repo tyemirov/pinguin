@@ -102,6 +102,10 @@ func TestDeployScriptDeploysBackendThenLegacyPages(t *testing.T) {
 
 	deployScript := string(readRepoFile(t, "scripts", "deploy.sh"))
 	requiredSnippets := []string{
+		"SKIP_CI=\"false\"",
+		"SKIP_BACKEND=\"false\"",
+		"SKIP_PAGES=\"false\"",
+		"SKIP_PAGES_VERIFY=\"false\"",
 		"make -C \"${GATEWAY_DIR}\" deploy TARGET=pinguin",
 		"Verifying ${IMAGE_REPOSITORY}:latest matches ${TAG}",
 		"./scripts/publish_pages_branch.sh",
@@ -122,6 +126,18 @@ func TestDeployScriptDeploysBackendThenLegacyPages(t *testing.T) {
 	}
 	if strings.Contains(deployScript, "PAGES_PUBLISH_FORCE") {
 		t.Fatalf("deploy script must not force empty Pages publish commits")
+	}
+
+	readme := string(readRepoFile(t, "README.md"))
+	for _, requiredSnippet := range []string{
+		"Production deployment is intentionally parameterless",
+		"make deploy",
+		"defaults to the sibling `mprlab-gateway` checkout",
+		"only for non-production targets",
+	} {
+		if !strings.Contains(readme, requiredSnippet) {
+			t.Fatalf("README missing plain deploy contract snippet %q", requiredSnippet)
+		}
 	}
 }
 
