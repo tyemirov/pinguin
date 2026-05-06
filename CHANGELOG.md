@@ -44,6 +44,30 @@
 - Update README and architecture notes to describe `config-ui.yaml` as the browser auth source of truth.
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 
+## [v0.4.5] - 2026-05-06
+
+### Features ✨
+- Trigger GitHub Pages build during deploy and verify live artifact source commit to ensure deployment consistency.
+- Add a `pinguin-pages-build.json` marker file to the Pages artifact including source commit metadata.
+
+### Improvements ⚙️
+- Enhance deploy script to publish static assets, trigger Pages build, and poll for source commit verification.
+- Update README with detailed publish and deploy instructions clarifying parameterless production deployment and step sequencing.
+- Refine legacy GitHub Pages publishing to handle backend verification, artifact staging, and source commit tracking.
+- Improve testing by adding contract tests for deployment sequence and Pages artifact content.
+
+### Bug Fixes 🐛
+- Fix Pages deploy source verification so deployment reports success only when the live Pages artifact matches the expected commit.
+- Resolve issue where `make deploy` could report success while GitHub Pages still served stale content, causing UI cache duplication.
+
+### Testing 🧪
+- Add tests to verify deployment script includes required steps for backend and Pages deployment and source commit verification.
+- Add tests to confirm `pinguin-pages-build.json` is generated correctly with commit metadata during artifact build.
+
+### Docs 📚
+- Update README.md and ISSUES.md with deployment workflow and issue PG-351 resolution details.
+- Clarify documentation for using `make deploy` after `make publish` to properly deploy backend and Pages with verification.
+
 ## [v0.4.4] - 2026-05-05
 
 ### Features ✨
