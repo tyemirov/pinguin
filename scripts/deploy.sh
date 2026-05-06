@@ -44,6 +44,8 @@ PUBLISH_BRANCH="$(env_or_default PAGES_PUBLISH_SOURCE_BRANCH master)"
 PUBLISH_REMOTE="$(env_or_default PAGES_PUBLISH_REMOTE origin)"
 PAGES_BRANCH="$(env_or_default PAGES_PUBLISH_BRANCH gh-pages)"
 PAGES_REPOSITORY="$(env_or_default PAGES_REPOSITORY tyemirov/pinguin)"
+PAGES_VERIFY_ATTEMPTS="$(env_or_default PAGES_VERIFY_ATTEMPTS 18)"
+PAGES_VERIFY_DELAY_SEC="$(env_or_default PAGES_VERIFY_DELAY_SEC 10)"
 TAG="$(env_or_default DEPLOY_TAG "")"
 SKIP_CI="false"
 SKIP_IMAGE_VERIFY="false"
@@ -76,6 +78,46 @@ configure_legacy_pages() {
     echo "error: GitHub Pages is not configured for legacy ${PAGES_BRANCH}/ publishing; got build_type=${pages_build_type} source=${pages_branch}${pages_path}" >&2
     exit 1
   fi
+}
+
+trigger_legacy_pages_deploy() {
+  command -v gh >/dev/null 2>&1 || { echo "error: gh is required to trigger GitHub Pages deployment" >&2; exit 1; }
+  echo "==> [deploy] Triggering GitHub Pages build for ${PAGES_REPOSITORY}"
+  gh api --method POST "repos/${PAGES_REPOSITORY}/pages/builds" >/dev/null
+}
+
+pages_build_marker_url() {
+  local base_url="${PAGES_URL%/}"
+  printf "%s/pinguin-pages-build.json?source=%s\n" "${base_url}" "${source_short}"
+}
+
+verify_live_pages_source_commit() {
+  local expected_commit="$1"
+  local marker_url="$2"
+  local attempt
+  local payload
+  local last_payload=""
+
+  for attempt in $(seq 1 "${PAGES_VERIFY_ATTEMPTS}"); do
+    if payload="$(curl --fail --silent --show-error --location --max-time 30 "${marker_url}" 2>&1)"; then
+      last_payload="${payload}"
+      if [[ "${payload}" == *"\"sourceCommit\":\"${expected_commit}\""* ]]; then
+        echo "==> [deploy] Verified Pages artifact source ${expected_commit}"
+        return 0
+      fi
+      echo "==> [deploy] Waiting for Pages artifact source ${expected_commit}; marker returned ${payload}" >&2
+    else
+      last_payload="${payload}"
+      echo "==> [deploy] Waiting for Pages artifact source ${expected_commit}; marker fetch failed: ${payload}" >&2
+    fi
+
+    if [[ "${attempt}" != "${PAGES_VERIFY_ATTEMPTS}" ]]; then
+      sleep "${PAGES_VERIFY_DELAY_SEC}"
+    fi
+  done
+
+  echo "error: ${PAGES_URL} did not serve Pages artifact source ${expected_commit}; last marker response: ${last_payload}" >&2
+  exit 1
 }
 
 while [[ $# -gt 0 ]]; do
@@ -136,6 +178,8 @@ command -v git >/dev/null 2>&1 || { echo "error: git is required" >&2; exit 1; }
 
 repo_root="$(git rev-parse --show-toplevel)"
 cd "${repo_root}"
+source_commit="$(git rev-parse --verify HEAD)"
+source_short="$(git rev-parse --short HEAD)"
 resolve_gateway_dir() {
   local candidate
   if [[ -n "${GATEWAY_DIR}" ]]; then
@@ -191,12 +235,16 @@ if [[ "${SKIP_PAGES}" != "true" ]]; then
   echo "==> [deploy] Publishing GitHub Pages after backend verification"
   PAGES_PUBLISH_SOURCE_BRANCH="${PUBLISH_BRANCH}" PAGES_PUBLISH_REMOTE="${PUBLISH_REMOTE}" PAGES_PUBLISH_BRANCH="${PAGES_BRANCH}" ./scripts/publish_pages_branch.sh
   configure_legacy_pages
+  trigger_legacy_pages_deploy
 fi
 
 if [[ "${SKIP_PAGES_VERIFY}" != "true" ]]; then
   command -v curl >/dev/null 2>&1 || { echo "error: curl is required for Pages verification" >&2; exit 1; }
   echo "==> [deploy] Verifying ${PAGES_URL}"
   timeout -k 60s -s SIGKILL 60s curl --fail --silent --show-error --location --max-time 30 "${PAGES_URL}" >/dev/null
+  if [[ "${SKIP_PAGES}" != "true" ]]; then
+    verify_live_pages_source_commit "${source_commit}" "$(pages_build_marker_url)"
+  fi
 fi
 
 echo "Pinguin deploy complete"
