@@ -366,13 +366,13 @@ docker login ghcr.io
 make publish
 ```
 
-Use the deploy target after `make publish` to deploy the backend through `mprlab-gateway`, publish the current `web/` assets to the legacy `gh-pages` branch root, trigger a GitHub Pages build, and verify the live Pages source marker matches the deployed commit:
+Use the deploy target after `make publish` to deploy the backend through `mprlab-gateway`, publish the current `web/` assets to the legacy `gh-pages` branch root, trigger a GitHub Pages build, and verify the live Pages source marker matches the deployed commit. Production deployment is intentionally parameterless; the operator command is:
 
 ```bash
 make deploy
 ```
 
-`make publish` defaults to `ghcr.io/tyemirov/pinguin:latest` and `linux/amd64,linux/arm64`. `make deploy` defaults to the `tyemirov/pinguin` Pages repository and `gh-pages` branch. Override `DOCKER_IMAGE`, `DOCKER_TAG`, `PUBLISH_PLATFORMS`, `PAGES_REPOSITORY`, `PAGES_PUBLISH_REMOTE`, or `PAGES_PUBLISH_BRANCH` if you need a different target. `gh` must be authenticated with Pages write access so deploy can verify/update the legacy Pages source.
+`make publish` defaults to `ghcr.io/tyemirov/pinguin:latest` and `linux/amd64,linux/arm64`. `make deploy` defaults to the sibling `mprlab-gateway` checkout, the `tyemirov/pinguin` Pages repository, and the `gh-pages` branch. Override `DOCKER_IMAGE`, `DOCKER_TAG`, `PUBLISH_PLATFORMS`, `PAGES_REPOSITORY`, `PAGES_PUBLISH_REMOTE`, or `PAGES_PUBLISH_BRANCH` only for non-production targets. `gh` must be authenticated with Pages write access so deploy can verify/update the legacy Pages source.
 
 1. Copy the sample environment files and update the placeholders. **Use the same signing key in both files** so TAuth and Pinguin agree on JWT validation.
 
