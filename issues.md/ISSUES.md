@@ -13,6 +13,7 @@ Read @AGENTS.md, @ARCHITECTURE.md, @README.md, @issues.md/POLICY.md, @issues.md/
 
 ## Improvements (202–299)
 
+- [x] [PG-352] Redesign the one-time Gmail SMTP settings modal so it closes from a top-right X control, uses inline clipboard icon controls inside copyable fields, and keeps all displayed settings non-editable. Resolved with a header X close control, icon-only inline copy controls for copyable fields, readonly field assertions, and passing `make test-frontend` plus `make ci`.
 - [x] [PG-349] Add copy buttons to the one-time Gmail SMTP settings modal for the SMTP server, username, and password fields. Resolved with inline credential copy controls, clipboard success/error toasts, and Playwright coverage that verifies each copied value; `make test-frontend` and `make ci` pass.
 - [x] [PG-350] Add SMTP submission throttling for the Layer 4 Gmail Send-As surface. Resolved with SMTP-aware global/backend-visible per-remote-host session caps, idle command/data deadlines, credential-keyed AUTH failure throttling, per-identity accepted-message throttling, docs clarifying that Layer 4 does not inherit HTTP Caddy `rate_limit`, and passing `make ci`.
 - [x] [PG-347] Turn authenticated SMTP submission into a direct relay option for Gmail Send-As domains that have no upstream SMTP account. Resolved with `smtpSubmission.deliveryMode: direct`, recipient-MX delivery, explicit Gmail-facing `publicPort` / `publicSecurityMode` settings for Caddy-terminated `465` / `ssl`, docs/config/test updates, and passing `make ci`.

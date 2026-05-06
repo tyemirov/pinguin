@@ -112,6 +112,7 @@ export const STRINGS = Object.freeze({
     rotateConfirm: "Rotate credentials for this SMTP identity?",
     credentialsTitle: "Gmail SMTP settings",
     credentialsDescription: "This password is shown once.",
+    credentialsCloseLabel: "Close Gmail SMTP settings",
     hostLabel: "SMTP server",
     hostCopyLabel: "Copy SMTP server",
     hostCopySuccess: "SMTP server copied",
