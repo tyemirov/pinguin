@@ -44,6 +44,25 @@
 - Update README and architecture notes to describe `config-ui.yaml` as the browser auth source of truth.
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 
+## [v0.4.6] - 2026-05-06
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Redesigned the one-time Gmail SMTP settings modal with a top-right close control and inline clipboard copy icons inside non-editable fields.
+- Added SMTP submission throttling and direct relay options for Gmail Send-As domains without upstream SMTP accounts.
+- Updated frontend tests to verify copy controls and readonly assertions for SMTP credentials.
+
+### Bug Fixes 🐛
+- _No changes._
+
+### Testing 🧪
+- Extended end-to-end dashboard tests to cover modal closing, copy button functionality, and readonly fields in SMTP settings.
+
+### Docs 📚
+- Updated issues documentation to reflect the changes in Gmail SMTP settings features and controls.
+
 ## [v0.4.5] - 2026-05-06
 
 ### Features ✨
