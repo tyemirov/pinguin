@@ -368,6 +368,8 @@ Shared addresses are dynamic data, not YAML routes. Create or edit them from the
 
 Pinguin rejects identity creation or forwarding updates unless `forward_to` contains at least one valid email address.
 
+The inbound listener accepts `MAIL FROM:<>` null reverse-path messages so DSNs and other auto-generated loop-safe mail can be forwarded to configured shared addresses.
+
 Customer DNS should use a dedicated mail subdomain whenever possible:
 
 ```dns

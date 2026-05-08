@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/tyemirov/pinguin/internal/smtpidentity"
 )
@@ -28,9 +29,45 @@ type RouteResolver interface {
 
 // Message carries an accepted inbound SMTP payload.
 type Message struct {
-	From       smtpidentity.Address
+	From       ReversePath
 	Recipients []smtpidentity.Address
 	Data       []byte
+}
+
+// ReversePath represents an SMTP MAIL FROM reverse path, including the null path.
+type ReversePath struct {
+	address smtpidentity.Address
+}
+
+// NewReversePath constructs a reverse path from an SMTP mailbox value or an empty null path.
+func NewReversePath(rawAddress string) (ReversePath, error) {
+	trimmedAddress := strings.TrimSpace(rawAddress)
+	if trimmedAddress == "" {
+		return ReversePath{}, nil
+	}
+	address, addressErr := smtpidentity.NewAddress(trimmedAddress)
+	if addressErr != nil {
+		return ReversePath{}, addressErr
+	}
+	return ReversePath{address: address}, nil
+}
+
+// IsNull reports whether the reverse path is the standards-defined null path.
+func (reversePath ReversePath) IsNull() bool {
+	return reversePath.address.String() == ""
+}
+
+// String returns the normalized reverse-path mailbox or an empty string for the null path.
+func (reversePath ReversePath) String() string {
+	return reversePath.address.String()
+}
+
+// Address returns the normalized reverse-path mailbox when one is present.
+func (reversePath ReversePath) Address() (smtpidentity.Address, bool) {
+	if reversePath.IsNull() {
+		return smtpidentity.Address{}, false
+	}
+	return reversePath.address, true
 }
 
 // Route maps one inbound address to its forwarding recipients.

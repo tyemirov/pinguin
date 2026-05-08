@@ -3,7 +3,7 @@
 ## System Overview
 - Pinguin exposes two surfaces inside a single Go process: a gRPC notification service (port `50051`) and a Gin HTTP server that serves the REST-ish `/api` endpoints plus `/runtime-config`; static assets are hosted separately (GitHub Pages at `https://pinguin.mprlab.com` in production, or the ghttp container on `8080` for local dev).
 - When enabled, the same process also exposes SMTP submission listeners for Gmail-compatible Send-As clients. The SMTP listener authenticates exact sender identities, accepts raw RFC 5322 messages, and either relays them through the independent `smtpSubmission.relay` upstream profile or delivers them directly to recipient-domain MX hosts in `smtpSubmission.deliveryMode: direct`.
-- When enabled, a separate inbound SMTP forwarding listener accepts unauthenticated MX delivery only for active SMTP identities with forwarding owners, forwards the raw accepted message through `smtpForwarding.relay`, and stores no mailbox state or message body.
+- When enabled, a separate inbound SMTP forwarding listener accepts unauthenticated MX delivery only for active SMTP identities with forwarding owners, forwards the raw accepted message through `smtpForwarding.relay`, accepts null reverse-path DSNs, and stores no mailbox state or message body.
 - Docker Compose runs Pinguin alongside two support services:
   - **ghttp** (`:8080`) serves the static front-end when developing locally. Browsers always load the UI from this host; API traffic targets the Pinguin HTTP server on `:8081`.
   - **TAuth** (`:8082`) issues Google-backed sessions and signs `app_session` cookies.
