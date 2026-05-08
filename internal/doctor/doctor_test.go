@@ -32,6 +32,27 @@ func TestRunValidatesValidConfig(t *testing.T) {
 	}
 }
 
+func TestRunValidatesCurrentServerTAuthConfig(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yml")
+	writeTestConfig(t, configPath, currentServerTAuthConfigYAML)
+	t.Setenv("TEST_SIGNING_KEY", "test-signing-key")
+	t.Setenv("TEST_GOOGLE_CLIENT_ID", "test-client.apps.googleusercontent.com")
+	t.Setenv("TEST_TAUTH_URL", "https://tauth.example.com")
+	t.Setenv("TEST_TAUTH_TENANT_ID", "pinguin")
+
+	report, err := Run(context.Background(), Options{
+		ConfigPaths: []string{configPath},
+		ExpandEnv:   true,
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if report.Summary.ValidConfigs != 1 {
+		t.Fatalf("expected current server.tauth config to be valid, got errors: %v", report.Diagnostics[0].Errors)
+	}
+}
+
 func TestRunValidatesInvalidConfig(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "config.yml")
@@ -220,7 +241,7 @@ func TestRunExpandsEnvWhenEnabled(t *testing.T) {
 	t.Setenv("TEST_ADMIN_EMAIL", "admin@example.com")
 	t.Setenv("TEST_LISTEN_ADDR", ":8080")
 	t.Setenv("TEST_SIGNING_KEY", "test-signing-key")
-	t.Setenv("TEST_ISSUER", "test-issuer")
+	t.Setenv("TEST_TAUTH_TENANT_ID", "pinguin")
 
 	report, err := Run(context.Background(), Options{
 		ConfigPaths: []string{configPath},
@@ -553,6 +574,41 @@ func writeTestConfig(t *testing.T, path string, content string) {
 	}
 }
 
+const currentServerTAuthConfigYAML = `
+server:
+  databasePath: /data/pinguin.db
+  grpcAuthToken: test-token-123
+  logLevel: INFO
+  maxRetries: 3
+  retryIntervalSec: 60
+  masterEncryptionKey: test-encryption-key-at-least-32-chars
+  connectionTimeoutSec: 30
+  operationTimeoutSec: 60
+  tauth:
+    signingKey: ${TEST_SIGNING_KEY}
+    cookieName: app_session
+    googleClientId: ${TEST_GOOGLE_CLIENT_ID}
+    tauthBaseUrl: ${TEST_TAUTH_URL}
+    tauthTenantId: ${TEST_TAUTH_TENANT_ID}
+
+web:
+  enabled: true
+  listenAddr: ":8080"
+  allowedOrigins:
+    - http://localhost:3000
+
+tenants:
+  - id: demo
+    displayName: Demo Tenant
+    domains:
+      - demo.example.com
+    identity:
+      googleClientId: demo-client.apps.googleusercontent.com
+      tauthBaseUrl: https://tauth.example.com
+    admins:
+      - admin@example.com
+`
+
 const validConfigYAML = `
 server:
   databasePath: /data/pinguin.db
@@ -563,16 +619,18 @@ server:
   masterEncryptionKey: test-encryption-key-at-least-32-chars
   connectionTimeoutSec: 30
   operationTimeoutSec: 60
+  tauth:
+    signingKey: test-signing-key
+    cookieName: app_session
+    googleClientId: demo-client.apps.googleusercontent.com
+    tauthBaseUrl: https://tauth.example.com
+    tauthTenantId: pinguin
 
 web:
   enabled: true
   listenAddr: ":8080"
   allowedOrigins:
     - http://localhost:3000
-  tauth:
-    signingKey: test-signing-key
-    issuer: test-issuer
-    cookieName: app_session
 
 tenants:
   - id: demo
@@ -636,16 +694,18 @@ server:
   masterEncryptionKey: test-encryption-key-at-least-32-chars
   connectionTimeoutSec: 30
   operationTimeoutSec: 60
+  tauth:
+    signingKey: test-signing-key-3
+    cookieName: app_session
+    googleClientId: demo-client.apps.googleusercontent.com
+    tauthBaseUrl: https://tauth.example.com
+    tauthTenantId: pinguin
 
 web:
   enabled: true
   listenAddr: ":8082"
   allowedOrigins:
     - http://localhost:3002
-  tauth:
-    signingKey: test-signing-key-3
-    issuer: test-issuer-3
-    cookieName: app_session
 
 tenants:
   - id: shared-client
@@ -669,16 +729,18 @@ server:
   masterEncryptionKey: test-encryption-key-at-least-32-chars
   connectionTimeoutSec: 30
   operationTimeoutSec: 60
+  tauth:
+    signingKey: test-signing-key-2
+    cookieName: app_session
+    googleClientId: other-client.apps.googleusercontent.com
+    tauthBaseUrl: https://tauth.example.com
+    tauthTenantId: pinguin
 
 web:
   enabled: true
   listenAddr: ":8081"
   allowedOrigins:
     - http://localhost:3001
-  tauth:
-    signingKey: test-signing-key-2
-    issuer: test-issuer-2
-    cookieName: app_session
 
 tenants:
   - id: other
@@ -702,16 +764,18 @@ server:
   masterEncryptionKey: test-encryption-key-at-least-32-chars
   connectionTimeoutSec: 30
   operationTimeoutSec: 60
+  tauth:
+    signingKey: test-signing-key-2
+    cookieName: app_session
+    googleClientId: other-client.apps.googleusercontent.com
+    tauthBaseUrl: https://tauth.example.com
+    tauthTenantId: pinguin
 
 web:
   enabled: true
   listenAddr: ":8081"
   allowedOrigins:
     - http://localhost:3001
-  tauth:
-    signingKey: test-signing-key-2
-    issuer: test-issuer-2
-    cookieName: app_session
 
 tenants:
   - id: conflicting
@@ -912,16 +976,18 @@ server:
   masterEncryptionKey: ${TEST_ENCRYPTION_KEY}
   connectionTimeoutSec: 30
   operationTimeoutSec: 60
+  tauth:
+    signingKey: ${TEST_SIGNING_KEY}
+    cookieName: app_session
+    googleClientId: ${TEST_GOOGLE_CLIENT_ID}
+    tauthBaseUrl: ${TEST_TAUTH_URL}
+    tauthTenantId: ${TEST_TAUTH_TENANT_ID}
 
 web:
   enabled: true
   listenAddr: ${TEST_LISTEN_ADDR}
   allowedOrigins:
     - http://localhost:3000
-  tauth:
-    signingKey: ${TEST_SIGNING_KEY}
-    issuer: ${TEST_ISSUER}
-    cookieName: app_session
 
 tenants:
   - id: test
