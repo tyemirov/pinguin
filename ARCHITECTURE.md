@@ -3,6 +3,7 @@
 ## System Overview
 - Pinguin exposes two surfaces inside a single Go process: a gRPC notification service (port `50051`) and a Gin HTTP server that serves the REST-ish `/api` endpoints plus `/runtime-config`; static assets are hosted separately (GitHub Pages at `https://pinguin.mprlab.com` in production, or the ghttp container on `8080` for local dev).
 - When enabled, the same process also exposes SMTP submission listeners for Gmail-compatible Send-As clients. The SMTP listener authenticates exact sender identities, accepts raw RFC 5322 messages, and either relays them through the independent `smtpSubmission.relay` upstream profile or delivers them directly to recipient-domain MX hosts in `smtpSubmission.deliveryMode: direct`.
+- When enabled, a separate inbound SMTP forwarding listener accepts unauthenticated MX delivery only for active SMTP identities with forwarding owners, forwards the raw accepted message through `smtpForwarding.relay`, and stores no mailbox state or message body.
 - Docker Compose runs Pinguin alongside two support services:
   - **ghttp** (`:8080`) serves the static front-end when developing locally. Browsers always load the UI from this host; API traffic targets the Pinguin HTTP server on `:8081`.
   - **TAuth** (`:8082`) issues Google-backed sessions and signs `app_session` cookies.
@@ -24,7 +25,7 @@
   - `GET /healthz` – unauthenticated health probe.
   - Authenticated `/api/notifications` list/reschedule/cancel handlers guarded by the session middleware.
   - `/api/notifications*` accepts an explicit `tenant_id`, but the handler authorizes that tenant against the authenticated session before resolving tenant runtime config.
-  - Authenticated `/api/smtp-identities` list/create/rotate/delete handlers for exact SMTP submission sender credentials.
+  - Authenticated `/api/smtp-identities` list/create/rotate/delete handlers for exact SMTP submission sender credentials and dynamic inbound forwarding owners.
 - Static assets do not come from the Gin stack anymore; ghttp serves `/web` while the Go HTTP server keeps `/api/**` and `/runtime-config` free of wildcard conflicts.
 - CORS defaults:
   - When `HTTP_ALLOWED_ORIGINS` is empty, requests are treated as same-origin only (credentials disabled while `AllowAllOrigins=true`).
@@ -50,6 +51,7 @@
 ## Configuration Files
 - `configs/.env.pinguin.example`: defines the environment variables referenced by `configs/config.pinguin.yml` (database path, master encryption key, tenant bootstrap values, shared TAuth signing key, optional Twilio credentials).
 - `smtpSubmission` controls optional SMTP submission listeners, the global sender-domain allowlist, public Gmail-facing SMTP settings, and the selected delivery mode. Production can run behind Caddy Layer 4 SMTPS termination by advertising `publicPort: 465` / `publicSecurityMode: ssl` while Pinguin listens privately on plaintext SMTP inside the Docker network.
+- `smtpForwarding` controls the optional MX-facing forwarding listener and outbound relay used to deliver copies. Dynamic shared addresses and forwarding owners live in SQLite as part of active SMTP identities. Its intended public MX target is `smtp.pinguin.mprlab.com`; customer onboarding should prefer a dedicated subdomain such as `help.customer.com` because MX records are domain-wide.
 - Caddy's shared HTTP `rate_limit` snippet applies to the HTTPS API route, not to the Layer 4 SMTPS route. The SMTP submission server owns protocol-aware throttling: command/data deadlines, global and backend-visible per-remote-host session caps, SMTP AUTH failure windows keyed by credential username, and accepted-message windows keyed by SMTP identity.
 - `configs/.env.tauth.example`: holds the Google OAuth client ID, signing key, cookie domain, and CORS allowlist (must include the UI origin such as `http://localhost:8080` or `https://pinguin.mprlab.com`, plus `https://accounts.google.com`, so GIS nonce exchanges succeed).
 - Front-end TAuth details for `mpr-ui` live in `web/config-ui.yaml`; Pinguin runtime metadata still comes from `/runtime-config`.
