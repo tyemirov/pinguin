@@ -3,11 +3,14 @@
 ## Unreleased
 
 ### Features
+- Add UI/API-driven inbound SMTP forwarding for shared SMTP identities, with required forwarding owners, no mailbox storage, and immediate fanout through a configured relay.
 - Decouple authenticated SMTP submission from notification tenants by giving it its own sender-domain allowlist, identity credentials, and upstream relay profile.
 - Add an authenticated tenant switcher so Pinguin admins can load active tenants and view each tenant's notification events from the dashboard.
 - Add backend-backed search and infinite scroll for dashboard notification events, including cursor pagination and a single top-level refresh control.
 
 ### Bug Fixes
+- Accept SMTP forwarding `MAIL FROM:<>` null reverse-path traffic so DSNs and auto-generated loop-safe messages can reach configured shared-address routes.
+- Require `smtpSubmission.senderDomains` when inbound SMTP forwarding is enabled so fresh deployments cannot start without an allowlist for identity-backed routes.
 - Replace the generated placeholder logo with the canonical Pinguin turquoise envelope mark.
 - Enforce tenant authorization before honoring `tenant_id` on notification list, reschedule, and cancel endpoints.
 - Require the TAuth `admin` role before listing, creating, rotating, or deleting global SMTP identities.
@@ -23,11 +26,15 @@
 
 ### Improvements
 - Replace the old landing page with a focused Pinguin sign-in screen and notification queue preview.
+- Add a dashboard horizontal menu using `mpr-ui` header links for Event log and SMTP relay.
+- Rename the SMTP identity dashboard surface to SMTP relay while keeping exact sender identity management in that view.
 - Add `make up` and `make down` wrappers for the local Docker Compose orchestration.
 - Add split `configs/.env.pinguin.example` and `configs/.env.tauth.example` files for the current Compose topology.
 
 ### Testing
+- Add black-box SMTP forwarding coverage for accept/forward, unknown-recipient rejection, size limits, relay failures, and startup wiring.
 - Add backend and browser coverage for notification search, cursor pagination, infinite scroll, and the GORM-only query contract.
+- Add browser coverage for the dashboard horizontal Event log / SMTP relay menu.
 - Add backend coverage for admin-wide notification tenant access and non-admin email-domain tenant restrictions.
 - Add backend coverage proving non-admin SMTP identity routes return 403 before touching identity storage.
 - Add backend coverage for configured tenant admin authorization.
@@ -41,7 +48,9 @@
 - Add a `make ci` coverage gate that fails unless total Go statement coverage remains at 100.0%.
 
 ### Docs
+- Document shared-address forwarding DNS setup and verification using `mx-forward.pinguin.mprlab.com`.
 - Update README and architecture notes to describe `config-ui.yaml` as the browser auth source of truth.
+- Update the dashboard docs to describe the authenticated event log and SMTP relay surfaces.
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 
 ## [v0.4.6] - 2026-05-06

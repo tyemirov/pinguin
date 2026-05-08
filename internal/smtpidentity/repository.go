@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"time"
 
@@ -41,6 +42,12 @@ var (
 	ErrIdentityExists = errors.New("smtp_identity.exists")
 	// ErrIdentityNotFound indicates the identity does not exist.
 	ErrIdentityNotFound = errors.New("smtp_identity.not_found")
+	// ErrForwardRecipientsRequired indicates a shared identity has no forwarding owner.
+	ErrForwardRecipientsRequired = errors.New("smtp_identity.forward_recipients_required")
+	// ErrForwardRecipientDuplicate indicates a shared identity repeats a forwarding owner.
+	ErrForwardRecipientDuplicate = errors.New("smtp_identity.forward_recipient_duplicate")
+	// ErrForwardRecipientSelf indicates a shared identity forwards back to itself.
+	ErrForwardRecipientSelf = errors.New("smtp_identity.forward_recipient_self")
 )
 
 // IdentityStatus captures SMTP identity lifecycle state.
@@ -62,8 +69,18 @@ type Identity struct {
 	PasswordDigest []byte
 	Status         IdentityStatus `gorm:"index"`
 	LastUsedAt     *time.Time
+	ForwardTo      []ForwardRecipient `gorm:"foreignKey:IdentityID;constraint:OnDelete:CASCADE"`
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+}
+
+// ForwardRecipient stores one mailbox that receives inbound copies for an identity.
+type ForwardRecipient struct {
+	ID           string `gorm:"primaryKey"`
+	IdentityID   string `gorm:"index:idx_smtp_forward_identity_email,unique"`
+	EmailAddress string `gorm:"index:idx_smtp_forward_identity_email,unique"`
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // PublicIdentity is the secret-free identity shape exposed to callers.
@@ -71,6 +88,7 @@ type PublicIdentity struct {
 	ID           string     `json:"id"`
 	EmailAddress string     `json:"email_address"`
 	Username     string     `json:"username"`
+	ForwardTo    []string   `json:"forward_to"`
 	Status       string     `json:"status"`
 	LastUsedAt   *time.Time `json:"last_used_at,omitempty"`
 	CreatedAt    time.Time  `json:"created_at"`
@@ -116,6 +134,9 @@ func NewRepository(db *gorm.DB, rawMasterKey string) (*Repository, error) {
 func (repository *Repository) List(ctx context.Context) ([]PublicIdentity, error) {
 	var records []Identity
 	if err := repository.db.WithContext(ctx).
+		Preload("ForwardTo", func(db *gorm.DB) *gorm.DB {
+			return db.Order(clause.OrderByColumn{Column: clause.Column{Name: "email_address"}})
+		}).
 		Where(&Identity{Status: IdentityStatusActive}).
 		Order(clause.OrderByColumn{Column: clause.Column{Name: "email_address"}}).
 		Find(&records).Error; err != nil {
@@ -129,9 +150,15 @@ func (repository *Repository) List(ctx context.Context) ([]PublicIdentity, error
 }
 
 // Create creates or reactivates an exact sender identity.
-func (repository *Repository) Create(ctx context.Context, address Address) (PublicIdentity, string, error) {
+func (repository *Repository) Create(ctx context.Context, address Address, forwardTo []Address) (PublicIdentity, string, error) {
 	if allowedErr := repository.requireSenderDomain(ctx, address.Domain()); allowedErr != nil {
 		return PublicIdentity{}, "", allowedErr
+	}
+	if recipientErr := validateForwardRecipients(forwardTo); recipientErr != nil {
+		return PublicIdentity{}, "", recipientErr
+	}
+	if recipientErr := validateForwardRecipientTarget(address, forwardTo); recipientErr != nil {
+		return PublicIdentity{}, "", recipientErr
 	}
 	var existing Identity
 	findErr := repository.db.WithContext(ctx).
@@ -155,9 +182,18 @@ func (repository *Repository) Create(ctx context.Context, address Address) (Publ
 		existing.Status = IdentityStatusActive
 		existing.LastUsedAt = nil
 		existing.UpdatedAt = now
-		if saveErr := repository.db.WithContext(ctx).Save(&existing).Error; saveErr != nil {
-			return PublicIdentity{}, "", fmt.Errorf("smtp identity create: reactivate: %w", saveErr)
+		if saveErr := repository.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := tx.Where(&ForwardRecipient{IdentityID: existing.ID}).Delete(&ForwardRecipient{}).Error; err != nil {
+				return fmt.Errorf("smtp identity create: reset forwarding: %w", err)
+			}
+			if err := tx.Save(&existing).Error; err != nil {
+				return fmt.Errorf("smtp identity create: reactivate: %w", err)
+			}
+			return createForwardRecipients(tx, existing.ID, forwardTo, now)
+		}); saveErr != nil {
+			return PublicIdentity{}, "", saveErr
 		}
+		existing.ForwardTo = forwardRecipientRecords(existing.ID, forwardTo, now)
 		return publicIdentity(existing), password, nil
 	}
 	record := Identity{
@@ -170,10 +206,52 @@ func (repository *Repository) Create(ctx context.Context, address Address) (Publ
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
-	if createErr := repository.db.WithContext(ctx).Create(&record).Error; createErr != nil {
-		return PublicIdentity{}, "", fmt.Errorf("smtp identity create: %w", createErr)
+	if createErr := repository.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&record).Error; err != nil {
+			return fmt.Errorf("smtp identity create: %w", err)
+		}
+		return createForwardRecipients(tx, record.ID, forwardTo, now)
+	}); createErr != nil {
+		return PublicIdentity{}, "", createErr
 	}
+	record.ForwardTo = forwardRecipientRecords(record.ID, forwardTo, now)
 	return publicIdentity(record), password, nil
+}
+
+// UpdateForwarding replaces the forwarding recipients for an active identity.
+func (repository *Repository) UpdateForwarding(ctx context.Context, identityID string, forwardTo []Address) (PublicIdentity, error) {
+	if recipientErr := validateForwardRecipients(forwardTo); recipientErr != nil {
+		return PublicIdentity{}, recipientErr
+	}
+	record, fetchErr := repository.requireIdentity(ctx, identityID)
+	if fetchErr != nil {
+		return PublicIdentity{}, fetchErr
+	}
+	recordAddress, addressErr := NewAddress(record.EmailAddress)
+	if addressErr != nil {
+		return PublicIdentity{}, fmt.Errorf("smtp identity forwarding update: stored address: %w", addressErr)
+	}
+	if recipientErr := validateForwardRecipientTarget(recordAddress, forwardTo); recipientErr != nil {
+		return PublicIdentity{}, recipientErr
+	}
+	now := repository.clockFunc()
+	record.UpdatedAt = now
+	if updateErr := repository.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where(&ForwardRecipient{IdentityID: record.ID}).Delete(&ForwardRecipient{}).Error; err != nil {
+			return fmt.Errorf("smtp identity forwarding update: reset: %w", err)
+		}
+		if err := createForwardRecipients(tx, record.ID, forwardTo, now); err != nil {
+			return err
+		}
+		if err := tx.Model(&Identity{}).Where(&Identity{ID: record.ID}).Update(updatedAtColumn, now).Error; err != nil {
+			return fmt.Errorf("smtp identity forwarding update: timestamp: %w", err)
+		}
+		return nil
+	}); updateErr != nil {
+		return PublicIdentity{}, updateErr
+	}
+	record.ForwardTo = forwardRecipientRecords(record.ID, forwardTo, now)
+	return publicIdentity(record), nil
 }
 
 // Rotate replaces credentials for an active identity.
@@ -208,6 +286,35 @@ func (repository *Repository) Delete(ctx context.Context, identityID string) err
 		return fmt.Errorf("smtp identity delete: %w", saveErr)
 	}
 	return nil
+}
+
+// ResolveForwarding returns the active forwarding route for an inbound address.
+func (repository *Repository) ResolveForwarding(ctx context.Context, address Address) (Address, []Address, bool, error) {
+	var record Identity
+	err := repository.db.WithContext(ctx).
+		Preload("ForwardTo", func(db *gorm.DB) *gorm.DB {
+			return db.Order(clause.OrderByColumn{Column: clause.Column{Name: "email_address"}})
+		}).
+		Where(&Identity{EmailAddress: address.String(), Status: IdentityStatusActive}).
+		First(&record).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return Address{}, nil, false, nil
+		}
+		return Address{}, nil, false, fmt.Errorf("smtp identity forwarding lookup: %w", err)
+	}
+	if len(record.ForwardTo) == 0 {
+		return Address{}, nil, false, nil
+	}
+	recipients := make([]Address, 0, len(record.ForwardTo))
+	for _, recipientRecord := range record.ForwardTo {
+		recipient, recipientErr := NewAddress(recipientRecord.EmailAddress)
+		if recipientErr != nil {
+			return Address{}, nil, false, fmt.Errorf("smtp identity forwarding lookup: stored recipient: %w", recipientErr)
+		}
+		recipients = append(recipients, recipient)
+	}
+	return address, recipients, true, nil
 }
 
 // Authenticate verifies SMTP credentials and returns the exact sender identity.
@@ -292,6 +399,58 @@ func (repository *Repository) requireSenderDomain(ctx context.Context, domain st
 	return nil
 }
 
+func validateForwardRecipients(forwardTo []Address) error {
+	if len(forwardTo) == 0 {
+		return ErrForwardRecipientsRequired
+	}
+	seenRecipients := make(map[string]struct{}, len(forwardTo))
+	for _, recipient := range forwardTo {
+		recipientKey := recipient.String()
+		if recipientKey == "" {
+			return ErrForwardRecipientsRequired
+		}
+		if _, exists := seenRecipients[recipientKey]; exists {
+			return fmt.Errorf("%w: %s", ErrForwardRecipientDuplicate, recipientKey)
+		}
+		seenRecipients[recipientKey] = struct{}{}
+	}
+	return nil
+}
+
+func validateForwardRecipientTarget(address Address, forwardTo []Address) error {
+	for _, recipient := range forwardTo {
+		if recipient.Equals(address) {
+			return fmt.Errorf("%w: %s", ErrForwardRecipientSelf, recipient.String())
+		}
+	}
+	return nil
+}
+
+func createForwardRecipients(tx *gorm.DB, identityID string, forwardTo []Address, now time.Time) error {
+	records := forwardRecipientRecords(identityID, forwardTo, now)
+	if err := tx.Create(&records).Error; err != nil {
+		return fmt.Errorf("smtp identity forwarding recipients: %w", err)
+	}
+	return nil
+}
+
+func forwardRecipientRecords(identityID string, forwardTo []Address, now time.Time) []ForwardRecipient {
+	records := make([]ForwardRecipient, 0, len(forwardTo))
+	for _, recipient := range forwardTo {
+		records = append(records, ForwardRecipient{
+			ID:           uuid.NewString(),
+			IdentityID:   identityID,
+			EmailAddress: recipient.String(),
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		})
+	}
+	sort.Slice(records, func(firstIndex int, secondIndex int) bool {
+		return records[firstIndex].EmailAddress < records[secondIndex].EmailAddress
+	})
+	return records
+}
+
 func (repository *Repository) newCredential() (string, string, []byte, []byte, error) {
 	usernameToken, usernameErr := repository.randomToken(credentialUsernameBytes)
 	if usernameErr != nil {
@@ -331,9 +490,19 @@ func publicIdentity(record Identity) PublicIdentity {
 		ID:           record.ID,
 		EmailAddress: record.EmailAddress,
 		Username:     record.Username,
+		ForwardTo:    publicForwardRecipients(record.ForwardTo),
 		Status:       string(record.Status),
 		LastUsedAt:   record.LastUsedAt,
 		CreatedAt:    record.CreatedAt,
 		UpdatedAt:    record.UpdatedAt,
 	}
+}
+
+func publicForwardRecipients(records []ForwardRecipient) []string {
+	recipients := make([]string, 0, len(records))
+	for _, record := range records {
+		recipients = append(recipients, record.EmailAddress)
+	}
+	sort.Strings(recipients)
+	return recipients
 }

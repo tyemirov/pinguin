@@ -4,6 +4,8 @@ Pinguin delivers email notifications through `SMTPEmailSender`, a provider-agnos
 
 Pinguin can also expose an authenticated SMTP submission listener for Gmail Send-As. That listener validates the authenticated exact sender, preserves the raw submitted message, and either relays it through the independent `smtpSubmission.relay` upstream profile or delivers it directly to recipient-domain MX hosts.
 
+Pinguin can separately expose an inbound SMTP forwarding listener for shared addresses. That listener is MX-facing, unauthenticated, accepts only active SMTP identities with forwarding owners, forwards the raw message immediately through `smtpForwarding.relay`, and stores no mailbox state.
+
 ## Components
 
 - **SMTPEmailSender** wraps all SMTP interactions. It accepts an `SMTPConfig` that contains the target host, port, credentials, `From` address, and timeout budget.
@@ -18,8 +20,10 @@ Pinguin can also expose an authenticated SMTP submission listener for Gmail Send
   - `OPERATION_TIMEOUT_SEC`
 - **smtpSubmission.deliveryMode** selects `upstream` provider relay or `direct` recipient-MX delivery for authenticated SMTP submissions.
 - **smtpSubmission.relay** exposes the upstream SMTP account used only when `smtpSubmission.deliveryMode` is `upstream`.
-- **smtpSubmission.senderDomains** defines the global domain allowlist for exact sender identities.
+- **smtpSubmission.senderDomains** defines the global domain allowlist for exact sender identities and shared-address forwarding routes.
 - **smtpSubmission.publicPort** and **smtpSubmission.publicSecurityMode** control the Gmail-facing settings shown with one-time SMTP identity credentials. These can differ from the private listener when Caddy owns public TLS termination.
+- **SMTP identities** map exact shared addresses such as `support@help.example.com` to one or more persisted forwarding recipients.
+- **smtpForwarding.relay** exposes the outbound SMTP account used to deliver forwarded copies.
 
 ## Delivery Sequence
 
@@ -34,6 +38,14 @@ Pinguin can also expose an authenticated SMTP submission listener for Gmail Send
 7. **Cleanup** always closes the SMTP client or TLS connection to free sockets quickly.
 
 For authenticated SMTP submission in direct mode, Pinguin groups recipients by domain, resolves MX records, falls back to the domain host when no MX is present, connects to each target on port `25`, uses the authenticated identity as `MAIL FROM`, and writes the exact submitted RFC 5322 payload through SMTP `DATA`. Domains using this mode must publish SPF records that authorize the gateway IP so DMARC can align with the RFC 5322 `From` domain.
+
+For inbound forwarding, customer DNS should normally point a dedicated mail subdomain at `smtp.pinguin.mprlab.com`:
+
+```dns
+help.example.com. MX 10 smtp.pinguin.mprlab.com.
+```
+
+Pinguin accepts `MAIL FROM:<>` null reverse-path traffic for DSNs and other auto-generated mail, rejects unknown `RCPT TO` addresses before `DATA`, enforces configured size and recipient limits, and returns a temporary SMTP failure when route lookup or forwarding through `smtpForwarding.relay` fails before acceptance. Forwarded copies preserve the original message headers and use the shared address as the outbound SMTP envelope sender. Because Pinguin stores no message body, operators should treat forwarding retries and duplicate delivery risk as part of the no-mailbox tradeoff.
 
 ## Timeout Strategy
 

@@ -20,6 +20,7 @@
       data-mpr-ui-bundle-src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js"
     ></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+      <script defer src="https://loopaware.mprlab.com/pixel.js?site_id=e8f235c8-ddf2-46b7-ae42-022885fe8a44"></script>
   </head>
   <body
     data-page="dashboard"
@@ -32,6 +33,13 @@
       brand-label="Pinguin"
       brand-href="/"
       nav-links='[{ "label": "Docs", "href": "https://github.com/tyemirov/pinguin" }]'
+      horizontal-links='{
+        "alignment": "right",
+        "links": [
+          { "label": "Event log", "href": "#event-log" },
+          { "label": "SMTP relay", "href": "#smtp-relay" }
+        ]
+      }'
     >
       <a slot="brand" class="pinguin-brand" href="/" aria-label="Pinguin home">
         <img class="pinguin-brand__mark" src="/favicon.svg" alt="" aria-hidden="true" />
@@ -54,10 +62,18 @@
         </div>
       </header>
       <section
+        id="event-log"
         class="panel"
+        aria-labelledby="event-log-title"
         x-data="notificationsTable()"
         data-testid="notifications-table"
       >
+        <header class="panel-header">
+          <div>
+            <h2 id="event-log-title" class="section-title" x-text="strings.eventLogTitle"></h2>
+            <p class="text-muted" x-text="strings.eventLogSubtitle"></p>
+          </div>
+        </header>
         <div class="filters" style="margin-bottom: 1rem">
           <label style="flex: 1; min-width: 220px">
             <span x-text="strings.tenantLabel"></span>
@@ -225,13 +241,15 @@
         </dialog>
       </section>
       <section
+        id="smtp-relay"
         class="panel"
+        aria-labelledby="smtp-relay-title"
         x-data="smtpIdentities()"
         data-testid="smtp-identities"
       >
         <header class="panel-header">
           <div>
-            <h2 class="section-title" x-text="strings.title"></h2>
+            <h2 id="smtp-relay-title" class="section-title" x-text="strings.title"></h2>
             <p class="text-muted" x-text="strings.subtitle"></p>
           </div>
         </header>
@@ -243,14 +261,32 @@
               x-model="emailAddress"
               :placeholder="strings.emailPlaceholder"
               autocomplete="email"
+              :readonly="Boolean(editingIdentityId)"
+              :aria-readonly="Boolean(editingIdentityId)"
               required
             />
+          </label>
+          <label class="identity-form__wide">
+            <span x-text="strings.forwardToLabel"></span>
+            <textarea
+              x-model="forwardToText"
+              :placeholder="strings.forwardToPlaceholder"
+              rows="2"
+              required
+            ></textarea>
           </label>
           <button
             class="button primary"
             type="submit"
             :disabled="isSubmitting"
-            x-text="actions.create"
+            x-text="editingIdentityId ? actions.saveChanges : actions.create"
+          ></button>
+          <button
+            class="button secondary"
+            type="button"
+            x-show="editingIdentityId"
+            x-on:click="cancelForwardingEdit()"
+            x-text="strings.cancelEditLabel"
           ></button>
         </form>
         <template x-if="errorMessage">
@@ -262,6 +298,7 @@
               <tr>
                 <th x-text="strings.emailLabel"></th>
                 <th x-text="strings.usernameLabel"></th>
+                <th x-text="strings.forwardToDisplayLabel"></th>
                 <th x-text="strings.lastUsedLabel"></th>
                 <th x-text="strings.actionColumn"></th>
               </tr>
@@ -269,12 +306,12 @@
             <tbody>
               <template x-if="isLoading">
                 <tr>
-                  <td colspan="4" class="empty-state" x-text="strings.loadingState"></td>
+                  <td colspan="5" class="empty-state" x-text="strings.loadingState"></td>
                 </tr>
               </template>
               <template x-if="!isLoading && identities.length === 0">
                 <tr>
-                  <td colspan="4" class="empty-state" x-text="strings.emptyState"></td>
+                  <td colspan="5" class="empty-state" x-text="strings.emptyState"></td>
                 </tr>
               </template>
               <template x-for="identity in identities" :key="identity.id">
@@ -283,9 +320,17 @@
                     <strong x-text="identity.emailAddress"></strong>
                   </td>
                   <td x-text="identity.username"></td>
+                  <td x-text="identity.forwardTo.join(', ')"></td>
                   <td x-text="formatTimestamp(identity.lastUsedAt)"></td>
                   <td style="min-width: 180px">
                     <div style="display: flex; gap: 0.5rem; flex-wrap: wrap">
+                      <button
+                        class="button secondary"
+                        type="button"
+                        x-on:click="editForwarding(identity)"
+                        :disabled="isSubmitting"
+                        x-text="strings.editForwardingLabel"
+                      ></button>
                       <button
                         class="button secondary"
                         type="button"
@@ -307,7 +352,7 @@
             </tbody>
           </table>
         </div>
-        <dialog class="dialog" x-ref="credentialsDialog">
+        <dialog class="dialog dialog--credentials" x-ref="credentialsDialog">
           <form class="dialog__body" method="dialog">
             <header class="dialog__header">
               <h3 x-text="strings.credentialsTitle"></h3>
@@ -324,6 +369,16 @@
             </header>
             <template x-if="credentials">
               <div class="credentials-grid" data-testid="smtp-credentials">
+                <p
+                  class="notice credential-notice credentials-grid__full"
+                  role="status"
+                  aria-live="polite"
+                  data-testid="smtp-credential-notice"
+                  :data-variant="credentialNotice ? credentialNotice.variant : 'info'"
+                  x-cloak
+                  x-show="credentialNotice"
+                  x-text="credentialNotice ? credentialNotice.message : ''"
+                ></p>
                 <label>
                   <span x-text="strings.hostLabel"></span>
                   <span class="copy-field">

@@ -69,6 +69,7 @@ type pinguinConfig struct {
 	Server         pinguinServer         `yaml:"server"`
 	Web            pinguinWeb            `yaml:"web"`
 	SMTPSubmission pinguinSMTPSubmission `yaml:"smtpSubmission"`
+	SMTPForwarding pinguinSMTPForwarding `yaml:"smtpForwarding"`
 	Tenants        pinguinYAMLNode       `yaml:"tenants"`
 }
 
@@ -118,6 +119,15 @@ type pinguinSMTPRelay struct {
 	Port     int    `yaml:"port"`
 	Username string `yaml:"username"`
 	Password string `yaml:"password"`
+}
+
+type pinguinSMTPForwarding struct {
+	Enabled         bool             `yaml:"enabled"`
+	Hostname        string           `yaml:"hostname"`
+	ListenAddr      string           `yaml:"listenAddr"`
+	MaxMessageBytes int64            `yaml:"maxMessageBytes"`
+	MaxRecipients   int              `yaml:"maxRecipients"`
+	Relay           pinguinSMTPRelay `yaml:"relay"`
 }
 
 type pinguinTenant struct {
@@ -253,6 +263,8 @@ func validateConfig(configPath string, expandEnv bool) (DiagnosticResult, *pingu
 		validateWebConfig(config.Web, &result)
 	}
 	validateSMTPSubmissionConfig(config.SMTPSubmission, &result)
+	validateSMTPSenderDomainsConfig(config.SMTPSubmission, config.SMTPForwarding, &result)
+	validateSMTPForwardingConfig(config.SMTPForwarding, &result)
 
 	for _, tenant := range config.Tenants.AllTenants() {
 		tenantID := strings.TrimSpace(tenant.ID)
@@ -341,10 +353,6 @@ func validateSMTPSubmissionConfig(submission pinguinSMTPSubmission, result *Diag
 		result.Valid = false
 		result.Errors = append(result.Errors, "smtpSubmission.maxRecipients must be positive")
 	}
-	if countNonEmpty(submission.SenderDomains) == 0 {
-		result.Valid = false
-		result.Errors = append(result.Errors, "smtpSubmission.senderDomains is required when SMTP submission is enabled")
-	}
 	deliveryMode := normalizeSMTPDeliveryMode(submission.DeliveryMode)
 	switch deliveryMode {
 	case "upstream":
@@ -389,6 +397,55 @@ func validateSMTPSubmissionConfig(submission pinguinSMTPSubmission, result *Diag
 			result.Valid = false
 			result.Errors = append(result.Errors, "smtpSubmission.tlsKeyPath is required when SMTP submission is enabled")
 		}
+	}
+}
+
+func validateSMTPSenderDomainsConfig(submission pinguinSMTPSubmission, forwarding pinguinSMTPForwarding, result *DiagnosticResult) {
+	if !submission.Enabled && !forwarding.Enabled {
+		return
+	}
+	if countNonEmpty(submission.SenderDomains) > 0 {
+		return
+	}
+	result.Valid = false
+	result.Errors = append(result.Errors, "smtpSubmission.senderDomains is required when SMTP submission or SMTP forwarding is enabled")
+}
+
+func validateSMTPForwardingConfig(forwarding pinguinSMTPForwarding, result *DiagnosticResult) {
+	if !forwarding.Enabled {
+		return
+	}
+	if strings.TrimSpace(forwarding.Hostname) == "" {
+		result.Valid = false
+		result.Errors = append(result.Errors, "smtpForwarding.hostname is required when SMTP forwarding is enabled")
+	}
+	if strings.TrimSpace(forwarding.ListenAddr) == "" {
+		result.Valid = false
+		result.Errors = append(result.Errors, "smtpForwarding.listenAddr is required when SMTP forwarding is enabled")
+	}
+	if forwarding.MaxMessageBytes <= 0 {
+		result.Valid = false
+		result.Errors = append(result.Errors, "smtpForwarding.maxMessageBytes must be positive")
+	}
+	if forwarding.MaxRecipients <= 0 {
+		result.Valid = false
+		result.Errors = append(result.Errors, "smtpForwarding.maxRecipients must be positive")
+	}
+	if strings.TrimSpace(forwarding.Relay.Host) == "" {
+		result.Valid = false
+		result.Errors = append(result.Errors, "smtpForwarding.relay.host is required when SMTP forwarding is enabled")
+	}
+	if forwarding.Relay.Port <= 0 {
+		result.Valid = false
+		result.Errors = append(result.Errors, "smtpForwarding.relay.port must be positive")
+	}
+	if strings.TrimSpace(forwarding.Relay.Username) == "" {
+		result.Valid = false
+		result.Errors = append(result.Errors, "smtpForwarding.relay.username is required when SMTP forwarding is enabled")
+	}
+	if strings.TrimSpace(forwarding.Relay.Password) == "" {
+		result.Valid = false
+		result.Errors = append(result.Errors, "smtpForwarding.relay.password is required when SMTP forwarding is enabled")
 	}
 }
 

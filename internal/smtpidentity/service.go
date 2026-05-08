@@ -39,13 +39,18 @@ func (service *Service) List(ctx context.Context) ([]PublicIdentity, error) {
 	return service.repository.List(ctx)
 }
 
-// Create provisions a new exact sender identity.
-func (service *Service) Create(ctx context.Context, address Address) (OneTimeCredentials, error) {
-	identity, password, err := service.repository.Create(ctx, address)
+// Create provisions a new exact sender identity with inbound forwarding owners.
+func (service *Service) Create(ctx context.Context, address Address, forwardTo []Address) (OneTimeCredentials, error) {
+	identity, password, err := service.repository.Create(ctx, address, forwardTo)
 	if err != nil {
 		return OneTimeCredentials{}, err
 	}
 	return service.credentials(identity, password), nil
+}
+
+// UpdateForwarding replaces inbound forwarding recipients for an existing identity.
+func (service *Service) UpdateForwarding(ctx context.Context, identityID string, forwardTo []Address) (PublicIdentity, error) {
+	return service.repository.UpdateForwarding(ctx, strings.TrimSpace(identityID), forwardTo)
 }
 
 // Rotate replaces credentials for an existing identity.

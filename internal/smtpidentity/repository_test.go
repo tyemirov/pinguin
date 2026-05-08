@@ -20,7 +20,7 @@ func TestRepositoryCreateAuthenticateRotateAndDelete(t *testing.T) {
 	seedSenderDomain(t, database, "example.com")
 	address := mustAddress(t, "alice@example.com")
 
-	identity, password, createErr := repository.Create(context.Background(), address)
+	identity, password, createErr := repository.Create(context.Background(), address, defaultForwardRecipients(t))
 	if createErr != nil {
 		t.Fatalf("create identity: %v", createErr)
 	}
@@ -29,6 +29,9 @@ func TestRepositoryCreateAuthenticateRotateAndDelete(t *testing.T) {
 	}
 	if identity.EmailAddress != "alice@example.com" || identity.Username == "" {
 		t.Fatalf("unexpected identity: %+v", identity)
+	}
+	if len(identity.ForwardTo) != 1 || identity.ForwardTo[0] != "owner@example.com" {
+		t.Fatalf("unexpected forwarding recipients: %+v", identity.ForwardTo)
 	}
 
 	authenticated, authErr := repository.Authenticate(context.Background(), identity.Username, password)
@@ -66,7 +69,7 @@ func TestRepositoryAuthenticateDoesNotRestoreIdentityDeletedDuringAuth(t *testin
 	seedSenderDomain(t, database, "example.com")
 	address := mustAddress(t, "alice@example.com")
 
-	identity, password, createErr := repository.Create(context.Background(), address)
+	identity, password, createErr := repository.Create(context.Background(), address, defaultForwardRecipients(t))
 	if createErr != nil {
 		t.Fatalf("create identity: %v", createErr)
 	}
@@ -109,7 +112,7 @@ func TestRepositoryRejectsAddressOutsideSenderDomains(t *testing.T) {
 	seedSenderDomain(t, database, "example.com")
 	address := mustAddress(t, "alice@other.example")
 
-	_, _, createErr := repository.Create(context.Background(), address)
+	_, _, createErr := repository.Create(context.Background(), address, defaultForwardRecipients(t))
 	if !errors.Is(createErr, ErrSenderDomainNotAllowed) {
 		t.Fatalf("expected sender domain error, got %v", createErr)
 	}
@@ -125,7 +128,7 @@ func TestRepositoryCreatePreservesSenderDomainStorageFailure(t *testing.T) {
 		t.Fatalf("close database: %v", closeErr)
 	}
 
-	_, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"))
+	_, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"), defaultForwardRecipients(t))
 	if createErr == nil {
 		t.Fatalf("expected storage failure")
 	}
@@ -139,10 +142,10 @@ func TestRepositoryRejectsDuplicateActiveIdentity(t *testing.T) {
 	seedSenderDomain(t, database, "example.com")
 	address := mustAddress(t, "alice@example.com")
 
-	if _, _, createErr := repository.Create(context.Background(), address); createErr != nil {
+	if _, _, createErr := repository.Create(context.Background(), address, defaultForwardRecipients(t)); createErr != nil {
 		t.Fatalf("create first identity: %v", createErr)
 	}
-	if _, _, createErr := repository.Create(context.Background(), address); !errors.Is(createErr, ErrIdentityExists) {
+	if _, _, createErr := repository.Create(context.Background(), address, defaultForwardRecipients(t)); !errors.Is(createErr, ErrIdentityExists) {
 		t.Fatalf("expected duplicate identity error, got %v", createErr)
 	}
 }
@@ -192,7 +195,7 @@ func TestRepositoryListNeverReturnsPasswords(t *testing.T) {
 	repository, database := newIdentityRepository(t)
 	seedSenderDomain(t, database, "example.com")
 	address := mustAddress(t, "alice@example.com")
-	identity, password, createErr := repository.Create(context.Background(), address)
+	identity, password, createErr := repository.Create(context.Background(), address, defaultForwardRecipients(t))
 	if createErr != nil {
 		t.Fatalf("create identity: %v", createErr)
 	}
@@ -225,7 +228,7 @@ func TestRepositoryReactivatesDeletedIdentity(t *testing.T) {
 	repository, database := newIdentityRepository(t)
 	seedSenderDomain(t, database, "example.com")
 	address := mustAddress(t, "alice@example.com")
-	identity, password, createErr := repository.Create(context.Background(), address)
+	identity, password, createErr := repository.Create(context.Background(), address, defaultForwardRecipients(t))
 	if createErr != nil {
 		t.Fatalf("create identity: %v", createErr)
 	}
@@ -233,7 +236,7 @@ func TestRepositoryReactivatesDeletedIdentity(t *testing.T) {
 		t.Fatalf("delete identity: %v", deleteErr)
 	}
 
-	reactivated, newPassword, reactivateErr := repository.Create(context.Background(), address)
+	reactivated, newPassword, reactivateErr := repository.Create(context.Background(), address, defaultForwardRecipients(t))
 	if reactivateErr != nil {
 		t.Fatalf("reactivate identity: %v", reactivateErr)
 	}
@@ -245,6 +248,79 @@ func TestRepositoryReactivatesDeletedIdentity(t *testing.T) {
 	}
 	if _, authErr := repository.Authenticate(context.Background(), reactivated.Username, newPassword); authErr != nil {
 		t.Fatalf("authenticate reactivated identity: %v", authErr)
+	}
+}
+
+func TestRepositoryForwardingLifecycle(t *testing.T) {
+	repository, database := newIdentityRepository(t)
+	seedSenderDomain(t, database, "example.com")
+	address := mustAddress(t, "support@example.com")
+	firstOwner := mustAddress(t, "owner@example.com")
+	secondOwner := mustAddress(t, "maria@example.com")
+	identity, _, createErr := repository.Create(context.Background(), address, []Address{secondOwner, firstOwner})
+	if createErr != nil {
+		t.Fatalf("create identity: %v", createErr)
+	}
+	if strings.Join(identity.ForwardTo, ",") != "maria@example.com,owner@example.com" {
+		t.Fatalf("expected sorted forwarding recipients, got %+v", identity.ForwardTo)
+	}
+
+	routeAddress, recipients, exists, resolveErr := repository.ResolveForwarding(context.Background(), address)
+	if resolveErr != nil || !exists || routeAddress.String() != address.String() {
+		t.Fatalf("expected forwarding route, exists=%v address=%s err=%v", exists, routeAddress.String(), resolveErr)
+	}
+	if len(recipients) != 2 || recipients[0].String() != "maria@example.com" || recipients[1].String() != "owner@example.com" {
+		t.Fatalf("unexpected resolved recipients: %+v", recipients)
+	}
+
+	updated, updateErr := repository.UpdateForwarding(context.Background(), identity.ID, []Address{firstOwner})
+	if updateErr != nil {
+		t.Fatalf("update forwarding: %v", updateErr)
+	}
+	if strings.Join(updated.ForwardTo, ",") != "owner@example.com" {
+		t.Fatalf("unexpected updated forwarding recipients: %+v", updated.ForwardTo)
+	}
+	if _, recipients, exists, resolveErr := repository.ResolveForwarding(context.Background(), address); resolveErr != nil || !exists || len(recipients) != 1 {
+		t.Fatalf("expected updated forwarding route, exists=%v recipients=%+v err=%v", exists, recipients, resolveErr)
+	}
+
+	if deleteErr := repository.Delete(context.Background(), identity.ID); deleteErr != nil {
+		t.Fatalf("delete identity: %v", deleteErr)
+	}
+	if _, _, exists, resolveErr := repository.ResolveForwarding(context.Background(), address); resolveErr != nil || exists {
+		t.Fatalf("expected deleted identity to stop resolving, exists=%v err=%v", exists, resolveErr)
+	}
+}
+
+func TestRepositoryRejectsInvalidForwardingRecipients(t *testing.T) {
+	repository, database := newIdentityRepository(t)
+	seedSenderDomain(t, database, "example.com")
+	address := mustAddress(t, "alice@example.com")
+	owner := mustAddress(t, "owner@example.com")
+	if _, _, createErr := repository.Create(context.Background(), address, nil); !errors.Is(createErr, ErrForwardRecipientsRequired) {
+		t.Fatalf("expected create missing forwarding error, got %v", createErr)
+	}
+	if _, _, createErr := repository.Create(context.Background(), address, []Address{{}}); !errors.Is(createErr, ErrForwardRecipientsRequired) {
+		t.Fatalf("expected create empty forwarding error, got %v", createErr)
+	}
+	if _, _, createErr := repository.Create(context.Background(), address, []Address{owner, owner}); !errors.Is(createErr, ErrForwardRecipientDuplicate) {
+		t.Fatalf("expected create duplicate forwarding error, got %v", createErr)
+	}
+	if _, _, createErr := repository.Create(context.Background(), address, []Address{address}); !errors.Is(createErr, ErrForwardRecipientSelf) {
+		t.Fatalf("expected create self forwarding error, got %v", createErr)
+	}
+	identity, _, createErr := repository.Create(context.Background(), address, []Address{owner})
+	if createErr != nil {
+		t.Fatalf("create identity: %v", createErr)
+	}
+	if _, updateErr := repository.UpdateForwarding(context.Background(), identity.ID, nil); !errors.Is(updateErr, ErrForwardRecipientsRequired) {
+		t.Fatalf("expected update missing forwarding error, got %v", updateErr)
+	}
+	if _, updateErr := repository.UpdateForwarding(context.Background(), identity.ID, []Address{owner, owner}); !errors.Is(updateErr, ErrForwardRecipientDuplicate) {
+		t.Fatalf("expected update duplicate forwarding error, got %v", updateErr)
+	}
+	if _, updateErr := repository.UpdateForwarding(context.Background(), identity.ID, []Address{address}); !errors.Is(updateErr, ErrForwardRecipientSelf) {
+		t.Fatalf("expected update self forwarding error, got %v", updateErr)
 	}
 }
 
@@ -263,7 +339,7 @@ func TestRepositoryCreateReportsCredentialFailures(t *testing.T) {
 			repository, database := newIdentityRepository(t)
 			seedSenderDomain(t, database, "example.com")
 			repository.random = testCase.reader
-			_, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"))
+			_, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"), defaultForwardRecipients(t))
 			if createErr == nil || !errors.Is(createErr, io.ErrUnexpectedEOF) {
 				t.Fatalf("expected credential read failure, got %v", createErr)
 			}
@@ -278,7 +354,7 @@ func TestRepositoryCreateReportsIdentityStorageFailures(t *testing.T) {
 		if dropErr := database.Migrator().DropTable(&Identity{}); dropErr != nil {
 			t.Fatalf("drop identities: %v", dropErr)
 		}
-		_, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"))
+		_, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"), defaultForwardRecipients(t))
 		if createErr == nil || !strings.Contains(createErr.Error(), "find existing") {
 			t.Fatalf("expected find existing storage failure, got %v", createErr)
 		}
@@ -297,9 +373,21 @@ func TestRepositoryCreateReportsIdentityStorageFailures(t *testing.T) {
 			t.Fatalf("seed identity: %v", err)
 		}
 		repository.random = bytes.NewReader(make([]byte, credentialUsernameBytes+credentialPasswordBytes+credentialSaltBytes))
-		_, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"))
+		_, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"), defaultForwardRecipients(t))
 		if createErr == nil || !strings.Contains(createErr.Error(), "smtp identity create") {
 			t.Fatalf("expected create storage failure, got %v", createErr)
+		}
+	})
+
+	t.Run("create forwarding recipients", func(t *testing.T) {
+		repository, database := newIdentityRepository(t)
+		seedSenderDomain(t, database, "example.com")
+		if dropErr := database.Migrator().DropTable(&ForwardRecipient{}); dropErr != nil {
+			t.Fatalf("drop forwarding recipients: %v", dropErr)
+		}
+		_, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"), defaultForwardRecipients(t))
+		if createErr == nil || !strings.Contains(createErr.Error(), "forwarding recipients") {
+			t.Fatalf("expected forwarding recipient storage failure, got %v", createErr)
 		}
 	})
 
@@ -307,7 +395,7 @@ func TestRepositoryCreateReportsIdentityStorageFailures(t *testing.T) {
 		repository, database := newIdentityRepository(t)
 		seedSenderDomain(t, database, "example.com")
 		address := mustAddress(t, "alice@example.com")
-		identity, _, createErr := repository.Create(context.Background(), address)
+		identity, _, createErr := repository.Create(context.Background(), address, defaultForwardRecipients(t))
 		if createErr != nil {
 			t.Fatalf("create identity: %v", createErr)
 		}
@@ -315,18 +403,135 @@ func TestRepositoryCreateReportsIdentityStorageFailures(t *testing.T) {
 			t.Fatalf("delete identity: %v", deleteErr)
 		}
 		registerIdentityUpdateError(t, database)
-		_, _, reactivateErr := repository.Create(context.Background(), address)
+		_, _, reactivateErr := repository.Create(context.Background(), address, defaultForwardRecipients(t))
 		if reactivateErr == nil || !strings.Contains(reactivateErr.Error(), "reactivate") {
 			t.Fatalf("expected reactivate storage failure, got %v", reactivateErr)
 		}
 	})
+
+	t.Run("reactivate reset forwarding", func(t *testing.T) {
+		repository, database := newIdentityRepository(t)
+		seedSenderDomain(t, database, "example.com")
+		address := mustAddress(t, "alice@example.com")
+		identity, _, createErr := repository.Create(context.Background(), address, defaultForwardRecipients(t))
+		if createErr != nil {
+			t.Fatalf("create identity: %v", createErr)
+		}
+		if deleteErr := repository.Delete(context.Background(), identity.ID); deleteErr != nil {
+			t.Fatalf("delete identity: %v", deleteErr)
+		}
+		if dropErr := database.Migrator().DropTable(&ForwardRecipient{}); dropErr != nil {
+			t.Fatalf("drop forwarding recipients: %v", dropErr)
+		}
+		_, _, reactivateErr := repository.Create(context.Background(), address, defaultForwardRecipients(t))
+		if reactivateErr == nil || !strings.Contains(reactivateErr.Error(), "reset forwarding") {
+			t.Fatalf("expected reset forwarding storage failure, got %v", reactivateErr)
+		}
+	})
+}
+
+func TestRepositoryUpdateForwardingReportsStorageFailures(t *testing.T) {
+	t.Run("lookup", func(t *testing.T) {
+		repository, database := newIdentityRepository(t)
+		closeIdentityDatabase(t, database)
+		if _, updateErr := repository.UpdateForwarding(context.Background(), "identity", defaultForwardRecipients(t)); updateErr == nil {
+			t.Fatalf("expected lookup storage failure")
+		}
+	})
+
+	t.Run("reset", func(t *testing.T) {
+		repository, database := newIdentityRepository(t)
+		seedSenderDomain(t, database, "example.com")
+		identity, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"), defaultForwardRecipients(t))
+		if createErr != nil {
+			t.Fatalf("create identity: %v", createErr)
+		}
+		if dropErr := database.Migrator().DropTable(&ForwardRecipient{}); dropErr != nil {
+			t.Fatalf("drop forwarding recipients: %v", dropErr)
+		}
+		if _, updateErr := repository.UpdateForwarding(context.Background(), identity.ID, defaultForwardRecipients(t)); updateErr == nil || !strings.Contains(updateErr.Error(), "reset") {
+			t.Fatalf("expected reset storage failure, got %v", updateErr)
+		}
+	})
+
+	t.Run("timestamp", func(t *testing.T) {
+		repository, database := newIdentityRepository(t)
+		seedSenderDomain(t, database, "example.com")
+		identity, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"), defaultForwardRecipients(t))
+		if createErr != nil {
+			t.Fatalf("create identity: %v", createErr)
+		}
+		registerIdentityUpdateError(t, database)
+		if _, updateErr := repository.UpdateForwarding(context.Background(), identity.ID, []Address{mustAddress(t, "maria@example.com")}); updateErr == nil || !strings.Contains(updateErr.Error(), "timestamp") {
+			t.Fatalf("expected timestamp storage failure, got %v", updateErr)
+		}
+	})
+
+	t.Run("create recipients", func(t *testing.T) {
+		repository, database := newIdentityRepository(t)
+		seedSenderDomain(t, database, "example.com")
+		identity, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"), defaultForwardRecipients(t))
+		if createErr != nil {
+			t.Fatalf("create identity: %v", createErr)
+		}
+		registerForwardRecipientCreateError(t, database)
+		if _, updateErr := repository.UpdateForwarding(context.Background(), identity.ID, []Address{mustAddress(t, "maria@example.com")}); updateErr == nil || !strings.Contains(updateErr.Error(), "forwarding recipients") {
+			t.Fatalf("expected forwarding recipient storage failure, got %v", updateErr)
+		}
+	})
+}
+
+func TestRepositoryResolveForwardingReportsStorageFailures(t *testing.T) {
+	repository, database := newIdentityRepository(t)
+	closeIdentityDatabase(t, database)
+	if _, _, _, resolveErr := repository.ResolveForwarding(context.Background(), mustAddress(t, "alice@example.com")); resolveErr == nil {
+		t.Fatalf("expected resolve storage failure")
+	}
+}
+
+func TestRepositoryResolveForwardingReportsInvalidStoredRecipient(t *testing.T) {
+	repository, database := newIdentityRepository(t)
+	seedSenderDomain(t, database, "example.com")
+	identity, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"), defaultForwardRecipients(t))
+	if createErr != nil {
+		t.Fatalf("create identity: %v", createErr)
+	}
+	if resetErr := database.Where(&ForwardRecipient{IdentityID: identity.ID}).Delete(&ForwardRecipient{}).Error; resetErr != nil {
+		t.Fatalf("reset forwarding recipients: %v", resetErr)
+	}
+	if seedErr := database.Create(&ForwardRecipient{
+		ID:           "bad-recipient",
+		IdentityID:   identity.ID,
+		EmailAddress: "bad address",
+	}).Error; seedErr != nil {
+		t.Fatalf("seed invalid recipient: %v", seedErr)
+	}
+	if _, _, _, resolveErr := repository.ResolveForwarding(context.Background(), mustAddress(t, "alice@example.com")); resolveErr == nil || !strings.Contains(resolveErr.Error(), "stored recipient") {
+		t.Fatalf("expected invalid stored recipient error, got %v", resolveErr)
+	}
+}
+
+func TestRepositoryResolveForwardingIgnoresIdentitiesWithoutRecipients(t *testing.T) {
+	repository, database := newIdentityRepository(t)
+	record := Identity{
+		ID:           "identity-no-forwarding",
+		EmailAddress: "alice@example.com",
+		Username:     "smtp-no-forwarding",
+		Status:       IdentityStatusActive,
+	}
+	if seedErr := database.Create(&record).Error; seedErr != nil {
+		t.Fatalf("seed identity: %v", seedErr)
+	}
+	if _, _, exists, resolveErr := repository.ResolveForwarding(context.Background(), mustAddress(t, "alice@example.com")); resolveErr != nil || exists {
+		t.Fatalf("expected no forwarding route, exists=%v err=%v", exists, resolveErr)
+	}
 }
 
 func TestRepositoryRotateReportsCredentialAndSaveFailures(t *testing.T) {
 	t.Run("credential", func(t *testing.T) {
 		repository, database := newIdentityRepository(t)
 		seedSenderDomain(t, database, "example.com")
-		identity, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"))
+		identity, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"), defaultForwardRecipients(t))
 		if createErr != nil {
 			t.Fatalf("create identity: %v", createErr)
 		}
@@ -340,7 +545,7 @@ func TestRepositoryRotateReportsCredentialAndSaveFailures(t *testing.T) {
 	t.Run("save", func(t *testing.T) {
 		repository, database := newIdentityRepository(t)
 		seedSenderDomain(t, database, "example.com")
-		identity, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"))
+		identity, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"), defaultForwardRecipients(t))
 		if createErr != nil {
 			t.Fatalf("create identity: %v", createErr)
 		}
@@ -355,7 +560,7 @@ func TestRepositoryRotateReportsCredentialAndSaveFailures(t *testing.T) {
 func TestRepositoryDeleteReportsSaveFailure(t *testing.T) {
 	repository, database := newIdentityRepository(t)
 	seedSenderDomain(t, database, "example.com")
-	identity, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"))
+	identity, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"), defaultForwardRecipients(t))
 	if createErr != nil {
 		t.Fatalf("create identity: %v", createErr)
 	}
@@ -370,7 +575,7 @@ func TestRepositoryDeleteReportsSaveFailure(t *testing.T) {
 func TestRepositoryAuthenticateRejectsInvalidAndReportsStoredDataFailures(t *testing.T) {
 	repository, database := newIdentityRepository(t)
 	seedSenderDomain(t, database, "example.com")
-	identity, password, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"))
+	identity, password, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"), defaultForwardRecipients(t))
 	if createErr != nil {
 		t.Fatalf("create identity: %v", createErr)
 	}
@@ -418,7 +623,7 @@ func newIdentityRepository(t *testing.T) (*Repository, *gorm.DB) {
 	if databaseErr != nil {
 		t.Fatalf("open database: %v", databaseErr)
 	}
-	if migrateErr := database.AutoMigrate(&SenderDomain{}, &Identity{}); migrateErr != nil {
+	if migrateErr := database.AutoMigrate(&SenderDomain{}, &Identity{}, &ForwardRecipient{}); migrateErr != nil {
 		t.Fatalf("migrate database: %v", migrateErr)
 	}
 	repository, repositoryErr := NewRepository(database, strings.Repeat("a", 64))
@@ -454,6 +659,26 @@ func registerIdentityUpdateError(t *testing.T, database *gorm.DB) {
 	})
 }
 
+func registerForwardRecipientCreateError(t *testing.T, database *gorm.DB) {
+	t.Helper()
+	callbackName := "pinguin:force_forward_recipient_create_error"
+	if err := database.Callback().Create().Before("gorm:create").Register(callbackName, func(tx *gorm.DB) {
+		if _, ok := tx.Statement.Dest.(*ForwardRecipient); ok {
+			tx.AddError(errors.New("forced forward recipient create failure"))
+		}
+		if _, ok := tx.Statement.Dest.(*[]ForwardRecipient); ok {
+			tx.AddError(errors.New("forced forward recipient create failure"))
+		}
+	}); err != nil {
+		t.Fatalf("register create callback: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := database.Callback().Create().Remove(callbackName); err != nil {
+			t.Fatalf("remove create callback: %v", err)
+		}
+	})
+}
+
 type identityFailingReader struct {
 	err error
 }
@@ -478,6 +703,11 @@ func mustAddress(t *testing.T, rawAddress string) Address {
 	return address
 }
 
+func defaultForwardRecipients(t *testing.T) []Address {
+	t.Helper()
+	return []Address{mustAddress(t, "owner@example.com")}
+}
+
 func fmtPublicIdentity(identity PublicIdentity) string {
-	return identity.ID + identity.EmailAddress + identity.Username + identity.Status
+	return identity.ID + identity.EmailAddress + identity.Username + strings.Join(identity.ForwardTo, ",") + identity.Status
 }

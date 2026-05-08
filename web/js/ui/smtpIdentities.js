@@ -20,7 +20,10 @@ export function createSMTPIdentities(options) {
     actions,
     identities: /** @type {SMTPIdentity[]} */ ([]),
     credentials: /** @type {SMTPCredentials | null} */ (null),
+    credentialNotice: /** @type {{ variant: string, message: string } | null} */ (null),
+    editingIdentityId: '',
     emailAddress: '',
+    forwardToText: '',
     isLoading: false,
     isSubmitting: false,
     errorMessage: '',
@@ -31,10 +34,12 @@ export function createSMTPIdentities(options) {
         (isAuthenticated) => {
           if (isAuthenticated) {
             this.loadIdentities();
-          } else {
-            this.identities = [];
-            this.credentials = null;
-          }
+      } else {
+        this.identities = [];
+        this.credentials = null;
+        this.credentialNotice = null;
+        this.cancelForwardingEdit();
+      }
         },
       );
     },
@@ -60,8 +65,13 @@ export function createSMTPIdentities(options) {
     },
     async createIdentity(event) {
       event?.preventDefault();
+      if (this.editingIdentityId) {
+        await this.updateForwarding();
+        return;
+      }
       const emailAddress = this.emailAddress.trim();
-      if (!emailAddress) {
+      const forwardTo = this.parseForwardRecipients();
+      if (!emailAddress || forwardTo.length === 0) {
         this.errorMessage = this.strings.createError;
         dispatchToast({ variant: 'error', message: this.errorMessage });
         return;
@@ -69,17 +79,50 @@ export function createSMTPIdentities(options) {
       this.isSubmitting = true;
       this.errorMessage = '';
       try {
-        const credentials = await apiClient.createSMTPIdentity(emailAddress);
+        const credentials = await apiClient.createSMTPIdentity(emailAddress, forwardTo);
         if (!credentials) {
           throw new Error('missing_credentials');
         }
         this.credentials = credentials;
         this.emailAddress = '';
+        this.forwardToText = '';
         await this.loadIdentities();
-        dispatchToast({ variant: 'success', message: this.strings.createSuccess });
+        this.setCredentialNotice('success', this.strings.createSuccess);
         this.openCredentialsDialog();
       } catch (error) {
         this.errorMessage = this.strings.createError;
+        dispatchToast({ variant: 'error', message: this.errorMessage });
+      } finally {
+        this.isSubmitting = false;
+      }
+    },
+    editForwarding(identity) {
+      this.editingIdentityId = identity.id;
+      this.emailAddress = identity.emailAddress;
+      this.forwardToText = (identity.forwardTo || []).join('\n');
+      this.errorMessage = '';
+    },
+    cancelForwardingEdit() {
+      this.editingIdentityId = '';
+      this.emailAddress = '';
+      this.forwardToText = '';
+    },
+    async updateForwarding() {
+      const forwardTo = this.parseForwardRecipients();
+      if (forwardTo.length === 0) {
+        this.errorMessage = this.strings.updateForwardingError;
+        dispatchToast({ variant: 'error', message: this.errorMessage });
+        return;
+      }
+      this.isSubmitting = true;
+      this.errorMessage = '';
+      try {
+        await apiClient.updateSMTPIdentityForwarding(this.editingIdentityId, forwardTo);
+        this.cancelForwardingEdit();
+        await this.loadIdentities();
+        dispatchToast({ variant: 'success', message: this.strings.updateForwardingSuccess });
+      } catch (error) {
+        this.errorMessage = this.strings.updateForwardingError;
         dispatchToast({ variant: 'error', message: this.errorMessage });
       } finally {
         this.isSubmitting = false;
@@ -98,7 +141,7 @@ export function createSMTPIdentities(options) {
         }
         this.credentials = credentials;
         await this.loadIdentities();
-        dispatchToast({ variant: 'success', message: this.strings.rotateSuccess });
+        this.setCredentialNotice('success', this.strings.rotateSuccess);
         this.openCredentialsDialog();
       } catch (error) {
         this.errorMessage = this.strings.rotateError;
@@ -124,16 +167,25 @@ export function createSMTPIdentities(options) {
         this.isSubmitting = false;
       }
     },
+    parseForwardRecipients() {
+      return this.forwardToText
+        .split(/[\n,;]/)
+        .map((value) => value.trim())
+        .filter(Boolean);
+    },
     async copyCredentialValue(value, successMessage) {
       try {
         if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
           throw new Error('clipboard_unavailable');
         }
         await navigator.clipboard.writeText(String(value ?? ''));
-        dispatchToast({ variant: 'success', message: successMessage });
+        this.setCredentialNotice('success', successMessage);
       } catch (error) {
-        dispatchToast({ variant: 'error', message: this.strings.copyError });
+        this.setCredentialNotice('error', this.strings.copyError);
       }
+    },
+    setCredentialNotice(variant, message) {
+      this.credentialNotice = { variant, message };
     },
     openCredentialsDialog() {
       const dialog = this.$refs.credentialsDialog;
@@ -146,6 +198,7 @@ export function createSMTPIdentities(options) {
       if (dialog && typeof dialog.close === 'function') {
         dialog.close();
       }
+      this.credentialNotice = null;
     },
     formatTimestamp(isoString) {
       if (!isoString) {

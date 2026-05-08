@@ -63,6 +63,7 @@ function mapSMTPIdentity(raw) {
     id: raw.id,
     emailAddress: raw.email_address,
     username: raw.username,
+    forwardTo: Array.isArray(raw.forward_to) ? raw.forward_to.filter((value) => typeof value === 'string') : [],
     status: raw.status,
     lastUsedAt: raw.last_used_at || null,
     createdAt: raw.created_at,
@@ -182,12 +183,19 @@ export function createApiClient(baseUrl = RUNTIME_CONFIG.apiBaseUrl) {
         identities.map(mapSMTPIdentity).filter(Boolean)
       );
     },
-    async createSMTPIdentity(emailAddress) {
+    async createSMTPIdentity(emailAddress, forwardTo) {
       const payload = await request('/smtp-identities', {
         method: 'POST',
-        body: JSON.stringify({ email_address: emailAddress }),
+        body: JSON.stringify({ email_address: emailAddress, forward_to: forwardTo }),
       });
       return /** @type {SMTPCredentials | null} */ (mapSMTPCredentials(payload));
+    },
+    async updateSMTPIdentityForwarding(identityId, forwardTo) {
+      const payload = await request(`/smtp-identities/${encodeURIComponent(identityId)}/forwarding`, {
+        method: 'PATCH',
+        body: JSON.stringify({ forward_to: forwardTo }),
+      });
+      return /** @type {SMTPIdentity | null} */ (mapSMTPIdentity(payload));
     },
     async rotateSMTPIdentity(identityId) {
       const payload = await request(`/smtp-identities/${encodeURIComponent(identityId)}/rotate`, {

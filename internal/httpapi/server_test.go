@@ -546,7 +546,7 @@ func TestSMTPIdentityLifecycle(t *testing.T) {
 	server, identityRepo := newTestHTTPServerWithSMTPIdentities(t)
 
 	createRecorder := httptest.NewRecorder()
-	createBody := bytes.NewBufferString(`{"email_address":"alice@example.com"}`)
+	createBody := bytes.NewBufferString(`{"email_address":"alice@example.com","forward_to":["owner@example.com"]}`)
 	createRequest := httptest.NewRequest(http.MethodPost, "/api/smtp-identities", createBody)
 	createRequest.Host = "example.com"
 	server.httpServer.Handler.ServeHTTP(createRecorder, createRequest)
@@ -560,6 +560,9 @@ func TestSMTPIdentityLifecycle(t *testing.T) {
 	if createPayload.Password == "" || createPayload.Username == "" || createPayload.SMTPSettings.Host != "smtp.example.com" {
 		t.Fatalf("unexpected create credentials: %+v", createPayload)
 	}
+	if strings.Join(createPayload.Identity.ForwardTo, ",") != "owner@example.com" {
+		t.Fatalf("unexpected forwarding recipients: %+v", createPayload.Identity.ForwardTo)
+	}
 
 	listRecorder := httptest.NewRecorder()
 	listRequest := httptest.NewRequest(http.MethodGet, "/api/smtp-identities", nil)
@@ -570,6 +573,23 @@ func TestSMTPIdentityLifecycle(t *testing.T) {
 	}
 	if strings.Contains(listRecorder.Body.String(), createPayload.Password) {
 		t.Fatalf("list response leaked one-time password")
+	}
+
+	updateRecorder := httptest.NewRecorder()
+	updatePath := fmt.Sprintf("/api/smtp-identities/%s/forwarding", createPayload.Identity.ID)
+	updateRequest := httptest.NewRequest(http.MethodPatch, updatePath, strings.NewReader(`{"forward_to":["maria@example.com","owner@example.com"]}`))
+	updateRequest.Host = "example.com"
+	updateRequest.Header.Set("Content-Type", "application/json")
+	server.httpServer.Handler.ServeHTTP(updateRecorder, updateRequest)
+	if updateRecorder.Code != http.StatusOK {
+		t.Fatalf("expected forwarding update 200, got %d body=%s", updateRecorder.Code, updateRecorder.Body.String())
+	}
+	var updatePayload smtpidentity.PublicIdentity
+	if err := json.Unmarshal(updateRecorder.Body.Bytes(), &updatePayload); err != nil {
+		t.Fatalf("decode forwarding update payload: %v", err)
+	}
+	if strings.Join(updatePayload.ForwardTo, ",") != "maria@example.com,owner@example.com" {
+		t.Fatalf("unexpected updated forwarding recipients: %+v", updatePayload.ForwardTo)
 	}
 
 	rotateRecorder := httptest.NewRecorder()
@@ -615,7 +635,8 @@ func TestSMTPIdentityRoutesRequireAdminRole(t *testing.T) {
 		body   string
 	}{
 		{name: "list", method: http.MethodGet, path: "/api/smtp-identities"},
-		{name: "create", method: http.MethodPost, path: "/api/smtp-identities", body: `{"email_address":"alice@example.com"}`},
+		{name: "create", method: http.MethodPost, path: "/api/smtp-identities", body: `{"email_address":"alice@example.com","forward_to":["owner@example.com"]}`},
+		{name: "update forwarding", method: http.MethodPatch, path: "/api/smtp-identities/identity/forwarding", body: `{"forward_to":["owner@example.com"]}`},
 		{name: "rotate", method: http.MethodPost, path: "/api/smtp-identities/identity/rotate"},
 		{name: "delete", method: http.MethodDelete, path: "/api/smtp-identities/identity"},
 	}
@@ -676,7 +697,7 @@ func TestSMTPIdentityRejectsOutsideSenderDomain(t *testing.T) {
 	server, _ := newTestHTTPServerWithSMTPIdentities(t)
 
 	recorder := httptest.NewRecorder()
-	body := bytes.NewBufferString(`{"email_address":"alice@other.example"}`)
+	body := bytes.NewBufferString(`{"email_address":"alice@other.example","forward_to":["owner@example.com"]}`)
 	request := httptest.NewRequest(http.MethodPost, "/api/smtp-identities", body)
 	request.Host = "example.com"
 	server.httpServer.Handler.ServeHTTP(recorder, request)
@@ -697,7 +718,14 @@ func TestSMTPIdentityValidationAndErrorMapping(t *testing.T) {
 		expectedCode int
 	}{
 		{name: "create invalid json", method: http.MethodPost, path: "/api/smtp-identities", body: `{`, expectedCode: http.StatusBadRequest},
-		{name: "create invalid address", method: http.MethodPost, path: "/api/smtp-identities", body: `{"email_address":"not-an-email"}`, expectedCode: http.StatusBadRequest},
+		{name: "create invalid address", method: http.MethodPost, path: "/api/smtp-identities", body: `{"email_address":"not-an-email","forward_to":["owner@example.com"]}`, expectedCode: http.StatusBadRequest},
+		{name: "create missing forwarding", method: http.MethodPost, path: "/api/smtp-identities", body: `{"email_address":"alice@example.com"}`, expectedCode: http.StatusBadRequest},
+		{name: "create invalid forwarding", method: http.MethodPost, path: "/api/smtp-identities", body: `{"email_address":"alice@example.com","forward_to":["bad address"]}`, expectedCode: http.StatusBadRequest},
+		{name: "create self forwarding", method: http.MethodPost, path: "/api/smtp-identities", body: `{"email_address":"alice@example.com","forward_to":["alice@example.com"]}`, expectedCode: http.StatusBadRequest},
+		{name: "update forwarding empty id", method: http.MethodPatch, path: "/api/smtp-identities/%20/forwarding", body: `{"forward_to":["owner@example.com"]}`, expectedCode: http.StatusBadRequest},
+		{name: "update forwarding invalid json", method: http.MethodPatch, path: "/api/smtp-identities/missing/forwarding", body: `{`, expectedCode: http.StatusBadRequest},
+		{name: "update forwarding invalid address", method: http.MethodPatch, path: "/api/smtp-identities/missing/forwarding", body: `{"forward_to":["bad address"]}`, expectedCode: http.StatusBadRequest},
+		{name: "update forwarding missing identity", method: http.MethodPatch, path: "/api/smtp-identities/missing/forwarding", body: `{"forward_to":["owner@example.com"]}`, expectedCode: http.StatusNotFound},
 		{name: "rotate empty id", method: http.MethodPost, path: "/api/smtp-identities/%20/rotate", expectedCode: http.StatusBadRequest},
 		{name: "rotate missing id", method: http.MethodPost, path: "/api/smtp-identities/missing/rotate", expectedCode: http.StatusNotFound},
 		{name: "delete empty id", method: http.MethodDelete, path: "/api/smtp-identities/%20", expectedCode: http.StatusBadRequest},
@@ -718,7 +746,7 @@ func TestSMTPIdentityValidationAndErrorMapping(t *testing.T) {
 	}
 
 	createRecorder := httptest.NewRecorder()
-	createRequest := httptest.NewRequest(http.MethodPost, "/api/smtp-identities", strings.NewReader(`{"email_address":"dupe@example.com"}`))
+	createRequest := httptest.NewRequest(http.MethodPost, "/api/smtp-identities", strings.NewReader(`{"email_address":"dupe@example.com","forward_to":["owner@example.com"]}`))
 	createRequest.Host = "example.com"
 	createRequest.Header.Set("Content-Type", "application/json")
 	server.httpServer.Handler.ServeHTTP(createRecorder, createRequest)
@@ -726,12 +754,25 @@ func TestSMTPIdentityValidationAndErrorMapping(t *testing.T) {
 		t.Fatalf("expected initial create 201, got %d", createRecorder.Code)
 	}
 	duplicateRecorder := httptest.NewRecorder()
-	duplicateRequest := httptest.NewRequest(http.MethodPost, "/api/smtp-identities", strings.NewReader(`{"email_address":"dupe@example.com"}`))
+	duplicateRequest := httptest.NewRequest(http.MethodPost, "/api/smtp-identities", strings.NewReader(`{"email_address":"dupe@example.com","forward_to":["owner@example.com"]}`))
 	duplicateRequest.Host = "example.com"
 	duplicateRequest.Header.Set("Content-Type", "application/json")
 	server.httpServer.Handler.ServeHTTP(duplicateRecorder, duplicateRequest)
 	if duplicateRecorder.Code != http.StatusConflict {
 		t.Fatalf("expected duplicate conflict, got %d", duplicateRecorder.Code)
+	}
+	var duplicatePayload smtpidentity.OneTimeCredentials
+	if err := json.Unmarshal(createRecorder.Body.Bytes(), &duplicatePayload); err != nil {
+		t.Fatalf("decode duplicate setup payload: %v", err)
+	}
+	selfForwardRecorder := httptest.NewRecorder()
+	selfForwardPath := fmt.Sprintf("/api/smtp-identities/%s/forwarding", duplicatePayload.Identity.ID)
+	selfForwardRequest := httptest.NewRequest(http.MethodPatch, selfForwardPath, strings.NewReader(`{"forward_to":["dupe@example.com"]}`))
+	selfForwardRequest.Host = "example.com"
+	selfForwardRequest.Header.Set("Content-Type", "application/json")
+	server.httpServer.Handler.ServeHTTP(selfForwardRecorder, selfForwardRequest)
+	if selfForwardRecorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected update self forwarding 400, got %d body=%s", selfForwardRecorder.Code, selfForwardRecorder.Body.String())
 	}
 
 	handler := newSMTPIdentityHandler(nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -740,6 +781,24 @@ func TestSMTPIdentityValidationAndErrorMapping(t *testing.T) {
 	handler.writeError(invalidAddressContext, smtpidentity.ErrInvalidAddress)
 	if invalidAddressRecorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected direct invalid address mapping to 400, got %d", invalidAddressRecorder.Code)
+	}
+	missingForwardRecorder := httptest.NewRecorder()
+	missingForwardContext, _ := gin.CreateTestContext(missingForwardRecorder)
+	handler.writeError(missingForwardContext, smtpidentity.ErrForwardRecipientsRequired)
+	if missingForwardRecorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected direct missing forwarding mapping to 400, got %d", missingForwardRecorder.Code)
+	}
+	duplicateForwardRecorder := httptest.NewRecorder()
+	duplicateForwardContext, _ := gin.CreateTestContext(duplicateForwardRecorder)
+	handler.writeError(duplicateForwardContext, smtpidentity.ErrForwardRecipientDuplicate)
+	if duplicateForwardRecorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected direct duplicate forwarding mapping to 400, got %d", duplicateForwardRecorder.Code)
+	}
+	selfForwardRecorder = httptest.NewRecorder()
+	selfForwardContext, _ := gin.CreateTestContext(selfForwardRecorder)
+	handler.writeError(selfForwardContext, smtpidentity.ErrForwardRecipientSelf)
+	if selfForwardRecorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected direct self forwarding mapping to 400, got %d", selfForwardRecorder.Code)
 	}
 }
 
@@ -754,7 +813,8 @@ func TestSMTPIdentityReportsStorageErrors(t *testing.T) {
 		body   string
 	}{
 		{name: "list", method: http.MethodGet, path: "/api/smtp-identities"},
-		{name: "create", method: http.MethodPost, path: "/api/smtp-identities", body: `{"email_address":"alice@example.com"}`},
+		{name: "create", method: http.MethodPost, path: "/api/smtp-identities", body: `{"email_address":"alice@example.com","forward_to":["owner@example.com"]}`},
+		{name: "update forwarding", method: http.MethodPatch, path: "/api/smtp-identities/identity/forwarding", body: `{"forward_to":["owner@example.com"]}`},
 		{name: "rotate", method: http.MethodPost, path: "/api/smtp-identities/identity/rotate"},
 		{name: "delete", method: http.MethodDelete, path: "/api/smtp-identities/identity"},
 	}
@@ -1443,6 +1503,7 @@ func newTestHTTPServerWithSMTPIdentitiesAndValidator(t *testing.T, validator Ses
 		&tenant.SMSProfile{},
 		&smtpidentity.SenderDomain{},
 		&smtpidentity.Identity{},
+		&smtpidentity.ForwardRecipient{},
 	); err != nil {
 		t.Fatalf("migrate sqlite: %v", err)
 	}
@@ -1511,7 +1572,7 @@ func newTestHTTPServerWithBrokenSMTPIdentitiesAndValidator(t *testing.T, validat
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := dbInstance.AutoMigrate(&smtpidentity.SenderDomain{}, &smtpidentity.Identity{}); err != nil {
+	if err := dbInstance.AutoMigrate(&smtpidentity.SenderDomain{}, &smtpidentity.Identity{}, &smtpidentity.ForwardRecipient{}); err != nil {
 		t.Fatalf("migrate sqlite: %v", err)
 	}
 	if err := smtpidentity.ReplaceSenderDomains(context.Background(), dbInstance, []string{"example.com"}); err != nil {
