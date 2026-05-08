@@ -721,6 +721,7 @@ func TestSMTPIdentityValidationAndErrorMapping(t *testing.T) {
 		{name: "create invalid address", method: http.MethodPost, path: "/api/smtp-identities", body: `{"email_address":"not-an-email","forward_to":["owner@example.com"]}`, expectedCode: http.StatusBadRequest},
 		{name: "create missing forwarding", method: http.MethodPost, path: "/api/smtp-identities", body: `{"email_address":"alice@example.com"}`, expectedCode: http.StatusBadRequest},
 		{name: "create invalid forwarding", method: http.MethodPost, path: "/api/smtp-identities", body: `{"email_address":"alice@example.com","forward_to":["bad address"]}`, expectedCode: http.StatusBadRequest},
+		{name: "create self forwarding", method: http.MethodPost, path: "/api/smtp-identities", body: `{"email_address":"alice@example.com","forward_to":["alice@example.com"]}`, expectedCode: http.StatusBadRequest},
 		{name: "update forwarding empty id", method: http.MethodPatch, path: "/api/smtp-identities/%20/forwarding", body: `{"forward_to":["owner@example.com"]}`, expectedCode: http.StatusBadRequest},
 		{name: "update forwarding invalid json", method: http.MethodPatch, path: "/api/smtp-identities/missing/forwarding", body: `{`, expectedCode: http.StatusBadRequest},
 		{name: "update forwarding invalid address", method: http.MethodPatch, path: "/api/smtp-identities/missing/forwarding", body: `{"forward_to":["bad address"]}`, expectedCode: http.StatusBadRequest},
@@ -760,6 +761,19 @@ func TestSMTPIdentityValidationAndErrorMapping(t *testing.T) {
 	if duplicateRecorder.Code != http.StatusConflict {
 		t.Fatalf("expected duplicate conflict, got %d", duplicateRecorder.Code)
 	}
+	var duplicatePayload smtpidentity.OneTimeCredentials
+	if err := json.Unmarshal(createRecorder.Body.Bytes(), &duplicatePayload); err != nil {
+		t.Fatalf("decode duplicate setup payload: %v", err)
+	}
+	selfForwardRecorder := httptest.NewRecorder()
+	selfForwardPath := fmt.Sprintf("/api/smtp-identities/%s/forwarding", duplicatePayload.Identity.ID)
+	selfForwardRequest := httptest.NewRequest(http.MethodPatch, selfForwardPath, strings.NewReader(`{"forward_to":["dupe@example.com"]}`))
+	selfForwardRequest.Host = "example.com"
+	selfForwardRequest.Header.Set("Content-Type", "application/json")
+	server.httpServer.Handler.ServeHTTP(selfForwardRecorder, selfForwardRequest)
+	if selfForwardRecorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected update self forwarding 400, got %d body=%s", selfForwardRecorder.Code, selfForwardRecorder.Body.String())
+	}
 
 	handler := newSMTPIdentityHandler(nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	invalidAddressRecorder := httptest.NewRecorder()
@@ -779,6 +793,12 @@ func TestSMTPIdentityValidationAndErrorMapping(t *testing.T) {
 	handler.writeError(duplicateForwardContext, smtpidentity.ErrForwardRecipientDuplicate)
 	if duplicateForwardRecorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected direct duplicate forwarding mapping to 400, got %d", duplicateForwardRecorder.Code)
+	}
+	selfForwardRecorder = httptest.NewRecorder()
+	selfForwardContext, _ := gin.CreateTestContext(selfForwardRecorder)
+	handler.writeError(selfForwardContext, smtpidentity.ErrForwardRecipientSelf)
+	if selfForwardRecorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected direct self forwarding mapping to 400, got %d", selfForwardRecorder.Code)
 	}
 }
 

@@ -306,6 +306,9 @@ func TestRepositoryRejectsInvalidForwardingRecipients(t *testing.T) {
 	if _, _, createErr := repository.Create(context.Background(), address, []Address{owner, owner}); !errors.Is(createErr, ErrForwardRecipientDuplicate) {
 		t.Fatalf("expected create duplicate forwarding error, got %v", createErr)
 	}
+	if _, _, createErr := repository.Create(context.Background(), address, []Address{address}); !errors.Is(createErr, ErrForwardRecipientSelf) {
+		t.Fatalf("expected create self forwarding error, got %v", createErr)
+	}
 	identity, _, createErr := repository.Create(context.Background(), address, []Address{owner})
 	if createErr != nil {
 		t.Fatalf("create identity: %v", createErr)
@@ -315,6 +318,9 @@ func TestRepositoryRejectsInvalidForwardingRecipients(t *testing.T) {
 	}
 	if _, updateErr := repository.UpdateForwarding(context.Background(), identity.ID, []Address{owner, owner}); !errors.Is(updateErr, ErrForwardRecipientDuplicate) {
 		t.Fatalf("expected update duplicate forwarding error, got %v", updateErr)
+	}
+	if _, updateErr := repository.UpdateForwarding(context.Background(), identity.ID, []Address{address}); !errors.Is(updateErr, ErrForwardRecipientSelf) {
+		t.Fatalf("expected update self forwarding error, got %v", updateErr)
 	}
 }
 

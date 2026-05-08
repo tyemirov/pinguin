@@ -46,6 +46,8 @@ var (
 	ErrForwardRecipientsRequired = errors.New("smtp_identity.forward_recipients_required")
 	// ErrForwardRecipientDuplicate indicates a shared identity repeats a forwarding owner.
 	ErrForwardRecipientDuplicate = errors.New("smtp_identity.forward_recipient_duplicate")
+	// ErrForwardRecipientSelf indicates a shared identity forwards back to itself.
+	ErrForwardRecipientSelf = errors.New("smtp_identity.forward_recipient_self")
 )
 
 // IdentityStatus captures SMTP identity lifecycle state.
@@ -155,6 +157,9 @@ func (repository *Repository) Create(ctx context.Context, address Address, forwa
 	if recipientErr := validateForwardRecipients(forwardTo); recipientErr != nil {
 		return PublicIdentity{}, "", recipientErr
 	}
+	if recipientErr := validateForwardRecipientTarget(address, forwardTo); recipientErr != nil {
+		return PublicIdentity{}, "", recipientErr
+	}
 	var existing Identity
 	findErr := repository.db.WithContext(ctx).
 		Where(&Identity{EmailAddress: address.String()}).
@@ -221,6 +226,13 @@ func (repository *Repository) UpdateForwarding(ctx context.Context, identityID s
 	record, fetchErr := repository.requireIdentity(ctx, identityID)
 	if fetchErr != nil {
 		return PublicIdentity{}, fetchErr
+	}
+	recordAddress, addressErr := NewAddress(record.EmailAddress)
+	if addressErr != nil {
+		return PublicIdentity{}, fmt.Errorf("smtp identity forwarding update: stored address: %w", addressErr)
+	}
+	if recipientErr := validateForwardRecipientTarget(recordAddress, forwardTo); recipientErr != nil {
+		return PublicIdentity{}, recipientErr
 	}
 	now := repository.clockFunc()
 	record.UpdatedAt = now
@@ -401,6 +413,15 @@ func validateForwardRecipients(forwardTo []Address) error {
 			return fmt.Errorf("%w: %s", ErrForwardRecipientDuplicate, recipientKey)
 		}
 		seenRecipients[recipientKey] = struct{}{}
+	}
+	return nil
+}
+
+func validateForwardRecipientTarget(address Address, forwardTo []Address) error {
+	for _, recipient := range forwardTo {
+		if recipient.Equals(address) {
+			return fmt.Errorf("%w: %s", ErrForwardRecipientSelf, recipient.String())
+		}
 	}
 	return nil
 }
