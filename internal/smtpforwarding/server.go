@@ -47,9 +47,14 @@ type Server struct {
 }
 
 type sessionState struct {
-	mailFrom        *smtpidentity.Address
+	mailFrom        *ReversePath
 	recipients      []smtpidentity.Address
 	routesByAddress map[string]Route
+}
+
+type smtpPath struct {
+	value     string
+	bracketed bool
 }
 
 // NewServer constructs an inbound SMTP forwarding server.
@@ -193,12 +198,12 @@ func (server *Server) handleHello(writer *bufio.Writer) {
 }
 
 func (server *Server) handleMail(writer *bufio.Writer, session *sessionState, argument string) {
-	address, parseErr := parseSMTPPath(argument, "FROM:")
+	reversePath, parseErr := parseSMTPReversePath(argument, "FROM:")
 	if parseErr != nil {
 		writeSMTPLine(writer, "501 Invalid sender")
 		return
 	}
-	session.mailFrom = &address
+	session.mailFrom = &reversePath
 	session.recipients = nil
 	session.routesByAddress = make(map[string]Route)
 	writeSMTPLine(writer, "250 OK")
@@ -336,22 +341,41 @@ func splitCommand(line string) (string, string) {
 	return strings.ToUpper(strings.TrimSpace(command)), strings.TrimSpace(argument)
 }
 
-func parseSMTPPath(argument string, expectedPrefix string) (smtpidentity.Address, error) {
+func extractSMTPPath(argument string, expectedPrefix string) (smtpPath, error) {
 	trimmedArgument := strings.TrimSpace(argument)
 	if !strings.HasPrefix(strings.ToUpper(trimmedArgument), expectedPrefix) {
-		return smtpidentity.Address{}, errors.New("missing smtp path prefix")
+		return smtpPath{}, errors.New("missing smtp path prefix")
 	}
 	path := strings.TrimSpace(trimmedArgument[len(expectedPrefix):])
 	if strings.HasPrefix(path, "<") {
 		endIndex := strings.Index(path, ">")
 		if endIndex < 0 {
-			return smtpidentity.Address{}, errors.New("unterminated smtp path")
+			return smtpPath{}, errors.New("unterminated smtp path")
 		}
-		path = path[1:endIndex]
+		return smtpPath{value: path[1:endIndex], bracketed: true}, nil
 	} else if fieldValues := strings.Fields(path); len(fieldValues) > 0 {
 		path = fieldValues[0]
 	}
-	return smtpidentity.NewAddress(path)
+	return smtpPath{value: path}, nil
+}
+
+func parseSMTPPath(argument string, expectedPrefix string) (smtpidentity.Address, error) {
+	path, pathErr := extractSMTPPath(argument, expectedPrefix)
+	if pathErr != nil {
+		return smtpidentity.Address{}, pathErr
+	}
+	return smtpidentity.NewAddress(path.value)
+}
+
+func parseSMTPReversePath(argument string, expectedPrefix string) (ReversePath, error) {
+	path, pathErr := extractSMTPPath(argument, expectedPrefix)
+	if pathErr != nil {
+		return ReversePath{}, pathErr
+	}
+	if path.value == "" && !path.bracketed {
+		return ReversePath{}, errors.New("missing smtp reverse path")
+	}
+	return NewReversePath(path.value)
 }
 
 func writeSMTPLine(writer *bufio.Writer, line string) error {

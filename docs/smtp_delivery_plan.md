@@ -45,7 +45,7 @@ For inbound forwarding, customer DNS should normally point a dedicated mail subd
 help.example.com. MX 10 smtp.pinguin.mprlab.com.
 ```
 
-Pinguin rejects unknown `RCPT TO` addresses before `DATA`, enforces configured size and recipient limits, and returns a temporary SMTP failure when route lookup or forwarding through `smtpForwarding.relay` fails before acceptance. Forwarded copies preserve the original message headers and use the shared address as the outbound SMTP envelope sender. Because Pinguin stores no message body, operators should treat forwarding retries and duplicate delivery risk as part of the no-mailbox tradeoff.
+Pinguin accepts `MAIL FROM:<>` null reverse-path traffic for DSNs and other auto-generated mail, rejects unknown `RCPT TO` addresses before `DATA`, enforces configured size and recipient limits, and returns a temporary SMTP failure when route lookup or forwarding through `smtpForwarding.relay` fails before acceptance. Forwarded copies preserve the original message headers and use the shared address as the outbound SMTP envelope sender. Because Pinguin stores no message body, operators should treat forwarding retries and duplicate delivery risk as part of the no-mailbox tradeoff.
 
 ## Timeout Strategy
 

@@ -55,6 +55,35 @@ func TestRouteSetValidationAndAccessors(testHandle *testing.T) {
 	}
 }
 
+func TestReversePathValidationAndAccessors(testHandle *testing.T) {
+	nullReversePath, nullReversePathErr := NewReversePath("")
+	if nullReversePathErr != nil {
+		testHandle.Fatalf("new null reverse path: %v", nullReversePathErr)
+	}
+	if !nullReversePath.IsNull() || nullReversePath.String() != "" {
+		testHandle.Fatalf("expected null reverse path, got %q", nullReversePath.String())
+	}
+
+	addressReversePath, addressReversePathErr := NewReversePath("Sender@Example.NET")
+	if addressReversePathErr != nil {
+		testHandle.Fatalf("new address reverse path: %v", addressReversePathErr)
+	}
+	if addressReversePath.IsNull() || addressReversePath.String() != "sender@example.net" {
+		testHandle.Fatalf("unexpected address reverse path %q", addressReversePath.String())
+	}
+	address, exists := addressReversePath.Address()
+	if !exists || address.String() != "sender@example.net" {
+		testHandle.Fatalf("expected reverse path address, got %q exists=%v", address.String(), exists)
+	}
+	if _, exists := nullReversePath.Address(); exists {
+		testHandle.Fatalf("null reverse path should not expose an address")
+	}
+
+	if _, reversePathErr := NewReversePath("not an address"); !errors.Is(reversePathErr, smtpidentity.ErrInvalidAddress) {
+		testHandle.Fatalf("expected invalid address error, got %v", reversePathErr)
+	}
+}
+
 func TestRouteValidationRejectsInvalidRoutes(testHandle *testing.T) {
 	validAddress := mustAddress(testHandle, "support@help.example.com")
 	validRecipient := mustAddress(testHandle, "owner@example.com")
@@ -150,6 +179,15 @@ func mustAddress(testHandle *testing.T, rawAddress string) smtpidentity.Address 
 		testHandle.Fatalf("address %s: %v", rawAddress, addressErr)
 	}
 	return address
+}
+
+func mustReversePath(testHandle *testing.T, rawAddress string) ReversePath {
+	testHandle.Helper()
+	reversePath, reversePathErr := NewReversePath(rawAddress)
+	if reversePathErr != nil {
+		testHandle.Fatalf("reverse path %s: %v", rawAddress, reversePathErr)
+	}
+	return reversePath
 }
 
 func mustRoute(testHandle *testing.T) Route {

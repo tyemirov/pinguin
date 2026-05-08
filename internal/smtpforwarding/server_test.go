@@ -56,6 +56,28 @@ func TestServerAcceptsAndForwardsInboundMessage(testHandle *testing.T) {
 	}
 }
 
+func TestServerAcceptsNullReversePath(testHandle *testing.T) {
+	fixture := newForwardingServerFixture(testHandle, nil)
+	client := fixture.dial(testHandle)
+	defer client.close()
+	client.expectCode(testHandle, "220")
+	client.send(testHandle, "MAIL FROM:<>")
+	client.expectCode(testHandle, "250")
+	client.send(testHandle, "RCPT TO:<support@help.example.com>")
+	client.expectCode(testHandle, "250")
+	client.send(testHandle, "DATA")
+	client.expectCode(testHandle, "354")
+	client.sendData(testHandle, "From: postmaster@example.net\r\nTo: support@help.example.com\r\nSubject: Delivery status\r\n\r\nDSN")
+	client.expectCode(testHandle, "250")
+
+	if len(fixture.forwarder.messages) != 1 {
+		testHandle.Fatalf("expected one forwarded message, got %d", len(fixture.forwarder.messages))
+	}
+	if !fixture.forwarder.messages[0].message.From.IsNull() {
+		testHandle.Fatalf("expected null reverse path, got %q", fixture.forwarder.messages[0].message.From.String())
+	}
+}
+
 func TestServerCommandOrderingAndRecipientValidation(testHandle *testing.T) {
 	fixture := newForwardingServerFixture(testHandle, nil)
 	client := fixture.dial(testHandle)
@@ -235,7 +257,7 @@ func TestHelpersAndReadDataErrors(testHandle *testing.T) {
 	server.handleConnection(context.Background(), &deadlineErrorConnection{remoteAddress: fakeAddress("127.0.0.1:1234")})
 
 	session := newSessionState()
-	mailFrom := mustAddress(testHandle, "customer@example.net")
+	mailFrom := mustReversePath(testHandle, "customer@example.net")
 	session.mailFrom = &mailFrom
 	session.recipients = []smtpidentity.Address{mustAddress(testHandle, "support@help.example.com")}
 	session.routesByAddress["support@help.example.com"] = mustRoute(testHandle)
@@ -279,8 +301,18 @@ func TestHelpersAndReadDataErrors(testHandle *testing.T) {
 	if _, err := parseSMTPPath("FROM:<customer@example.net>", "FROM:"); err != nil {
 		testHandle.Fatalf("expected bracket path to parse: %v", err)
 	}
+	reversePath, reversePathErr := parseSMTPReversePath("FROM:<>", "FROM:")
+	if reversePathErr != nil {
+		testHandle.Fatalf("expected null reverse path to parse: %v", reversePathErr)
+	}
+	if !reversePath.IsNull() {
+		testHandle.Fatalf("expected null reverse path, got %q", reversePath.String())
+	}
 	if _, err := parseSMTPPath("FROM:", "FROM:"); err == nil {
 		testHandle.Fatalf("expected empty path to fail")
+	}
+	if _, err := parseSMTPReversePath("FROM:", "FROM:"); err == nil {
+		testHandle.Fatalf("expected bare empty reverse path to fail")
 	}
 	if err := writeSMTPLine(bufio.NewWriterSize(errorWriter{}, 1), strings.Repeat("x", 5000)); err == nil {
 		testHandle.Fatalf("expected write error")
