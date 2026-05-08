@@ -84,6 +84,7 @@ function createDefaultState() {
     failCancel: false,
     failSMTPList: false,
     failSMTPCreate: false,
+    failSMTPForwardingUpdate: false,
     failSMTPRotate: false,
     failSMTPDelete: false,
   };
@@ -134,6 +135,7 @@ function applyOverrides(payload) {
   serverState.smtpIdentities = Array.isArray(payload.smtpIdentities)
     ? payload.smtpIdentities.map((item) => ({
         ...item,
+        forward_to: Array.isArray(item.forward_to) ? item.forward_to : ['owner@example.com'],
       }))
     : [];
   serverState.failList = Boolean(payload.failList);
@@ -141,6 +143,7 @@ function applyOverrides(payload) {
   serverState.failCancel = Boolean(payload.failCancel);
   serverState.failSMTPList = Boolean(payload.failSMTPList);
   serverState.failSMTPCreate = Boolean(payload.failSMTPCreate);
+  serverState.failSMTPForwardingUpdate = Boolean(payload.failSMTPForwardingUpdate);
   serverState.failSMTPRotate = Boolean(payload.failSMTPRotate);
   serverState.failSMTPDelete = Boolean(payload.failSMTPDelete);
   nonceStore.clear();
@@ -305,13 +308,41 @@ const server = http.createServer(async (req, res) => {
     }
     const body = await readJson(req);
     const emailAddress = typeof body.email_address === 'string' ? body.email_address.trim() : '';
-    if (!emailAddress) {
+    const forwardTo = Array.isArray(body.forward_to)
+      ? body.forward_to.map((item) => String(item).trim()).filter(Boolean)
+      : [];
+    if (!emailAddress || forwardTo.length === 0) {
       sendJson(res, 400, { error: 'email_address is invalid' });
       return;
     }
-    const identity = newSMTPIdentity(emailAddress);
+    const identity = newSMTPIdentity(emailAddress, forwardTo);
     serverState.smtpIdentities.push(identity);
     sendJson(res, 201, credentialsForIdentity(identity));
+    return;
+  }
+
+  const updateSMTPForwardingMatch = url.pathname.match(/^\/api\/smtp-identities\/([^/]+)\/forwarding$/);
+  if (updateSMTPForwardingMatch && req.method === 'PATCH') {
+    if (serverState.failSMTPForwardingUpdate) {
+      sendJson(res, 500, { error: 'smtp_identity_forwarding_update_failed' });
+      return;
+    }
+    const identity = serverState.smtpIdentities.find((item) => item.id === updateSMTPForwardingMatch[1]);
+    if (!identity) {
+      sendJson(res, 404, { error: 'smtp identity not found' });
+      return;
+    }
+    const body = await readJson(req);
+    const forwardTo = Array.isArray(body.forward_to)
+      ? body.forward_to.map((item) => String(item).trim()).filter(Boolean)
+      : [];
+    if (forwardTo.length === 0) {
+      sendJson(res, 400, { error: 'forward_to is required' });
+      return;
+    }
+    identity.forward_to = forwardTo;
+    identity.updated_at = new Date().toISOString();
+    sendJson(res, 200, identity);
     return;
   }
 
@@ -326,9 +357,9 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 404, { error: 'smtp identity not found' });
       return;
     }
-    identity.username = `smtp_rotated_${serverState.smtpIdentities.length}`;
+    identity.username = `smtp_rotated_JAYbQkNwQvT-LZI${serverState.smtpIdentities.length}`;
     identity.updated_at = new Date().toISOString();
-    sendJson(res, 200, credentialsForIdentity(identity, 'pgsmtp_rotated_password'));
+    sendJson(res, 200, credentialsForIdentity(identity, 'pgsmtp_rotated_UVSZ9mxDW6ZeV-tNwApoddcyCjOM5uA'));
     return;
   }
 
@@ -480,13 +511,14 @@ function paginateNotifications(source, searchParams) {
   };
 }
 
-function newSMTPIdentity(emailAddress) {
+function newSMTPIdentity(emailAddress, forwardTo = ['owner@example.com']) {
   const now = new Date().toISOString();
   const identityIndex = serverState.smtpIdentities.length + 1;
   return {
     id: `smtp-id-${identityIndex}`,
     email_address: emailAddress,
-    username: `smtp_test_${identityIndex}`,
+    username: `smtp_JAYbQkNwQvT-LZI${identityIndex}`,
+    forward_to: forwardTo,
     status: 'active',
     last_used_at: null,
     created_at: now,
@@ -494,7 +526,7 @@ function newSMTPIdentity(emailAddress) {
   };
 }
 
-function credentialsForIdentity(identity, password = 'pgsmtp_test_password') {
+function credentialsForIdentity(identity, password = 'pgsmtp_UVSZ9mxDW6ZeV-tNwApoddcyCjOM5uA') {
   return {
     identity,
     smtp_settings: {

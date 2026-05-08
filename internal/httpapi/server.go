@@ -119,6 +119,7 @@ func NewServer(cfg Config) (*Server, error) {
 		identityHandler := newSMTPIdentityHandler(cfg.SMTPIdentityService, cfg.TenantRepository, cfg.Logger)
 		protected.GET("/smtp-identities", identityHandler.listIdentities)
 		protected.POST("/smtp-identities", identityHandler.createIdentity)
+		protected.PATCH("/smtp-identities/:id/forwarding", identityHandler.updateForwarding)
 		protected.POST("/smtp-identities/:id/rotate", identityHandler.rotateIdentity)
 		protected.DELETE("/smtp-identities/:id", identityHandler.deleteIdentity)
 	}

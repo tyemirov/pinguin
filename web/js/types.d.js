@@ -43,6 +43,7 @@
  * @property {string} id
  * @property {string} emailAddress
  * @property {string} username
+ * @property {string[]} forwardTo
  * @property {string} status
  * @property {string | null} lastUsedAt
  * @property {string} createdAt

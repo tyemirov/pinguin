@@ -20,6 +20,7 @@ import (
 	"github.com/tyemirov/pinguin/internal/httpapi"
 	"github.com/tyemirov/pinguin/internal/model"
 	"github.com/tyemirov/pinguin/internal/service"
+	"github.com/tyemirov/pinguin/internal/smtpforwarding"
 	"github.com/tyemirov/pinguin/internal/smtpidentity"
 	"github.com/tyemirov/pinguin/internal/smtpsubmission"
 	"github.com/tyemirov/pinguin/internal/tenant"
@@ -381,6 +382,10 @@ type smtpSubmissionStarter interface {
 	Start(context.Context) error
 }
 
+type smtpForwardingStarter interface {
+	Start(context.Context) error
+}
+
 type httpServerRunner interface {
 	Start() error
 	Shutdown(context.Context) error
@@ -401,6 +406,8 @@ type serverDependencies struct {
 	loadTLSConfig             func(string, string) (*tls.Config, error)
 	newSMTPRelay              func(*slog.Logger, config.Config) smtpsubmission.RawRelay
 	newSMTPSubmissionServer   func(smtpsubmission.Config) (smtpSubmissionStarter, error)
+	newSMTPForwarder          func(*slog.Logger, config.Config) (smtpforwarding.Forwarder, error)
+	newSMTPForwardingServer   func(smtpforwarding.Config) (smtpForwardingStarter, error)
 	newSessionValidator       func(sessionvalidator.Config) (httpapi.SessionValidator, error)
 	newHTTPServer             func(httpapi.Config) (httpServerRunner, error)
 	listen                    func(string, string) (net.Listener, error)
@@ -442,6 +449,20 @@ func productionServerDependencies() serverDependencies {
 		},
 		newSMTPSubmissionServer: func(cfg smtpsubmission.Config) (smtpSubmissionStarter, error) {
 			return smtpsubmission.NewServer(cfg)
+		},
+		newSMTPForwarder: func(logger *slog.Logger, cfg config.Config) (smtpforwarding.Forwarder, error) {
+			relayProfile := cfg.SMTPForwarding.Relay
+			sender := service.NewSMTPEmailSender(service.SMTPConfig{
+				Host:     relayProfile.Host,
+				Port:     strconv.Itoa(relayProfile.Port),
+				Username: relayProfile.Username,
+				Password: relayProfile.Password,
+				Timeouts: cfg,
+			}, logger)
+			return smtpforwarding.NewRelayForwarder(sender, logger)
+		},
+		newSMTPForwardingServer: func(cfg smtpforwarding.Config) (smtpForwardingStarter, error) {
+			return smtpforwarding.NewServer(cfg)
 		},
 		newSessionValidator: func(cfg sessionvalidator.Config) (httpapi.SessionValidator, error) {
 			return sessionvalidator.New(cfg)
@@ -559,6 +580,31 @@ func runServer(args []string, dependencies serverDependencies) int {
 		startSMTPSubmission(smtpSubmissionCtx, mainLogger, smtpSubmissionServer, configuration, dependencies.exit)
 	}
 
+	if configuration.SMTPForwarding.Enabled {
+		forwarder, forwarderErr := dependencies.newSMTPForwarder(mainLogger, configuration)
+		if forwarderErr != nil {
+			mainLogger.Error("Failed to initialize SMTP forwarding relay", "error", forwarderErr)
+			return 1
+		}
+		smtpForwardingServer, smtpForwardingErr := dependencies.newSMTPForwardingServer(smtpforwarding.Config{
+			Hostname:        configuration.SMTPForwarding.Hostname,
+			ListenAddr:      configuration.SMTPForwarding.ListenAddr,
+			MaxMessageBytes: configuration.SMTPForwarding.MaxMessageBytes,
+			MaxRecipients:   configuration.SMTPForwarding.MaxRecipients,
+			CommandTimeout:  time.Duration(configuration.OperationTimeoutSec) * time.Second,
+			RouteResolver:   smtpIdentityForwardingResolver{repository: smtpIdentityRepo},
+			Forwarder:       forwarder,
+			Logger:          mainLogger,
+		})
+		if smtpForwardingErr != nil {
+			mainLogger.Error("Failed to initialize SMTP forwarding server", "error", smtpForwardingErr)
+			return 1
+		}
+		smtpForwardingCtx, cancelSMTPForwarding := context.WithCancel(context.Background())
+		defer cancelSMTPForwarding()
+		startSMTPForwarding(smtpForwardingCtx, mainLogger, smtpForwardingServer, configuration, dependencies.exit)
+	}
+
 	if configuration.WebInterfaceEnabled {
 		sessionValidator, validatorErr := dependencies.newSessionValidator(sessionvalidator.Config{
 			SigningKey: []byte(configuration.TAuthSigningKey),
@@ -656,6 +702,12 @@ func withServerDependencyDefaults(dependencies serverDependencies) serverDepende
 	if dependencies.newSMTPSubmissionServer == nil {
 		dependencies.newSMTPSubmissionServer = production.newSMTPSubmissionServer
 	}
+	if dependencies.newSMTPForwarder == nil {
+		dependencies.newSMTPForwarder = production.newSMTPForwarder
+	}
+	if dependencies.newSMTPForwardingServer == nil {
+		dependencies.newSMTPForwardingServer = production.newSMTPForwardingServer
+	}
 	if dependencies.newSessionValidator == nil {
 		dependencies.newSessionValidator = production.newSessionValidator
 	}
@@ -674,11 +726,37 @@ func withServerDependencyDefaults(dependencies serverDependencies) serverDepende
 	return dependencies
 }
 
+type smtpIdentityForwardingResolver struct {
+	repository *smtpidentity.Repository
+}
+
+func (resolver smtpIdentityForwardingResolver) Resolve(ctx context.Context, address smtpidentity.Address) (smtpforwarding.Route, bool, error) {
+	routeAddress, recipients, exists, err := resolver.repository.ResolveForwarding(ctx, address)
+	if err != nil || !exists {
+		return smtpforwarding.Route{}, exists, err
+	}
+	route, routeErr := smtpforwarding.NewRoute(routeAddress, recipients)
+	if routeErr != nil {
+		return smtpforwarding.Route{}, false, routeErr
+	}
+	return route, true, nil
+}
+
 func startSMTPSubmission(ctx context.Context, logger *slog.Logger, server smtpSubmissionStarter, configuration config.Config, exit func(int)) {
 	go func() {
 		logger.Info("SMTP submission server listening", "listen_addr", configuration.SMTPSubmission.ListenAddr, "tls_listen_addr", configuration.SMTPSubmission.TLSListenAddr)
 		if err := server.Start(ctx); err != nil {
 			logger.Error("SMTP submission server crashed", "error", err)
+			exit(1)
+		}
+	}()
+}
+
+func startSMTPForwarding(ctx context.Context, logger *slog.Logger, server smtpForwardingStarter, configuration config.Config, exit func(int)) {
+	go func() {
+		logger.Info("SMTP forwarding server listening", "listen_addr", configuration.SMTPForwarding.ListenAddr)
+		if err := server.Start(ctx); err != nil {
+			logger.Error("SMTP forwarding server crashed", "error", err)
 			exit(1)
 		}
 	}()

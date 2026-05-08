@@ -145,6 +145,43 @@ func TestRunAllowsDirectSMTPSubmissionConfig(t *testing.T) {
 	}
 }
 
+func TestRunValidatesSMTPForwardingConfig(t *testing.T) {
+	tempDir := t.TempDir()
+	validConfigPath := filepath.Join(tempDir, "valid-forwarding.yml")
+	writeTestConfig(t, validConfigPath, validSMTPForwardingConfigYAML)
+
+	validReport, validErr := Run(context.Background(), Options{
+		ConfigPaths: []string{validConfigPath},
+	})
+	if validErr != nil {
+		t.Fatalf("expected no valid run error, got %v", validErr)
+	}
+	if validReport.Summary.ValidConfigs != 1 {
+		t.Fatalf("expected valid forwarding config, got %+v", validReport.Diagnostics)
+	}
+
+	invalidConfigPath := filepath.Join(tempDir, "invalid-forwarding.yml")
+	writeTestConfig(t, invalidConfigPath, invalidSMTPForwardingConfigYAML)
+	invalidReport, invalidErr := Run(context.Background(), Options{
+		ConfigPaths: []string{invalidConfigPath},
+	})
+	if invalidErr != nil {
+		t.Fatalf("expected no invalid run error, got %v", invalidErr)
+	}
+	if invalidReport.Summary.ValidConfigs != 0 {
+		t.Fatalf("expected invalid forwarding config")
+	}
+	for _, expected := range []string{
+		"smtpForwarding.listenAddr",
+		"smtpForwarding.relay.password",
+	} {
+		if !containsDiagnosticError(invalidReport.Diagnostics[0].Errors, expected) {
+			t.Fatalf("expected %s diagnostic, got %v", expected, invalidReport.Diagnostics[0].Errors)
+		}
+	}
+
+}
+
 func TestRunReturnsErrorWithNoConfigs(t *testing.T) {
 	_, err := Run(context.Background(), Options{
 		ConfigPaths: []string{},
@@ -734,6 +771,72 @@ smtpSubmission:
   allowInsecureAuth: true
   senderDomains:
     - mprlab.com
+
+tenants:
+  - id: demo
+    displayName: Demo Tenant
+    domains:
+      - demo.example.com
+`
+
+const validSMTPForwardingConfigYAML = `
+server:
+  databasePath: /data/pinguin.db
+  grpcAuthToken: test-token-123
+  logLevel: INFO
+  maxRetries: 3
+  retryIntervalSec: 60
+  masterEncryptionKey: test-encryption-key-at-least-32-chars
+  connectionTimeoutSec: 30
+  operationTimeoutSec: 60
+
+web:
+  enabled: false
+
+smtpForwarding:
+  enabled: true
+  hostname: smtp.pinguin.mprlab.com
+  listenAddr: ":25"
+  maxMessageBytes: 26214400
+  maxRecipients: 100
+  relay:
+    host: smtp-relay.example.com
+    port: 587
+    username: relay-user
+    password: relay-pass
+
+tenants:
+  - id: demo
+    displayName: Demo Tenant
+    domains:
+      - demo.example.com
+`
+
+const invalidSMTPForwardingConfigYAML = `
+server:
+  databasePath: /data/pinguin.db
+  grpcAuthToken: test-token-123
+  logLevel: INFO
+  maxRetries: 3
+  retryIntervalSec: 60
+  masterEncryptionKey: test-encryption-key-at-least-32-chars
+  connectionTimeoutSec: 30
+  operationTimeoutSec: 60
+
+web:
+  enabled: false
+
+smtpForwarding:
+  enabled: true
+  hostname:
+  listenAddr:
+  maxMessageBytes: 0
+  maxRecipients: 0
+  relay:
+    host:
+    port: 0
+    username:
+    password:
 
 tenants:
   - id: demo

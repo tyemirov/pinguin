@@ -170,13 +170,7 @@ test.describe('Landing page auth flow', () => {
       );
       expect(storedTheme).toBe(scenario.expected);
 
-      await page.evaluate(() => {
-        if (window.__mockAuth) {
-          window.__mockAuth.authenticated = true;
-          window.__persistMockAuth && window.__persistMockAuth();
-        }
-      });
-      await page.goto('/dashboard.html');
+      await completeHeaderLogin(page);
       await expect(page.getByTestId('notifications-table')).toBeVisible();
       await page.waitForFunction((expected) => {
         const activeTheme =
