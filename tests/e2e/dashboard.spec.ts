@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   configureRuntime,
   resetNotifications,
@@ -15,6 +15,12 @@ async function expectClipboardText(page: Page, expectedText: string) {
   await expect
     .poll(() => page.evaluate(() => navigator.clipboard.readText()))
     .toBe(expectedText);
+}
+
+async function expectInputValueFits(input: Locator) {
+  await expect
+    .poll(() => input.evaluate((element) => element.scrollWidth <= element.clientWidth + 1))
+    .toBe(true);
 }
 
 test.describe('Dashboard', () => {
@@ -43,6 +49,21 @@ test.describe('Dashboard', () => {
     await expectPinguinHeaderBrand(page);
     await expect(page.getByTestId('notifications-table')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Refresh' })).toHaveCount(1);
+  });
+
+  test('shows a horizontal dashboard menu for event log and SMTP relay', async ({ page }) => {
+    await configureRuntime(page, { authenticated: true });
+    await page.goto('/dashboard.html');
+    const horizontalMenu = page.locator('mpr-header [data-mpr-header="horizontal-links"]');
+    await expect(horizontalMenu).toBeVisible();
+    const menuLinks = horizontalMenu.locator('a');
+    await expect(menuLinks).toHaveText(['Event log', 'SMTP relay']);
+    await expect(menuLinks.nth(0)).toHaveAttribute('href', '#event-log');
+    await expect(menuLinks.nth(1)).toHaveAttribute('href', '#smtp-relay');
+    await expect(page.locator('#event-log')).toBeVisible();
+    await expect(page.locator('#smtp-relay')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Event log' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'SMTP relay' })).toBeVisible();
   });
 
   test('redirects after BroadcastChannel logout', async ({ page }) => {
@@ -357,11 +378,13 @@ test.describe('Dashboard', () => {
     await configureRuntime(page, { authenticated: true });
     await page.goto('/dashboard.html');
     const panel = page.getByTestId('smtp-identities');
-    await expect(panel.getByRole('heading', { name: 'SMTP identities' })).toBeVisible();
+    await expect(panel.getByRole('heading', { name: 'SMTP relay' })).toBeVisible();
     await panel.getByLabel('Sender address').fill('alice@example.com');
+    await panel.getByLabel('Forward copies to').fill('owner@example.com\nmaria@example.com');
     await panel.getByRole('button', { name: 'Create' }).click();
     await expect(panel.getByTestId('smtp-identity-row')).toHaveCount(1);
     await expect(panel.getByText('alice@example.com')).toBeVisible();
+    await expect(panel.getByText('owner@example.com, maria@example.com')).toBeVisible();
     const credentials = panel.getByTestId('smtp-credentials');
     const credentialInputs = credentials.locator('input');
     await expect(credentialInputs).toHaveCount(5);
@@ -369,22 +392,29 @@ test.describe('Dashboard', () => {
     await expect(credentialInputs.nth(0)).toHaveValue('smtp.pinguin.test');
     await expect(credentialInputs.nth(1)).toHaveValue('465');
     await expect(credentialInputs.nth(2)).toHaveValue('ssl');
-    await expect(credentialInputs.nth(3)).toHaveValue('smtp_test_1');
-    await expect(credentialInputs.nth(4)).toHaveValue('pgsmtp_test_password');
+    await expect(credentialInputs.nth(3)).toHaveValue('smtp_JAYbQkNwQvT-LZI1');
+    await expect(credentialInputs.nth(4)).toHaveValue('pgsmtp_UVSZ9mxDW6ZeV-tNwApoddcyCjOM5uA');
+    await expectInputValueFits(credentialInputs.nth(3));
+    await expectInputValueFits(credentialInputs.nth(4));
     const copyButtons = credentials.locator('.copy-field__button');
     await expect(copyButtons).toHaveCount(3);
     await expect(copyButtons).toHaveText(['', '', '']);
     await expect(credentials.getByRole('button', { name: /^Copy$/ })).toHaveCount(0);
+    const credentialNotice = credentials.getByTestId('smtp-credential-notice');
+    await expect(credentialNotice).toHaveText('SMTP identity created');
+    await expect(page.locator('.toast', { hasText: 'SMTP identity created' })).toHaveCount(0);
     await credentials.getByRole('button', { name: 'Copy SMTP server' }).click();
     await expectClipboardText(page, 'smtp.pinguin.test');
-    await expectToast(page, 'SMTP server copied');
+    await expect(credentialNotice).toHaveText('SMTP server copied');
+    await expect(page.locator('.toast', { hasText: 'SMTP server copied' })).toHaveCount(0);
     await credentials.getByRole('button', { name: 'Copy username' }).click();
-    await expectClipboardText(page, 'smtp_test_1');
-    await expectToast(page, 'Username copied');
+    await expectClipboardText(page, 'smtp_JAYbQkNwQvT-LZI1');
+    await expect(credentialNotice).toHaveText('Username copied');
+    await expect(page.locator('.toast', { hasText: 'Username copied' })).toHaveCount(0);
     await credentials.getByRole('button', { name: 'Copy password' }).click();
-    await expectClipboardText(page, 'pgsmtp_test_password');
-    await expectToast(page, 'Password copied');
-    await expectToast(page, 'SMTP identity created');
+    await expectClipboardText(page, 'pgsmtp_UVSZ9mxDW6ZeV-tNwApoddcyCjOM5uA');
+    await expect(credentialNotice).toHaveText('Password copied');
+    await expect(page.locator('.toast', { hasText: 'Password copied' })).toHaveCount(0);
     await panel.getByRole('button', { name: 'Close Gmail SMTP settings' }).click();
     await expect(credentials).toBeHidden();
   });
@@ -409,8 +439,42 @@ test.describe('Dashboard', () => {
     const panel = page.getByTestId('smtp-identities');
     page.once('dialog', (dialog) => dialog.accept());
     await panel.getByRole('button', { name: 'Rotate' }).click();
-    await expect(panel.getByTestId('smtp-credentials').locator('input').nth(4)).toHaveValue('pgsmtp_rotated_password');
-    await expectToast(page, 'SMTP credentials rotated');
+    const credentials = panel.getByTestId('smtp-credentials');
+    const credentialInputs = credentials.locator('input');
+    await expect(credentialInputs.nth(3)).toHaveValue('smtp_rotated_JAYbQkNwQvT-LZI1');
+    await expect(credentialInputs.nth(4)).toHaveValue('pgsmtp_rotated_UVSZ9mxDW6ZeV-tNwApoddcyCjOM5uA');
+    await expectInputValueFits(credentialInputs.nth(3));
+    await expectInputValueFits(credentialInputs.nth(4));
+    await expect(credentials.getByTestId('smtp-credential-notice')).toHaveText('SMTP credentials rotated');
+    await expect(page.locator('.toast', { hasText: 'SMTP credentials rotated' })).toHaveCount(0);
+  });
+
+  test('updates SMTP identity forwarding owners', async ({ page, request }) => {
+    const now = new Date().toISOString();
+    await resetNotifications(request, {
+      smtpIdentities: [
+        {
+          id: 'smtp-id-1',
+          email_address: 'support@example.com',
+          username: 'smtp_test_1',
+          forward_to: ['owner@example.com'],
+          status: 'active',
+          last_used_at: null,
+          created_at: now,
+          updated_at: now,
+        },
+      ],
+    });
+    await configureRuntime(page, { authenticated: true });
+    await page.goto('/dashboard.html');
+    const panel = page.getByTestId('smtp-identities');
+    await expect(panel.getByText('owner@example.com')).toBeVisible();
+    await panel.getByRole('button', { name: 'Edit forwarding owners' }).click();
+    await expect(panel.getByLabel('Sender address')).toHaveValue('support@example.com');
+    await panel.getByLabel('Forward copies to').fill('owner@example.com\nmaria@example.com');
+    await panel.getByRole('button', { name: 'Save changes' }).click();
+    await expect(panel.getByText('owner@example.com, maria@example.com')).toBeVisible();
+    await expectToast(page, 'Forwarding owners updated');
   });
 
   test('deletes SMTP identity', async ({ page, request }) => {

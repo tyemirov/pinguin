@@ -119,6 +119,12 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
 }
 
 export async function stubExternalAssets(page: Page) {
+  await page.route('https://loopaware.mprlab.com/**', (route) => {
+    route.fulfill({
+      contentType: 'text/javascript',
+      body: '',
+    });
+  });
   await page.route('https://accounts.google.com/gsi/client', (route) => {
     const googleStub = `
       window.__playwrightGoogle = {
