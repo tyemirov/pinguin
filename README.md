@@ -355,6 +355,8 @@ smtpForwarding:
     password: relay-password
 ```
 
+Because forwarding routes are stored as SMTP identities, forwarding deployments must also configure `smtpSubmission.senderDomains` with every domain that may own shared addresses, even when authenticated SMTP submission is disabled.
+
 Shared addresses are dynamic data, not YAML routes. Create or edit them from the SMTP relay dashboard or the authenticated API:
 
 ```json

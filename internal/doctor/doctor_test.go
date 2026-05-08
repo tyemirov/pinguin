@@ -180,6 +180,20 @@ func TestRunValidatesSMTPForwardingConfig(t *testing.T) {
 		}
 	}
 
+	missingSenderDomainsConfigPath := filepath.Join(tempDir, "missing-forwarding-sender-domains.yml")
+	writeTestConfig(t, missingSenderDomainsConfigPath, forwardingWithoutSenderDomainsConfigYAML)
+	missingSenderDomainsReport, missingSenderDomainsErr := Run(context.Background(), Options{
+		ConfigPaths: []string{missingSenderDomainsConfigPath},
+	})
+	if missingSenderDomainsErr != nil {
+		t.Fatalf("expected no missing sender domains run error, got %v", missingSenderDomainsErr)
+	}
+	if missingSenderDomainsReport.Summary.ValidConfigs != 0 {
+		t.Fatalf("expected forwarding config without sender domains to be invalid")
+	}
+	if !containsDiagnosticError(missingSenderDomainsReport.Diagnostics[0].Errors, "smtpSubmission.senderDomains") {
+		t.Fatalf("expected sender-domain diagnostic, got %v", missingSenderDomainsReport.Diagnostics[0].Errors)
+	}
 }
 
 func TestRunReturnsErrorWithNoConfigs(t *testing.T) {
@@ -380,6 +394,7 @@ func TestPinguinYAMLNodeDecodeErrors(t *testing.T) {
 func TestDoctorValidationHelpersCoverErrorBranches(t *testing.T) {
 	smtpResult := DiagnosticResult{Valid: true}
 	validateSMTPSubmissionConfig(pinguinSMTPSubmission{Enabled: true}, &smtpResult)
+	validateSMTPSenderDomainsConfig(pinguinSMTPSubmission{Enabled: true}, pinguinSMTPForwarding{}, &smtpResult)
 	for _, expected := range []string{
 		"smtpSubmission.hostname",
 		"smtpSubmission.listenAddr",
@@ -396,6 +411,11 @@ func TestDoctorValidationHelpersCoverErrorBranches(t *testing.T) {
 		if !containsDiagnosticError(smtpResult.Errors, expected) {
 			t.Fatalf("expected SMTP validation error %q in %v", expected, smtpResult.Errors)
 		}
+	}
+	forwardingSenderDomainsResult := DiagnosticResult{Valid: true}
+	validateSMTPSenderDomainsConfig(pinguinSMTPSubmission{}, pinguinSMTPForwarding{Enabled: true}, &forwardingSenderDomainsResult)
+	if !containsDiagnosticError(forwardingSenderDomainsResult.Errors, "smtpSubmission.senderDomains") {
+		t.Fatalf("expected forwarding sender-domain validation error in %v", forwardingSenderDomainsResult.Errors)
 	}
 	invalidSMTPResult := DiagnosticResult{Valid: true}
 	validateSMTPSubmissionConfig(pinguinSMTPSubmission{
@@ -780,6 +800,43 @@ tenants:
 `
 
 const validSMTPForwardingConfigYAML = `
+server:
+  databasePath: /data/pinguin.db
+  grpcAuthToken: test-token-123
+  logLevel: INFO
+  maxRetries: 3
+  retryIntervalSec: 60
+  masterEncryptionKey: test-encryption-key-at-least-32-chars
+  connectionTimeoutSec: 30
+  operationTimeoutSec: 60
+
+web:
+  enabled: false
+
+smtpSubmission:
+  senderDomains:
+    - mprlab.com
+
+smtpForwarding:
+  enabled: true
+  hostname: smtp.pinguin.mprlab.com
+  listenAddr: ":25"
+  maxMessageBytes: 26214400
+  maxRecipients: 100
+  relay:
+    host: smtp-relay.example.com
+    port: 587
+    username: relay-user
+    password: relay-pass
+
+tenants:
+  - id: demo
+    displayName: Demo Tenant
+    domains:
+      - demo.example.com
+`
+
+const forwardingWithoutSenderDomainsConfigYAML = `
 server:
   databasePath: /data/pinguin.db
   grpcAuthToken: test-token-123

@@ -20,7 +20,7 @@ Pinguin can separately expose an inbound SMTP forwarding listener for shared add
   - `OPERATION_TIMEOUT_SEC`
 - **smtpSubmission.deliveryMode** selects `upstream` provider relay or `direct` recipient-MX delivery for authenticated SMTP submissions.
 - **smtpSubmission.relay** exposes the upstream SMTP account used only when `smtpSubmission.deliveryMode` is `upstream`.
-- **smtpSubmission.senderDomains** defines the global domain allowlist for exact sender identities.
+- **smtpSubmission.senderDomains** defines the global domain allowlist for exact sender identities and shared-address forwarding routes.
 - **smtpSubmission.publicPort** and **smtpSubmission.publicSecurityMode** control the Gmail-facing settings shown with one-time SMTP identity credentials. These can differ from the private listener when Caddy owns public TLS termination.
 - **SMTP identities** map exact shared addresses such as `support@help.example.com` to one or more persisted forwarding recipients.
 - **smtpForwarding.relay** exposes the outbound SMTP account used to deliver forwarded copies.

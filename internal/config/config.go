@@ -391,9 +391,6 @@ func validateConfig(cfg Config) error {
 		}
 		requirePositiveInt64(cfg.SMTPSubmission.MaxMessageBytes, "smtpSubmission.maxMessageBytes", &errors)
 		requirePositive(cfg.SMTPSubmission.MaxRecipients, "smtpSubmission.maxRecipients", &errors)
-		if countNonEmptyStrings(cfg.SMTPSubmission.SenderDomains) == 0 {
-			errors = append(errors, "missing smtpSubmission.senderDomains")
-		}
 		deliveryMode := normalizeSMTPDeliveryMode(cfg.SMTPSubmission.DeliveryMode)
 		switch deliveryMode {
 		case "upstream":
@@ -414,6 +411,12 @@ func validateConfig(cfg Config) error {
 		if !cfg.SMTPSubmission.AllowInsecureAuth {
 			requireString(cfg.SMTPSubmission.TLSCertPath, "smtpSubmission.tlsCertPath", &errors)
 			requireString(cfg.SMTPSubmission.TLSKeyPath, "smtpSubmission.tlsKeyPath", &errors)
+		}
+	}
+
+	if cfg.SMTPSubmission.Enabled || cfg.SMTPForwarding.Enabled {
+		if countNonEmptyStrings(cfg.SMTPSubmission.SenderDomains) == 0 {
+			errors = append(errors, "missing smtpSubmission.senderDomains")
 		}
 	}
 
