@@ -53,6 +53,33 @@
 - Update the dashboard docs to describe the authenticated event log and SMTP relay surfaces.
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 
+## [v0.4.7] - 2026-05-08
+
+### Features ✨
+- Add UI and API-driven inbound SMTP forwarding for shared SMTP identities with forwarding owners and immediate fanout via configured relay.
+- Implement core inbound SMTP forwarding service accepting unauthenticated MX delivery and forwarding mail without mailbox storage.
+- Overhaul dashboard with horizontal menu and new SMTP relay management surface.
+- Add forwarding management endpoints and support forwarding owners to SMTP identities.
+
+### Improvements ⚙️
+- Rename SMTP identity dashboard surface to SMTP relay, maintaining exact sender identity management.
+- Accept `MAIL FROM:<>` null reverse-path traffic in SMTP forwarding for DSNs and auto-generated loop-safe messages.
+- Require `smtpSubmission.senderDomains` when inbound SMTP forwarding is enabled to ensure proper allowlist configuration.
+
+### Bug Fixes 🐛
+- Fix null reverse path forwarding handling in SMTP forwarding.
+- Fix forwarding sender domain validation to enforce correct domain restrictions.
+
+### Testing 🧪
+- Add black-box SMTP forwarding coverage for acceptance, forwarding, unknown-recipient rejection, size limits, relay failures, and startup wiring.
+- Improve and update smtpidentity handler and repository tests.
+- Add browser coverage for dashboard horizontal Event log and SMTP relay menu.
+
+### Docs 📚
+- Document shared-address forwarding DNS setup and verification using `mx-forward.pinguin.mprlab.com`.
+- Update README and architecture notes to describe inbound SMTP forwarding listener and new dashboard SMTP relay surface.
+- Update dashboard docs for authenticated event log and SMTP relay management.
+
 ## [v0.4.6] - 2026-05-06
 
 ### Features ✨
