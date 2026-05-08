@@ -311,6 +311,9 @@ tenants:
   configPath: tenants.yml
 web:
   enabled: false
+smtpSubmission:
+  senderDomains:
+    - mprlab.com
 smtpForwarding:
   enabled: true
   hostname: smtp.pinguin.mprlab.com
@@ -493,6 +496,7 @@ func TestValidateConfigRejectsInvalidSMTPForwarding(t *testing.T) {
 		t.Fatalf("expected validation error")
 	}
 	for _, expected := range []string{
+		"smtpSubmission.senderDomains",
 		"smtpForwarding.hostname",
 		"smtpForwarding.listenAddr",
 		"smtpForwarding.maxMessageBytes",
@@ -505,6 +509,41 @@ func TestValidateConfigRejectsInvalidSMTPForwarding(t *testing.T) {
 		if !strings.Contains(err.Error(), expected) {
 			t.Fatalf("expected error to contain %s, got %v", expected, err)
 		}
+	}
+}
+
+func TestValidateConfigRequiresSenderDomainsForSMTPForwarding(t *testing.T) {
+	cfg := Config{
+		DatabasePath:         "app.db",
+		GRPCAuthToken:        "token",
+		LogLevel:             "INFO",
+		MaxRetries:           3,
+		RetryIntervalSec:     30,
+		MasterEncryptionKey:  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		ConnectionTimeoutSec: 5,
+		OperationTimeoutSec:  10,
+		TenantConfigPath:     "tenants.yml",
+		WebInterfaceEnabled:  false,
+		SMTPForwarding: SMTPForwardingConfig{
+			Enabled:         true,
+			Hostname:        "smtp.pinguin.mprlab.com",
+			ListenAddr:      ":25",
+			MaxMessageBytes: 26214400,
+			MaxRecipients:   25,
+			Relay: SMTPForwardingRelayConfig{
+				Host:     "relay.example.com",
+				Port:     587,
+				Username: "relay-user",
+				Password: "relay-pass",
+			},
+		},
+	}
+	err := validateConfig(cfg)
+	if err == nil {
+		t.Fatalf("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "smtpSubmission.senderDomains") {
+		t.Fatalf("expected sender-domain validation error, got %v", err)
 	}
 }
 

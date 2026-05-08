@@ -9,6 +9,8 @@
 - Add backend-backed search and infinite scroll for dashboard notification events, including cursor pagination and a single top-level refresh control.
 
 ### Bug Fixes
+- Accept SMTP forwarding `MAIL FROM:<>` null reverse-path traffic so DSNs and auto-generated loop-safe messages can reach configured shared-address routes.
+- Require `smtpSubmission.senderDomains` when inbound SMTP forwarding is enabled so fresh deployments cannot start without an allowlist for identity-backed routes.
 - Replace the generated placeholder logo with the canonical Pinguin turquoise envelope mark.
 - Enforce tenant authorization before honoring `tenant_id` on notification list, reschedule, and cancel endpoints.
 - Require the TAuth `admin` role before listing, creating, rotating, or deleting global SMTP identities.

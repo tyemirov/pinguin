@@ -263,6 +263,7 @@ func validateConfig(configPath string, expandEnv bool) (DiagnosticResult, *pingu
 		validateWebConfig(config.Web, &result)
 	}
 	validateSMTPSubmissionConfig(config.SMTPSubmission, &result)
+	validateSMTPSenderDomainsConfig(config.SMTPSubmission, config.SMTPForwarding, &result)
 	validateSMTPForwardingConfig(config.SMTPForwarding, &result)
 
 	for _, tenant := range config.Tenants.AllTenants() {
@@ -352,10 +353,6 @@ func validateSMTPSubmissionConfig(submission pinguinSMTPSubmission, result *Diag
 		result.Valid = false
 		result.Errors = append(result.Errors, "smtpSubmission.maxRecipients must be positive")
 	}
-	if countNonEmpty(submission.SenderDomains) == 0 {
-		result.Valid = false
-		result.Errors = append(result.Errors, "smtpSubmission.senderDomains is required when SMTP submission is enabled")
-	}
 	deliveryMode := normalizeSMTPDeliveryMode(submission.DeliveryMode)
 	switch deliveryMode {
 	case "upstream":
@@ -401,6 +398,17 @@ func validateSMTPSubmissionConfig(submission pinguinSMTPSubmission, result *Diag
 			result.Errors = append(result.Errors, "smtpSubmission.tlsKeyPath is required when SMTP submission is enabled")
 		}
 	}
+}
+
+func validateSMTPSenderDomainsConfig(submission pinguinSMTPSubmission, forwarding pinguinSMTPForwarding, result *DiagnosticResult) {
+	if !submission.Enabled && !forwarding.Enabled {
+		return
+	}
+	if countNonEmpty(submission.SenderDomains) > 0 {
+		return
+	}
+	result.Valid = false
+	result.Errors = append(result.Errors, "smtpSubmission.senderDomains is required when SMTP submission or SMTP forwarding is enabled")
 }
 
 func validateSMTPForwardingConfig(forwarding pinguinSMTPForwarding, result *DiagnosticResult) {
