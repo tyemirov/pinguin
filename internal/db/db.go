@@ -52,6 +52,7 @@ var migrateDatabaseSchema = func(database *gorm.DB) error {
 		&tenant.SMSProfile{},
 		&smtpidentity.SenderDomain{},
 		&smtpidentity.Identity{},
+		&smtpidentity.ForwardRecipient{},
 	)
 }
 

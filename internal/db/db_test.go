@@ -61,6 +61,7 @@ func TestInitDBCreatesSchema(t *testing.T) {
 		&tenant.SMSProfile{},
 		&smtpidentity.SenderDomain{},
 		&smtpidentity.Identity{},
+		&smtpidentity.ForwardRecipient{},
 	}
 	for _, table := range tables {
 		if exists := database.Migrator().HasTable(table); !exists {

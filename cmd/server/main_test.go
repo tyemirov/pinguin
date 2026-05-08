@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/tyemirov/pinguin/internal/httpapi"
 	"github.com/tyemirov/pinguin/internal/model"
 	"github.com/tyemirov/pinguin/internal/service"
+	"github.com/tyemirov/pinguin/internal/smtpforwarding"
 	"github.com/tyemirov/pinguin/internal/smtpidentity"
 	"github.com/tyemirov/pinguin/internal/smtpsubmission"
 	"github.com/tyemirov/pinguin/internal/tenant"
@@ -556,6 +558,89 @@ func TestRunServerStartsWebAndSMTPSubmission(testHandle *testing.T) {
 	}
 }
 
+func TestRunServerStartsSMTPForwarding(testHandle *testing.T) {
+	testHandle.Helper()
+	cfg := serverTestConfig()
+	cfg.SMTPForwarding = config.SMTPForwardingConfig{
+		Enabled:         true,
+		Hostname:        "smtp.pinguin.mprlab.com",
+		ListenAddr:      ":25",
+		MaxMessageBytes: 2048,
+		MaxRecipients:   3,
+		Relay: config.SMTPForwardingRelayConfig{
+			Host:     "relay.example.com",
+			Port:     587,
+			Username: "relay-user",
+			Password: "relay-pass",
+		},
+	}
+	state, dependencies := newServerTestDependencies(cfg)
+
+	if exitCode := runServer(nil, dependencies); exitCode != 0 {
+		testHandle.Fatalf("expected success exit code, got %d", exitCode)
+	}
+	waitForClosed(testHandle, state.smtpForwardingStarter.started)
+	if state.smtpForwardingConfig.Hostname != "smtp.pinguin.mprlab.com" {
+		testHandle.Fatalf("unexpected forwarding hostname %s", state.smtpForwardingConfig.Hostname)
+	}
+	if state.smtpForwardingConfig.CommandTimeout != 30*time.Second {
+		testHandle.Fatalf("expected forwarding timeout from operation timeout, got %s", state.smtpForwardingConfig.CommandTimeout)
+	}
+	if state.smtpForwardingConfig.Forwarder == nil {
+		testHandle.Fatalf("expected forwarding config to include forwarder")
+	}
+	if state.smtpForwardingConfig.RouteResolver == nil {
+		testHandle.Fatalf("expected forwarding config to include route resolver")
+	}
+}
+
+func TestSMTPIdentityForwardingResolver(testHandle *testing.T) {
+	testHandle.Helper()
+	database, dbErr := gorm.Open(sqlite.Open(filepath.Join(testHandle.TempDir(), "resolver.db")), &gorm.Config{})
+	if dbErr != nil {
+		testHandle.Fatalf("open database: %v", dbErr)
+	}
+	if migrateErr := database.AutoMigrate(&smtpidentity.SenderDomain{}, &smtpidentity.Identity{}, &smtpidentity.ForwardRecipient{}); migrateErr != nil {
+		testHandle.Fatalf("migrate database: %v", migrateErr)
+	}
+	if seedErr := database.Create(&smtpidentity.SenderDomain{Domain: "example.com"}).Error; seedErr != nil {
+		testHandle.Fatalf("seed sender domain: %v", seedErr)
+	}
+	repository, repoErr := smtpidentity.NewRepository(database, strings.Repeat("a", 64))
+	if repoErr != nil {
+		testHandle.Fatalf("repository: %v", repoErr)
+	}
+	address := mustServerAddress(testHandle, "support@example.com")
+	owner := mustServerAddress(testHandle, "owner@example.com")
+	identity, _, createErr := repository.Create(context.Background(), address, []smtpidentity.Address{owner})
+	if createErr != nil {
+		testHandle.Fatalf("create identity: %v", createErr)
+	}
+	resolver := smtpIdentityForwardingResolver{repository: repository}
+
+	route, exists, resolveErr := resolver.Resolve(context.Background(), address)
+	if resolveErr != nil || !exists || route.Address().String() != address.String() {
+		testHandle.Fatalf("expected route, route=%+v exists=%v err=%v", route, exists, resolveErr)
+	}
+	if _, exists, resolveErr := resolver.Resolve(context.Background(), mustServerAddress(testHandle, "missing@example.com")); resolveErr != nil || exists {
+		testHandle.Fatalf("expected missing route, exists=%v err=%v", exists, resolveErr)
+	}
+
+	if dropIndexErr := database.Migrator().DropIndex(&smtpidentity.ForwardRecipient{}, "idx_smtp_forward_identity_email"); dropIndexErr != nil {
+		testHandle.Fatalf("drop recipient index: %v", dropIndexErr)
+	}
+	if seedErr := database.Create(&smtpidentity.ForwardRecipient{
+		ID:           "duplicate-recipient",
+		IdentityID:   identity.ID,
+		EmailAddress: owner.String(),
+	}).Error; seedErr != nil {
+		testHandle.Fatalf("seed duplicate recipient: %v", seedErr)
+	}
+	if _, _, resolveErr := resolver.Resolve(context.Background(), address); resolveErr == nil {
+		testHandle.Fatalf("expected duplicate forwarding recipient error")
+	}
+}
+
 func TestRunServerErrorPaths(testHandle *testing.T) {
 	testHandle.Helper()
 	expectedErr := errors.New("boom")
@@ -620,6 +705,34 @@ func TestRunServerErrorPaths(testHandle *testing.T) {
 			return cfg
 		}, mutate: func(deps *serverDependencies) {
 			deps.newSMTPSubmissionServer = func(smtpsubmission.Config) (smtpSubmissionStarter, error) { return nil, expectedErr }
+		}},
+		{name: "smtp forwarding relay", config: func() config.Config {
+			cfg := serverTestConfig()
+			cfg.SMTPForwarding = config.SMTPForwardingConfig{
+				Enabled:         true,
+				Hostname:        "mx-forward.example.com",
+				ListenAddr:      ":25",
+				MaxMessageBytes: 1024,
+				MaxRecipients:   10,
+			}
+			return cfg
+		}, mutate: func(deps *serverDependencies) {
+			deps.newSMTPForwarder = func(*slog.Logger, config.Config) (smtpforwarding.Forwarder, error) {
+				return nil, expectedErr
+			}
+		}},
+		{name: "smtp forwarding server", config: func() config.Config {
+			cfg := serverTestConfig()
+			cfg.SMTPForwarding = config.SMTPForwardingConfig{
+				Enabled:         true,
+				Hostname:        "mx-forward.example.com",
+				ListenAddr:      ":25",
+				MaxMessageBytes: 1024,
+				MaxRecipients:   10,
+			}
+			return cfg
+		}, mutate: func(deps *serverDependencies) {
+			deps.newSMTPForwardingServer = func(smtpforwarding.Config) (smtpForwardingStarter, error) { return nil, expectedErr }
 		}},
 		{name: "session validator", config: func() config.Config {
 			cfg := serverTestConfig()
@@ -732,6 +845,21 @@ func TestServerBackgroundStarters(testHandle *testing.T) {
 		testHandle.Fatalf("expected smtp crash exit")
 	}
 
+	forwardingExit := make(chan int, 1)
+	forwardingStarter := &fakeSMTPForwardingStarter{err: errors.New("smtp forwarding crashed"), started: make(chan struct{})}
+	startSMTPForwarding(context.Background(), logger, forwardingStarter, serverTestConfig(), func(code int) {
+		forwardingExit <- code
+	})
+	waitForClosed(testHandle, forwardingStarter.started)
+	select {
+	case code := <-forwardingExit:
+		if code != 1 {
+			testHandle.Fatalf("expected smtp forwarding exit 1, got %d", code)
+		}
+	case <-time.After(time.Second):
+		testHandle.Fatalf("expected smtp forwarding crash exit")
+	}
+
 	httpExit := make(chan int, 1)
 	httpStarter := &fakeHTTPServer{startErr: errors.New("http crashed"), started: make(chan struct{})}
 	startHTTPServer(logger, httpStarter, ":8080", func(code int) {
@@ -760,6 +888,9 @@ func TestServerDependencyDefaultsAndProductionWrappers(testHandle *testing.T) {
 	if defaulted.loadConfig == nil || defaulted.newLogger == nil || defaulted.initDB == nil || defaulted.exit == nil {
 		testHandle.Fatalf("expected production defaults to be populated")
 	}
+	if defaulted.newSMTPForwarder == nil || defaulted.newSMTPForwardingServer == nil {
+		testHandle.Fatalf("expected SMTP forwarding defaults to be populated")
+	}
 
 	production := productionServerDependencies()
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
@@ -775,6 +906,16 @@ func TestServerDependencyDefaultsAndProductionWrappers(testHandle *testing.T) {
 	}
 	if _, err := production.newSMTPSubmissionServer(smtpsubmission.Config{}); err == nil {
 		testHandle.Fatalf("expected invalid SMTP submission config error")
+	}
+	forwarder, forwarderErr := production.newSMTPForwarder(logger, serverTestConfig())
+	if forwarderErr != nil {
+		testHandle.Fatalf("expected production forwarding forwarder, got %v", forwarderErr)
+	}
+	if forwarder == nil {
+		testHandle.Fatalf("expected production forwarding forwarder")
+	}
+	if _, err := production.newSMTPForwardingServer(smtpforwarding.Config{}); err == nil {
+		testHandle.Fatalf("expected invalid SMTP forwarding config error")
 	}
 	if _, err := production.newSessionValidator(sessionvalidator.Config{}); err == nil {
 		testHandle.Fatalf("expected invalid session validator error")
@@ -1022,7 +1163,9 @@ type serverTestState struct {
 	tlsLoaded             bool
 	grpcServed            bool
 	smtpConfig            smtpsubmission.Config
+	smtpForwardingConfig  smtpforwarding.Config
 	smtpStarter           *fakeSMTPStarter
+	smtpForwardingStarter *fakeSMTPForwardingStarter
 	httpServer            *fakeHTTPServer
 }
 
@@ -1063,8 +1206,9 @@ func serverTestConfig() config.Config {
 
 func newServerTestDependencies(cfg config.Config) (*serverTestState, serverDependencies) {
 	state := &serverTestState{
-		smtpStarter: &fakeSMTPStarter{started: make(chan struct{})},
-		httpServer:  &fakeHTTPServer{startErr: http.ErrServerClosed, started: make(chan struct{})},
+		smtpStarter:           &fakeSMTPStarter{started: make(chan struct{})},
+		smtpForwardingStarter: &fakeSMTPForwardingStarter{started: make(chan struct{})},
+		httpServer:            &fakeHTTPServer{startErr: http.ErrServerClosed, started: make(chan struct{})},
 	}
 	dependencies := serverDependencies{
 		loadConfig: func() (config.Config, error) {
@@ -1114,6 +1258,13 @@ func newServerTestDependencies(cfg config.Config) (*serverTestState, serverDepen
 			state.smtpConfig = smtpConfig
 			return state.smtpStarter, nil
 		},
+		newSMTPForwarder: func(*slog.Logger, config.Config) (smtpforwarding.Forwarder, error) {
+			return noopForwarder{}, nil
+		},
+		newSMTPForwardingServer: func(smtpConfig smtpforwarding.Config) (smtpForwardingStarter, error) {
+			state.smtpForwardingConfig = smtpConfig
+			return state.smtpForwardingStarter, nil
+		},
 		newSessionValidator: func(sessionvalidator.Config) (httpapi.SessionValidator, error) {
 			return fakeSessionValidator{}, nil
 		},
@@ -1150,6 +1301,16 @@ func (starter *fakeSMTPStarter) Start(context.Context) error {
 	return starter.err
 }
 
+type fakeSMTPForwardingStarter struct {
+	err     error
+	started chan struct{}
+}
+
+func (starter *fakeSMTPForwardingStarter) Start(context.Context) error {
+	close(starter.started)
+	return starter.err
+}
+
 type fakeHTTPServer struct {
 	startErr       error
 	shutdownErr    error
@@ -1170,6 +1331,12 @@ func (server *fakeHTTPServer) Shutdown(context.Context) error {
 type noopRawRelay struct{}
 
 func (noopRawRelay) Relay(context.Context, smtpsubmission.RawMessage) error {
+	return nil
+}
+
+type noopForwarder struct{}
+
+func (noopForwarder) Forward(context.Context, smtpforwarding.Route, smtpforwarding.Message) error {
 	return nil
 }
 
@@ -1205,4 +1372,13 @@ func waitForClosed(t *testing.T, done <-chan struct{}) {
 	case <-time.After(time.Second):
 		t.Fatalf("timed out waiting for goroutine")
 	}
+}
+
+func mustServerAddress(testHandle *testing.T, rawAddress string) smtpidentity.Address {
+	testHandle.Helper()
+	address, addressErr := smtpidentity.NewAddress(rawAddress)
+	if addressErr != nil {
+		testHandle.Fatalf("address %s: %v", rawAddress, addressErr)
+	}
+	return address
 }
