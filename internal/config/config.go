@@ -32,6 +32,7 @@ type Config struct {
 	HTTPListenAddr      string
 	HTTPAllowedOrigins  []string
 	SMTPSubmission      SMTPSubmissionConfig
+	SMTPForwarding      SMTPForwardingConfig
 
 	TAuthSigningKey     string
 	TAuthCookieName     string
@@ -80,10 +81,29 @@ type SMTPSubmissionRelayConfig struct {
 	Password string
 }
 
+// SMTPForwardingConfig controls inbound SMTP fanout forwarding.
+type SMTPForwardingConfig struct {
+	Enabled         bool
+	Hostname        string
+	ListenAddr      string
+	MaxMessageBytes int64
+	MaxRecipients   int
+	Relay           SMTPForwardingRelayConfig
+}
+
+// SMTPForwardingRelayConfig controls the relay used for inbound forwarded copies.
+type SMTPForwardingRelayConfig struct {
+	Host     string
+	Port     int
+	Username string
+	Password string
+}
+
 type fileConfig struct {
 	Server         serverSection         `yaml:"server"`
 	Web            webSection            `yaml:"web"`
 	SMTPSubmission smtpSubmissionSection `yaml:"smtpSubmission"`
+	SMTPForwarding smtpForwardingSection `yaml:"smtpForwarding"`
 	Tenants        tenantConfig          `yaml:"tenants"`
 }
 
@@ -131,6 +151,22 @@ type smtpSubmissionSection struct {
 }
 
 type smtpSubmissionRelaySection struct {
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+}
+
+type smtpForwardingSection struct {
+	Enabled         bool                       `yaml:"enabled"`
+	Hostname        string                     `yaml:"hostname"`
+	ListenAddr      string                     `yaml:"listenAddr"`
+	MaxMessageBytes int64                      `yaml:"maxMessageBytes"`
+	MaxRecipients   int                        `yaml:"maxRecipients"`
+	Relay           smtpForwardingRelaySection `yaml:"relay"`
+}
+
+type smtpForwardingRelaySection struct {
 	Host     string `yaml:"host"`
 	Port     int    `yaml:"port"`
 	Username string `yaml:"username"`
@@ -241,6 +277,19 @@ func loadConfigFromPath(configPath string) (Config, error) {
 				Port:     fileCfg.SMTPSubmission.Relay.Port,
 				Username: strings.TrimSpace(fileCfg.SMTPSubmission.Relay.Username),
 				Password: strings.TrimSpace(fileCfg.SMTPSubmission.Relay.Password),
+			},
+		},
+		SMTPForwarding: SMTPForwardingConfig{
+			Enabled:         fileCfg.SMTPForwarding.Enabled,
+			Hostname:        strings.TrimSpace(fileCfg.SMTPForwarding.Hostname),
+			ListenAddr:      strings.TrimSpace(fileCfg.SMTPForwarding.ListenAddr),
+			MaxMessageBytes: fileCfg.SMTPForwarding.MaxMessageBytes,
+			MaxRecipients:   fileCfg.SMTPForwarding.MaxRecipients,
+			Relay: SMTPForwardingRelayConfig{
+				Host:     strings.TrimSpace(fileCfg.SMTPForwarding.Relay.Host),
+				Port:     fileCfg.SMTPForwarding.Relay.Port,
+				Username: strings.TrimSpace(fileCfg.SMTPForwarding.Relay.Username),
+				Password: strings.TrimSpace(fileCfg.SMTPForwarding.Relay.Password),
 			},
 		},
 		TAuthSigningKey:      strings.TrimSpace(fileCfg.Server.TAuth.SigningKey),
@@ -366,6 +415,17 @@ func validateConfig(cfg Config) error {
 			requireString(cfg.SMTPSubmission.TLSCertPath, "smtpSubmission.tlsCertPath", &errors)
 			requireString(cfg.SMTPSubmission.TLSKeyPath, "smtpSubmission.tlsKeyPath", &errors)
 		}
+	}
+
+	if cfg.SMTPForwarding.Enabled {
+		requireString(cfg.SMTPForwarding.Hostname, "smtpForwarding.hostname", &errors)
+		requireString(cfg.SMTPForwarding.ListenAddr, "smtpForwarding.listenAddr", &errors)
+		requirePositiveInt64(cfg.SMTPForwarding.MaxMessageBytes, "smtpForwarding.maxMessageBytes", &errors)
+		requirePositive(cfg.SMTPForwarding.MaxRecipients, "smtpForwarding.maxRecipients", &errors)
+		requireString(cfg.SMTPForwarding.Relay.Host, "smtpForwarding.relay.host", &errors)
+		requirePositive(cfg.SMTPForwarding.Relay.Port, "smtpForwarding.relay.port", &errors)
+		requireString(cfg.SMTPForwarding.Relay.Username, "smtpForwarding.relay.username", &errors)
+		requireString(cfg.SMTPForwarding.Relay.Password, "smtpForwarding.relay.password", &errors)
 	}
 
 	if len(cfg.TenantBootstrap.Tenants) > 0 {

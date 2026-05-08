@@ -296,6 +296,57 @@ smtpSubmission:
 	}
 }
 
+func TestLoadConfigSupportsSMTPForwarding(t *testing.T) {
+	configPath := writeConfigFile(t, `
+server:
+  databasePath: app.db
+  grpcAuthToken: token
+  logLevel: INFO
+  maxRetries: 3
+  retryIntervalSec: 30
+  masterEncryptionKey: ${MASTER_ENCRYPTION_KEY}
+  connectionTimeoutSec: 5
+  operationTimeoutSec: 10
+tenants:
+  configPath: tenants.yml
+web:
+  enabled: false
+smtpForwarding:
+  enabled: true
+  hostname: smtp.pinguin.mprlab.com
+  listenAddr: :25
+  maxMessageBytes: 26214400
+  maxRecipients: 25
+  relay:
+    host: relay.example.com
+    port: 587
+    username: relay-user
+    password: relay-pass
+`)
+	t.Setenv("MASTER_ENCRYPTION_KEY", "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+
+	cfg, err := loadConfigFromPath(configPath)
+	if err != nil {
+		t.Fatalf("LoadConfig returned error: %v", err)
+	}
+	expected := SMTPForwardingConfig{
+		Enabled:         true,
+		Hostname:        "smtp.pinguin.mprlab.com",
+		ListenAddr:      ":25",
+		MaxMessageBytes: 26214400,
+		MaxRecipients:   25,
+		Relay: SMTPForwardingRelayConfig{
+			Host:     "relay.example.com",
+			Port:     587,
+			Username: "relay-user",
+			Password: "relay-pass",
+		},
+	}
+	if !reflect.DeepEqual(cfg.SMTPForwarding, expected) {
+		t.Fatalf("unexpected SMTP forwarding config:\n got: %#v\nwant: %#v", cfg.SMTPForwarding, expected)
+	}
+}
+
 func TestLoadConfigDoesNotDisableWebFromEnvironment(t *testing.T) {
 	configPath := writeConfigFile(t, `
 server:
@@ -416,6 +467,44 @@ smtpSubmission:
 	}
 	if !reflect.DeepEqual(cfg.SMTPSubmission.SenderDomains, []string{"mprlab.com"}) {
 		t.Fatalf("unexpected sender domains %v", cfg.SMTPSubmission.SenderDomains)
+	}
+}
+
+func TestValidateConfigRejectsInvalidSMTPForwarding(t *testing.T) {
+	cfg := Config{
+		DatabasePath:         "app.db",
+		GRPCAuthToken:        "token",
+		LogLevel:             "INFO",
+		MaxRetries:           3,
+		RetryIntervalSec:     30,
+		MasterEncryptionKey:  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		ConnectionTimeoutSec: 5,
+		OperationTimeoutSec:  10,
+		TenantConfigPath:     "tenants.yml",
+		WebInterfaceEnabled:  false,
+		SMTPForwarding: SMTPForwardingConfig{
+			Enabled:         true,
+			MaxMessageBytes: -1,
+			MaxRecipients:   0,
+		},
+	}
+	err := validateConfig(cfg)
+	if err == nil {
+		t.Fatalf("expected validation error")
+	}
+	for _, expected := range []string{
+		"smtpForwarding.hostname",
+		"smtpForwarding.listenAddr",
+		"smtpForwarding.maxMessageBytes",
+		"smtpForwarding.maxRecipients",
+		"smtpForwarding.relay.host",
+		"smtpForwarding.relay.port",
+		"smtpForwarding.relay.username",
+		"smtpForwarding.relay.password",
+	} {
+		if !strings.Contains(err.Error(), expected) {
+			t.Fatalf("expected error to contain %s, got %v", expected, err)
+		}
 	}
 }
 
