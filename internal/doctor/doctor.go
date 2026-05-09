@@ -74,27 +74,29 @@ type pinguinConfig struct {
 }
 
 type pinguinServer struct {
-	DatabasePath        string `yaml:"databasePath"`
-	GRPCAuthToken       string `yaml:"grpcAuthToken"`
-	LogLevel            string `yaml:"logLevel"`
-	MaxRetries          int    `yaml:"maxRetries"`
-	RetryIntervalSec    int    `yaml:"retryIntervalSec"`
-	MasterEncryptionKey string `yaml:"masterEncryptionKey"`
-	ConnectionTimeout   int    `yaml:"connectionTimeoutSec"`
-	OperationTimeout    int    `yaml:"operationTimeoutSec"`
+	DatabasePath        string       `yaml:"databasePath"`
+	GRPCAuthToken       string       `yaml:"grpcAuthToken"`
+	LogLevel            string       `yaml:"logLevel"`
+	MaxRetries          int          `yaml:"maxRetries"`
+	RetryIntervalSec    int          `yaml:"retryIntervalSec"`
+	MasterEncryptionKey string       `yaml:"masterEncryptionKey"`
+	ConnectionTimeout   int          `yaml:"connectionTimeoutSec"`
+	OperationTimeout    int          `yaml:"operationTimeoutSec"`
+	TAuth               pinguinTAuth `yaml:"tauth"`
 }
 
 type pinguinWeb struct {
-	Enabled        *bool        `yaml:"enabled"`
-	ListenAddr     string       `yaml:"listenAddr"`
-	AllowedOrigins []string     `yaml:"allowedOrigins"`
-	TAuth          pinguinTAuth `yaml:"tauth"`
+	Enabled        *bool    `yaml:"enabled"`
+	ListenAddr     string   `yaml:"listenAddr"`
+	AllowedOrigins []string `yaml:"allowedOrigins"`
 }
 
 type pinguinTAuth struct {
-	SigningKey string `yaml:"signingKey"`
-	Issuer     string `yaml:"issuer"`
-	CookieName string `yaml:"cookieName"`
+	SigningKey     string `yaml:"signingKey"`
+	CookieName     string `yaml:"cookieName"`
+	GoogleClientID string `yaml:"googleClientId"`
+	TAuthBaseURL   string `yaml:"tauthBaseUrl"`
+	TAuthTenantID  string `yaml:"tauthTenantId"`
 }
 
 type pinguinSMTPSubmission struct {
@@ -252,12 +254,11 @@ func validateConfig(configPath string, expandEnv bool) (DiagnosticResult, *pingu
 		return result, nil
 	}
 
-	validateServerConfig(config.Server, &result)
-
 	webEnabled := true
 	if config.Web.Enabled != nil {
 		webEnabled = *config.Web.Enabled
 	}
+	validateServerConfig(config.Server, webEnabled, &result)
 
 	if webEnabled {
 		validateWebConfig(config.Web, &result)
@@ -281,7 +282,7 @@ func validateConfig(configPath string, expandEnv bool) (DiagnosticResult, *pingu
 	return result, &config
 }
 
-func validateServerConfig(server pinguinServer, result *DiagnosticResult) {
+func validateServerConfig(server pinguinServer, webEnabled bool, result *DiagnosticResult) {
 	if strings.TrimSpace(server.DatabasePath) == "" {
 		result.Valid = false
 		result.Errors = append(result.Errors, "server.databasePath is required")
@@ -316,20 +317,34 @@ func validateServerConfig(server pinguinServer, result *DiagnosticResult) {
 		result.Valid = false
 		result.Errors = append(result.Errors, "server.operationTimeoutSec must be positive")
 	}
+	if webEnabled {
+		validateServerTAuthConfig(server.TAuth, result)
+	}
+}
+
+func validateServerTAuthConfig(tauth pinguinTAuth, result *DiagnosticResult) {
+	if strings.TrimSpace(tauth.SigningKey) == "" {
+		result.Valid = false
+		result.Errors = append(result.Errors, "server.tauth.signingKey is required when web is enabled")
+	}
+	if strings.TrimSpace(tauth.TAuthBaseURL) == "" {
+		result.Valid = false
+		result.Errors = append(result.Errors, "server.tauth.tauthBaseUrl is required when web is enabled")
+	}
+	if strings.TrimSpace(tauth.TAuthTenantID) == "" {
+		result.Valid = false
+		result.Errors = append(result.Errors, "server.tauth.tauthTenantId is required when web is enabled")
+	}
+	if strings.TrimSpace(tauth.GoogleClientID) == "" {
+		result.Valid = false
+		result.Errors = append(result.Errors, "server.tauth.googleClientId is required when web is enabled")
+	}
 }
 
 func validateWebConfig(web pinguinWeb, result *DiagnosticResult) {
 	if strings.TrimSpace(web.ListenAddr) == "" {
 		result.Valid = false
 		result.Errors = append(result.Errors, "web.listenAddr is required when web is enabled")
-	}
-	if strings.TrimSpace(web.TAuth.SigningKey) == "" {
-		result.Valid = false
-		result.Errors = append(result.Errors, "web.tauth.signingKey is required when web is enabled")
-	}
-	if strings.TrimSpace(web.TAuth.Issuer) == "" {
-		result.Valid = false
-		result.Errors = append(result.Errors, "web.tauth.issuer is required when web is enabled")
 	}
 }
 
