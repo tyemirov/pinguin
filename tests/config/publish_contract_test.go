@@ -181,7 +181,8 @@ func TestPagesSourceIncludesNoJekyllAndCNAME(t *testing.T) {
 		repoPath("web", ".nojekyll"),
 		repoPath("web", "CNAME"),
 		repoPath("web", "index.html"),
-		repoPath("web", "dashboard.html"),
+		repoPath("web", "event-log.html"),
+		repoPath("web", "smtp-relay.html"),
 	}
 	for _, requiredPath := range requiredPaths {
 		if _, statErr := os.Stat(requiredPath); statErr != nil {

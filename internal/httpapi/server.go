@@ -547,6 +547,8 @@ type runtimeConfigPayload struct {
 	TAuthBaseURL   string              `json:"tauthBaseUrl"`
 	TAuthTenantID  string              `json:"tauthTenantId"`
 	GoogleClientID string              `json:"googleClientId"`
+	EventLogURL    string              `json:"eventLogUrl"`
+	SMTPRelayURL   string              `json:"smtpRelayUrl"`
 }
 
 type runtimeConfigTenant struct {
@@ -572,6 +574,8 @@ func serveRuntimeConfig(tauthConfig runtimeConfigTAuth) gin.HandlerFunc {
 			TAuthBaseURL:   tauthConfig.BaseURL,
 			TAuthTenantID:  tauthConfig.TenantID,
 			GoogleClientID: tauthConfig.GoogleClientID,
+			EventLogURL:    "/event-log.html",
+			SMTPRelayURL:   "/smtp-relay.html",
 			Tenant: runtimeConfigTenant{
 				ID:          runtimeCfg.Tenant.ID,
 				DisplayName: runtimeCfg.Tenant.DisplayName,

@@ -1254,6 +1254,8 @@ func TestRuntimeConfigEndpointReturnsValues(t *testing.T) {
 		TAuthBaseURL   string `json:"tauthBaseUrl"`
 		TAuthTenantID  string `json:"tauthTenantId"`
 		GoogleClientID string `json:"googleClientId"`
+		EventLogURL    string `json:"eventLogUrl"`
+		SMTPRelayURL   string `json:"smtpRelayUrl"`
 		Tenant         struct {
 			ID          string `json:"id"`
 			DisplayName string `json:"displayName"`
@@ -1270,6 +1272,9 @@ func TestRuntimeConfigEndpointReturnsValues(t *testing.T) {
 	}
 	if payload.TAuthBaseURL != "https://tauth.example.com" || payload.TAuthTenantID != "tauth-test" || payload.GoogleClientID != "client-id" {
 		t.Fatalf("unexpected tauth payload %+v", payload)
+	}
+	if payload.EventLogURL != "/event-log.html" || payload.SMTPRelayURL != "/smtp-relay.html" {
+		t.Fatalf("unexpected page links %+v", payload)
 	}
 }
 

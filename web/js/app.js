@@ -9,6 +9,7 @@ import { createToastCenter } from './ui/toastCenter.js';
 
 const AUTH_STATUS_TIMEOUT_MS = 12000;
 const PINGUIN_AUTH_STATE_EVENT = 'pinguin:auth-state';
+const PROTECTED_PAGE_IDS = new Set(['event-log', 'smtp-relay']);
 
 window.Alpine = Alpine;
 
@@ -22,7 +23,7 @@ Alpine.data('appShell', () => createAppShell(sessionBridge));
 Alpine.data('notificationsTable', () =>
   createNotificationsTable({
     apiClient,
-    strings: STRINGS.dashboard,
+    strings: STRINGS.eventLog,
     actions: STRINGS.actions,
   }),
 );
@@ -98,7 +99,7 @@ function createLandingAuthPanel(controller) {
 
 function createAppShell(bridge) {
   return {
-    strings: STRINGS.dashboard,
+    strings: STRINGS.eventLog,
     actions: STRINGS.actions,
     stopAuthWatcher: null,
     stopStatusWatcher: null,
@@ -115,7 +116,7 @@ function createAppShell(bridge) {
         () => authStore.isAuthenticated,
         (isAuthenticated) => {
           const shouldRedirect =
-            !isAuthenticated && (this.previousAuthState || this.hasHydrated) && pageId === 'dashboard';
+            !isAuthenticated && (this.previousAuthState || this.hasHydrated) && isProtectedPage(pageId);
           this.previousAuthState = isAuthenticated;
           if (shouldRedirect) {
             this.redirectToLanding();
@@ -125,7 +126,7 @@ function createAppShell(bridge) {
       this.stopStatusWatcher = bridge.onStatusChange((status) => {
         if (status === 'ready' || status === 'error') {
           this.hasHydrated = true;
-          if (!authStore.isAuthenticated && pageId === 'dashboard') {
+          if (!authStore.isAuthenticated && isProtectedPage(pageId)) {
             this.redirectToLanding();
           }
         }
@@ -162,14 +163,14 @@ function bootstrapPage(controller) {
     store.setProfile(profile);
     if (pageId === 'landing' && !redirected) {
       redirected = true;
-      window.location.assign(RUNTIME_CONFIG.dashboardUrl);
+      window.location.assign(RUNTIME_CONFIG.eventLogUrl);
     }
   };
 
   const handleUnauthenticated = () => {
     const store = Alpine.store('auth');
     store.clear();
-    if (pageId === 'dashboard' && !redirected) {
+    if (isProtectedPage(pageId) && !redirected) {
       redirected = true;
       window.location.assign(RUNTIME_CONFIG.landingUrl);
     }
@@ -196,6 +197,10 @@ function bootstrapPage(controller) {
   };
 
   waitForMprUiOrchestration().then(startSession).catch(handleAuthError);
+}
+
+function isProtectedPage(pageId) {
+  return PROTECTED_PAGE_IDS.has(pageId);
 }
 
 function waitForMprUiOrchestration() {

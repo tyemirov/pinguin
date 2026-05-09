@@ -11,17 +11,17 @@
 
 ## Authentication & Session Flow
 - The browser UI never talks directly to Pinguin for authentication. Instead, the `<mpr-header>` component (from `mpr-ui`) coordinates Google Identity Services (GIS) and TAuth:
-  1. `<mpr-header data-config-url="/config-ui.yaml">` declares the shared shell contract in `index.html` and `dashboard.html`.
+  1. `<mpr-header data-config-url="/config-ui.yaml">` declares the shared shell contract in `index.html`, `event-log.html`, and `smtp-relay.html`.
   2. `mpr-ui-config.js` reads `web/config-ui.yaml`, selects the entry for the current page origin, applies Google/TAuth attributes to the header, and loads the `mpr-ui@latest` bundle from the bundle marker.
   3. `web/js/bootstrap.js` still fetches `/runtime-config` (from `pinguin-api.mprlab.com` when served from `.mprlab.com`) for the Pinguin API URL and tenant display metadata used by the app surface.
-  4. `web/js/app.js` listens for `mpr-ui:auth:*` events to sync profile state, drive redirects, and guard the dashboard.
+  4. `web/js/app.js` listens for `mpr-ui:auth:*` events to sync profile state, drive redirects, and guard the authenticated pages.
   5. Successful sign-in yields an HttpOnly `app_session` cookie issued by TAuth; Pinguin validates that cookie on every `/api` request.
 - The Go backend needs the shared signing key (`TAUTH_SIGNING_KEY`) and optional cookie name override. TAuth issuer is handled inside the session validator; Pinguin should not configure it directly.
-- Pinguin reads TAuth session roles and configured tenant admin emails for dashboard authorization. Users with the `admin` role or a configured `tenants[].admins` email can list, reschedule, and cancel notifications for any active tenant; non-admin users are limited to tenants whose configured domain matches the user's email domain.
+- Pinguin reads TAuth session roles and configured tenant admin emails for browser workspace authorization. Users with the `admin` role or a configured `tenants[].admins` email can list, reschedule, and cancel notifications for any active tenant; non-admin users are limited to tenants whose configured domain matches the user's email domain.
 
 ## HTTP Server Responsibilities
 - Routes defined in `internal/httpapi`:
-- `GET /runtime-config` → `{ apiBaseUrl, tauthBaseUrl, tauthTenantId, googleClientId, tenant }`. The UI uses this to derive absolute API URLs and tenant display metadata; `mpr-ui` auth attributes come from `web/config-ui.yaml`.
+- `GET /runtime-config` → `{ apiBaseUrl, tauthBaseUrl, tauthTenantId, googleClientId, eventLogUrl, smtpRelayUrl, tenant }`. The UI uses this to derive absolute API URLs, named page destinations, and tenant display metadata; `mpr-ui` auth attributes come from `web/config-ui.yaml`.
   - `GET /healthz` – unauthenticated health probe.
   - Authenticated `/api/notifications` list/reschedule/cancel handlers guarded by the session middleware.
   - `/api/notifications*` accepts an explicit `tenant_id`, but the handler authorizes that tenant against the authenticated session before resolving tenant runtime config.
@@ -33,7 +33,7 @@
 
 ## Front-End Structure
 - `/web` hosts an Alpine.js-based bundle that follows `AGENTS.md` guidelines:
-  - `index.html` (landing page) and `dashboard.html` both import `mpr-ui` CSS via CDN, load `/config-ui.yaml` through `mpr-ui-config.js`, and bootstrap via `/js/app.js`.
+  - `index.html` (landing page), `event-log.html`, and `smtp-relay.html` import `mpr-ui` CSS via CDN, load `/config-ui.yaml` through `mpr-ui-config.js`, and bootstrap via `/js/app.js`.
 - `/js/bootstrap.js` centralizes runtime config resolution, GIS script injection, and lazy loading of the main app module.
   - Alpine factories live under `/js/ui/` and `/js/core/`. Notifications table logic dispatches DOM-scoped events for toast updates and API refreshes.
 - GitHub Pages publishes `/web` through legacy branch-root publishing: `make deploy` stages the static assets, writes a `pinguin-pages-build.json` source-commit marker, pushes the artifact to the `gh-pages` branch root after backend verification, triggers a GitHub Pages build, and then verifies the live marker matches the release commit. `web/CNAME` maps the site to `pinguin.mprlab.com`, and `web/.nojekyll` keeps GitHub Pages from running Jekyll over the static bundle.

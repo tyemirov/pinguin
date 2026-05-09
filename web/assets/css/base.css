@@ -515,15 +515,6 @@ mpr-header [data-mpr-header="google-signin"] button {
   flex: 0 0 1.8rem;
 }
 
-.dashboard-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
 .panel + .panel {
   margin-top: 1.5rem;
 }

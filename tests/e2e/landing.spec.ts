@@ -24,7 +24,7 @@ test.describe('Landing page auth flow', () => {
     await expect(page.getByLabel('Notification workspace preview')).toBeVisible();
   });
 
-  test('completes Google/TAuth handshake and redirects to dashboard', async ({ page }) => {
+  test('completes Google/TAuth handshake and redirects to event log', async ({ page }) => {
     await page.goto('/index.html');
     await completeHeaderLogin(page);
     await expect(page.getByTestId('notifications-table')).toBeVisible();
@@ -133,7 +133,7 @@ test.describe('Landing page auth flow', () => {
   ];
 
   for (const scenario of themePersistenceCases) {
-    test(`persists theme from landing to dashboard (${scenario.label})`, async ({ page }) => {
+    test(`persists theme from landing to event log (${scenario.label})`, async ({ page }) => {
       await page.addInitScript((theme) => {
         if (!theme) {
           return;

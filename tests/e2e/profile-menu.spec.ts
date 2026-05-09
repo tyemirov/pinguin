@@ -17,7 +17,7 @@ test.describe('Profile Menu Integration', () => {
       authenticated: true,
       tenant: { id: 'tenant-test', displayName: 'Test Tenant' },
     });
-    await page.goto('/dashboard.html');
+    await page.goto('/event-log.html');
 
     await expectSharedHeaderUserMenu(page);
     const settingsButton = page.locator('mpr-header [data-mpr-header="settings-button"]');

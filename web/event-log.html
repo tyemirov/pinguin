@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" data-mpr-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>Pinguin Event Log</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.css"
+    />
+    <link rel="stylesheet" href="/assets/css/base.css" />
+    <script defer src="/js/tauth-config.js"></script>
+    <script defer src="/js/mpr-ui-auth-cache.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui-config.js"></script>
+    <script
+      id="mpr-ui-bundle"
+      type="application/json"
+      data-mpr-ui-bundle-src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js"
+    ></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+      <script defer src="https://loopaware.mprlab.com/pixel.js?site_id=e8f235c8-ddf2-46b7-ae42-022885fe8a44"></script>
+  </head>
+  <body
+    data-page="event-log"
+    x-data="appShell()"
+    class="theme-light"
+  >
+    <mpr-header
+      id="pinguin-event-log-header"
+      data-config-url="/config-ui.yaml"
+      brand-label="Pinguin"
+      brand-href="/"
+      nav-links='[{ "label": "Docs", "href": "https://github.com/tyemirov/pinguin" }]'
+      horizontal-links='{
+        "alignment": "right",
+        "links": [
+          { "label": "Event log", "href": "/event-log.html" },
+          { "label": "SMTP relay", "href": "/smtp-relay.html" }
+        ]
+      }'
+    >
+      <a slot="brand" class="pinguin-brand" href="/" aria-label="Pinguin home">
+        <img class="pinguin-brand__mark" src="/favicon.svg" alt="" aria-hidden="true" />
+        <span>Pinguin</span>
+      </a>
+    </mpr-header>
+    <main class="anchor-section">
+      <section
+        id="event-log"
+        class="panel"
+        aria-labelledby="event-log-title"
+        x-data="notificationsTable()"
+        data-testid="notifications-table"
+      >
+        <header class="panel-header">
+          <div>
+            <h1 id="event-log-title" class="section-title" x-text="strings.title"></h1>
+            <p class="text-muted" x-text="strings.subtitle"></p>
+          </div>
+          <button
+            class="button secondary"
+            type="button"
+            x-on:click="loadNotifications()"
+            x-text="actions.refresh"
+          ></button>
+        </header>
+        <div class="filters" style="margin-bottom: 1rem">
+          <label style="flex: 1; min-width: 220px">
+            <span x-text="strings.tenantLabel"></span>
+            <select
+              x-model="selectedTenantId"
+              x-on:change="changeTenant()"
+              :disabled="isLoadingTenants || tenants.length === 0"
+            >
+              <template x-for="tenant in tenants" :key="tenant.id">
+                <option :value="tenant.id" x-text="tenant.displayName"></option>
+              </template>
+            </select>
+          </label>
+          <label style="flex: 1; min-width: 200px">
+            <span x-text="strings.searchLabel"></span>
+            <input
+              type="search"
+              x-model="searchQuery"
+              :placeholder="strings.searchPlaceholder"
+              autocomplete="off"
+            />
+          </label>
+          <label style="flex: 1; min-width: 200px">
+            <span>Filter by status</span>
+            <select x-model="statusFilter" x-on:change="loadNotifications()">
+              <template x-for="option in STATUS_OPTIONS" :key="option.value">
+                <option :value="option.value" x-text="option.label"></option>
+              </template>
+            </select>
+          </label>
+        </div>
+        <p
+          class="text-muted"
+          x-cloak
+          x-show="isLoadingTenants"
+          x-text="strings.tenantLoading"
+        ></p>
+        <template x-if="errorMessage">
+          <p class="notice" data-variant="error" x-text="errorMessage"></p>
+        </template>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Notification</th>
+                <th>Tenant</th>
+                <th>Status</th>
+                <th>Recipient</th>
+                <th>Scheduled for</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-if="isLoading">
+                <tr>
+                  <td colspan="6" class="empty-state">
+                    Loading notifications…
+                  </td>
+                </tr>
+              </template>
+              <template x-if="!isLoading && notifications.length === 0">
+                <tr>
+                  <td
+                    colspan="6"
+                    class="empty-state"
+                    x-text="strings.emptyState"
+                  ></td>
+                </tr>
+              </template>
+              <template x-for="item in notifications" :key="item.id">
+                <tr data-testid="notification-row">
+                  <td>
+                    <strong
+                      x-text="item.subject || 'Untitled notification'"
+                    ></strong>
+                    <p class="text-muted">
+                      Created
+                      <span x-text="formatTimestamp(item.createdAt)"></span>
+                    </p>
+                  </td>
+                  <td x-text="item.tenantId || '—'"></td>
+                  <td>
+                    <span
+                      class="status-badge"
+                      :data-variant="item.status"
+                      x-text="formatStatus(item.status)"
+                    ></span>
+                  </td>
+                  <td>
+                    <span x-text="item.recipient"></span>
+                  </td>
+                  <td x-text="formatTimestamp(item.scheduledFor)"></td>
+                  <td style="min-width: 220px">
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap">
+                      <button
+                        class="button secondary"
+                        type="button"
+                        x-on:click="openScheduleDialog(item)"
+                        :disabled="item.status !== 'queued'"
+                        x-text="actions.reschedule"
+                      ></button>
+                      <button
+                        class="button danger"
+                        type="button"
+                        x-on:click="cancelNotification(item)"
+                        :disabled="item.status !== 'queued'"
+                        x-text="actions.cancel"
+                      ></button>
+                    </div>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <div
+          class="table-scroll-sentinel"
+          x-ref="scrollSentinel"
+          data-testid="notification-scroll-sentinel"
+          aria-hidden="true"
+        ></div>
+        <p
+          class="text-muted table-page-status"
+          x-cloak
+          x-show="isLoadingMore"
+          x-text="strings.loadingMore"
+        ></p>
+        <p
+          class="text-muted table-page-status"
+          x-cloak
+          x-show="hasLoadedNotifications && notifications.length > 0 && !nextCursor && !isLoadingMore"
+          x-text="strings.endOfResults"
+        ></p>
+        <dialog class="dialog" x-ref="scheduleDialog">
+          <form class="dialog__body" x-on:submit.prevent="submitSchedule">
+            <div>
+              <h3 x-text="strings.scheduleDialogTitle"></h3>
+              <p
+                class="text-muted"
+                x-text="strings.scheduleDialogDescription"
+              ></p>
+            </div>
+            <label>
+              <span>Delivery time</span>
+              <input
+                type="datetime-local"
+                x-model="scheduleForm.scheduledTime"
+                required
+              />
+            </label>
+            <div style="display: flex; gap: 0.75rem; justify-content: flex-end">
+              <button
+                class="button secondary"
+                type="button"
+                x-on:click="closeScheduleDialog()"
+                x-text="actions.close"
+              ></button>
+              <button
+                class="button primary"
+                type="submit"
+                x-text="actions.saveChanges"
+              ></button>
+            </div>
+          </form>
+        </dialog>
+      </section>
+    </main>
+    <div
+      class="toast-center"
+      x-data="toastCenter()"
+      x-init="init()"
+      aria-live="polite"
+    >
+      <template x-for="toast in toasts" :key="toast.id">
+        <button
+          type="button"
+          class="toast"
+          :data-variant="toast.variant"
+          x-on:click="dismissToast(toast.id)"
+          x-text="toast.message"
+        ></button>
+      </template>
+    </div>
+    <script type="module" src="/js/bootstrap.js"></script>
+    <mpr-footer
+      id="pinguin-event-log-footer"
+      prefix-text="Pinguin Notification Service"
+      privacy-link-label="Privacy &amp; Terms"
+      privacy-modal-content="
+        <h1>Privacy Policy — Pinguin</h1>
+        <p>Pinguin stores the notification drafts you create, recipient details, and delivery metadata solely to run the scheduling workspace.</p>
+        <p>Authentication happens through Google Sign-In; we issue HttpOnly session cookies and never store your password.</p>
+        <p>We do not sell or share notification content with third parties, and you may remove queued items from the workspace at any time.</p>
+      "
+      links-collection='{"style":"drop-up","text":"Explore","links":[{ "label": "Repository", "url": "https://github.com/tyemirov/pinguin" },{ "label": "mpr-ui docs", "url": "https://github.com/MarcoPoloResearchLab/mpr-ui" }]}'
+      theme-switcher="toggle"
+      theme-config='{"attribute":"data-theme","targets":["body"],"modes":[{"value":"light","attributeValue":"light","classList":["theme-light"]},{"value":"dark","attributeValue":"dark","classList":["theme-dark"]}]}'
+    ></mpr-footer>
+  </body>
+</html>

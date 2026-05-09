@@ -71,7 +71,8 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
         tauthTenantId: tauthPayload.tenantId,
         googleClientId: tauthPayload.googleClientId,
         landingUrl: '/index.html',
-        dashboardUrl: '/dashboard.html',
+        eventLogUrl: '/event-log.html',
+        smtpRelayUrl: '/smtp-relay.html',
         runtimeConfigUrl: '/runtime-config',
         skipRemoteConfig: true,
         tenant: tenantPayload,
@@ -402,9 +403,9 @@ export async function triggerGoogleCredentialAndWaitForDashboard(page: Page) {
     throw new Error('Timed out waiting for Google Identity callback to be registered');
   });
 
-  const waitForDashboard = page.url().includes('/dashboard.html')
+  const waitForEventLog = page.url().includes('/event-log.html')
     ? Promise.resolve()
-    : page.waitForURL('**/dashboard.html', { timeout: 30000 });
+    : page.waitForURL('**/event-log.html', { timeout: 30000 });
 
   const triggered = await page.evaluate(() => {
     const googleStub = (window as any).__playwrightGoogle;
@@ -418,11 +419,11 @@ export async function triggerGoogleCredentialAndWaitForDashboard(page: Page) {
   if (!triggered) {
     throw new Error('Google Identity stub unavailable or failed to trigger');
   }
-  await waitForDashboard;
+  await waitForEventLog;
   await expect(page.getByTestId('notifications-table')).toBeVisible();
 }
 
-export async function loginAndVisitDashboard(page: Page) {
+export async function loginAndVisitEventLog(page: Page) {
   await page.goto('/index.html');
   await completeHeaderLogin(page);
 }

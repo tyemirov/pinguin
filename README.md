@@ -2,7 +2,7 @@
 
 Pinguin is a notification service written in Go. It exposes a gRPC interface for sending **email** and **SMS** notifications. The service uses SQLite (via GORM) for persistent storage and runs a background worker to retry failed notifications using exponential backoff. Structured logging is provided using Go’s built‑in `slog` package.
 
-Pinguin also ships an optional HTTP + browser dashboard for inspecting and managing queued notifications; set `web.enabled: false` in `config.yml` to run gRPC-only.
+Pinguin also ships an optional HTTP + browser workspace for inspecting queued notifications and managing SMTP relay access; set `web.enabled: false` in `config.yml` to run gRPC-only.
 
 ---
 
@@ -24,8 +24,8 @@ Pinguin also ships an optional HTTP + browser dashboard for inspecting and manag
 
 ## Features
 
-- **gRPC API + optional dashboard:**  
-  Notifications are sent via gRPC; the optional HTTP UI provides a dashboard and JSON endpoints for listing/rescheduling/cancelling queued notifications.
+- **gRPC API + optional browser workspace:**
+  Notifications are sent via gRPC; the optional HTTP UI provides separate Event log and SMTP relay pages plus JSON endpoints for listing/rescheduling/cancelling queued notifications.
 
 - **Email and SMS Notifications:**  
   - **Email:** Delivered via SMTP using the credentials you configure for your preferred mail provider.
@@ -144,7 +144,7 @@ Export the referenced environment variables before starting the server only when
 - **HTTP_ALLOWED_ORIGINS:**  
   Comma-separated list of origins allowed to call the JSON API when running cross-origin (leave empty to allow same-origin only). The docker-compose workflow serves the UI via ghttp on `http://localhost:8080`, and production uses `https://pinguin.mprlab.com`, so include the relevant UI origins here.
 - **web.enabled:**
-  Set to `false` in `config.yml` to skip booting the Gin/HTML stack entirely. When disabled, Pinguin runs the gRPC service only and skips Google Identity/TAuth/HTTP configuration checks, which is useful for backends that never expose the dashboard.
+  Set to `false` in `config.yml` to skip booting the Gin/HTML stack entirely. When disabled, Pinguin runs the gRPC service only and skips Google Identity/TAuth/HTTP configuration checks, which is useful for backends that never expose the browser workspace.
 - **MASTER_ENCRYPTION_KEY:**  
   Hex-encoded 32-byte key used to encrypt SMTP/Twilio secrets stored in the tenant config. Generate one with `openssl rand -hex 32` and keep it secret.
 - **TAuth CORS allowlist:**  
@@ -247,8 +247,8 @@ See `configs/config.yml` for a ready-to-use sample. `MASTER_ENCRYPTION_KEY` encr
 - `tenants[].domains` (list of strings, required): hostnames that map HTTP requests to this tenant.
   - The first domain is treated as the tenant’s default domain.
   - Matching is case-insensitive; ports are ignored (e.g. `localhost:8080` matches `localhost`).
-  - The same normalized values authorize non-admin dashboard users by email domain.
-- `tenants[].admins` (list of strings, optional): email addresses that grant dashboard admin access for the deployment.
+  - The same normalized values authorize non-admin browser workspace users by email domain.
+- `tenants[].admins` (list of strings, optional): email addresses that grant browser workspace admin access for the deployment.
   - Matching is case-insensitive.
   - Admin users can list every active tenant and manage global SMTP identities.
 - `tenants[].emailProfile` (required): tenant SMTP settings.
@@ -322,9 +322,9 @@ If you still have a provider SMTP account, set `deliveryMode: upstream` and prov
     password: upstream-password
 ```
 
-Dashboard workflow:
+SMTP relay workflow:
 
-1. Sign in to the Pinguin dashboard.
+1. Sign in to Pinguin.
 2. Open **SMTP relay**.
 3. Create an identity such as `alice@acme.example`.
 4. Use the one-time settings in Gmail → Settings → Accounts → **Send mail as**:
@@ -357,7 +357,7 @@ smtpForwarding:
 
 Because forwarding routes are stored as SMTP identities, forwarding deployments must also configure `smtpSubmission.senderDomains` with every domain that may own shared addresses, even when authenticated SMTP submission is disabled.
 
-Shared addresses are dynamic data, not YAML routes. Create or edit them from the SMTP relay dashboard or the authenticated API:
+Shared addresses are dynamic data, not YAML routes. Create or edit them from the SMTP relay page or the authenticated API:
 
 ```json
 {
@@ -414,7 +414,7 @@ The repository ships with `docker-compose.yaml` to run Pinguin alongside TAuth a
 - SMTP submission: `localhost:1587` → container `:587`, `localhost:1465` → container `:465`
 - TAuth: `http://localhost:8082`
 
-Open `http://localhost:8080` in your browser for the landing/dashboard UI. The HTTP API on `http://localhost:8081` remains available for CLI/grpcurl clients, but browsers should use the UI port.
+Open `http://localhost:8080` in your browser for the landing page, Event log, and SMTP relay UI. The HTTP API on `http://localhost:8081` remains available for CLI/grpcurl clients, but browsers should use the UI port.
 
 The Pinguin Docker image declares `/web` as a separate volume for the UI bundle; the compose workflow mounts the `pinguin-web` volume (bound to `./web`) at `/web` for you.
 
@@ -464,7 +464,7 @@ make deploy
    COMPOSE_PROFILE=docker make up
    ```
 
-   Pinguin writes its SQLite file to the Docker-managed volume, validates browser sessions issued by the colocated TAuth instance, and exposes the HTTP API on port 8081. The static landing/dashboard bundle is served by ghttp on `http://localhost:8080`.
+   Pinguin writes its SQLite file to the Docker-managed volume, validates browser sessions issued by the colocated TAuth instance, and exposes the HTTP API on port 8081. The static landing, Event log, and SMTP relay bundle is served by ghttp on `http://localhost:8080`.
 
 3. Stop the stack when you are finished (use the same profile you started):
 
@@ -497,11 +497,11 @@ docker volume inspect pinguin-data
    To run the prebuilt Pinguin + ghttp containers from GHCR instead, run `COMPOSE_PROFILE=docker make up` (TAuth still builds locally).
 
    - gRPC server → `localhost:50051`
-   - UI (landing + dashboard) → `http://localhost:8080`
+   - UI (landing + Event log + SMTP relay) → `http://localhost:8080`
    - HTTP API → `http://localhost:8081`
    - TAuth → `http://localhost:8082`
 
-4. Visit `http://localhost:8080` in your browser, sign in via Google/TAuth, and interact with the dashboard (the UI automatically talks to the API on port 8081).
+4. Visit `http://localhost:8080` in your browser, sign in via Google/TAuth, and use Event log or SMTP relay (the UI automatically talks to the API on port 8081).
 5. When finished, stop the stack (match the profile you started):
 
    ```bash
@@ -686,11 +686,11 @@ All endpoints emit structured JSON errors (`401` for auth failures, `400` for in
 
 ### Browser UI (beta)
 
-- Static assets live under `/web` and are served by GitHub Pages at `https://pinguin.mprlab.com` in production, with ghttp on `http://localhost:8080` for local development (the Go HTTP server keeps `/api`/`/runtime-config` on `http://localhost:8081` in this arrangement). `index.html` provides the marketing + Google Sign-In landing experience, and `dashboard.html` renders the authenticated event log and SMTP relay surfaces.
+- Static assets live under `/web` and are served by GitHub Pages at `https://pinguin.mprlab.com` in production, with ghttp on `http://localhost:8080` for local development (the Go HTTP server keeps `/api`/`/runtime-config` on `http://localhost:8081` in this arrangement). `index.html` provides the marketing + Google Sign-In landing experience, `event-log.html` renders notification delivery events, and `smtp-relay.html` renders SMTP relay identity management.
 - The UI follows AGENTS.md: Alpine components per section, mpr-ui header/footer, DOM-scoped events (`notifications:*`) for toasts + table refreshes, and all strings centralized in `js/constants.js`.
 - `js/app.js` bootstraps Alpine, registers the UI components, and reacts to `mpr-ui:auth:*` events to sync profile state and guard routes. The header handles auth through `/config-ui.yaml` plus `mpr-ui-config.js`, and components talk to `/api/notifications` via the shared `apiClient`.
 - Authentication state is broadcast across tabs via TAuth’s `BroadcastChannel("auth")`, so signing out in one tab logs out the others automatically.
-- Handy for local testing: start the Compose stack so ghttp (`http://localhost:8080`) serves the `/web` bundle while the Go server handles `/api`/`/runtime-config` on `http://localhost:8081`, then visit the ghttp host to exercise the landing and dashboard flows without needing an external client.
+- Handy for local testing: start the Compose stack so ghttp (`http://localhost:8080`) serves the `/web` bundle while the Go server handles `/api`/`/runtime-config` on `http://localhost:8081`, then visit the ghttp host to exercise the landing, Event log, and SMTP relay flows without needing an external client.
 
 ### Front-End Tests (Playwright)
 
@@ -701,7 +701,7 @@ npm install
 npx playwright install --with-deps
 ```
 
-Then execute the browser smoke tests (landing auth CTA, dashboard cancel/reschedule flows) with:
+Then execute the browser smoke tests (landing auth CTA, Event log cancel/reschedule flows, and SMTP relay flows) with:
 
 ```bash
 npm test

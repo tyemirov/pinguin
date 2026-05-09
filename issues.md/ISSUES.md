@@ -40,6 +40,7 @@ Read @AGENTS.md, @ARCHITECTURE.md, @README.md, @issues.md/POLICY.md, @issues.md/
 - [x] [PG-208] Replace the settings icon with a user avatar and dropdown menu for logout. Kept the mpr-settings profile menu, refined avatar/dropdown styling to align with mpr-ui semantics, and added integration coverage for avatar + logout; all tests pass.
 - [x] [PG-335] Replace the bizarre landing page with a focused sign-in screen. Resolved with a concise Pinguin workspace landing layout, a single header-owned Google login button that redirects to the dashboard through the shared auth flow, a compact notification queue preview, mobile/desktop screenshot checks, and updated Playwright coverage.
 - [x] [PG-336] Add local orchestration Makefile wrappers. Resolved with `make up` and `make down` targets for the Docker Compose `dev` profile, plus `COMPOSE_PROFILE` override support and README quickstart updates.
+- [x] [PG-359] Split the combined dashboard into two authenticated pages: Event log and SMTP relay. Resolved with dedicated `event-log.html` and `smtp-relay.html` pages, named runtime-config destinations, updated Pages/deploy checks, removal of the visible dashboard heading/copy, and passing `make test`, `make lint`, and `make ci`.
 
 ## BugFixes (308–399)
 

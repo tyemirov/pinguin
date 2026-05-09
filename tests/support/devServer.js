@@ -25,6 +25,8 @@ const runtimeConfig = {
   tauthTenantId: 'tauth-devserver',
   googleClientId: 'playwright-client',
   apiBaseUrl: `http://${HOST}:${PORT}/api`,
+  eventLogUrl: '/event-log.html',
+  smtpRelayUrl: '/smtp-relay.html',
   tenant: {
     id: 'tenant-devserver',
     displayName: 'Dev Server Tenant',
