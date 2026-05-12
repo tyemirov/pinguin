@@ -59,6 +59,39 @@
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 - Document the remaining edge mappings after gateway deployment: `25 -> tutosh:8025` and `465 -> tutosh:8465`.
 
+## [v0.4.8] - 2026-05-12
+
+### Features ✨
+- Added legacy `dashboard.html` redirect to new `event-log.html`.
+- Introduced runtime configuration and theme management for the Pinguin UI.
+- Split the authenticated browser workspace into dedicated `event-log.html` and `smtp-relay.html` pages.
+
+### Improvements ⚙️
+- Replaced the old landing page with a focused Pinguin sign-in screen and notification queue preview.
+- Added a horizontal dashboard menu with `mpr-ui` header links for Event log and SMTP relay.
+- Aligned SMTP host-port publishing with the edge gateway high-port setup (MX 8025, SMTPS 8465).
+- Added `make up` and `make down` commands for Docker Compose orchestration.
+- Updated configuration and documentation for the split Event log and SMTP relay pages and shared-shell auth.
+
+### Bug Fixes 🐛
+- Fixed doctor module logic and updated related tests.
+
+### Testing 🧪
+- Added black-box SMTP forwarding coverage including accept/forward, unknown-recipient rejection, and relay failure cases.
+- Added backend and browser test coverage for notification search, cursor pagination, infinite scroll, and GORM query contracts.
+- Added browser tests for dashboard horizontal menu navigation between Event log and SMTP relay.
+- Added backend and browser tests for separate Event log and SMTP relay page contracts.
+- Enhanced backend tests for tenant admin authorization and email-domain scope restrictions.
+- Added coverage for deployment contract regarding gateway SMTP host-port configuration.
+- Restored Go statement coverage to 100% and introduced `make ci` coverage gate.
+
+### Docs 📚
+- Documented shared-address forwarding DNS setup and verification using `mx.pinguin.mprlab.com`.
+- Updated README and architecture docs to describe `config-ui.yaml` as the browser auth source of truth without embedded provider metadata.
+- Updated docs to describe split Event log and SMTP relay page destinations.
+- Clarified dashboard tenant authorization roles and domain scoping.
+- Documented gateway edge mappings for SMTP ports (`25 -> tutosh:8025`, `465 -> tutosh:8465`).
+
 ## [v0.4.7] - 2026-05-08
 
 ### Features ✨
