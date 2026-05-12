@@ -97,6 +97,27 @@ func TestPublishScriptBuildsDockerOnly(t *testing.T) {
 	}
 }
 
+func TestProductionDockerfilePublishesDoctorPreflightCommand(t *testing.T) {
+	t.Helper()
+
+	dockerfile := string(readRepoFile(t, "Dockerfile"))
+	requiredSnippets := []string{
+		"go build -o /workspace/bin/pinguin ./cmd/server",
+		"go build -o /workspace/bin/pinguin-doctor ./cmd/doctor",
+		"COPY --from=builder /workspace/bin/pinguin /usr/local/bin/pinguin",
+		"COPY --from=builder /workspace/bin/pinguin-doctor /usr/local/bin/pinguin-doctor",
+		`CMD ["/usr/local/bin/pinguin"]`,
+	}
+	for _, requiredSnippet := range requiredSnippets {
+		if !strings.Contains(dockerfile, requiredSnippet) {
+			t.Fatalf("Dockerfile missing production preflight contract snippet %q", requiredSnippet)
+		}
+	}
+	if strings.Contains(dockerfile, `ENTRYPOINT ["/usr/local/bin/pinguin"]`) {
+		t.Fatalf("Dockerfile must allow compose run commands to invoke pinguin-doctor")
+	}
+}
+
 func TestDeployScriptDeploysBackendThenLegacyPages(t *testing.T) {
 	t.Helper()
 

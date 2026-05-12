@@ -23,6 +23,7 @@
 - Align the local Docker browser origin with the configured Google OAuth client by moving the UI to `http://localhost:8080`, the API to `http://localhost:8081`, and TAuth to `http://localhost:8082`.
 - Remove the duplicate landing-page auth controller so local login initializes Google Identity once.
 - Remove Pinguin's duplicate account chip so the authenticated header uses the single shared `mpr-ui` user menu.
+- Publish `pinguin-doctor` in the production image and make the server the default command so gateway Compose preflight can run the doctor binary.
 
 ### Improvements
 - Replace the old landing page with a focused Pinguin sign-in screen and notification queue preview.
