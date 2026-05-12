@@ -145,9 +145,6 @@ func TestHTTPMultitenantIsolation(t *testing.T) {
 		SessionValidator:    &mockSessionValidator{},
 		NotificationService: svc,
 		TenantRepository:    repo,
-		TAuthBaseURL:        "https://tauth.example.com",
-		TAuthTenantID:       "tauth-test",
-		TAuthGoogleClientID: "client-id",
 		Logger:              logger,
 	})
 	if err != nil {

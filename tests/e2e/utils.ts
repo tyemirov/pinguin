@@ -8,11 +8,6 @@ type TenantConfig = {
 type ConfigureRuntimeOptions = {
   authenticated: boolean;
   tenant?: TenantConfig;
-  tauth?: {
-    baseUrl?: string;
-    googleClientId?: string;
-    tenantId?: string;
-  };
 };
 
 const PLAYWRIGHT_AVATAR_URL =
@@ -34,13 +29,6 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
   const tenant: TenantConfig = options.tenant || {
     id: 'tenant-playwright',
     displayName: 'Playwright Tenant',
-  };
-  const tauthConfig = {
-    baseUrl,
-    googleClientId:
-      '991677581607-r0dj8q6irjagipali0jpca7nfp8sfj9r.apps.googleusercontent.com',
-    tenantId: 'tauth-playwright',
-    ...(options.tauth || {}),
   };
   await page.addInitScript(
     ({ authenticated, avatarUrl }) => {
@@ -64,14 +52,12 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
     { authenticated: options.authenticated, avatarUrl: PLAYWRIGHT_AVATAR_URL },
   );
   await page.addInitScript(
-    ({ authenticated, tenantPayload, tauthPayload, avatarUrl }) => {
+    ({ authenticated, tenantPayload, avatarUrl }) => {
       window.__PINGUIN_CONFIG__ = {
         apiBaseUrl: '/api',
-        tauthBaseUrl: tauthPayload.baseUrl,
-        tauthTenantId: tauthPayload.tenantId,
-        googleClientId: tauthPayload.googleClientId,
         landingUrl: '/index.html',
-        dashboardUrl: '/dashboard.html',
+        eventLogUrl: '/event-log.html',
+        smtpRelayUrl: '/smtp-relay.html',
         runtimeConfigUrl: '/runtime-config',
         skipRemoteConfig: true,
         tenant: tenantPayload,
@@ -112,7 +98,6 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
     {
       authenticated: options.authenticated,
       tenantPayload: tenant,
-      tauthPayload: tauthConfig,
       avatarUrl: PLAYWRIGHT_AVATAR_URL,
     },
   );
@@ -127,7 +112,7 @@ export async function stubExternalAssets(page: Page) {
   });
   await page.route('https://accounts.google.com/gsi/client', (route) => {
     const googleStub = `
-      window.__playwrightGoogle = {
+      window.__playwrightSharedAuth = {
         callback: null,
         trigger(payload) {
           if (!this.callback) {
@@ -152,7 +137,7 @@ export async function stubExternalAssets(page: Page) {
         accounts: {
           id: {
             initialize(config) {
-              window.__playwrightGoogle.callback = config && config.callback;
+              window.__playwrightSharedAuth.callback = config && config.callback;
             },
             renderButton(el, options) {
               var label = (options && options.text) || "Sign in";
@@ -287,20 +272,15 @@ async function getHeaderButtonMetrics(page: Page) {
   });
 }
 
-export async function expectHeaderGoogleButton(page: Page) {
+export async function expectSharedHeaderSignInButton(page: Page) {
   const header = page.locator('mpr-header').first();
   await expect(header).toBeVisible();
   await waitForHeaderLoginButton(page);
-  const siteId =
-    (await header.getAttribute('google-site-id')) ||
-    (await header.getAttribute('site-id')) ||
-    '';
-  expect(siteId.trim(), 'login button missing google-site-id').not.toBe('');
   const tenantId = (await header.getAttribute('tauth-tenant-id')) || '';
   expect(tenantId.trim(), 'login button missing tauth-tenant-id').not.toBe('');
   const metrics = await getHeaderButtonMetrics(page);
   if (!metrics) {
-    throw new Error('Unable to locate Google button inside mpr-header');
+    throw new Error('Unable to locate shared sign-in button inside mpr-header');
   }
   expect(metrics.buttonRect.width).toBeGreaterThan(0);
   expect(metrics.buttonRect.height).toBeGreaterThan(0);
@@ -352,7 +332,7 @@ export async function openSharedHeaderUserMenu(page: Page) {
   return userMenu;
 }
 
-export async function expectHeaderGoogleButtonTopRight(page: Page) {
+export async function expectSharedHeaderSignInButtonTopRight(page: Page) {
   await waitForHeaderLoginButton(page);
   const metrics = await getHeaderButtonMetrics(page);
   if (!metrics) {
@@ -365,7 +345,7 @@ export async function expectHeaderGoogleButtonTopRight(page: Page) {
   expect(buttonRect.y).toBeLessThanOrEqual(headerRect.y + headerRect.height * 0.6);
 }
 
-export async function clickHeaderGoogleButton(page: Page) {
+export async function clickSharedHeaderSignInButton(page: Page) {
   await waitForHeaderLoginButton(page);
   await page.evaluate(() => {
     const header = document.querySelector('mpr-header');
@@ -387,42 +367,40 @@ export async function clickHeaderGoogleButton(page: Page) {
 }
 
 export async function completeHeaderLogin(page: Page) {
-  await expectHeaderGoogleButton(page);
-  await clickHeaderGoogleButton(page);
-  await triggerGoogleCredentialAndWaitForDashboard(page);
+  await expectSharedHeaderSignInButton(page);
+  await clickSharedHeaderSignInButton(page);
+  await triggerSharedAuthCredentialAndWaitForEventLog(page);
 }
 
-export async function triggerGoogleCredentialAndWaitForDashboard(page: Page) {
-  
-  // Wait for the Google Identity stub to be initialized with a callback
+export async function triggerSharedAuthCredentialAndWaitForEventLog(page: Page) {
   await page.waitForFunction(() => {
-    const stub = (window as any).__playwrightGoogle;
+    const stub = (window as any).__playwrightSharedAuth;
     return stub && typeof stub.callback === 'function';
   }, undefined, { timeout: 30000 }).catch(() => {
-    throw new Error('Timed out waiting for Google Identity callback to be registered');
+    throw new Error('Timed out waiting for shared auth callback to be registered');
   });
 
-  const waitForDashboard = page.url().includes('/dashboard.html')
+  const waitForEventLog = page.url().includes('/event-log.html')
     ? Promise.resolve()
-    : page.waitForURL('**/dashboard.html', { timeout: 30000 });
+    : page.waitForURL('**/event-log.html', { timeout: 30000 });
 
   const triggered = await page.evaluate(() => {
-    const googleStub = (window as any).__playwrightGoogle;
-    if (googleStub && googleStub.trigger) {
-      googleStub.trigger({ credential: 'playwright-token' });
+    const authStub = (window as any).__playwrightSharedAuth;
+    if (authStub && authStub.trigger) {
+      authStub.trigger({ credential: 'playwright-token' });
       return true;
     }
     return false;
   });
 
   if (!triggered) {
-    throw new Error('Google Identity stub unavailable or failed to trigger');
+    throw new Error('Shared auth stub unavailable or failed to trigger');
   }
-  await waitForDashboard;
+  await waitForEventLog;
   await expect(page.getByTestId('notifications-table')).toBeVisible();
 }
 
-export async function loginAndVisitDashboard(page: Page) {
+export async function loginAndVisitEventLog(page: Page) {
   await page.goto('/index.html');
   await completeHeaderLogin(page);
 }

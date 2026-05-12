@@ -92,11 +92,8 @@ type pinguinWeb struct {
 }
 
 type pinguinTAuth struct {
-	SigningKey     string `yaml:"signingKey"`
-	CookieName     string `yaml:"cookieName"`
-	GoogleClientID string `yaml:"googleClientId"`
-	TAuthBaseURL   string `yaml:"tauthBaseUrl"`
-	TAuthTenantID  string `yaml:"tauthTenantId"`
+	SigningKey string `yaml:"signingKey"`
+	CookieName string `yaml:"cookieName"`
 }
 
 type pinguinSMTPSubmission struct {
@@ -133,16 +130,10 @@ type pinguinSMTPForwarding struct {
 }
 
 type pinguinTenant struct {
-	ID          string          `yaml:"id"`
-	DisplayName string          `yaml:"displayName"`
-	Domains     []string        `yaml:"domains"`
-	Identity    pinguinIdentity `yaml:"identity"`
-	Admins      []string        `yaml:"admins"`
-}
-
-type pinguinIdentity struct {
-	GoogleClientID string `yaml:"googleClientId"`
-	TAuthBaseURL   string `yaml:"tauthBaseUrl"`
+	ID          string   `yaml:"id"`
+	DisplayName string   `yaml:"displayName"`
+	Domains     []string `yaml:"domains"`
+	Admins      []string `yaml:"admins"`
 }
 
 type pinguinYAMLNode struct {
@@ -327,18 +318,6 @@ func validateServerTAuthConfig(tauth pinguinTAuth, result *DiagnosticResult) {
 		result.Valid = false
 		result.Errors = append(result.Errors, "server.tauth.signingKey is required when web is enabled")
 	}
-	if strings.TrimSpace(tauth.TAuthBaseURL) == "" {
-		result.Valid = false
-		result.Errors = append(result.Errors, "server.tauth.tauthBaseUrl is required when web is enabled")
-	}
-	if strings.TrimSpace(tauth.TAuthTenantID) == "" {
-		result.Valid = false
-		result.Errors = append(result.Errors, "server.tauth.tauthTenantId is required when web is enabled")
-	}
-	if strings.TrimSpace(tauth.GoogleClientID) == "" {
-		result.Valid = false
-		result.Errors = append(result.Errors, "server.tauth.googleClientId is required when web is enabled")
-	}
 }
 
 func validateWebConfig(web pinguinWeb, result *DiagnosticResult) {
@@ -506,14 +485,6 @@ func validateTenantConfig(tenant pinguinTenant, webEnabled bool, result *Diagnos
 	}
 
 	if webEnabled {
-		if strings.TrimSpace(tenant.Identity.GoogleClientID) == "" {
-			result.Valid = false
-			result.Errors = append(result.Errors, fmt.Sprintf("tenant[%s]: identity.googleClientId is required when web is enabled", tenantLabel))
-		}
-		if strings.TrimSpace(tenant.Identity.TAuthBaseURL) == "" {
-			result.Valid = false
-			result.Errors = append(result.Errors, fmt.Sprintf("tenant[%s]: identity.tauthBaseUrl is required when web is enabled", tenantLabel))
-		}
 		validAdmins := 0
 		for _, admin := range tenant.Admins {
 			if strings.TrimSpace(admin) != "" {
@@ -538,7 +509,6 @@ func validateCrossConfigs(configsByPath map[string]*pinguinConfig) crossValidati
 	}
 
 	domainsByTenant := make(map[string]tenantLocation)
-	googleClientIDByTenant := make(map[string][]tenantLocation)
 
 	for configPath, config := range configsByPath {
 		for _, tenant := range config.Tenants.AllTenants() {
@@ -563,22 +533,6 @@ func validateCrossConfigs(configsByPath map[string]*pinguinConfig) crossValidati
 					domainsByTenant[normalizedDomain] = location
 				}
 			}
-
-			googleClientID := strings.TrimSpace(tenant.Identity.GoogleClientID)
-			if googleClientID != "" {
-				googleClientIDByTenant[googleClientID] = append(googleClientIDByTenant[googleClientID], location)
-			}
-		}
-	}
-
-	for clientID, locations := range googleClientIDByTenant {
-		if len(locations) > 1 {
-			configPaths := make([]string, 0, len(locations))
-			for _, loc := range locations {
-				configPaths = append(configPaths, fmt.Sprintf("tenant[%s] in %s", loc.TenantID, loc.ConfigPath))
-			}
-			validation.Warnings = append(validation.Warnings,
-				fmt.Sprintf("googleClientId %q shared by: %s", clientID, strings.Join(configPaths, ", ")))
 		}
 	}
 

@@ -1233,9 +1233,6 @@ func TestRuntimeConfigEndpointReturnsValues(t *testing.T) {
 		NotificationService: &stubNotificationService{},
 		SessionValidator:    &stubValidator{},
 		TenantRepository:    tenantRepo,
-		TAuthBaseURL:        "https://tauth.example.com",
-		TAuthTenantID:       "tauth-test",
-		TAuthGoogleClientID: "client-id",
 		Logger:              logger,
 	})
 	if err != nil {
@@ -1250,11 +1247,10 @@ func TestRuntimeConfigEndpointReturnsValues(t *testing.T) {
 		t.Fatalf("expected 200, got %d", recorder.Code)
 	}
 	var payload struct {
-		APIBaseURL     string `json:"apiBaseUrl"`
-		TAuthBaseURL   string `json:"tauthBaseUrl"`
-		TAuthTenantID  string `json:"tauthTenantId"`
-		GoogleClientID string `json:"googleClientId"`
-		Tenant         struct {
+		APIBaseURL   string `json:"apiBaseUrl"`
+		EventLogURL  string `json:"eventLogUrl"`
+		SMTPRelayURL string `json:"smtpRelayUrl"`
+		Tenant       struct {
 			ID          string `json:"id"`
 			DisplayName string `json:"displayName"`
 		} `json:"tenant"`
@@ -1268,8 +1264,8 @@ func TestRuntimeConfigEndpointReturnsValues(t *testing.T) {
 	if payload.Tenant.ID != "tenant-test" {
 		t.Fatalf("unexpected tenant payload %+v", payload.Tenant)
 	}
-	if payload.TAuthBaseURL != "https://tauth.example.com" || payload.TAuthTenantID != "tauth-test" || payload.GoogleClientID != "client-id" {
-		t.Fatalf("unexpected tauth payload %+v", payload)
+	if payload.EventLogURL != "/event-log.html" || payload.SMTPRelayURL != "/smtp-relay.html" {
+		t.Fatalf("unexpected page links %+v", payload)
 	}
 }
 
@@ -1283,9 +1279,6 @@ func TestRuntimeConfigResolvesPerHost(t *testing.T) {
 		NotificationService: &stubNotificationService{},
 		SessionValidator:    &stubValidator{},
 		TenantRepository:    repo,
-		TAuthBaseURL:        "https://tauth.example.com",
-		TAuthTenantID:       "tauth-test",
-		TAuthGoogleClientID: "client-id",
 		Logger:              logger,
 	})
 	if err != nil {
@@ -1327,9 +1320,6 @@ func TestRuntimeConfigRejectsUnknownHost(t *testing.T) {
 		NotificationService: &stubNotificationService{},
 		SessionValidator:    &stubValidator{},
 		TenantRepository:    repo,
-		TAuthBaseURL:        "https://tauth.example.com",
-		TAuthTenantID:       "tauth-test",
-		TAuthGoogleClientID: "client-id",
 		Logger:              logger,
 	})
 	if err != nil {
@@ -1348,11 +1338,7 @@ func TestRuntimeConfigRejectsUnknownHost(t *testing.T) {
 func TestRuntimeConfigMissingRuntimeReturnsInternalServerError(t *testing.T) {
 	t.Helper()
 	engine := gin.New()
-	engine.GET("/runtime-config", serveRuntimeConfig(runtimeConfigTAuth{
-		BaseURL:        "https://tauth.example.com",
-		TenantID:       "tauth-test",
-		GoogleClientID: "client-id",
-	}))
+	engine.GET("/runtime-config", serveRuntimeConfig())
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/runtime-config", nil)
@@ -1370,9 +1356,6 @@ func TestNewServerValidation(t *testing.T) {
 			NotificationService: &stubNotificationService{},
 			SessionValidator:    &stubValidator{},
 			TenantRepository:    newTestTenantRepository(t),
-			TAuthBaseURL:        "https://tauth.example.com",
-			TAuthTenantID:       "tauth-test",
-			TAuthGoogleClientID: "client-id",
 			Logger:              slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 		}
 	}
@@ -1384,9 +1367,6 @@ func TestNewServerValidation(t *testing.T) {
 		{name: "validator", mutate: func(cfg *Config) { cfg.SessionValidator = nil }},
 		{name: "notification service", mutate: func(cfg *Config) { cfg.NotificationService = nil }},
 		{name: "tenant repository", mutate: func(cfg *Config) { cfg.TenantRepository = nil }},
-		{name: "tauth base url", mutate: func(cfg *Config) { cfg.TAuthBaseURL = "" }},
-		{name: "tauth tenant id", mutate: func(cfg *Config) { cfg.TAuthTenantID = "" }},
-		{name: "google client id", mutate: func(cfg *Config) { cfg.TAuthGoogleClientID = "" }},
 		{name: "logger", mutate: func(cfg *Config) { cfg.Logger = nil }},
 	}
 	for _, testCase := range testCases {
@@ -1468,9 +1448,6 @@ func newTestHTTPServerWithRepo(t *testing.T, svc service.NotificationService, va
 		NotificationService: svc,
 		SessionValidator:    validator,
 		TenantRepository:    repo,
-		TAuthBaseURL:        "https://tauth.example.com",
-		TAuthTenantID:       "tauth-test",
-		TAuthGoogleClientID: "client-id",
 		Logger:              logger,
 	})
 	if err != nil {
@@ -1549,9 +1526,6 @@ func newTestHTTPServerWithSMTPIdentitiesAndValidator(t *testing.T, validator Ses
 		SMTPIdentityService: identityService,
 		SessionValidator:    validator,
 		TenantRepository:    tenantRepo,
-		TAuthBaseURL:        "https://tauth.example.com",
-		TAuthTenantID:       "tauth-test",
-		TAuthGoogleClientID: "client-id",
 		Logger:              logger,
 	})
 	if err != nil {
@@ -1601,9 +1575,6 @@ func newTestHTTPServerWithBrokenSMTPIdentitiesAndValidator(t *testing.T, validat
 		SMTPIdentityService: identityService,
 		SessionValidator:    validator,
 		TenantRepository:    newTestTenantRepository(t),
-		TAuthBaseURL:        "https://tauth.example.com",
-		TAuthTenantID:       "tauth-test",
-		TAuthGoogleClientID: "client-id",
 		Logger:              logger,
 	})
 	if err != nil {

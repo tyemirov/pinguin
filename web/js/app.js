@@ -8,7 +8,8 @@ import { dispatchRefresh } from './core/events.js';
 import { createToastCenter } from './ui/toastCenter.js';
 
 const AUTH_STATUS_TIMEOUT_MS = 12000;
-const PINGUIN_AUTH_STATE_EVENT = 'pinguin:auth-state';
+const AUTH_UNAUTHENTICATED_SETTLE_MS = 350;
+const PROTECTED_PAGE_IDS = new Set(['event-log', 'smtp-relay']);
 
 window.Alpine = Alpine;
 
@@ -22,7 +23,7 @@ Alpine.data('appShell', () => createAppShell(sessionBridge));
 Alpine.data('notificationsTable', () =>
   createNotificationsTable({
     apiClient,
-    strings: STRINGS.dashboard,
+    strings: STRINGS.eventLog,
     actions: STRINGS.actions,
   }),
 );
@@ -98,7 +99,7 @@ function createLandingAuthPanel(controller) {
 
 function createAppShell(bridge) {
   return {
-    strings: STRINGS.dashboard,
+    strings: STRINGS.eventLog,
     actions: STRINGS.actions,
     stopAuthWatcher: null,
     stopStatusWatcher: null,
@@ -115,7 +116,7 @@ function createAppShell(bridge) {
         () => authStore.isAuthenticated,
         (isAuthenticated) => {
           const shouldRedirect =
-            !isAuthenticated && (this.previousAuthState || this.hasHydrated) && pageId === 'dashboard';
+            !isAuthenticated && (this.previousAuthState || this.hasHydrated) && isProtectedPage(pageId);
           this.previousAuthState = isAuthenticated;
           if (shouldRedirect) {
             this.redirectToLanding();
@@ -125,7 +126,7 @@ function createAppShell(bridge) {
       this.stopStatusWatcher = bridge.onStatusChange((status) => {
         if (status === 'ready' || status === 'error') {
           this.hasHydrated = true;
-          if (!authStore.isAuthenticated && pageId === 'dashboard') {
+          if (!authStore.isAuthenticated && isProtectedPage(pageId)) {
             this.redirectToLanding();
           }
         }
@@ -162,14 +163,14 @@ function bootstrapPage(controller) {
     store.setProfile(profile);
     if (pageId === 'landing' && !redirected) {
       redirected = true;
-      window.location.assign(RUNTIME_CONFIG.dashboardUrl);
+      window.location.assign(RUNTIME_CONFIG.eventLogUrl);
     }
   };
 
   const handleUnauthenticated = () => {
     const store = Alpine.store('auth');
     store.clear();
-    if (pageId === 'dashboard' && !redirected) {
+    if (isProtectedPage(pageId) && !redirected) {
       redirected = true;
       window.location.assign(RUNTIME_CONFIG.landingUrl);
     }
@@ -196,6 +197,10 @@ function bootstrapPage(controller) {
   };
 
   waitForMprUiOrchestration().then(startSession).catch(handleAuthError);
+}
+
+function isProtectedPage(pageId) {
+  return PROTECTED_PAGE_IDS.has(pageId);
 }
 
 function waitForMprUiOrchestration() {
@@ -240,6 +245,7 @@ function createSessionBridge() {
   let lastCallbacks = { onAuthenticated: undefined, onUnauthenticated: undefined };
   const statusListeners = new Set();
   let statusTimer = null;
+  let unauthenticatedSettleTimer = null;
   let hasResolved = false;
 
   const applyProfile = (profile) => {
@@ -270,6 +276,13 @@ function createSessionBridge() {
     }
   };
 
+  const clearUnauthenticatedSettleTimer = () => {
+    if (unauthenticatedSettleTimer) {
+      clearTimeout(unauthenticatedSettleTimer);
+      unauthenticatedSettleTimer = null;
+    }
+  };
+
   const startStatusTimer = () => {
     clearStatusTimer();
     statusTimer = setTimeout(() => {
@@ -279,77 +292,35 @@ function createSessionBridge() {
     }, AUTH_STATUS_TIMEOUT_MS);
   };
 
-  const applyProfileResult = (profileResult, handleProfile, handleMissingProfile) => {
-    if (profileResult && typeof profileResult.then === 'function') {
-      profileResult
-        .then((profile) => {
-          if (profile) {
-            handleProfile(profile);
-            return;
-          }
-          if (typeof handleMissingProfile === 'function') {
-            handleMissingProfile();
-          }
-        })
-        .catch(() => {
-          if (!hasResolved) {
-            setStatus('error');
-            clearStatusTimer();
-          }
-        });
-      return;
-    }
-    if (profileResult) {
-      handleProfile(profileResult);
-      return;
-    }
-    if (typeof handleMissingProfile === 'function') {
-      handleMissingProfile();
-    }
-  };
-
-  const sessionChannel =
-    typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('auth') : null;
-  if (sessionChannel) {
-    sessionChannel.addEventListener('message', (event) => {
-      if (event.data === 'logged_out') {
-        applyProfile(null);
-        invokeCallback('onUnauthenticated');
-      }
-      if (event.data === 'refreshed') {
-        if (typeof window.getCurrentUser === 'function') {
-          const refreshedProfile = window.getCurrentUser();
-          applyProfileResult(
-            refreshedProfile,
-            (profile) => {
-              applyProfile(profile);
-              invokeCallback('onAuthenticated', profile);
-            },
-            () => {
-              applyProfile(null);
-              invokeCallback('onUnauthenticated');
-            },
-          );
-        }
-      }
-    });
-  }
-
   const handleHeaderAuthenticated = (event) => {
     const profile = event?.detail?.profile || null;
     hasResolved = true;
+    clearUnauthenticatedSettleTimer();
     clearStatusTimer();
     applyProfile(profile);
     setStatus('ready');
     invokeCallback('onAuthenticated', profile);
   };
 
-  const handleHeaderUnauthenticated = () => {
+  const resolveUnauthenticated = () => {
     hasResolved = true;
+    clearUnauthenticatedSettleTimer();
     clearStatusTimer();
     applyProfile(null);
     setStatus('ready');
     invokeCallback('onUnauthenticated');
+  };
+
+  const handleHeaderUnauthenticated = () => {
+    clearUnauthenticatedSettleTimer();
+    unauthenticatedSettleTimer = setTimeout(() => {
+      const snapshot = readSharedShellSnapshot();
+      if (statusFromSnapshot(snapshot) === 'authenticated') {
+        handleHeaderAuthenticated({ detail: { profile: profileFromSnapshot(snapshot) } });
+        return;
+      }
+      resolveUnauthenticated();
+    }, AUTH_UNAUTHENTICATED_SETTLE_MS);
   };
 
   const handleHeaderStatusChange = (event) => {
@@ -363,22 +334,10 @@ function createSessionBridge() {
     }
   };
 
-  const handlePinguinAuthState = (event) => {
-    const status = event?.detail?.status || '';
-    if (status === 'authenticated') {
-      handleHeaderAuthenticated({ detail: { profile: event?.detail?.profile || null } });
-      return;
-    }
-    if (status === 'unauthenticated') {
-      handleHeaderUnauthenticated();
-    }
-  };
-
   if (typeof document !== 'undefined') {
     document.addEventListener('mpr-ui:auth:authenticated', handleHeaderAuthenticated);
     document.addEventListener('mpr-ui:auth:unauthenticated', handleHeaderUnauthenticated);
     document.addEventListener('mpr-ui:auth:status-change', handleHeaderStatusChange);
-    document.addEventListener(PINGUIN_AUTH_STATE_EVENT, handlePinguinAuthState);
     document.addEventListener('mpr-ui:auth:error', () => {
       if (!hasResolved) {
         setStatus('error');
@@ -386,6 +345,128 @@ function createSessionBridge() {
       }
     });
   }
+
+  const getAuthSnapshotTarget = () => {
+    const header = document.querySelector('mpr-header');
+    if (header && header.id) {
+      return `#${header.id}`;
+    }
+    return 'mpr-header';
+  };
+
+  const looksLikeProfile = (value) => {
+    if (!value || typeof value !== 'object') {
+      return false;
+    }
+    return Boolean(
+      value.user_email ||
+        value.email ||
+        value.user_display_name ||
+        value.display ||
+        value.user_id ||
+        value.avatar_url,
+    );
+  };
+
+  const profileFromSnapshot = (snapshot) => {
+    if (!snapshot || typeof snapshot !== 'object') {
+      return null;
+    }
+    if (looksLikeProfile(snapshot.profile)) {
+      return snapshot.profile;
+    }
+    if (looksLikeProfile(snapshot)) {
+      return snapshot;
+    }
+    return null;
+  };
+
+  const statusFromSnapshot = (snapshot) => {
+    if (!snapshot || typeof snapshot !== 'object') {
+      return 'unknown';
+    }
+    if (snapshot.status === 'authenticated' || snapshot.authenticated === true) {
+      return profileFromSnapshot(snapshot) ? 'authenticated' : 'unknown';
+    }
+    if (snapshot.status === 'unauthenticated' || snapshot.authenticated === false) {
+      return 'unauthenticated';
+    }
+    return profileFromSnapshot(snapshot) ? 'authenticated' : 'unknown';
+  };
+
+  const handleAuthSnapshot = (snapshot) => {
+    const status = statusFromSnapshot(snapshot);
+    if (status === 'authenticated') {
+      handleHeaderAuthenticated({ detail: { profile: profileFromSnapshot(snapshot) } });
+      return true;
+    }
+    if (status === 'unauthenticated') {
+      handleHeaderUnauthenticated();
+      return true;
+    }
+    return false;
+  };
+
+  const readAuthSnapshot = () => {
+    const namespace = window.MPRUI;
+    if (namespace && typeof namespace.resolveAuthProfileSnapshot === 'function') {
+      return namespace.resolveAuthProfileSnapshot(getAuthSnapshotTarget());
+    }
+    return readSharedShellSnapshot();
+  };
+
+  const readSharedShellSnapshot = () => {
+    const header = document.querySelector('mpr-header');
+    if (!header) {
+      return null;
+    }
+    const userMenu = header.querySelector('[data-mpr-header="user-menu"]');
+    const status = (
+      userMenu?.getAttribute('data-mpr-user-status') ||
+      header.getAttribute('data-mpr-auth-status') ||
+      ''
+    ).trim();
+    if (status === 'unauthenticated') {
+      return { status };
+    }
+    if (status !== 'authenticated') {
+      return null;
+    }
+    return {
+      status,
+      profile: {
+        user_email: header.getAttribute('data-user-email') || userMenu?.getAttribute('data-user-email') || '',
+        user_display_name:
+          header.getAttribute('data-user-display') || userMenu?.getAttribute('data-user-display') || '',
+        user_avatar_url:
+          header.getAttribute('data-user-avatar-url') ||
+          userMenu?.getAttribute('data-user-avatar-url') ||
+          '',
+      },
+    };
+  };
+
+  const applyAuthSnapshotResult = (snapshotResult) => {
+    if (!snapshotResult) {
+      return;
+    }
+    if (typeof snapshotResult.then === 'function') {
+      snapshotResult
+        .then((snapshot) => {
+          if (!hasResolved) {
+            handleAuthSnapshot(snapshot);
+          }
+        })
+        .catch(() => {
+          if (!hasResolved) {
+            setStatus('error');
+            clearStatusTimer();
+          }
+        });
+      return;
+    }
+    handleAuthSnapshot(snapshotResult);
+  };
 
   function start(callbacks = {}) {
     lastCallbacks = callbacks;
@@ -399,40 +480,14 @@ function createSessionBridge() {
       setStatus('ready');
       return;
     }
-    const cachedState =
-      typeof window !== 'undefined' ? window.__PINGUIN_AUTH_STATE__ : null;
-    if (cachedState && typeof cachedState === 'object') {
-      if (cachedState.status === 'authenticated') {
-        handleHeaderAuthenticated({ detail: { profile: cachedState.profile } });
-        return;
-      }
-      if (cachedState.status === 'unauthenticated') {
-        handleHeaderUnauthenticated();
-        return;
-      }
-    }
     setStatus('hydrating');
     startStatusTimer();
-    if (typeof window.getCurrentUser === 'function') {
-      const seededProfile = window.getCurrentUser();
-      applyProfileResult(
-        seededProfile,
-        (profile) => {
-          if (!hasResolved) {
-            handleHeaderAuthenticated({ detail: { profile } });
-          }
-        },
-        () => {
-          if (!hasResolved) {
-            handleHeaderUnauthenticated();
-          }
-        },
-      );
-    }
+    applyAuthSnapshotResult(readAuthSnapshot());
   }
 
   function fail() {
     hasResolved = true;
+    clearUnauthenticatedSettleTimer();
     clearStatusTimer();
     applyProfile(null);
     setStatus('error');

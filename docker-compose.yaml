@@ -2,8 +2,9 @@ x-pinguin-service: &pinguin-service
   restart: unless-stopped
   ports:
     - "8081:8081"
+    - "8025:25"
     - "1587:587"
-    - "1465:465"
+    - "8465:465"
   env_file:
     - ./configs/.env.pinguin
   pull_policy: always

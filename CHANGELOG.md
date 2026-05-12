@@ -27,14 +27,17 @@
 ### Improvements
 - Replace the old landing page with a focused Pinguin sign-in screen and notification queue preview.
 - Add a dashboard horizontal menu using `mpr-ui` header links for Event log and SMTP relay.
+- Split the authenticated browser workspace into dedicated `event-log.html` and `smtp-relay.html` pages, removing the combined dashboard header copy.
 - Rename the SMTP identity dashboard surface to SMTP relay while keeping exact sender identity management in that view.
 - Add `make up` and `make down` wrappers for the local Docker Compose orchestration.
 - Add split `configs/.env.pinguin.example` and `configs/.env.tauth.example` files for the current Compose topology.
+- Align Pinguin SMTP setup with gateway high-port publishing so MX and SMTPS use `8025` and `8465` on the host.
 
 ### Testing
 - Add black-box SMTP forwarding coverage for accept/forward, unknown-recipient rejection, size limits, relay failures, and startup wiring.
 - Add backend and browser coverage for notification search, cursor pagination, infinite scroll, and the GORM-only query contract.
 - Add browser coverage for the dashboard horizontal Event log / SMTP relay menu.
+- Add backend and browser coverage for the separate Event log and SMTP relay page contract.
 - Add backend coverage for admin-wide notification tenant access and non-admin email-domain tenant restrictions.
 - Add backend coverage proving non-admin SMTP identity routes return 403 before touching identity storage.
 - Add backend coverage for configured tenant admin authorization.
@@ -46,12 +49,15 @@
 - Update profile-menu browser coverage to assert the shared `mpr-user` header contract instead of the removed local settings menu.
 - Restore Go statement coverage to 100.0% across all covered packages.
 - Add a `make ci` coverage gate that fails unless total Go statement coverage remains at 100.0%.
+- Add deployment contract coverage for the sibling gateway SMTP host-port configuration.
 
 ### Docs
-- Document shared-address forwarding DNS setup and verification using `mx-forward.pinguin.mprlab.com`.
+- Document shared-address forwarding DNS setup and verification using `mx.pinguin.mprlab.com`.
 - Update README and architecture notes to describe `config-ui.yaml` as the browser auth source of truth.
 - Update the dashboard docs to describe the authenticated event log and SMTP relay surfaces.
+- Update README and architecture notes to describe the split Event log and SMTP relay page destinations.
 - Document dashboard tenant authorization roles and non-admin domain scoping.
+- Document the remaining edge mappings after gateway deployment: `25 -> tutosh:8025` and `465 -> tutosh:8465`.
 
 ## [v0.4.7] - 2026-05-08
 

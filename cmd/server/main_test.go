@@ -521,9 +521,6 @@ func TestRunServerStartsWebAndSMTPSubmission(testHandle *testing.T) {
 	cfg.HTTPListenAddr = "127.0.0.1:8080"
 	cfg.TAuthSigningKey = "signing-key"
 	cfg.TAuthCookieName = "app_session"
-	cfg.TAuthBaseURL = "https://tauth.example.com"
-	cfg.TAuthTenantID = "tauth"
-	cfg.TAuthGoogleClientID = "client"
 	cfg.SMTPSubmission = config.SMTPSubmissionConfig{
 		Enabled:           true,
 		Hostname:          "smtp.example.com",
@@ -563,7 +560,7 @@ func TestRunServerStartsSMTPForwarding(testHandle *testing.T) {
 	cfg := serverTestConfig()
 	cfg.SMTPForwarding = config.SMTPForwardingConfig{
 		Enabled:         true,
-		Hostname:        "smtp.pinguin.mprlab.com",
+		Hostname:        "mx.pinguin.mprlab.com",
 		ListenAddr:      ":25",
 		MaxMessageBytes: 2048,
 		MaxRecipients:   3,
@@ -580,7 +577,7 @@ func TestRunServerStartsSMTPForwarding(testHandle *testing.T) {
 		testHandle.Fatalf("expected success exit code, got %d", exitCode)
 	}
 	waitForClosed(testHandle, state.smtpForwardingStarter.started)
-	if state.smtpForwardingConfig.Hostname != "smtp.pinguin.mprlab.com" {
+	if state.smtpForwardingConfig.Hostname != "mx.pinguin.mprlab.com" {
 		testHandle.Fatalf("unexpected forwarding hostname %s", state.smtpForwardingConfig.Hostname)
 	}
 	if state.smtpForwardingConfig.CommandTimeout != 30*time.Second {

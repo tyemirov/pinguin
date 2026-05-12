@@ -198,6 +198,28 @@ GATEWAY_DIR="$(resolve_gateway_dir)"
 [[ -n "${GATEWAY_DIR}" ]] || { echo "error: gateway checkout not found; set GATEWAY_DIR=/path/to/mprlab-gateway or pass --gateway-dir" >&2; exit 1; }
 [[ -d "${GATEWAY_DIR}" ]] || { echo "error: gateway checkout not found: ${GATEWAY_DIR}" >&2; exit 1; }
 
+require_gateway_contract_snippet() {
+  local relative_path="$1"
+  local expected_snippet="$2"
+  local file_path="${GATEWAY_DIR}/${relative_path}"
+
+  [[ -f "${file_path}" ]] || { echo "error: gateway contract file missing: ${file_path}" >&2; exit 1; }
+  if ! grep -F -- "${expected_snippet}" "${file_path}" >/dev/null; then
+    echo "error: gateway checkout ${GATEWAY_DIR} is missing required SMTP port contract in ${relative_path}: ${expected_snippet}" >&2
+    echo "       update mprlab-gateway so Caddy publishes high host ports before deploying Pinguin." >&2
+    exit 1
+  fi
+}
+
+verify_gateway_smtp_port_contract() {
+  require_gateway_contract_snippet "docker-compose.yml" '${PINGUIN_SMTP_HOST_PORT}:${PINGUIN_SMTP_PUBLIC_PORT}'
+  require_gateway_contract_snippet "docker-compose.yml" '${PINGUIN_SMTP_FORWARDING_HOST_PORT}:${PINGUIN_SMTP_FORWARDING_PUBLIC_PORT}'
+  require_gateway_contract_snippet "configs/.env.caddy" "PINGUIN_SMTP_HOST_PORT=8465"
+  require_gateway_contract_snippet "configs/.env.caddy" "PINGUIN_SMTP_FORWARDING_HOST_PORT=8025"
+  require_gateway_contract_snippet "deploy/ansible/inventory/group_vars/gateway.yml" "mprlab_verify_pinguin_smtp_port: 8465"
+  require_gateway_contract_snippet "deploy/ansible/inventory/group_vars/gateway.yml" "mprlab_verify_pinguin_mx_port: 8025"
+}
+
 if [[ -z "${TAG}" ]]; then
   TAG="$(git tag --points-at HEAD --list 'v*' --sort=-version:refname | head -n 1)"
 fi
@@ -223,13 +245,17 @@ if [[ "${SKIP_IMAGE_VERIFY}" != "true" && "${SKIP_BACKEND}" != "true" ]]; then
 fi
 
 if [[ "${SKIP_BACKEND}" != "true" ]]; then
+  verify_gateway_smtp_port_contract
   echo "==> [deploy] Deploying Pinguin backend through mprlab-gateway"
   timeout --foreground -k 1200s -s SIGKILL 1200s make -C "${GATEWAY_DIR}" deploy TARGET=pinguin
+  echo "==> [deploy] Gateway SMTP host ports are ready; remaining operator mapping is edge 25 -> tutosh:8025 and edge 465 -> tutosh:8465"
 fi
 
 if [[ "${SKIP_PAGES}" != "true" ]]; then
   [[ -f "web/index.html" ]] || { echo "error: web/index.html is required for Pages publishing" >&2; exit 1; }
-  [[ -f "web/dashboard.html" ]] || { echo "error: web/dashboard.html is required for Pages publishing" >&2; exit 1; }
+  [[ -f "web/dashboard.html" ]] || { echo "error: web/dashboard.html is required for Pages compatibility redirect" >&2; exit 1; }
+  [[ -f "web/event-log.html" ]] || { echo "error: web/event-log.html is required for Pages publishing" >&2; exit 1; }
+  [[ -f "web/smtp-relay.html" ]] || { echo "error: web/smtp-relay.html is required for Pages publishing" >&2; exit 1; }
   [[ -f "web/CNAME" ]] || { echo "error: web/CNAME is required for Pages custom domain publishing" >&2; exit 1; }
   [[ -f "web/.nojekyll" ]] || { echo "error: web/.nojekyll is required for branch Pages publishing without Jekyll" >&2; exit 1; }
   echo "==> [deploy] Publishing GitHub Pages after backend verification"

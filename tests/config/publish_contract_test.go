@@ -106,7 +106,15 @@ func TestDeployScriptDeploysBackendThenLegacyPages(t *testing.T) {
 		"SKIP_BACKEND=\"false\"",
 		"SKIP_PAGES=\"false\"",
 		"SKIP_PAGES_VERIFY=\"false\"",
+		"verify_gateway_smtp_port_contract",
+		"PINGUIN_SMTP_HOST_PORT=8465",
+		"PINGUIN_SMTP_FORWARDING_HOST_PORT=8025",
+		"${PINGUIN_SMTP_HOST_PORT}:${PINGUIN_SMTP_PUBLIC_PORT}",
+		"${PINGUIN_SMTP_FORWARDING_HOST_PORT}:${PINGUIN_SMTP_FORWARDING_PUBLIC_PORT}",
+		"mprlab_verify_pinguin_smtp_port: 8465",
+		"mprlab_verify_pinguin_mx_port: 8025",
 		"make -C \"${GATEWAY_DIR}\" deploy TARGET=pinguin",
+		"edge 25 -> tutosh:8025 and edge 465 -> tutosh:8465",
 		"Verifying ${IMAGE_REPOSITORY}:latest matches ${TAG}",
 		"./scripts/publish_pages_branch.sh",
 		"trigger_legacy_pages_deploy",
@@ -133,6 +141,7 @@ func TestDeployScriptDeploysBackendThenLegacyPages(t *testing.T) {
 		"Production deployment is intentionally parameterless",
 		"make deploy",
 		"defaults to the sibling `mprlab-gateway` checkout",
+		"After `make deploy`, configure the edge gateway to forward `25 -> tutosh:8025` and `465 -> tutosh:8465`",
 		"only for non-production targets",
 	} {
 		if !strings.Contains(readme, requiredSnippet) {
@@ -182,10 +191,23 @@ func TestPagesSourceIncludesNoJekyllAndCNAME(t *testing.T) {
 		repoPath("web", "CNAME"),
 		repoPath("web", "index.html"),
 		repoPath("web", "dashboard.html"),
+		repoPath("web", "event-log.html"),
+		repoPath("web", "smtp-relay.html"),
 	}
 	for _, requiredPath := range requiredPaths {
 		if _, statErr := os.Stat(requiredPath); statErr != nil {
 			t.Fatalf("required Pages source file missing: %s: %v", requiredPath, statErr)
+		}
+	}
+
+	dashboardRedirect := string(readRepoFile(t, "web", "dashboard.html"))
+	for _, requiredSnippet := range []string{
+		`content="0; url=/event-log.html"`,
+		`window.location.hash === '#smtp-relay' ? '/smtp-relay.html' : '/event-log.html'`,
+		`window.location.replace(target.toString())`,
+	} {
+		if !strings.Contains(dashboardRedirect, requiredSnippet) {
+			t.Fatalf("dashboard compatibility redirect missing %q", requiredSnippet)
 		}
 	}
 }

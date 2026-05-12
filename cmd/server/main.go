@@ -622,9 +622,6 @@ func runServer(args []string, dependencies serverDependencies) int {
 			NotificationService: notificationSvc,
 			SMTPIdentityService: smtpIdentityService,
 			TenantRepository:    tenantRepo,
-			TAuthBaseURL:        configuration.TAuthBaseURL,
-			TAuthTenantID:       configuration.TAuthTenantID,
-			TAuthGoogleClientID: configuration.TAuthGoogleClientID,
 			Logger:              mainLogger,
 		})
 		if httpServerErr != nil {

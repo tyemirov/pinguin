@@ -10,9 +10,6 @@ server:
   tauth:
     signingKey: ${TAUTH_SIGNING_KEY}
     cookieName: ${TAUTH_COOKIE_NAME}
-    googleClientId: ${TAUTH_GOOGLE_CLIENT_ID}
-    tauthBaseUrl: ${TAUTH_BASE_URL}
-    tauthTenantId: ${TAUTH_TENANT_ID}
 
 tenants:
   - id: tenant-local

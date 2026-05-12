@@ -37,9 +37,6 @@ func TestRunValidatesCurrentServerTAuthConfig(t *testing.T) {
 	configPath := filepath.Join(tempDir, "config.yml")
 	writeTestConfig(t, configPath, currentServerTAuthConfigYAML)
 	t.Setenv("TEST_SIGNING_KEY", "test-signing-key")
-	t.Setenv("TEST_GOOGLE_CLIENT_ID", "test-client.apps.googleusercontent.com")
-	t.Setenv("TEST_TAUTH_URL", "https://tauth.example.com")
-	t.Setenv("TEST_TAUTH_TENANT_ID", "pinguin")
 
 	report, err := Run(context.Background(), Options{
 		ConfigPaths: []string{configPath},
@@ -236,12 +233,9 @@ func TestRunExpandsEnvWhenEnabled(t *testing.T) {
 	t.Setenv("TEST_LOG_LEVEL", "INFO")
 	t.Setenv("TEST_ENCRYPTION_KEY", "test-encryption-key-at-least-32")
 	t.Setenv("TEST_TENANT_DOMAIN", "test.example.com")
-	t.Setenv("TEST_GOOGLE_CLIENT_ID", "test-client.apps.googleusercontent.com")
-	t.Setenv("TEST_TAUTH_URL", "https://tauth.example.com")
 	t.Setenv("TEST_ADMIN_EMAIL", "admin@example.com")
 	t.Setenv("TEST_LISTEN_ADDR", ":8080")
 	t.Setenv("TEST_SIGNING_KEY", "test-signing-key")
-	t.Setenv("TEST_TAUTH_TENANT_ID", "pinguin")
 
 	report, err := Run(context.Background(), Options{
 		ConfigPaths: []string{configPath},
@@ -321,29 +315,6 @@ func TestRunReportsParseYAMLError(t *testing.T) {
 	}
 	if report.Summary.InvalidConfigs != 1 || !containsDiagnosticError(report.Diagnostics[0].Errors, "parse_yaml") {
 		t.Fatalf("expected parse yaml diagnostic, got %+v", report.Diagnostics[0])
-	}
-}
-
-func TestRunDetectsCrossConfigSharedGoogleClientWarning(t *testing.T) {
-	tempDir := t.TempDir()
-	config1Path := filepath.Join(tempDir, "config1.yml")
-	config2Path := filepath.Join(tempDir, "config2.yml")
-	writeTestConfig(t, config1Path, validConfigYAML)
-	writeTestConfig(t, config2Path, sharedGoogleClientConfigYAML)
-
-	report, err := Run(context.Background(), Options{
-		ConfigPaths:          []string{config1Path, config2Path},
-		ValidateCrossConfigs: true,
-	})
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if len(report.CrossValidation.Warnings) == 0 {
-		t.Fatalf("expected shared google client warning")
-	}
-	summary := FormatSummary(report)
-	if !strings.Contains(summary, "Cross-Config Validation") || !strings.Contains(summary, "WARN: googleClientId") {
-		t.Fatalf("expected cross validation warning summary, got %q", summary)
 	}
 }
 
@@ -466,8 +437,6 @@ func TestDoctorValidationHelpersCoverErrorBranches(t *testing.T) {
 	for _, expected := range []string{
 		"tenant[(unknown)]: displayName",
 		"tenant[(unknown)]: at least one domain",
-		"tenant[(unknown)]: identity.googleClientId",
-		"tenant[(unknown)]: identity.tauthBaseUrl",
 		"tenant[(unknown)]: at least one admin",
 	} {
 		if !containsDiagnosticError(tenantResult.Errors, expected) {
@@ -489,6 +458,22 @@ func TestFormatSummaryIncludesCrossValidationErrors(t *testing.T) {
 	summary := FormatSummary(report)
 	if !strings.Contains(summary, "ERROR: domain conflict") {
 		t.Fatalf("expected cross validation error, got %q", summary)
+	}
+}
+
+func TestFormatSummaryIncludesCrossValidationWarnings(t *testing.T) {
+	report := &Report{
+		Timestamp:   timeNowForDoctorTest,
+		Summary:     reportSummary{TotalConfigs: 2, ValidConfigs: 2},
+		Diagnostics: []DiagnosticResult{{ConfigPath: "a.yml", Valid: true}, {ConfigPath: "b.yml", Valid: true}},
+		CrossValidation: crossValidation{
+			Performed: true,
+			Warnings:  []string{"configuration warning"},
+		},
+	}
+	summary := FormatSummary(report)
+	if !strings.Contains(summary, "WARN: configuration warning") {
+		t.Fatalf("expected cross validation warning, got %q", summary)
 	}
 }
 
@@ -587,9 +572,6 @@ server:
   tauth:
     signingKey: ${TEST_SIGNING_KEY}
     cookieName: app_session
-    googleClientId: ${TEST_GOOGLE_CLIENT_ID}
-    tauthBaseUrl: ${TEST_TAUTH_URL}
-    tauthTenantId: ${TEST_TAUTH_TENANT_ID}
 
 web:
   enabled: true
@@ -602,9 +584,6 @@ tenants:
     displayName: Demo Tenant
     domains:
       - demo.example.com
-    identity:
-      googleClientId: demo-client.apps.googleusercontent.com
-      tauthBaseUrl: https://tauth.example.com
     admins:
       - admin@example.com
 `
@@ -622,9 +601,6 @@ server:
   tauth:
     signingKey: test-signing-key
     cookieName: app_session
-    googleClientId: demo-client.apps.googleusercontent.com
-    tauthBaseUrl: https://tauth.example.com
-    tauthTenantId: pinguin
 
 web:
   enabled: true
@@ -637,9 +613,6 @@ tenants:
     displayName: Demo Tenant
     domains:
       - demo.example.com
-    identity:
-      googleClientId: demo-client.apps.googleusercontent.com
-      tauthBaseUrl: https://tauth.example.com
     admins:
       - admin@example.com
 `
@@ -684,41 +657,6 @@ tenants:
         - mapped.example.com
 `
 
-const sharedGoogleClientConfigYAML = `
-server:
-  databasePath: /data/pinguin3.db
-  grpcAuthToken: test-token-789
-  logLevel: INFO
-  maxRetries: 3
-  retryIntervalSec: 60
-  masterEncryptionKey: test-encryption-key-at-least-32-chars
-  connectionTimeoutSec: 30
-  operationTimeoutSec: 60
-  tauth:
-    signingKey: test-signing-key-3
-    cookieName: app_session
-    googleClientId: demo-client.apps.googleusercontent.com
-    tauthBaseUrl: https://tauth.example.com
-    tauthTenantId: pinguin
-
-web:
-  enabled: true
-  listenAddr: ":8082"
-  allowedOrigins:
-    - http://localhost:3002
-
-tenants:
-  - id: shared-client
-    displayName: Shared Client Tenant
-    domains:
-      - shared-client.example.com
-    identity:
-      googleClientId: demo-client.apps.googleusercontent.com
-      tauthBaseUrl: https://tauth.example.com
-    admins:
-      - admin@example.com
-`
-
 const validConfig2YAML = `
 server:
   databasePath: /data/pinguin2.db
@@ -732,9 +670,6 @@ server:
   tauth:
     signingKey: test-signing-key-2
     cookieName: app_session
-    googleClientId: other-client.apps.googleusercontent.com
-    tauthBaseUrl: https://tauth.example.com
-    tauthTenantId: pinguin
 
 web:
   enabled: true
@@ -747,9 +682,6 @@ tenants:
     displayName: Other Tenant
     domains:
       - other.example.com
-    identity:
-      googleClientId: other-client.apps.googleusercontent.com
-      tauthBaseUrl: https://tauth.example.com
     admins:
       - admin@example.com
 `
@@ -767,9 +699,6 @@ server:
   tauth:
     signingKey: test-signing-key-2
     cookieName: app_session
-    googleClientId: other-client.apps.googleusercontent.com
-    tauthBaseUrl: https://tauth.example.com
-    tauthTenantId: pinguin
 
 web:
   enabled: true
@@ -782,9 +711,6 @@ tenants:
     displayName: Conflicting Tenant
     domains:
       - demo.example.com
-    identity:
-      googleClientId: other-client.apps.googleusercontent.com
-      tauthBaseUrl: https://tauth.example.com
     admins:
       - admin@example.com
 `
@@ -883,7 +809,7 @@ smtpSubmission:
 
 smtpForwarding:
   enabled: true
-  hostname: smtp.pinguin.mprlab.com
+  hostname: mx.pinguin.mprlab.com
   listenAddr: ":25"
   maxMessageBytes: 26214400
   maxRecipients: 100
@@ -916,7 +842,7 @@ web:
 
 smtpForwarding:
   enabled: true
-  hostname: smtp.pinguin.mprlab.com
+  hostname: mx.pinguin.mprlab.com
   listenAddr: ":25"
   maxMessageBytes: 26214400
   maxRecipients: 100
@@ -979,9 +905,6 @@ server:
   tauth:
     signingKey: ${TEST_SIGNING_KEY}
     cookieName: app_session
-    googleClientId: ${TEST_GOOGLE_CLIENT_ID}
-    tauthBaseUrl: ${TEST_TAUTH_URL}
-    tauthTenantId: ${TEST_TAUTH_TENANT_ID}
 
 web:
   enabled: true
@@ -994,9 +917,6 @@ tenants:
     displayName: Test Tenant
     domains:
       - ${TEST_TENANT_DOMAIN}
-    identity:
-      googleClientId: ${TEST_GOOGLE_CLIENT_ID}
-      tauthBaseUrl: ${TEST_TAUTH_URL}
     admins:
       - ${TEST_ADMIN_EMAIL}
 `

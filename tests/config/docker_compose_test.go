@@ -77,6 +77,10 @@ func TestComposeDevPortsUseLocalhost8080AsBrowserOrigin(t *testing.T) {
 
 	pinguin := requireComposeService(t, document, "pinguin-dev")
 	assertStringContains(t, pinguin.Ports, "8081:8081", "pinguin-dev ports")
+	assertStringContains(t, pinguin.Ports, "1587:587", "pinguin-dev ports")
+	assertStringContains(t, pinguin.Ports, "8025:25", "pinguin-dev ports")
+	assertStringContains(t, pinguin.Ports, "8465:465", "pinguin-dev ports")
+	assertStringDoesNotContain(t, pinguin.Ports, "1465:465", "pinguin-dev ports")
 	assertStringContains(t, pinguin.EnvFile, "./configs/.env.pinguin", "pinguin-dev env files")
 
 	tauth := requireComposeService(t, document, "tauth")
@@ -115,4 +119,14 @@ func assertStringContains(t *testing.T, values []string, expected string, label 
 		}
 	}
 	t.Fatalf("%s missing %q in %v", label, expected, values)
+}
+
+func assertStringDoesNotContain(t *testing.T, values []string, unexpected string, label string) {
+	t.Helper()
+
+	for _, value := range values {
+		if value == unexpected {
+			t.Fatalf("%s should not contain %q in %v", label, unexpected, values)
+		}
+	}
 }

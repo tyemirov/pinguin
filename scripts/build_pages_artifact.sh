@@ -8,6 +8,8 @@ source_short="${PAGES_SOURCE_SHORT:-}"
 
 [[ -f "${source_dir}/index.html" ]] || { echo "error: ${source_dir}/index.html is required" >&2; exit 1; }
 [[ -f "${source_dir}/dashboard.html" ]] || { echo "error: ${source_dir}/dashboard.html is required" >&2; exit 1; }
+[[ -f "${source_dir}/event-log.html" ]] || { echo "error: ${source_dir}/event-log.html is required" >&2; exit 1; }
+[[ -f "${source_dir}/smtp-relay.html" ]] || { echo "error: ${source_dir}/smtp-relay.html is required" >&2; exit 1; }
 [[ -f "${source_dir}/CNAME" ]] || { echo "error: ${source_dir}/CNAME is required" >&2; exit 1; }
 
 if [[ -z "${source_commit}" ]]; then
