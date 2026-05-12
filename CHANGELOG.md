@@ -60,6 +60,27 @@
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 - Document the remaining edge mappings after gateway deployment: `25 -> tutosh:8025` and `465 -> tutosh:8465`.
 
+## [v0.4.9] - 2026-05-12
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Publish `pinguin-doctor` in the production Docker image and make the server the default command to support gateway Compose preflight overrides.
+- Add a Dockerfile contract test to validate the presence of the doctor preflight command in production builds.
+
+### Bug Fixes 🐛
+- Fix gateway deploy preflight to run `pinguin-doctor` instead of the normal server by updating the Docker image and command configuration.
+- Align doctor TAuth parsing and validation with runtime schema and add regression coverage.
+- Correct SMTP forwarding for null reverse-path traffic and enforce sender-domain allowlist for forwarding-only deployments.
+
+### Testing 🧪
+- Add contract test ensuring that the production Dockerfile publishes both `pinguin` and `pinguin-doctor` binaries correctly.
+- Validate gateway Pinguin config with environment expansion in regression tests.
+
+### Docs 📚
+- Document DSN forwarding behavior and forwarding identity dependencies.
+
 ## [v0.4.8] - 2026-05-12
 
 ### Features ✨
