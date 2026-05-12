@@ -4,7 +4,7 @@ import {
   resetNotifications,
   stubExternalAssets,
   expectToast,
-  expectHeaderGoogleButton,
+  expectSharedHeaderSignInButton,
   expectPinguinHeaderBrand,
 } from './utils';
 
@@ -32,14 +32,14 @@ test.describe('Authenticated pages', () => {
     await configureRuntime(page, { authenticated: false });
     await page.goto('/event-log.html');
     await expect(page).toHaveURL(LANDING_URL_PATTERN);
-    await expectHeaderGoogleButton(page);
+    await expectSharedHeaderSignInButton(page);
   });
 
   test('redirects guests from SMTP relay to the landing page', async ({ page }) => {
     await configureRuntime(page, { authenticated: false });
     await page.goto('/smtp-relay.html');
     await expect(page).toHaveURL(LANDING_URL_PATTERN);
-    await expectHeaderGoogleButton(page);
+    await expectSharedHeaderSignInButton(page);
   });
 
   test('shows Pinguin logo brand and favicon on the event log page', async ({ page }) => {
@@ -79,22 +79,30 @@ test.describe('Authenticated pages', () => {
     ).toHaveCount(0);
   });
 
-  test('redirects after BroadcastChannel logout', async ({ page }) => {
+  test('redirects after shared-shell logout event', async ({ page }) => {
     await configureRuntime(page, { authenticated: true });
     await page.goto('/event-log.html');
     await expect(page.getByTestId('notification-row')).toHaveCount(1);
     await page.context().clearCookies();
     await page.evaluate(() => {
-      const channel = new BroadcastChannel('auth');
       if (window.__mockAuth) {
         window.__mockAuth.authenticated = false;
         window.__persistMockAuth && window.__persistMockAuth();
       }
-      channel.postMessage('logged_out');
-      channel.close();
+      const header = document.querySelector('mpr-header');
+      header?.setAttribute('data-mpr-auth-status', 'unauthenticated');
+      header?.removeAttribute('data-user-email');
+      header?.removeAttribute('data-user-display');
+      header?.removeAttribute('data-user-avatar-url');
+      const userMenu = header?.querySelector('[data-mpr-header="user-menu"]');
+      userMenu?.setAttribute('data-mpr-user-status', 'unauthenticated');
+      userMenu?.removeAttribute('data-user-email');
+      userMenu?.removeAttribute('data-user-display');
+      userMenu?.removeAttribute('data-user-avatar-url');
+      document.dispatchEvent(new CustomEvent('mpr-ui:auth:unauthenticated'));
     });
     await expect(page).toHaveURL(/\/index\.html$/);
-    await expectHeaderGoogleButton(page);
+    await expectSharedHeaderSignInButton(page);
   });
 
   test('filters notifications by status selection', async ({ page, request }) => {

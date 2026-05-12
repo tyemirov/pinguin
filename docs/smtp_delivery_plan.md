@@ -21,7 +21,7 @@ Pinguin can separately expose an inbound SMTP forwarding listener for shared add
 - **smtpSubmission.deliveryMode** selects `upstream` provider relay or `direct` recipient-MX delivery for authenticated SMTP submissions.
 - **smtpSubmission.relay** exposes the upstream SMTP account used only when `smtpSubmission.deliveryMode` is `upstream`.
 - **smtpSubmission.senderDomains** defines the global domain allowlist for exact sender identities and shared-address forwarding routes.
-- **smtpSubmission.publicPort** and **smtpSubmission.publicSecurityMode** control the Gmail-facing settings shown with one-time SMTP identity credentials. These can differ from the private listener when Caddy owns public TLS termination.
+- **smtpSubmission.publicPort** and **smtpSubmission.publicSecurityMode** control the Gmail-facing settings shown with one-time SMTP identity credentials. These differ from the private listener in production: the edge exposes `465`, forwards to `tutosh:8465`, Caddy terminates TLS on container `:465`, and Pinguin receives plaintext on its private submission listener.
 - **SMTP identities** map exact shared addresses such as `support@help.example.com` to one or more persisted forwarding recipients.
 - **smtpForwarding.relay** exposes the outbound SMTP account used to deliver forwarded copies.
 
@@ -39,11 +39,13 @@ Pinguin can separately expose an inbound SMTP forwarding listener for shared add
 
 For authenticated SMTP submission in direct mode, Pinguin groups recipients by domain, resolves MX records, falls back to the domain host when no MX is present, connects to each target on port `25`, uses the authenticated identity as `MAIL FROM`, and writes the exact submitted RFC 5322 payload through SMTP `DATA`. Domains using this mode must publish SPF records that authorize the gateway IP so DMARC can align with the RFC 5322 `From` domain.
 
-For inbound forwarding, customer DNS should normally point a dedicated mail subdomain at `smtp.pinguin.mprlab.com`:
+For inbound forwarding, customer DNS should normally point a dedicated mail subdomain at `mx.pinguin.mprlab.com`:
 
 ```dns
-help.example.com. MX 10 smtp.pinguin.mprlab.com.
+help.example.com. MX 10 mx.pinguin.mprlab.com.
 ```
+
+The edge accepts public SMTP on port `25`, forwards it to `tutosh:8025`, and the gateway publishes that high host port to Caddy's container `:25` before proxying to Pinguin's private forwarding listener.
 
 Pinguin accepts `MAIL FROM:<>` null reverse-path traffic for DSNs and other auto-generated mail, rejects unknown `RCPT TO` addresses before `DATA`, enforces configured size and recipient limits, and returns a temporary SMTP failure when route lookup or forwarding through `smtpForwarding.relay` fails before acceptance. Forwarded copies preserve the original message headers and use the shared address as the outbound SMTP envelope sender. Because Pinguin stores no message body, operators should treat forwarding retries and duplicate delivery risk as part of the no-mailbox tradeoff.
 

@@ -50,9 +50,6 @@ type Config struct {
 	NotificationService  service.NotificationService
 	SMTPIdentityService  *smtpidentity.Service
 	TenantRepository     *tenant.Repository
-	TAuthBaseURL         string
-	TAuthTenantID        string
-	TAuthGoogleClientID  string
 	Logger               *slog.Logger
 	ReadHeaderTimeout    time.Duration
 	ShutdownGraceTimeout time.Duration
@@ -79,15 +76,6 @@ func NewServer(cfg Config) (*Server, error) {
 	if cfg.TenantRepository == nil {
 		return nil, errors.New("httpapi: tenant repository is required")
 	}
-	if strings.TrimSpace(cfg.TAuthBaseURL) == "" {
-		return nil, errors.New("httpapi: tauth base url is required")
-	}
-	if strings.TrimSpace(cfg.TAuthTenantID) == "" {
-		return nil, errors.New("httpapi: tauth tenant id is required")
-	}
-	if strings.TrimSpace(cfg.TAuthGoogleClientID) == "" {
-		return nil, errors.New("httpapi: google client id is required")
-	}
 	if cfg.Logger == nil {
 		return nil, errors.New("httpapi: logger is required")
 	}
@@ -99,11 +87,7 @@ func NewServer(cfg Config) (*Server, error) {
 	engine.Use(tenantMiddleware(cfg.TenantRepository))
 	engine.Use(buildCORS(cfg.AllowedOrigins))
 
-	engine.GET("/runtime-config", serveRuntimeConfig(runtimeConfigTAuth{
-		BaseURL:        cfg.TAuthBaseURL,
-		TenantID:       cfg.TAuthTenantID,
-		GoogleClientID: cfg.TAuthGoogleClientID,
-	}))
+	engine.GET("/runtime-config", serveRuntimeConfig())
 	engine.GET("/healthz", func(contextGin *gin.Context) {
 		contextGin.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -542,13 +526,10 @@ func pickDuration(candidate time.Duration, fallback time.Duration) time.Duration
 }
 
 type runtimeConfigPayload struct {
-	APIBaseURL     string              `json:"apiBaseUrl"`
-	Tenant         runtimeConfigTenant `json:"tenant"`
-	TAuthBaseURL   string              `json:"tauthBaseUrl"`
-	TAuthTenantID  string              `json:"tauthTenantId"`
-	GoogleClientID string              `json:"googleClientId"`
-	EventLogURL    string              `json:"eventLogUrl"`
-	SMTPRelayURL   string              `json:"smtpRelayUrl"`
+	APIBaseURL   string              `json:"apiBaseUrl"`
+	Tenant       runtimeConfigTenant `json:"tenant"`
+	EventLogURL  string              `json:"eventLogUrl"`
+	SMTPRelayURL string              `json:"smtpRelayUrl"`
 }
 
 type runtimeConfigTenant struct {
@@ -556,13 +537,7 @@ type runtimeConfigTenant struct {
 	DisplayName string `json:"displayName"`
 }
 
-type runtimeConfigTAuth struct {
-	BaseURL        string
-	TenantID       string
-	GoogleClientID string
-}
-
-func serveRuntimeConfig(tauthConfig runtimeConfigTAuth) gin.HandlerFunc {
+func serveRuntimeConfig() gin.HandlerFunc {
 	return func(contextGin *gin.Context) {
 		runtimeCfg, ok := tenant.RuntimeFromContext(contextGin.Request.Context())
 		if !ok {
@@ -570,12 +545,9 @@ func serveRuntimeConfig(tauthConfig runtimeConfigTAuth) gin.HandlerFunc {
 			return
 		}
 		payload := runtimeConfigPayload{
-			APIBaseURL:     buildAPIBaseURL(contextGin.Request),
-			TAuthBaseURL:   tauthConfig.BaseURL,
-			TAuthTenantID:  tauthConfig.TenantID,
-			GoogleClientID: tauthConfig.GoogleClientID,
-			EventLogURL:    "/event-log.html",
-			SMTPRelayURL:   "/smtp-relay.html",
+			APIBaseURL:   buildAPIBaseURL(contextGin.Request),
+			EventLogURL:  "/event-log.html",
+			SMTPRelayURL: "/smtp-relay.html",
 			Tenant: runtimeConfigTenant{
 				ID:          runtimeCfg.Tenant.ID,
 				DisplayName: runtimeCfg.Tenant.DisplayName,

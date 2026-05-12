@@ -31,9 +31,6 @@ server:
   tauth:
     signingKey: ${TAUTH_SIGNING_KEY}
     cookieName: custom_session
-    googleClientId: ${TAUTH_GOOGLE_CLIENT_ID}
-    tauthBaseUrl: ${TAUTH_BASE_URL}
-    tauthTenantId: ${TAUTH_TENANT_ID}
 tenants:
   - id: tenant-one
     displayName: One Corp
@@ -76,9 +73,6 @@ smtpSubmission:
 	t.Setenv("GRPC_AUTH_TOKEN", "unit-token")
 	t.Setenv("MASTER_ENCRYPTION_KEY", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	t.Setenv("TAUTH_SIGNING_KEY", "signing-key")
-	t.Setenv("TAUTH_GOOGLE_CLIENT_ID", "google-one")
-	t.Setenv("TAUTH_BASE_URL", "https://auth.one.test")
-	t.Setenv("TAUTH_TENANT_ID", "tauth-one")
 	t.Setenv("SMTP_USERNAME", "apikey")
 	t.Setenv("SMTP_PASSWORD", "secret")
 	t.Setenv("TWILIO_ACCOUNT_SID", "sid")
@@ -145,9 +139,6 @@ smtpSubmission:
 		},
 		TAuthSigningKey:      "signing-key",
 		TAuthCookieName:      "custom_session",
-		TAuthBaseURL:         "https://auth.one.test",
-		TAuthTenantID:        "tauth-one",
-		TAuthGoogleClientID:  "google-one",
 		ConnectionTimeoutSec: 3,
 		OperationTimeoutSec:  7,
 	}
@@ -174,9 +165,6 @@ server:
   operationTimeoutSec: 10
   tauth:
     signingKey: ${TAUTH_SIGNING_KEY}
-    googleClientId: google-one
-    tauthBaseUrl: https://auth.one.test
-    tauthTenantId: tauth-one
 tenants:
   - id: tenant-one
     displayName: One Corp
@@ -207,9 +195,6 @@ web:
 	if cfg.TAuthCookieName != "" || cfg.HTTPAllowedOrigins != nil {
 		t.Fatalf("expected web fields to be cleared when disabled")
 	}
-	if cfg.TAuthBaseURL != "" || cfg.TAuthTenantID != "" || cfg.TAuthGoogleClientID != "" {
-		t.Fatalf("expected tauth fields to be cleared when disabled")
-	}
 	if cfg.ConnectionTimeoutSec != 5 || cfg.OperationTimeoutSec != 10 {
 		t.Fatalf("expected timeout values to be set from config")
 	}
@@ -228,9 +213,6 @@ server:
   operationTimeoutSec: 10
   tauth:
     signingKey: signing-key
-    googleClientId: google-one
-    tauthBaseUrl: https://auth.one.test
-    tauthTenantId: tauth-one
 tenants:
   configPath: tenants.yml
 web:
@@ -316,7 +298,7 @@ smtpSubmission:
     - mprlab.com
 smtpForwarding:
   enabled: true
-  hostname: smtp.pinguin.mprlab.com
+  hostname: mx.pinguin.mprlab.com
   listenAddr: :25
   maxMessageBytes: 26214400
   maxRecipients: 25
@@ -334,7 +316,7 @@ smtpForwarding:
 	}
 	expected := SMTPForwardingConfig{
 		Enabled:         true,
-		Hostname:        "smtp.pinguin.mprlab.com",
+		Hostname:        "mx.pinguin.mprlab.com",
 		ListenAddr:      ":25",
 		MaxMessageBytes: 26214400,
 		MaxRecipients:   25,
@@ -363,9 +345,6 @@ server:
   operationTimeoutSec: 10
   tauth:
     signingKey: signing-key
-    googleClientId: google-one
-    tauthBaseUrl: https://auth.one.test
-    tauthTenantId: tauth-one
 tenants:
   configPath: tenants.yml
 web:
@@ -526,7 +505,7 @@ func TestValidateConfigRequiresSenderDomainsForSMTPForwarding(t *testing.T) {
 		WebInterfaceEnabled:  false,
 		SMTPForwarding: SMTPForwardingConfig{
 			Enabled:         true,
-			Hostname:        "smtp.pinguin.mprlab.com",
+			Hostname:        "mx.pinguin.mprlab.com",
 			ListenAddr:      ":25",
 			MaxMessageBytes: 26214400,
 			MaxRecipients:   25,
@@ -624,9 +603,6 @@ server:
   operationTimeoutSec: 10
   tauth:
     signingKey: signing-key
-    googleClientId: google-one
-    tauthBaseUrl: https://auth.one.test
-    tauthTenantId: tauth-one
 tenants:
   - id: tenant-one
     displayName: One Corp

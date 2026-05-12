@@ -20,10 +20,6 @@ const AUTH_PROFILE = {
   avatar_url: PLAYWRIGHT_AVATAR_URL,
 };
 const runtimeConfig = {
-  tauthBaseUrl:
-    process.env.PLAYWRIGHT_TAUTH_BASE_URL || `http://${HOST}:${PORT}`,
-  tauthTenantId: 'tauth-devserver',
-  googleClientId: 'playwright-client',
   apiBaseUrl: `http://${HOST}:${PORT}/api`,
   eventLogUrl: '/event-log.html',
   smtpRelayUrl: '/smtp-relay.html',

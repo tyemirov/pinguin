@@ -22,8 +22,8 @@
 ## Context Propagation
 1. **HTTP / Web**  
    - Map `Host` header to tenant via `tenant_domains`. `httpapi.Server` will inject `tenant_id` into request context before hitting handlers.
-   - `<mpr-header>` stays tenant-specific by loading `/runtime-config`, which now returns `{ apiBaseUrl, tenantSlug }`. UI uses slug to show tenant name and to inform `mpr-header` which Google client ID to use.
-   - Store per-tenant Google Identity client IDs and TAuth base URLs in `tenant_identity` table. Runtime config endpoint will emit the tenant-specific values.
+   - `<mpr-header>` stays tenant-specific through the shared-shell config layer. `/runtime-config` returns only Pinguin API and tenant display metadata.
+   - Keep provider-specific identity settings out of Pinguin tenant runtime metadata; the shared shell owns those values.
 2. **gRPC**  
    - Add `tenant_id` (string) to each gRPC request message (proto + generated code). Clients must set either:
      - Metadata header `x-tenant-id`, or
@@ -59,12 +59,7 @@
        "tenant": {
          "id": "tenant-uuid",
          "slug": "acme",
-         "displayName": "Acme Corp",
-         "identity": {
-           "googleClientId": "xxx.apps.googleusercontent.com",
-           "tauthBaseUrl": "https://auth.acme.example",
-           "tauthTenantId": "acme-auth"
-         }
+         "displayName": "Acme Corp"
        }
      }
      ```

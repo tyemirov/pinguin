@@ -102,9 +102,6 @@ server:
   tauth:
     signingKey: ${TAUTH_SIGNING_KEY}
     cookieName: app_session
-    googleClientId: ${TAUTH_GOOGLE_CLIENT_ID}
-    tauthBaseUrl: ${TAUTH_BASE_URL}
-    tauthTenantId: ${TAUTH_TENANT_ID}
 tenants:
   - id: tenant-local
     displayName: Local Sandbox
@@ -144,25 +141,17 @@ Export the referenced environment variables before starting the server only when
 - **HTTP_ALLOWED_ORIGINS:**  
   Comma-separated list of origins allowed to call the JSON API when running cross-origin (leave empty to allow same-origin only). The docker-compose workflow serves the UI via ghttp on `http://localhost:8080`, and production uses `https://pinguin.mprlab.com`, so include the relevant UI origins here.
 - **web.enabled:**
-  Set to `false` in `config.yml` to skip booting the Gin/HTML stack entirely. When disabled, Pinguin runs the gRPC service only and skips Google Identity/TAuth/HTTP configuration checks, which is useful for backends that never expose the browser workspace.
+  Set to `false` in `config.yml` to skip booting the Gin/HTML stack entirely. When disabled, Pinguin runs the gRPC service only and skips browser HTTP configuration checks, which is useful for backends that never expose the browser workspace.
 - **MASTER_ENCRYPTION_KEY:**  
   Hex-encoded 32-byte key used to encrypt SMTP/Twilio secrets stored in the tenant config. Generate one with `openssl rand -hex 32` and keep it secret.
 - **TAuth CORS allowlist:**  
-  When you serve the UI from a different origin (ghttp on `http://localhost:8080`, GitHub Pages on `https://pinguin.mprlab.com`, a CDN, etc.), TAuth must enable CORS and allow both the UI origin *and* `https://accounts.google.com`. Google Identity Services performs the nonce/login exchange from the `accounts.google.com` origin, so omitting it results in `auth.login.nonce_mismatch` errors. The sample `configs/.env.tauth.example` sets `TAUTH_CORS_ORIGIN_1="${TAUTH_TENANT_ORIGIN_PINGUIN}"` and `TAUTH_CORS_EXCEPTION_1="https://accounts.google.com"` for this reason.
-- **Front-end TAuth config:**  
-  The shared shell reads browser auth settings from `web/config-ui.yaml`, which is selected by the current page origin and consumed by `mpr-ui-config.js`. `web/js/tauth-config.js` only supplies the runtime-config URL + API base for hosted deployments; it does not configure `<mpr-header>` auth.
+  When you serve the UI from a different origin (ghttp on `http://localhost:8080`, GitHub Pages on `https://pinguin.mprlab.com`, a CDN, etc.), TAuth must enable CORS for the UI origin and any provider-origin exceptions required by the shared shell. The sample `configs/.env.tauth.example` keeps those provider details in TAuth-owned configuration, not in Pinguin runtime config.
+- **Shared-shell auth config:**
+  Browser authentication is configured outside Pinguin's runtime config. The shared shell reads auth settings from `web/config-ui.yaml`, which is selected by the current page origin and consumed by `mpr-ui-config.js`. `web/js/runtime-config.js` only supplies the Pinguin runtime-config URL and API base for hosted deployments; it does not configure `<mpr-header>` auth.
 - **Web authentication flow:**  
-  The browser UI relies on `<mpr-header>` from the `mpr-ui` package. `mpr-ui-config.js` applies `/config-ui.yaml` to the header, loads the `mpr-ui@latest` bundle, and the app listens for `mpr-ui:auth:*` events to drive redirects and profile state. Do not add a direct `tauth.js` script path for this integration.
-- **Google Identity Client ID:**  
-  The Google OAuth client ID for shared-shell auth is defined in `web/config-ui.yaml`; the backend runtime config still exposes the same value for app metadata.
+  The browser UI relies on `<mpr-header>` from the `mpr-ui` package. `mpr-ui-config.js` applies `/config-ui.yaml` to the header, loads the `mpr-ui@latest` bundle, and the app listens for `mpr-ui:auth:*` events plus `MPRUI.resolveAuthProfileSnapshot` to drive redirects and profile state. Pinguin does not load `tauth.js`, call TAuth profile endpoints, or expose auth-provider metadata from `/runtime-config`.
 - **TAUTH_SIGNING_KEY:**  
   HS256 signing key shared with the TAuth deployment. Used to validate the `app_session` cookie.
-- **TAUTH_BASE_URL:**  
-  Base URL for the TAuth deployment (used by the browser-facing `config-ui.yaml` contract and by backend runtime config).
-- **TAUTH_TENANT_ID:**  
-  Tenant identifier configured in TAuth (sent in `X-TAuth-Tenant`).
-- **TAUTH_GOOGLE_CLIENT_ID:**  
-  Google OAuth Web Client ID that TAuth validates and `mpr-ui` uses for GIS.
 - **Authorization:**  
   Pinguin reads TAuth `user_roles` from the signed session and configured `tenants[].admins` emails. Sessions with the `admin` role or a configured admin email can view and manage notifications for every tenant. Other authenticated sessions can only list, reschedule, or cancel notifications for tenants whose `tenants[].domains` entry matches the user's email domain.
 
@@ -308,7 +297,7 @@ smtpSubmission:
 
 `smtpSubmission.senderDomains` is the global allowlist for exact sender identities such as `alice@example.com`. In `deliveryMode: direct`, Pinguin accepts the authenticated submission and delivers the raw message to each recipient domain's MX hosts using the authenticated identity as the envelope sender. This gives SPF/DMARC alignment when the sender domain publishes DNS records authorizing the gateway IP. DKIM signing, bounce processing, and mailbox hosting remain outside Pinguin.
 
-The Marco Polo gateway deployment terminates public SMTPS in Caddy on port `465` and proxies the decrypted SMTP session to Pinguin's private `listenAddr` on the Docker network. That is why production direct-relay config leaves `tlsListenAddr`, `tlsCertPath`, and `tlsKeyPath` empty and sets `allowInsecureAuth: true`; do not publish the private Pinguin SMTP listener directly to the internet.
+The Marco Polo gateway deployment accepts public SMTPS on edge port `465`, forwards it to `tutosh:8465`, publishes that high host port to Caddy's container `:465`, and proxies the decrypted SMTP session to Pinguin's private `listenAddr` on the Docker network. That is why production direct-relay config leaves `tlsListenAddr`, `tlsCertPath`, and `tlsKeyPath` empty and sets `allowInsecureAuth: true`; do not publish the private Pinguin SMTP listener directly to the internet.
 
 The public SMTPS listener does not inherit the shared HTTP Caddy request limiter because it is routed through Caddy Layer 4. Pinguin applies SMTP-aware controls in the submission server instead: idle command/data deadlines use `server.operationTimeoutSec`, concurrent sessions are capped globally and per backend-visible remote host, repeated SMTP AUTH failures are throttled by credential username, and accepted messages are rate-limited per SMTP identity. Built-in defaults allow 200 concurrent SMTP sessions globally, 20 per backend-visible remote host, 5 AUTH failures per credential username per 10 minutes, and 60 accepted messages per SMTP identity per hour.
 
@@ -344,7 +333,7 @@ Set the `smtpForwarding` section in `configs/config.pinguin.yml`:
 ```yaml
 smtpForwarding:
   enabled: true
-  hostname: smtp.pinguin.mprlab.com
+  hostname: mx.pinguin.mprlab.com
   listenAddr: :25
   maxMessageBytes: 26214400
   maxRecipients: 100
@@ -373,7 +362,7 @@ The inbound listener accepts `MAIL FROM:<>` null reverse-path messages so DSNs a
 Customer DNS should use a dedicated mail subdomain whenever possible:
 
 ```dns
-help.example.com. MX 10 smtp.pinguin.mprlab.com.
+help.example.com. MX 10 mx.pinguin.mprlab.com.
 _dmarc.help.example.com. TXT "v=DMARC1; p=none; rua=mailto:dmarc@example.com"
 ```
 
@@ -388,13 +377,15 @@ Domain setup verification:
    dig +short MX help.example.com
    dig +short TXT _dmarc.help.example.com
    ```
-   The MX answer must include `smtp.pinguin.mprlab.com`.
-   If the customer publishes SPF for forwarded copies, also verify `dig +short TXT help.example.com` returns the relay-authorizing SPF value.
+	   The MX answer must include `mx.pinguin.mprlab.com`.
+	   If the customer publishes SPF for forwarded copies, also verify `dig +short TXT help.example.com` returns the relay-authorizing SPF value.
 2. Verify configuration:
    ```sh
    pinguin-doctor configs/config.pinguin.yml --expand-env
    ```
 3. Send an external SMTP test to `support@help.example.com` and confirm every configured forwarding owner receives a copy.
+
+The Marco Polo gateway accepts public MX traffic on edge port `25`, forwards it to `tutosh:8025`, publishes that high host port to Caddy's container `:25`, and proxies the raw SMTP session to Pinguin's private forwarding listener.
 
 If forwarding through `smtpForwarding.relay` fails before Pinguin accepts `DATA`, Pinguin returns a temporary `451` SMTP response so the sender's mail server can retry. Pinguin does not provide IMAP, POP3, search, read/unread state, or retention for forwarded mail.
 
@@ -411,7 +402,8 @@ The repository ships with `docker-compose.yaml` to run Pinguin alongside TAuth a
 - gRPC: `localhost:50051`
 - UI: `http://localhost:8080`
 - HTTP API: `http://localhost:8081`
-- SMTP submission: `localhost:1587` → container `:587`, `localhost:1465` → container `:465`
+- SMTP forwarding: `localhost:8025` → container `:25`
+- SMTP submission: `localhost:1587` → container `:587`, `localhost:8465` → container `:465`
 - TAuth: `http://localhost:8082`
 
 Open `http://localhost:8080` in your browser for the landing page, Event log, and SMTP relay UI. The HTTP API on `http://localhost:8081` remains available for CLI/grpcurl clients, but browsers should use the UI port.
@@ -435,7 +427,7 @@ Use the deploy target after `make publish` to deploy the backend through `mprlab
 make deploy
 ```
 
-`make publish` defaults to `ghcr.io/tyemirov/pinguin:latest` and `linux/amd64,linux/arm64`. `make deploy` defaults to the sibling `mprlab-gateway` checkout, the `tyemirov/pinguin` Pages repository, and the `gh-pages` branch. Override `DOCKER_IMAGE`, `DOCKER_TAG`, `PUBLISH_PLATFORMS`, `PAGES_REPOSITORY`, `PAGES_PUBLISH_REMOTE`, or `PAGES_PUBLISH_BRANCH` only for non-production targets. `gh` must be authenticated with Pages write access so deploy can verify/update the legacy Pages source.
+`make publish` defaults to `ghcr.io/tyemirov/pinguin:latest` and `linux/amd64,linux/arm64`. `make deploy` defaults to the sibling `mprlab-gateway` checkout, the `tyemirov/pinguin` Pages repository, and the `gh-pages` branch. The deploy script verifies that the gateway checkout publishes Caddy's SMTP listeners on high host ports `8025` and `8465` before it runs `make -C ../mprlab-gateway deploy TARGET=pinguin`. After `make deploy`, configure the edge gateway to forward `25 -> tutosh:8025` and `465 -> tutosh:8465`; no Pinguin app port mapping is required. Override `DOCKER_IMAGE`, `DOCKER_TAG`, `PUBLISH_PLATFORMS`, `PAGES_REPOSITORY`, `PAGES_PUBLISH_REMOTE`, or `PAGES_PUBLISH_BRANCH` only for non-production targets. `gh` must be authenticated with Pages write access so deploy can verify/update the legacy Pages source.
 
 1. Copy the sample environment files and update the placeholders. **Use the same signing key in both files** so TAuth and Pinguin agree on JWT validation.
 
@@ -447,7 +439,7 @@ make deploy
 
   - `configs/.env.pinguin` configures the environment variables referenced by `configs/config.pinguin.yml` (including tenant domains, SMTP/Twilio credentials, and `TAUTH_SIGNING_KEY`).
    - If `GET http://localhost:8081/runtime-config` returns `{"error":"tenant_not_found"}`, the tenant domain env vars (`TENANT_LOCAL_DOMAIN_PRIMARY` / `TENANT_LOCAL_DOMAIN_SECONDARY`) are missing/mismatched.
-   - `configs/.env.tauth` configures the Google OAuth client, signing key, and CORS settings for local development. Compose expands these values into `configs/config.tauth.yml` and passes that file to TAuth via `TAUTH_CONFIG_FILE`.
+   - `configs/.env.tauth` configures shared auth provider settings, signing key, and CORS settings for local development. Compose expands these values into `configs/config.tauth.yml` and passes that file to TAuth via `TAUTH_CONFIG_FILE`.
    - Keep `TAUTH_SIGNING_KEY` (Pinguin) identical to `TAUTH_TENANT_JWT_SIGNING_KEY_PINGUIN` (TAuth) so cookie validation succeeds.
    - `configs/config.pinguin.yml` controls the Pinguin web allowlist (`web.allowedOrigins`); keep `http://localhost:8080` there when using ghttp.
    - Match the same UI origin in `configs/.env.tauth` via `TAUTH_TENANT_ORIGIN_PINGUIN`/`TAUTH_CORS_ORIGIN_1` so the auth endpoints accept browser requests.
@@ -487,7 +479,7 @@ docker volume inspect pinguin-data
    timeout -k 5s -s SIGKILL 5s cp configs/.env.tauth.example configs/.env.tauth
    ```
 
-2. Edit `configs/.env.pinguin` (SMTP/Twilio + shared signing key) and `configs/.env.tauth` (Google client ID + the same signing key + `TAUTH_TENANT_ORIGIN_PINGUIN=http://localhost:8080`).
+2. Edit `configs/.env.pinguin` (SMTP/Twilio + shared signing key) and `configs/.env.tauth` (shared-shell auth settings + the same signing key + `TAUTH_TENANT_ORIGIN_PINGUIN=http://localhost:8080`).
 3. Start the orchestration with the `dev` profile (which builds Pinguin locally):
 
    ```bash
@@ -501,7 +493,7 @@ docker volume inspect pinguin-data
    - HTTP API → `http://localhost:8081`
    - TAuth → `http://localhost:8082`
 
-4. Visit `http://localhost:8080` in your browser, sign in via Google/TAuth, and use Event log or SMTP relay (the UI automatically talks to the API on port 8081).
+4. Visit `http://localhost:8080` in your browser, sign in through the shared shell, and use Event log or SMTP relay (the UI automatically talks to the API on port 8081).
 5. When finished, stop the stack (match the profile you started):
 
    ```bash
@@ -555,8 +547,8 @@ The doctor command performs comprehensive validation including:
 - Configuration file syntax and structure
 - Server requirements (database path, gRPC auth token, encryption key)
 - Web interface configuration (when enabled)
-- Tenant requirements (domains, identity settings, admins)
-- Cross-config validation (conflicting domains, shared client IDs)
+- Tenant requirements (domains, admins)
+- Cross-config validation (conflicting domains)
 
 ---
 
@@ -686,10 +678,10 @@ All endpoints emit structured JSON errors (`401` for auth failures, `400` for in
 
 ### Browser UI (beta)
 
-- Static assets live under `/web` and are served by GitHub Pages at `https://pinguin.mprlab.com` in production, with ghttp on `http://localhost:8080` for local development (the Go HTTP server keeps `/api`/`/runtime-config` on `http://localhost:8081` in this arrangement). `index.html` provides the marketing + Google Sign-In landing experience, `event-log.html` renders notification delivery events, and `smtp-relay.html` renders SMTP relay identity management.
+- Static assets live under `/web` and are served by GitHub Pages at `https://pinguin.mprlab.com` in production, with ghttp on `http://localhost:8080` for local development (the Go HTTP server keeps `/api`/`/runtime-config` on `http://localhost:8081` in this arrangement). `index.html` provides the sign-in landing experience, `event-log.html` renders notification delivery events, and `smtp-relay.html` renders SMTP relay identity management.
 - The UI follows AGENTS.md: Alpine components per section, mpr-ui header/footer, DOM-scoped events (`notifications:*`) for toasts + table refreshes, and all strings centralized in `js/constants.js`.
-- `js/app.js` bootstraps Alpine, registers the UI components, and reacts to `mpr-ui:auth:*` events to sync profile state and guard routes. The header handles auth through `/config-ui.yaml` plus `mpr-ui-config.js`, and components talk to `/api/notifications` via the shared `apiClient`.
-- Authentication state is broadcast across tabs via TAuth’s `BroadcastChannel("auth")`, so signing out in one tab logs out the others automatically.
+- `js/app.js` bootstraps Alpine, registers the UI components, and reacts to `mpr-ui:auth:*` events plus the shared `MPRUI.resolveAuthProfileSnapshot` verifier to sync profile state and guard routes. The header handles auth through `/config-ui.yaml` plus `mpr-ui-config.js`, and components talk to `/api/notifications` via the shared `apiClient`.
+- Cross-tab authentication state is owned by the shared shell; Pinguin consumes only the resulting `mpr-ui` events and profile snapshot.
 - Handy for local testing: start the Compose stack so ghttp (`http://localhost:8080`) serves the `/web` bundle while the Go server handles `/api`/`/runtime-config` on `http://localhost:8081`, then visit the ghttp host to exercise the landing, Event log, and SMTP relay flows without needing an external client.
 
 ### Front-End Tests (Playwright)

@@ -34,11 +34,8 @@ type Config struct {
 	SMTPSubmission      SMTPSubmissionConfig
 	SMTPForwarding      SMTPForwardingConfig
 
-	TAuthSigningKey     string
-	TAuthCookieName     string
-	TAuthBaseURL        string
-	TAuthTenantID       string
-	TAuthGoogleClientID string
+	TAuthSigningKey string
+	TAuthCookieName string
 
 	SMTPUsername string
 	SMTPPassword string
@@ -126,11 +123,8 @@ type webSection struct {
 }
 
 type tauthSection struct {
-	SigningKey     string `yaml:"signingKey"`
-	CookieName     string `yaml:"cookieName"`
-	GoogleClientID string `yaml:"googleClientId"`
-	TAuthBaseURL   string `yaml:"tauthBaseUrl"`
-	TAuthTenantID  string `yaml:"tauthTenantId"`
+	SigningKey string `yaml:"signingKey"`
+	CookieName string `yaml:"cookieName"`
 }
 
 type smtpSubmissionSection struct {
@@ -294,9 +288,6 @@ func loadConfigFromPath(configPath string) (Config, error) {
 		},
 		TAuthSigningKey:      strings.TrimSpace(fileCfg.Server.TAuth.SigningKey),
 		TAuthCookieName:      strings.TrimSpace(fileCfg.Server.TAuth.CookieName),
-		TAuthBaseURL:         strings.TrimSpace(fileCfg.Server.TAuth.TAuthBaseURL),
-		TAuthTenantID:        strings.TrimSpace(fileCfg.Server.TAuth.TAuthTenantID),
-		TAuthGoogleClientID:  strings.TrimSpace(fileCfg.Server.TAuth.GoogleClientID),
 		ConnectionTimeoutSec: fileCfg.Server.ConnectionTimeout,
 		OperationTimeoutSec:  fileCfg.Server.OperationTimeout,
 		TenantBootstrap: tenant.BootstrapConfig{
@@ -312,9 +303,6 @@ func loadConfigFromPath(configPath string) (Config, error) {
 		configuration.HTTPAllowedOrigins = nil
 		configuration.TAuthSigningKey = ""
 		configuration.TAuthCookieName = ""
-		configuration.TAuthBaseURL = ""
-		configuration.TAuthTenantID = ""
-		configuration.TAuthGoogleClientID = ""
 	}
 
 	if err := validateConfig(configuration); err != nil {
@@ -379,9 +367,6 @@ func validateConfig(cfg Config) error {
 	if cfg.WebInterfaceEnabled {
 		requireString(cfg.HTTPListenAddr, "web.listenAddr", &errors)
 		requireString(cfg.TAuthSigningKey, "server.tauth.signingKey", &errors)
-		requireString(cfg.TAuthBaseURL, "server.tauth.tauthBaseUrl", &errors)
-		requireString(cfg.TAuthTenantID, "server.tauth.tauthTenantId", &errors)
-		requireString(cfg.TAuthGoogleClientID, "server.tauth.googleClientId", &errors)
 	}
 
 	if cfg.SMTPSubmission.Enabled {

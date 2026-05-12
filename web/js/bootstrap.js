@@ -99,15 +99,6 @@ function mergeConfig(base, overrides) {
       const apiOverride =
         remote && typeof remote.apiBaseUrl === 'string' ? { apiBaseUrl: remote.apiBaseUrl } : {};
       const runtimeOverrides = {};
-      if (remote && typeof remote.tauthBaseUrl === 'string') {
-        runtimeOverrides.tauthBaseUrl = remote.tauthBaseUrl;
-      }
-      if (remote && typeof remote.googleClientId === 'string') {
-        runtimeOverrides.googleClientId = remote.googleClientId;
-      }
-      if (remote && typeof remote.tauthTenantId === 'string') {
-        runtimeOverrides.tauthTenantId = remote.tauthTenantId;
-      }
       if (remote && typeof remote.eventLogUrl === 'string') {
         runtimeOverrides.eventLogUrl = remote.eventLogUrl;
       }
@@ -125,9 +116,6 @@ function mergeConfig(base, overrides) {
   }
   const finalConfig = {
     apiBaseUrl: effectiveConfig.apiBaseUrl,
-    tauthBaseUrl: effectiveConfig.tauthBaseUrl,
-    tauthTenantId: effectiveConfig.tauthTenantId,
-    googleClientId: effectiveConfig.googleClientId,
     landingUrl: effectiveConfig.landingUrl || DEFAULT_CONFIG.landingUrl,
     eventLogUrl: effectiveConfig.eventLogUrl || DEFAULT_CONFIG.eventLogUrl,
     smtpRelayUrl: effectiveConfig.smtpRelayUrl || DEFAULT_CONFIG.smtpRelayUrl,

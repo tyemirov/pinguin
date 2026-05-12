@@ -46,7 +46,7 @@ The doctor command performs comprehensive validation including:
 - Configuration file syntax and structure
 - Server configuration requirements (database, auth token, encryption key)
 - Web interface configuration (when enabled)
-- Tenant configuration requirements (domains, identity, admins)
+- Tenant configuration requirements (domains, admins)
 - Cross-config validation (when multiple configs are provided)
 
 Examples:

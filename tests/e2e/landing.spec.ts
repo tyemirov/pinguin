@@ -3,7 +3,7 @@ import {
   completeHeaderLogin,
   configureRuntime,
   expectSharedHeaderUserMenu,
-  expectHeaderGoogleButton,
+  expectSharedHeaderSignInButton,
   expectPinguinHeaderBrand,
   resetNotifications,
   stubExternalAssets,
@@ -20,11 +20,11 @@ test.describe('Landing page auth flow', () => {
     await page.goto('/index.html');
     await expect(page.getByRole('heading', { name: /notification delivery/i })).toBeVisible();
     await expectPinguinHeaderBrand(page);
-    await expectHeaderGoogleButton(page);
+    await expectSharedHeaderSignInButton(page);
     await expect(page.getByLabel('Notification workspace preview')).toBeVisible();
   });
 
-  test('completes Google/TAuth handshake and redirects to event log', async ({ page }) => {
+  test('completes shared mpr-ui handshake and redirects to event log', async ({ page }) => {
     await page.goto('/index.html');
     await completeHeaderLogin(page);
     await expect(page.getByTestId('notifications-table')).toBeVisible();
@@ -75,11 +75,14 @@ test.describe('Landing page auth flow', () => {
     });
 
     await page.goto('/index.html');
-    await expectHeaderGoogleButton(page);
-    await page.waitForFunction(
-      () => (window as any).__PINGUIN_AUTH_STATE__?.status === 'unauthenticated',
-    );
-    await page.waitForTimeout(250);
+    await expectSharedHeaderSignInButton(page);
+    await expect.poll(() => ({
+      profileRequestCount,
+      refreshRequestCount,
+    })).toEqual({
+      profileRequestCount: 1,
+      refreshRequestCount: 1,
+    });
 
     expect(profileRequestCount).toBe(1);
     expect(refreshRequestCount).toBe(1);
@@ -104,11 +107,6 @@ test.describe('Landing page auth flow', () => {
           id: 'ps',
           displayName: 'PoodleScanner',
         },
-        tauth: {
-          baseUrl: 'https://tauth-api.mprlab.com',
-          googleClientId: 'production-google-client',
-          tenantId: 'pinguin',
-        },
       });
     });
 
@@ -119,11 +117,14 @@ test.describe('Landing page auth flow', () => {
         (expected) => document.documentElement.dataset.tenantId === expected,
         'ps',
       );
-      await expect(
-        page.locator('mpr-header').first(),
-      ).toHaveAttribute('google-site-id', 'playwright-client');
       const id = await page.evaluate(() => (window as any).__PINGUIN_CONFIG__?.tenant?.id || '');
       expect(id).toBe('ps');
+      const runtimeAuthMetadataKeys = await page.evaluate(() =>
+        Object.keys((window as any).__PINGUIN_CONFIG__ || {}).filter((key) =>
+          ['googleClientId', 'tauthBaseUrl', 'tauthTenantId'].includes(key),
+        ),
+      );
+      expect(runtimeAuthMetadataKeys).toEqual([]);
     });
   });
 

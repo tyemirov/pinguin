@@ -10,8 +10,7 @@
       href="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.css"
     />
     <link rel="stylesheet" href="/assets/css/base.css" />
-    <script defer src="/js/tauth-config.js"></script>
-    <script defer src="/js/mpr-ui-auth-cache.js"></script>
+    <script defer src="/js/runtime-config.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui-config.js"></script>
     <script
@@ -278,7 +277,7 @@
       privacy-modal-content="
         <h1>Privacy Policy — Pinguin</h1>
         <p>Pinguin stores the notification drafts you create, recipient details, and delivery metadata solely to run the scheduling workspace.</p>
-        <p>Authentication happens through Google Sign-In; we issue HttpOnly session cookies and never store your password.</p>
+        <p>Authentication happens through the shared sign-in shell; Pinguin receives HttpOnly session cookies and never stores your password.</p>
         <p>We do not sell or share notification content with third parties, and you may remove queued items from the workspace at any time.</p>
       "
       links-collection='{"style":"drop-up","text":"Explore","links":[{ "label": "Repository", "url": "https://github.com/tyemirov/pinguin" },{ "label": "mpr-ui docs", "url": "https://github.com/MarcoPoloResearchLab/mpr-ui" }]}'

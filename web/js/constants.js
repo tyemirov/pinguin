@@ -13,13 +13,6 @@ const normalizeUrl = (value) => {
   return value.trim().replace(/\/$/, "");
 };
 
-const PLACEHOLDER_GOOGLE_IDS = new Set([
-  "YOUR_GOOGLE_WEB_CLIENT_ID",
-  "YOUR_GOOGLE_CLIENT_ID",
-  "playwright-client",
-  "demo-google-client-id",
-]);
-
 const deriveDefaultApiBaseUrl = () => {
   try {
     const { protocol, hostname, port } = window.location;
@@ -35,29 +28,8 @@ const deriveDefaultApiBaseUrl = () => {
   }
 };
 
-const normalizeGoogleClientId = (value) => {
-  if (!value || typeof value !== "string") {
-    return "";
-  }
-  const trimmed = value.trim();
-  if (!trimmed || PLACEHOLDER_GOOGLE_IDS.has(trimmed)) {
-    return "";
-  }
-  return trimmed;
-};
-
-const normalizeOptionalString = (value) => {
-  if (!value || typeof value !== "string") {
-    return "";
-  }
-  return value.trim();
-};
-
 export const RUNTIME_CONFIG = Object.freeze({
   apiBaseUrl: normalizeUrl(rawConfig.apiBaseUrl) || deriveDefaultApiBaseUrl(),
-  tauthBaseUrl: normalizeUrl(rawConfig.tauthBaseUrl),
-  tauthTenantId: normalizeOptionalString(rawConfig.tauthTenantId),
-  googleClientId: normalizeGoogleClientId(rawConfig.googleClientId),
   landingUrl: String(rawConfig.landingUrl || "/index.html"),
   eventLogUrl: String(rawConfig.eventLogUrl || "/event-log.html"),
   smtpRelayUrl: String(rawConfig.smtpRelayUrl || "/smtp-relay.html"),
