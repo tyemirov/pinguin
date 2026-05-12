@@ -13,13 +13,6 @@ const normalizeUrl = (value) => {
   return value.trim().replace(/\/$/, "");
 };
 
-const PLACEHOLDER_GOOGLE_IDS = new Set([
-  "YOUR_GOOGLE_WEB_CLIENT_ID",
-  "YOUR_GOOGLE_CLIENT_ID",
-  "playwright-client",
-  "demo-google-client-id",
-]);
-
 const deriveDefaultApiBaseUrl = () => {
   try {
     const { protocol, hostname, port } = window.location;
@@ -35,31 +28,11 @@ const deriveDefaultApiBaseUrl = () => {
   }
 };
 
-const normalizeGoogleClientId = (value) => {
-  if (!value || typeof value !== "string") {
-    return "";
-  }
-  const trimmed = value.trim();
-  if (!trimmed || PLACEHOLDER_GOOGLE_IDS.has(trimmed)) {
-    return "";
-  }
-  return trimmed;
-};
-
-const normalizeOptionalString = (value) => {
-  if (!value || typeof value !== "string") {
-    return "";
-  }
-  return value.trim();
-};
-
 export const RUNTIME_CONFIG = Object.freeze({
   apiBaseUrl: normalizeUrl(rawConfig.apiBaseUrl) || deriveDefaultApiBaseUrl(),
-  tauthBaseUrl: normalizeUrl(rawConfig.tauthBaseUrl),
-  tauthTenantId: normalizeOptionalString(rawConfig.tauthTenantId),
-  googleClientId: normalizeGoogleClientId(rawConfig.googleClientId),
   landingUrl: String(rawConfig.landingUrl || "/index.html"),
-  dashboardUrl: String(rawConfig.dashboardUrl || "/dashboard.html"),
+  eventLogUrl: String(rawConfig.eventLogUrl || "/event-log.html"),
+  smtpRelayUrl: String(rawConfig.smtpRelayUrl || "/smtp-relay.html"),
   tenant: tenantConfig,
 });
 
@@ -69,13 +42,11 @@ export const STRINGS = Object.freeze({
     eyebrow: "Pinguin workspace",
     headline: "Notification delivery without the guesswork",
     subheadline:
-      "Sign in to review queued, sent, cancelled, and retrying messages from one operational dashboard.",
+      "Sign in to review queued, sent, cancelled, and retrying messages from one operational workspace.",
   },
-  dashboard: {
-    title: "Pinguin dashboard",
-    subtitle: "Monitor notification delivery events and manage SMTP relay access from one shared shell.",
-    eventLogTitle: "Event log",
-    eventLogSubtitle: "Review delivery status, adjust schedules, or cancel queued jobs in a single view.",
+  eventLog: {
+    title: "Event log",
+    subtitle: "Review delivery status, adjust schedules, or cancel queued jobs in a single view.",
     profileMenuLabel: "User menu",
     emptyState: "No notifications yet. Start by sending one via the CLI or gRPC client.",
     scheduleDialogTitle: "Reschedule notification",

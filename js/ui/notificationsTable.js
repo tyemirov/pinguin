@@ -38,7 +38,7 @@ const inputFormatter = {
 /**
  * @param {{
  *   apiClient: ReturnType<typeof import('../core/apiClient.js').createApiClient>,
- *   strings: typeof import('../constants.js').STRINGS.dashboard,
+ *   strings: typeof import('../constants.js').STRINGS.eventLog,
  *   actions: typeof import('../constants.js').STRINGS.actions,
  * }} options
  */

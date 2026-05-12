@@ -2,7 +2,8 @@
 
 const DEFAULT_CONFIG = Object.freeze({
   landingUrl: '/index.html',
-  dashboardUrl: '/dashboard.html',
+  eventLogUrl: '/event-log.html',
+  smtpRelayUrl: '/smtp-relay.html',
 });
 const RUNTIME_CONFIG_URL_HINT =
   typeof window.__PINGUIN_RUNTIME_CONFIG_URL === 'string'
@@ -97,18 +98,15 @@ function mergeConfig(base, overrides) {
       }
       const apiOverride =
         remote && typeof remote.apiBaseUrl === 'string' ? { apiBaseUrl: remote.apiBaseUrl } : {};
-      const tauthOverrides = {};
-      if (remote && typeof remote.tauthBaseUrl === 'string') {
-        tauthOverrides.tauthBaseUrl = remote.tauthBaseUrl;
+      const runtimeOverrides = {};
+      if (remote && typeof remote.eventLogUrl === 'string') {
+        runtimeOverrides.eventLogUrl = remote.eventLogUrl;
       }
-      if (remote && typeof remote.googleClientId === 'string') {
-        tauthOverrides.googleClientId = remote.googleClientId;
-      }
-      if (remote && typeof remote.tauthTenantId === 'string') {
-        tauthOverrides.tauthTenantId = remote.tauthTenantId;
+      if (remote && typeof remote.smtpRelayUrl === 'string') {
+        runtimeOverrides.smtpRelayUrl = remote.smtpRelayUrl;
       }
       effectiveConfig = mergeConfig(effectiveConfig, apiOverride);
-      effectiveConfig = mergeConfig(effectiveConfig, tauthOverrides);
+      effectiveConfig = mergeConfig(effectiveConfig, runtimeOverrides);
     } catch (error) {
       console.warn('runtime config fetch failed', error);
     }
@@ -118,11 +116,9 @@ function mergeConfig(base, overrides) {
   }
   const finalConfig = {
     apiBaseUrl: effectiveConfig.apiBaseUrl,
-    tauthBaseUrl: effectiveConfig.tauthBaseUrl,
-    tauthTenantId: effectiveConfig.tauthTenantId,
-    googleClientId: effectiveConfig.googleClientId,
     landingUrl: effectiveConfig.landingUrl || DEFAULT_CONFIG.landingUrl,
-    dashboardUrl: effectiveConfig.dashboardUrl || DEFAULT_CONFIG.dashboardUrl,
+    eventLogUrl: effectiveConfig.eventLogUrl || DEFAULT_CONFIG.eventLogUrl,
+    smtpRelayUrl: effectiveConfig.smtpRelayUrl || DEFAULT_CONFIG.smtpRelayUrl,
     tenant: effectiveConfig.tenant || null,
   };
   window.__PINGUIN_CONFIG__ = finalConfig;
