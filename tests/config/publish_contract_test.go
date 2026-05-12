@@ -190,12 +190,24 @@ func TestPagesSourceIncludesNoJekyllAndCNAME(t *testing.T) {
 		repoPath("web", ".nojekyll"),
 		repoPath("web", "CNAME"),
 		repoPath("web", "index.html"),
+		repoPath("web", "dashboard.html"),
 		repoPath("web", "event-log.html"),
 		repoPath("web", "smtp-relay.html"),
 	}
 	for _, requiredPath := range requiredPaths {
 		if _, statErr := os.Stat(requiredPath); statErr != nil {
 			t.Fatalf("required Pages source file missing: %s: %v", requiredPath, statErr)
+		}
+	}
+
+	dashboardRedirect := string(readRepoFile(t, "web", "dashboard.html"))
+	for _, requiredSnippet := range []string{
+		`content="0; url=/event-log.html"`,
+		`window.location.hash === '#smtp-relay' ? '/smtp-relay.html' : '/event-log.html'`,
+		`window.location.replace(target.toString())`,
+	} {
+		if !strings.Contains(dashboardRedirect, requiredSnippet) {
+			t.Fatalf("dashboard compatibility redirect missing %q", requiredSnippet)
 		}
 	}
 }

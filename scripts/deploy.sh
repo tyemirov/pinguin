@@ -253,6 +253,7 @@ fi
 
 if [[ "${SKIP_PAGES}" != "true" ]]; then
   [[ -f "web/index.html" ]] || { echo "error: web/index.html is required for Pages publishing" >&2; exit 1; }
+  [[ -f "web/dashboard.html" ]] || { echo "error: web/dashboard.html is required for Pages compatibility redirect" >&2; exit 1; }
   [[ -f "web/event-log.html" ]] || { echo "error: web/event-log.html is required for Pages publishing" >&2; exit 1; }
   [[ -f "web/smtp-relay.html" ]] || { echo "error: web/smtp-relay.html is required for Pages publishing" >&2; exit 1; }
   [[ -f "web/CNAME" ]] || { echo "error: web/CNAME is required for Pages custom domain publishing" >&2; exit 1; }

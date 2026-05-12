@@ -50,6 +50,13 @@ test.describe('Authenticated pages', () => {
     await expect(page.getByRole('button', { name: 'Refresh' })).toHaveCount(1);
   });
 
+  test('keeps the legacy dashboard URL as an event log redirect', async ({ page }) => {
+    await configureRuntime(page, { authenticated: true });
+    await page.goto('/dashboard.html');
+    await expect(page).toHaveURL(/\/event-log\.html$/);
+    await expect(page.getByTestId('notifications-table')).toBeVisible();
+  });
+
   test('renders event log and SMTP relay as separate authenticated pages', async ({ page }) => {
     await configureRuntime(page, { authenticated: true });
     await page.goto('/event-log.html');
