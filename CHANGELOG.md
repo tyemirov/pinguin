@@ -3,6 +3,8 @@
 ## Unreleased
 
 ### Features
+- Add authenticated sender-domain DNS setup for SMTP relay, including exact DNS records, manual DNS checks, verified-domain identity creation, and owner-scoped relay management for non-admin users.
+- Allow admins to reopen existing SMTP relay credentials in the Gmail SMTP settings modal, with passwords stored encrypted at rest and rotation available inside the modal.
 - Add UI/API-driven inbound SMTP forwarding for shared SMTP identities, with required forwarding owners, no mailbox storage, and immediate fanout through a configured relay.
 - Decouple authenticated SMTP submission from notification tenants by giving it its own sender-domain allowlist, identity credentials, and upstream relay profile.
 - Add an authenticated tenant switcher so Pinguin admins can load active tenants and view each tenant's notification events from the dashboard.
@@ -10,7 +12,6 @@
 
 ### Bug Fixes
 - Accept SMTP forwarding `MAIL FROM:<>` null reverse-path traffic so DSNs and auto-generated loop-safe messages can reach configured shared-address routes.
-- Require `smtpSubmission.senderDomains` when inbound SMTP forwarding is enabled so fresh deployments cannot start without an allowlist for identity-backed routes.
 - Replace the generated placeholder logo with the canonical Pinguin turquoise envelope mark.
 - Enforce tenant authorization before honoring `tenant_id` on notification list, reschedule, and cancel endpoints.
 - Require the TAuth `admin` role before listing, creating, rotating, or deleting global SMTP identities.
@@ -35,6 +36,8 @@
 - Align Pinguin SMTP setup with gateway high-port publishing so MX and SMTPS use `8025` and `8465` on the host.
 
 ### Testing
+- Add backend and browser coverage for sender-domain DNS setup, manual checks, and verified-domain SMTP identity creation.
+- Add backend and browser coverage for retrieving existing SMTP relay credentials and rotating them from inside the modal.
 - Add black-box SMTP forwarding coverage for accept/forward, unknown-recipient rejection, size limits, relay failures, and startup wiring.
 - Add backend and browser coverage for notification search, cursor pagination, infinite scroll, and the GORM-only query contract.
 - Add browser coverage for the dashboard horizontal Event log / SMTP relay menu.
@@ -53,6 +56,7 @@
 - Add deployment contract coverage for the sibling gateway SMTP host-port configuration.
 
 ### Docs
+- Update SMTP relay docs to describe reusable credential viewing instead of one-time password display.
 - Document shared-address forwarding DNS setup and verification using `mx.pinguin.mprlab.com`.
 - Update README and architecture notes to describe `config-ui.yaml` as the browser auth source of truth.
 - Update the dashboard docs to describe the authenticated event log and SMTP relay surfaces.

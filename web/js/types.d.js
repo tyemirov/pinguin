@@ -59,6 +59,35 @@
  */
 
 /**
+ * @typedef {Object} SMTPDomainDNSRecord
+ * @property {string} type
+ * @property {string} host
+ * @property {string} value
+ * @property {string} purpose
+ */
+
+/**
+ * @typedef {Object} SMTPDomainDNSCheck
+ * @property {string} type
+ * @property {string} host
+ * @property {string} expected
+ * @property {boolean} passed
+ * @property {string} message
+ */
+
+/**
+ * @typedef {Object} SMTPSenderDomain
+ * @property {number} id
+ * @property {string} domain
+ * @property {string} status
+ * @property {SMTPDomainDNSRecord[]} dnsRecords
+ * @property {SMTPDomainDNSCheck[]} dnsChecks
+ * @property {string | null} lastCheckedAt
+ * @property {string} createdAt
+ * @property {string} updatedAt
+ */
+
+/**
  * @typedef {Object} StatusOption
  * @property {NotificationStatusKey | "all"} value
  * @property {string} label

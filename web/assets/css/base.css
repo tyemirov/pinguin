@@ -416,6 +416,12 @@ form label {
   outline-offset: 2px;
 }
 
+.dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
 .notice {
   display: flex;
   align-items: center;
@@ -533,6 +539,93 @@ mpr-header [data-mpr-header="google-signin"] button {
   gap: 1rem;
   align-items: end;
   margin-bottom: 1rem;
+}
+
+.domain-setup {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.domain-setup__header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.domain-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 360px) auto;
+  gap: 1rem;
+  align-items: end;
+}
+
+.domain-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.domain-item {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.domain-item__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.domain-item__header > div {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.dns-table {
+  min-width: 760px;
+}
+
+.dns-table code {
+  white-space: nowrap;
+}
+
+.dns-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dns-checks li {
+  display: inline-grid;
+  gap: 0.1rem;
+  min-width: min(260px, 100%);
+  border: 1px solid var(--border-color);
+  border-radius: 0.65rem;
+  padding: 0.6rem 0.75rem;
+}
+
+.dns-checks li[data-state="passed"] {
+  border-color: rgba(22, 163, 74, 0.22);
+}
+
+.dns-checks span {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.dns-checks strong,
+.dns-checks small {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .identity-form textarea {
