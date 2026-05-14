@@ -959,13 +959,33 @@ func TestSMTPIdentityReportsStorageErrors(t *testing.T) {
 func TestSMTPIdentityRoutesBypassTenantLookup(t *testing.T) {
 	server, _ := newTestHTTPServerWithSMTPIdentities(t)
 
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/smtp-identities", nil)
-	request.Host = "unknown.example.com"
-	server.httpServer.Handler.ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected 200 for tenant-independent SMTP identities, got %d body=%s", recorder.Code, recorder.Body.String())
+	testCases := []struct {
+		name         string
+		method       string
+		path         string
+		body         string
+		expectedCode int
+	}{
+		{name: "list identities", method: http.MethodGet, path: "/api/smtp-identities", expectedCode: http.StatusOK},
+		{name: "list domains", method: http.MethodGet, path: "/api/smtp-domains", expectedCode: http.StatusOK},
+		{name: "create domain", method: http.MethodPost, path: "/api/smtp-domains", body: `{"domain":"customer.example"}`, expectedCode: http.StatusCreated},
+		{name: "check missing domain", method: http.MethodPost, path: "/api/smtp-domains/404/check-dns", expectedCode: http.StatusNotFound},
+	}
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(testCase.method, testCase.path, strings.NewReader(testCase.body))
+			request.Host = "unknown.example.com"
+			request.Header.Set("Content-Type", "application/json")
+			server.httpServer.Handler.ServeHTTP(recorder, request)
+			if recorder.Code != testCase.expectedCode {
+				t.Fatalf("expected %d for tenant-independent SMTP route, got %d body=%s", testCase.expectedCode, recorder.Code, recorder.Body.String())
+			}
+			if strings.Contains(recorder.Body.String(), "tenant_not_found") {
+				t.Fatalf("expected SMTP route to bypass tenant lookup, got body=%s", recorder.Body.String())
+			}
+		})
 	}
 }
 
