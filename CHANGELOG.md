@@ -60,6 +60,33 @@
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 - Document the remaining edge mappings after gateway deployment: `25 -> tutosh:8025` and `465 -> tutosh:8465`.
 
+## [v0.4.10] - 2026-05-14
+
+### Features ✨
+- Introduce rewriting of forwarded SMTP messages to preserve original sender identity and remove stale headers.
+- Rewrite From, Reply-To, and add X-Pinguin-Original-From headers during message forwarding.
+- Maintain header order, including trace and resent headers, while stripping authentication-related headers.
+
+### Improvements ⚙️
+- Refactor smtpforwarding relay and types tests for better coverage and clarity.
+- Add comprehensive message header parsing with support for folded headers and validation.
+- Improve logging on forwarding rewrite skips and relay failures.
+
+### Bug Fixes 🐛
+- Fix smtpforwarding logic to correctly rewrite messages and update tests accordingly.
+- Correct handling of messages lacking Reply-To to fallback correctly to original From.
+- Ensure temporary forward errors are wrapped and propagated properly.
+
+### Testing 🧪
+- Add tests verifying header rewrite correctness including From, Reply-To, X-Pinguin-Original-From fields.
+- Test preservation of original message body and header order after rewriting.
+- Include negative tests for malformed headers, body read errors, and unparseable messages.
+- Test forwarding keeps original Reply-To if present.
+- Test error scenarios for message parsing and body read failures.
+
+### Docs 📚
+- _No changes._
+
 ## [v0.4.9] - 2026-05-12
 
 ### Features ✨
