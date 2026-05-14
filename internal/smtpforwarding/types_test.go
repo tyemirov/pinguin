@@ -195,8 +195,11 @@ func TestRelayForwarder(testHandle *testing.T) {
 
 	sender.err = nil
 	invalidMessage := Message{Data: []byte("not a header\r\n\r\nHello")}
-	if err := forwarder.Forward(context.Background(), route, invalidMessage); !errors.Is(err, ErrForwardTemporary) {
-		testHandle.Fatalf("expected temporary rewrite error, got %v", err)
+	if err := forwarder.Forward(context.Background(), route, invalidMessage); err != nil {
+		testHandle.Fatalf("forward invalid raw message: %v", err)
+	}
+	if string(sender.rawMessage) != string(invalidMessage.Data) {
+		testHandle.Fatalf("expected unparseable message to be relayed raw")
 	}
 }
 
@@ -231,14 +234,104 @@ func TestRelayForwarderPreservesOriginalReplyTo(testHandle *testing.T) {
 	}
 }
 
+func TestRelayForwarderPreservesTraceAndResentHeaderOrder(testHandle *testing.T) {
+	route := mustRoute(testHandle)
+	message := Message{Data: []byte(strings.Join([]string{
+		"Received: from mx-two.example by mx.pinguin.example",
+		"Received: from mx-one.example by mx-two.example",
+		"Resent-Date: Thu, 14 May 2026 18:00:00 +0000",
+		"Resent-From: Relay <relay@example.net>",
+		"From: Sender <sender@example.net>",
+		"To: support@help.example.com",
+		"Subject: Hello",
+		"",
+		"Hello",
+	}, "\r\n"))}
+	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
+	sender := &recordingRawEmailSender{}
+	forwarder, forwarderErr := NewRelayForwarder(sender, logger)
+	if forwarderErr != nil {
+		testHandle.Fatalf("new forwarder: %v", forwarderErr)
+	}
+	if err := forwarder.Forward(context.Background(), route, message); err != nil {
+		testHandle.Fatalf("forward: %v", err)
+	}
+
+	wantHeaderLines := []string{
+		"Received: from mx-two.example by mx.pinguin.example",
+		"Received: from mx-one.example by mx-two.example",
+		"Resent-Date: Thu, 14 May 2026 18:00:00 +0000",
+		"Resent-From: Relay <relay@example.net>",
+		`From: "Sender" <support@help.example.com>`,
+		"Reply-To: Sender <sender@example.net>",
+		"X-Pinguin-Original-From: Sender <sender@example.net>",
+		"To: support@help.example.com",
+		"Subject: Hello",
+	}
+	if gotHeaderLines := rawMessageHeaderLines(sender.rawMessage); strings.Join(gotHeaderLines, "\n") != strings.Join(wantHeaderLines, "\n") {
+		testHandle.Fatalf("unexpected header order:\n%s", strings.Join(gotHeaderLines, "\n"))
+	}
+}
+
 func TestRewriteParsedForwardedMessageReportsBodyReadError(testHandle *testing.T) {
 	route := mustRoute(testHandle)
-	parsedMessage := &mail.Message{
-		Header: mail.Header{headerFrom: []string{"sender@example.net"}},
-		Body:   failingMessageBody{},
+	parsedMessage := orderedForwardedMessage{
+		headers: []orderedMessageHeader{{name: headerFrom, value: "sender@example.net"}},
+		body:    failingMessageBody{},
 	}
 	if _, rewriteErr := rewriteParsedForwardedMessage(route, parsedMessage); rewriteErr == nil || !strings.Contains(rewriteErr.Error(), "read message body") {
 		testHandle.Fatalf("expected body read error, got %v", rewriteErr)
+	}
+}
+
+func TestParseOrderedForwardedMessage(testHandle *testing.T) {
+	for _, testCase := range []struct {
+		name       string
+		rawMessage string
+		wantErr    string
+	}{
+		{name: "empty headers", rawMessage: "\r\n\r\nBody"},
+		{name: "lf delimiter", rawMessage: "From: sender@example.net\n\nHello"},
+		{name: "folded header", rawMessage: "Subject: Hello\n world\n\nBody"},
+		{name: "missing terminator", rawMessage: "From: sender@example.net", wantErr: "message header terminator is required"},
+		{name: "continuation without header", rawMessage: " folded\r\n\r\nBody", wantErr: "message header continuation without header"},
+		{name: "leading whitespace before header", rawMessage: " : value\r\n\r\nBody", wantErr: "message header continuation without header"},
+		{name: "invalid header name", rawMessage: "Bad Name: value\r\n\r\nBody", wantErr: "invalid message header name"},
+	} {
+		testCase := testCase
+		testHandle.Run(testCase.name, func(t *testing.T) {
+			parsedMessage, parseErr := parseOrderedForwardedMessage([]byte(testCase.rawMessage))
+			if testCase.wantErr != "" {
+				if parseErr == nil || !strings.Contains(parseErr.Error(), testCase.wantErr) {
+					t.Fatalf("expected %q error, got %v", testCase.wantErr, parseErr)
+				}
+				return
+			}
+			if parseErr != nil {
+				t.Fatalf("parse message: %v", parseErr)
+			}
+			if testCase.name != "empty headers" && len(parsedMessage.headers) == 0 {
+				t.Fatalf("expected parsed headers")
+			}
+		})
+	}
+}
+
+func TestRewriteForwardedMessageWithoutOriginalFrom(testHandle *testing.T) {
+	route := mustRoute(testHandle)
+	rewrittenMessage, rewriteErr := rewriteForwardedMessage(route, []byte("Subject: Hello\r\n\r\nBody"))
+	if rewriteErr != nil {
+		testHandle.Fatalf("rewrite message: %v", rewriteErr)
+	}
+	gotHeaderLines := rawMessageHeaderLines(rewrittenMessage)
+	if len(gotHeaderLines) < 2 || gotHeaderLines[0] != "From: support@help.example.com" || gotHeaderLines[1] != "Subject: Hello" {
+		testHandle.Fatalf("unexpected no-from rewrite:\n%s", strings.Join(gotHeaderLines, "\n"))
+	}
+}
+
+func TestValidHeaderNameRejectsEmptyValue(testHandle *testing.T) {
+	if validHeaderName("") {
+		testHandle.Fatalf("expected empty header name to be invalid")
 	}
 }
 
@@ -320,4 +413,9 @@ func mustMailMessage(testHandle *testing.T, rawMessage []byte) *mail.Message {
 		testHandle.Fatalf("parse message: %v\n%s", parseErr, string(rawMessage))
 	}
 	return parsedMessage
+}
+
+func rawMessageHeaderLines(rawMessage []byte) []string {
+	headerBlock := strings.SplitN(string(rawMessage), "\r\n\r\n", 2)[0]
+	return strings.Split(headerBlock, "\r\n")
 }
