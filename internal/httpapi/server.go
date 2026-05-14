@@ -196,6 +196,8 @@ func isTenantAgnosticPath(path string) bool {
 		path == "/api/tenants" ||
 		path == "/api/notifications" ||
 		strings.HasPrefix(path, "/api/notifications/") ||
+		path == "/api/smtp-domains" ||
+		strings.HasPrefix(path, "/api/smtp-domains/") ||
 		path == "/api/smtp-identities" ||
 		strings.HasPrefix(path, "/api/smtp-identities/")
 }
