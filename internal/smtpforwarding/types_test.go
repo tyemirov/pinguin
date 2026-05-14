@@ -1,10 +1,12 @@
 package smtpforwarding
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"log/slog"
+	"net/mail"
 	"strings"
 	"testing"
 
@@ -125,7 +127,15 @@ func TestRouteValidationRejectsInvalidRoutes(testHandle *testing.T) {
 
 func TestRelayForwarder(testHandle *testing.T) {
 	route := mustRoute(testHandle)
-	message := Message{Data: []byte("From: sender@example.net\r\n\r\nHello")}
+	message := Message{Data: []byte(strings.Join([]string{
+		"From: Sender <sender@example.net>",
+		"To: support@help.example.com",
+		"Subject: Hello",
+		"DKIM-Signature: v=1; a=rsa-sha256",
+		"Return-Path: <sender@example.net>",
+		"",
+		"Hello",
+	}, "\r\n"))}
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
 	if _, err := NewRelayForwarder(nil, logger); err == nil {
 		testHandle.Fatalf("expected nil sender error")
@@ -148,13 +158,108 @@ func TestRelayForwarder(testHandle *testing.T) {
 	if strings.Join(sender.recipients, ",") != "owner@example.com" {
 		testHandle.Fatalf("unexpected recipients %v", sender.recipients)
 	}
-	if string(sender.rawMessage) != string(message.Data) {
-		testHandle.Fatalf("expected raw message to be preserved")
+	parsedMessage := mustMailMessage(testHandle, sender.rawMessage)
+	if parsedMessage.Header.Get("From") != `"Sender" <support@help.example.com>` {
+		testHandle.Fatalf("expected rewritten From with original display name, got %q", parsedMessage.Header.Get("From"))
+	}
+	if parsedMessage.Header.Get("Reply-To") != "Sender <sender@example.net>" {
+		testHandle.Fatalf("expected original From as Reply-To, got %q", parsedMessage.Header.Get("Reply-To"))
+	}
+	if parsedMessage.Header.Get("X-Pinguin-Original-From") != "Sender <sender@example.net>" {
+		testHandle.Fatalf("expected original From trace header, got %q", parsedMessage.Header.Get("X-Pinguin-Original-From"))
+	}
+	if parsedMessage.Header.Get("To") != "support@help.example.com" {
+		testHandle.Fatalf("expected original To header, got %q", parsedMessage.Header.Get("To"))
+	}
+	if parsedMessage.Header.Get("Subject") != "Hello" {
+		testHandle.Fatalf("expected original Subject header, got %q", parsedMessage.Header.Get("Subject"))
+	}
+	if parsedMessage.Header.Get("DKIM-Signature") != "" {
+		testHandle.Fatalf("expected stale DKIM-Signature to be stripped")
+	}
+	if parsedMessage.Header.Get("Return-Path") != "" {
+		testHandle.Fatalf("expected Return-Path header to be stripped")
+	}
+	parsedBody, parsedBodyErr := io.ReadAll(parsedMessage.Body)
+	if parsedBodyErr != nil {
+		testHandle.Fatalf("read rewritten body: %v", parsedBodyErr)
+	}
+	if string(parsedBody) != "Hello" {
+		testHandle.Fatalf("expected original body, got %q", string(parsedBody))
 	}
 
 	sender.err = errors.New("relay down")
 	if err := forwarder.Forward(context.Background(), route, message); !errors.Is(err, ErrForwardTemporary) {
 		testHandle.Fatalf("expected temporary forward error, got %v", err)
+	}
+
+	sender.err = nil
+	invalidMessage := Message{Data: []byte("not a header\r\n\r\nHello")}
+	if err := forwarder.Forward(context.Background(), route, invalidMessage); !errors.Is(err, ErrForwardTemporary) {
+		testHandle.Fatalf("expected temporary rewrite error, got %v", err)
+	}
+}
+
+func TestRelayForwarderPreservesOriginalReplyTo(testHandle *testing.T) {
+	route := mustRoute(testHandle)
+	message := Message{Data: []byte(strings.Join([]string{
+		"From: Sender <sender@example.net>",
+		"Reply-To: Reply Channel <reply-channel@example.net>",
+		"Subject: Hello",
+		"",
+		"Hello",
+	}, "\r\n"))}
+	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
+	sender := &recordingRawEmailSender{}
+	forwarder, forwarderErr := NewRelayForwarder(sender, logger)
+	if forwarderErr != nil {
+		testHandle.Fatalf("new forwarder: %v", forwarderErr)
+	}
+	if err := forwarder.Forward(context.Background(), route, message); err != nil {
+		testHandle.Fatalf("forward: %v", err)
+	}
+
+	parsedMessage := mustMailMessage(testHandle, sender.rawMessage)
+	if parsedMessage.Header.Get("From") != `"Sender" <support@help.example.com>` {
+		testHandle.Fatalf("expected rewritten From with original display name, got %q", parsedMessage.Header.Get("From"))
+	}
+	if parsedMessage.Header.Get("Reply-To") != "Reply Channel <reply-channel@example.net>" {
+		testHandle.Fatalf("expected original Reply-To to be preserved, got %q", parsedMessage.Header.Get("Reply-To"))
+	}
+	if parsedMessage.Header.Get("X-Pinguin-Original-From") != "Sender <sender@example.net>" {
+		testHandle.Fatalf("expected original From trace header, got %q", parsedMessage.Header.Get("X-Pinguin-Original-From"))
+	}
+}
+
+func TestRewriteParsedForwardedMessageReportsBodyReadError(testHandle *testing.T) {
+	route := mustRoute(testHandle)
+	parsedMessage := &mail.Message{
+		Header: mail.Header{headerFrom: []string{"sender@example.net"}},
+		Body:   failingMessageBody{},
+	}
+	if _, rewriteErr := rewriteParsedForwardedMessage(route, parsedMessage); rewriteErr == nil || !strings.Contains(rewriteErr.Error(), "read message body") {
+		testHandle.Fatalf("expected body read error, got %v", rewriteErr)
+	}
+}
+
+func TestForwardedFromHeaderUsesBestOriginalSenderLabel(testHandle *testing.T) {
+	route := mustRoute(testHandle)
+	for _, testCase := range []struct {
+		name         string
+		originalFrom string
+		wantHeader   string
+	}{
+		{name: "blank", wantHeader: "support@help.example.com"},
+		{name: "display name", originalFrom: "Sender <sender@example.net>", wantHeader: `"Sender" <support@help.example.com>`},
+		{name: "address only", originalFrom: "sender@example.net", wantHeader: `"sender@example.net" <support@help.example.com>`},
+		{name: "unparseable", originalFrom: "Sender at Example", wantHeader: `"Sender at Example" <support@help.example.com>`},
+	} {
+		testCase := testCase
+		testHandle.Run(testCase.name, func(t *testing.T) {
+			if gotHeader := forwardedFromHeader(route, testCase.originalFrom); gotHeader != testCase.wantHeader {
+				t.Fatalf("expected %q, got %q", testCase.wantHeader, gotHeader)
+			}
+		})
 	}
 }
 
@@ -200,4 +305,19 @@ func mustRoute(testHandle *testing.T) Route {
 		testHandle.Fatalf("route: %v", routeErr)
 	}
 	return route
+}
+
+type failingMessageBody struct{}
+
+func (failingMessageBody) Read(_ []byte) (int, error) {
+	return 0, errors.New("body read failed")
+}
+
+func mustMailMessage(testHandle *testing.T, rawMessage []byte) *mail.Message {
+	testHandle.Helper()
+	parsedMessage, parseErr := mail.ReadMessage(bytes.NewReader(rawMessage))
+	if parseErr != nil {
+		testHandle.Fatalf("parse message: %v\n%s", parseErr, string(rawMessage))
+	}
+	return parsedMessage
 }
