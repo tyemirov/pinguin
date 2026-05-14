@@ -142,7 +142,7 @@ function applyOverrides(payload) {
       }))
     : [];
   serverState.smtpDomains = Array.isArray(payload.smtpDomains)
-    ? payload.smtpDomains.map((item) => newSMTPDomain(item.domain || 'example.com', item.status || 'pending', item.id))
+    ? seededSMTPDomains(payload.smtpDomains)
     : [];
   serverState.failList = Boolean(payload.failList);
   serverState.failReschedule = Boolean(payload.failReschedule);
@@ -594,10 +594,31 @@ function normalizeDomain(value) {
   return domain;
 }
 
-function newSMTPDomain(domainName, status = 'pending', id = null) {
+function seededSMTPDomains(items) {
+  const domains = [];
+  for (const item of items) {
+    const requestedID = Number(item.id || 0);
+    let domainID = Number.isInteger(requestedID) && requestedID > 0 ? requestedID : domains.length + 1;
+    while (domains.some((domain) => domain.id === domainID)) {
+      domainID += 1;
+    }
+    domains.push(newSMTPDomain(item.domain || 'example.com', item.status || 'pending', domainID));
+  }
+  return domains;
+}
+
+function nextSMTPDomainID() {
+  let domainID = serverState.smtpDomains.length + 1;
+  while (serverState.smtpDomains.some((domain) => domain.id === domainID)) {
+    domainID += 1;
+  }
+  return domainID;
+}
+
+function newSMTPDomain(domainName, status = 'pending', id = nextSMTPDomainID()) {
   const now = new Date().toISOString();
   const domain = normalizeDomain(domainName);
-  const domainIndex = id || serverState.smtpDomains.length + 1;
+  const domainIndex = Number(id);
   const token = `test-domain-token-${domainIndex}`;
   const record = {
     id: Number(domainIndex),

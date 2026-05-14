@@ -457,6 +457,29 @@ test.describe('Authenticated pages', () => {
     await expect(credentials).toBeHidden();
   });
 
+  test('checks seeded SMTP domains by unique setup IDs', async ({ page, request }) => {
+    await resetNotifications(request, {
+      smtpDomains: [
+        { domain: 'alpha.example', status: 'pending' },
+        { domain: 'bravo.example', status: 'pending' },
+      ],
+    });
+    await configureRuntime(page, { authenticated: true });
+    await page.goto('/smtp-relay.html');
+    const panel = page.getByTestId('smtp-identities');
+    const domainCards = panel.getByTestId('smtp-domain-card');
+    await expect(domainCards).toHaveCount(2);
+    const alphaDomain = domainCards.filter({ hasText: 'alpha.example' });
+    const bravoDomain = domainCards.filter({ hasText: 'bravo.example' });
+    await expect(alphaDomain.getByText('Pending DNS').first()).toBeVisible();
+    await expect(bravoDomain.getByText('Pending DNS').first()).toBeVisible();
+
+    await bravoDomain.getByRole('button', { name: 'Check DNS' }).click();
+
+    await expect(bravoDomain.getByText('Verified').first()).toBeVisible();
+    await expect(alphaDomain.getByText('Pending DNS').first()).toBeVisible();
+  });
+
   test('opens existing SMTP identity password and rotates inside the modal', async ({ page, request }) => {
     const now = new Date().toISOString();
     await resetNotifications(request, {
