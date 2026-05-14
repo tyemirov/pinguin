@@ -553,7 +553,7 @@ func TestSMTPIdentityLifecycle(t *testing.T) {
 	if createRecorder.Code != http.StatusCreated {
 		t.Fatalf("expected create 201, got %d body=%s", createRecorder.Code, createRecorder.Body.String())
 	}
-	var createPayload smtpidentity.OneTimeCredentials
+	var createPayload smtpidentity.Credentials
 	if err := json.Unmarshal(createRecorder.Body.Bytes(), &createPayload); err != nil {
 		t.Fatalf("decode create payload: %v", err)
 	}
@@ -572,7 +572,23 @@ func TestSMTPIdentityLifecycle(t *testing.T) {
 		t.Fatalf("expected list 200, got %d", listRecorder.Code)
 	}
 	if strings.Contains(listRecorder.Body.String(), createPayload.Password) {
-		t.Fatalf("list response leaked one-time password")
+		t.Fatalf("list response leaked stored password")
+	}
+
+	credentialsRecorder := httptest.NewRecorder()
+	credentialsPath := fmt.Sprintf("/api/smtp-identities/%s/credentials", createPayload.Identity.ID)
+	credentialsRequest := httptest.NewRequest(http.MethodGet, credentialsPath, nil)
+	credentialsRequest.Host = "example.com"
+	server.httpServer.Handler.ServeHTTP(credentialsRecorder, credentialsRequest)
+	if credentialsRecorder.Code != http.StatusOK {
+		t.Fatalf("expected credentials 200, got %d body=%s", credentialsRecorder.Code, credentialsRecorder.Body.String())
+	}
+	var credentialsPayload smtpidentity.Credentials
+	if err := json.Unmarshal(credentialsRecorder.Body.Bytes(), &credentialsPayload); err != nil {
+		t.Fatalf("decode credentials payload: %v", err)
+	}
+	if credentialsPayload.Password != createPayload.Password || credentialsPayload.Username != createPayload.Username {
+		t.Fatalf("unexpected credentials payload: %+v", credentialsPayload)
 	}
 
 	updateRecorder := httptest.NewRecorder()
@@ -600,7 +616,7 @@ func TestSMTPIdentityLifecycle(t *testing.T) {
 	if rotateRecorder.Code != http.StatusOK {
 		t.Fatalf("expected rotate 200, got %d", rotateRecorder.Code)
 	}
-	var rotatePayload smtpidentity.OneTimeCredentials
+	var rotatePayload smtpidentity.Credentials
 	if err := json.Unmarshal(rotateRecorder.Body.Bytes(), &rotatePayload); err != nil {
 		t.Fatalf("decode rotate payload: %v", err)
 	}
@@ -621,40 +637,90 @@ func TestSMTPIdentityLifecycle(t *testing.T) {
 	}
 }
 
-func TestSMTPIdentityRoutesRequireAdminRole(t *testing.T) {
+func TestSMTPIdentityRoutesAllowAuthenticatedDomainVerification(t *testing.T) {
 	t.Helper()
-	server, _ := newTestHTTPServerWithBrokenSMTPIdentitiesAndValidator(t, &stubValidator{
+	resolver := fakeDNSResolver{}
+	server, _ := newTestHTTPServerWithSMTPIdentitiesValidatorAndResolver(t, &stubValidator{
 		email: "member@example.com",
 		roles: []string{"user"},
-	})
+	}, resolver)
 
-	testCases := []struct {
-		name   string
-		method string
-		path   string
-		body   string
-	}{
-		{name: "list", method: http.MethodGet, path: "/api/smtp-identities"},
-		{name: "create", method: http.MethodPost, path: "/api/smtp-identities", body: `{"email_address":"alice@example.com","forward_to":["owner@example.com"]}`},
-		{name: "update forwarding", method: http.MethodPatch, path: "/api/smtp-identities/identity/forwarding", body: `{"forward_to":["owner@example.com"]}`},
-		{name: "rotate", method: http.MethodPost, path: "/api/smtp-identities/identity/rotate"},
-		{name: "delete", method: http.MethodDelete, path: "/api/smtp-identities/identity"},
+	blockedRecorder := httptest.NewRecorder()
+	blockedRequest := httptest.NewRequest(http.MethodPost, "/api/smtp-identities", strings.NewReader(`{"email_address":"alice@example.com","forward_to":["owner@example.com"]}`))
+	blockedRequest.Host = "example.com"
+	blockedRequest.Header.Set("Content-Type", "application/json")
+	server.httpServer.Handler.ServeHTTP(blockedRecorder, blockedRequest)
+	if blockedRecorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected unverified domain to block identity create, got %d body=%s", blockedRecorder.Code, blockedRecorder.Body.String())
 	}
-	for _, testCase := range testCases {
-		testCase := testCase
-		t.Run(testCase.name, func(t *testing.T) {
-			recorder := httptest.NewRecorder()
-			request := httptest.NewRequest(testCase.method, testCase.path, strings.NewReader(testCase.body))
-			request.Host = "unknown.example.com"
-			request.Header.Set("Content-Type", "application/json")
-			server.httpServer.Handler.ServeHTTP(recorder, request)
-			if recorder.Code != http.StatusForbidden {
-				t.Fatalf("expected 403 before service access, got %d body=%s", recorder.Code, recorder.Body.String())
-			}
-			if !strings.Contains(recorder.Body.String(), "admin access required") {
-				t.Fatalf("expected admin access error, got body=%s", recorder.Body.String())
-			}
-		})
+
+	createDomainRecorder := httptest.NewRecorder()
+	createDomainRequest := httptest.NewRequest(http.MethodPost, "/api/smtp-domains", strings.NewReader(`{"domain":"example.com"}`))
+	createDomainRequest.Host = "example.com"
+	createDomainRequest.Header.Set("Content-Type", "application/json")
+	server.httpServer.Handler.ServeHTTP(createDomainRecorder, createDomainRequest)
+	if createDomainRecorder.Code != http.StatusConflict {
+		t.Fatalf("expected configured global domain to remain operator-owned, got %d body=%s", createDomainRecorder.Code, createDomainRecorder.Body.String())
+	}
+
+	createOwnedDomainRecorder := httptest.NewRecorder()
+	createOwnedDomainRequest := httptest.NewRequest(http.MethodPost, "/api/smtp-domains", strings.NewReader(`{"domain":"customer.example"}`))
+	createOwnedDomainRequest.Host = "example.com"
+	createOwnedDomainRequest.Header.Set("Content-Type", "application/json")
+	server.httpServer.Handler.ServeHTTP(createOwnedDomainRecorder, createOwnedDomainRequest)
+	if createOwnedDomainRecorder.Code != http.StatusCreated {
+		t.Fatalf("expected domain create 201, got %d body=%s", createOwnedDomainRecorder.Code, createOwnedDomainRecorder.Body.String())
+	}
+	var createdDomain smtpidentity.PublicSenderDomain
+	if err := json.Unmarshal(createOwnedDomainRecorder.Body.Bytes(), &createdDomain); err != nil {
+		t.Fatalf("decode sender domain: %v", err)
+	}
+	if createdDomain.Status != string(smtpidentity.SenderDomainStatusPending) || len(createdDomain.DNSRecords) != 3 {
+		t.Fatalf("unexpected sender domain payload: %+v", createdDomain)
+	}
+	listDomainsRecorder := httptest.NewRecorder()
+	listDomainsRequest := httptest.NewRequest(http.MethodGet, "/api/smtp-domains", nil)
+	listDomainsRequest.Host = "example.com"
+	server.httpServer.Handler.ServeHTTP(listDomainsRecorder, listDomainsRequest)
+	if listDomainsRecorder.Code != http.StatusOK {
+		t.Fatalf("expected domain list 200, got %d body=%s", listDomainsRecorder.Code, listDomainsRecorder.Body.String())
+	}
+	var listDomainsPayload struct {
+		Domains []smtpidentity.PublicSenderDomain `json:"domains"`
+	}
+	if err := json.Unmarshal(listDomainsRecorder.Body.Bytes(), &listDomainsPayload); err != nil {
+		t.Fatalf("decode sender domain list: %v", err)
+	}
+	if len(listDomainsPayload.Domains) != 1 || listDomainsPayload.Domains[0].Domain != "customer.example" {
+		t.Fatalf("unexpected sender domain list: %+v", listDomainsPayload.Domains)
+	}
+	resolver.set(createdDomain.DNSRecords[0].Host, []string{createdDomain.DNSRecords[0].Value})
+	resolver.set("customer.example", []string{"v=spf1 include:_spf.example.invalid a:smtp.example.com ~all"})
+	resolver.set("_dmarc.customer.example", []string{"v=DMARC1; p=none"})
+
+	checkRecorder := httptest.NewRecorder()
+	checkPath := fmt.Sprintf("/api/smtp-domains/%d/check-dns", createdDomain.ID)
+	checkRequest := httptest.NewRequest(http.MethodPost, checkPath, nil)
+	checkRequest.Host = "example.com"
+	server.httpServer.Handler.ServeHTTP(checkRecorder, checkRequest)
+	if checkRecorder.Code != http.StatusOK {
+		t.Fatalf("expected DNS check 200, got %d body=%s", checkRecorder.Code, checkRecorder.Body.String())
+	}
+	var verifiedDomain smtpidentity.PublicSenderDomain
+	if err := json.Unmarshal(checkRecorder.Body.Bytes(), &verifiedDomain); err != nil {
+		t.Fatalf("decode checked sender domain: %v", err)
+	}
+	if verifiedDomain.Status != string(smtpidentity.SenderDomainStatusVerified) {
+		t.Fatalf("expected verified domain, got %+v", verifiedDomain)
+	}
+
+	createRecorder := httptest.NewRecorder()
+	createBody := bytes.NewBufferString(`{"email_address":"alice@customer.example","forward_to":["owner@example.com"]}`)
+	createRequest := httptest.NewRequest(http.MethodPost, "/api/smtp-identities", createBody)
+	createRequest.Host = "example.com"
+	server.httpServer.Handler.ServeHTTP(createRecorder, createRequest)
+	if createRecorder.Code != http.StatusCreated {
+		t.Fatalf("expected verified-domain identity create 201, got %d body=%s", createRecorder.Code, createRecorder.Body.String())
 	}
 }
 
@@ -671,25 +737,6 @@ func TestSMTPIdentityRoutesAllowConfiguredTenantAdmin(t *testing.T) {
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected configured admin SMTP identity access, got %d body=%s", recorder.Code, recorder.Body.String())
-	}
-}
-
-func TestSMTPIdentityAdminLookupReportsStorageError(t *testing.T) {
-	t.Helper()
-	recorder := httptest.NewRecorder()
-	contextGin, _ := gin.CreateTestContext(recorder)
-	contextGin.Request = httptest.NewRequest(http.MethodGet, "/api/smtp-identities", nil)
-	contextGin.Set(contextKeyClaims, &sessionvalidator.Claims{
-		UserEmail: "admin@example.com",
-		UserRoles: []string{"user"},
-	})
-	handler := newSMTPIdentityHandler(nil, newClosedTenantRepository(t), slog.New(slog.NewTextHandler(io.Discard, nil)))
-
-	if handler.requireAdminSession(contextGin) {
-		t.Fatalf("expected admin lookup to fail")
-	}
-	if recorder.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d body=%s", recorder.Code, recorder.Body.String())
 	}
 }
 
@@ -726,10 +773,18 @@ func TestSMTPIdentityValidationAndErrorMapping(t *testing.T) {
 		{name: "update forwarding invalid json", method: http.MethodPatch, path: "/api/smtp-identities/missing/forwarding", body: `{`, expectedCode: http.StatusBadRequest},
 		{name: "update forwarding invalid address", method: http.MethodPatch, path: "/api/smtp-identities/missing/forwarding", body: `{"forward_to":["bad address"]}`, expectedCode: http.StatusBadRequest},
 		{name: "update forwarding missing identity", method: http.MethodPatch, path: "/api/smtp-identities/missing/forwarding", body: `{"forward_to":["owner@example.com"]}`, expectedCode: http.StatusNotFound},
+		{name: "credentials empty id", method: http.MethodGet, path: "/api/smtp-identities/%20/credentials", expectedCode: http.StatusBadRequest},
+		{name: "credentials missing id", method: http.MethodGet, path: "/api/smtp-identities/missing/credentials", expectedCode: http.StatusNotFound},
 		{name: "rotate empty id", method: http.MethodPost, path: "/api/smtp-identities/%20/rotate", expectedCode: http.StatusBadRequest},
 		{name: "rotate missing id", method: http.MethodPost, path: "/api/smtp-identities/missing/rotate", expectedCode: http.StatusNotFound},
 		{name: "delete empty id", method: http.MethodDelete, path: "/api/smtp-identities/%20", expectedCode: http.StatusBadRequest},
 		{name: "delete missing id", method: http.MethodDelete, path: "/api/smtp-identities/missing", expectedCode: http.StatusNotFound},
+		{name: "create domain invalid json", method: http.MethodPost, path: "/api/smtp-domains", body: `{`, expectedCode: http.StatusBadRequest},
+		{name: "create domain invalid", method: http.MethodPost, path: "/api/smtp-domains", body: `{"domain":"bad domain"}`, expectedCode: http.StatusBadRequest},
+		{name: "check domain empty id", method: http.MethodPost, path: "/api/smtp-domains/%20/check-dns", expectedCode: http.StatusBadRequest},
+		{name: "check domain bad id", method: http.MethodPost, path: "/api/smtp-domains/not-a-number/check-dns", expectedCode: http.StatusBadRequest},
+		{name: "check domain zero id", method: http.MethodPost, path: "/api/smtp-domains/0/check-dns", expectedCode: http.StatusBadRequest},
+		{name: "check domain missing id", method: http.MethodPost, path: "/api/smtp-domains/404/check-dns", expectedCode: http.StatusNotFound},
 	}
 	for _, testCase := range testCases {
 		testCase := testCase
@@ -761,7 +816,7 @@ func TestSMTPIdentityValidationAndErrorMapping(t *testing.T) {
 	if duplicateRecorder.Code != http.StatusConflict {
 		t.Fatalf("expected duplicate conflict, got %d", duplicateRecorder.Code)
 	}
-	var duplicatePayload smtpidentity.OneTimeCredentials
+	var duplicatePayload smtpidentity.Credentials
 	if err := json.Unmarshal(createRecorder.Body.Bytes(), &duplicatePayload); err != nil {
 		t.Fatalf("decode duplicate setup payload: %v", err)
 	}
@@ -800,6 +855,70 @@ func TestSMTPIdentityValidationAndErrorMapping(t *testing.T) {
 	if selfForwardRecorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected direct self forwarding mapping to 400, got %d", selfForwardRecorder.Code)
 	}
+	unavailablePasswordRecorder := httptest.NewRecorder()
+	unavailablePasswordContext, _ := gin.CreateTestContext(unavailablePasswordRecorder)
+	handler.writeError(unavailablePasswordContext, smtpidentity.ErrPasswordUnavailable)
+	if unavailablePasswordRecorder.Code != http.StatusConflict {
+		t.Fatalf("expected direct unavailable password mapping to 409, got %d", unavailablePasswordRecorder.Code)
+	}
+}
+
+func TestSMTPIdentityRejectsSessionWithoutUsableEmail(t *testing.T) {
+	t.Helper()
+	server, _ := newTestHTTPServerWithSMTPIdentitiesAndValidator(t, &stubValidator{
+		email: "not an email",
+		roles: []string{"user"},
+	})
+
+	testCases := []struct {
+		name   string
+		method string
+		path   string
+		body   string
+	}{
+		{name: "list domains", method: http.MethodGet, path: "/api/smtp-domains"},
+		{name: "create domain", method: http.MethodPost, path: "/api/smtp-domains", body: `{"domain":"customer.example"}`},
+		{name: "check domain", method: http.MethodPost, path: "/api/smtp-domains/1/check-dns"},
+		{name: "list identities", method: http.MethodGet, path: "/api/smtp-identities"},
+		{name: "create identity", method: http.MethodPost, path: "/api/smtp-identities", body: `{"email_address":"alice@example.com","forward_to":["owner@example.com"]}`},
+		{name: "update forwarding", method: http.MethodPatch, path: "/api/smtp-identities/identity/forwarding", body: `{"forward_to":["owner@example.com"]}`},
+		{name: "credentials", method: http.MethodGet, path: "/api/smtp-identities/identity/credentials"},
+		{name: "rotate", method: http.MethodPost, path: "/api/smtp-identities/identity/rotate"},
+		{name: "delete", method: http.MethodDelete, path: "/api/smtp-identities/identity"},
+	}
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(testCase.method, testCase.path, strings.NewReader(testCase.body))
+			request.Host = "example.com"
+			request.Header.Set("Content-Type", "application/json")
+			server.httpServer.Handler.ServeHTTP(recorder, request)
+			if recorder.Code != http.StatusForbidden {
+				t.Fatalf("expected forbidden SMTP access, got %d body=%s", recorder.Code, recorder.Body.String())
+			}
+		})
+	}
+}
+
+func TestSMTPIdentityContinuesWhenTenantAdminLookupFails(t *testing.T) {
+	t.Helper()
+	handler := newSMTPIdentityHandler(nil, newClosedTenantRepository(t), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	recorder := httptest.NewRecorder()
+	contextGin, _ := gin.CreateTestContext(recorder)
+	contextGin.Request = httptest.NewRequest(http.MethodGet, "/api/smtp-domains", nil)
+	contextGin.Set(contextKeyClaims, &sessionvalidator.Claims{
+		UserEmail: "member@example.com",
+		UserRoles: []string{"user"},
+	})
+
+	scope, ok := handler.requireAccessScope(contextGin)
+	if !ok {
+		t.Fatalf("expected SMTP access scope despite tenant admin lookup failure")
+	}
+	if scope.OwnerEmail != "member@example.com" || scope.Admin {
+		t.Fatalf("unexpected SMTP access scope: %+v", scope)
+	}
 }
 
 func TestSMTPIdentityReportsStorageErrors(t *testing.T) {
@@ -815,8 +934,12 @@ func TestSMTPIdentityReportsStorageErrors(t *testing.T) {
 		{name: "list", method: http.MethodGet, path: "/api/smtp-identities"},
 		{name: "create", method: http.MethodPost, path: "/api/smtp-identities", body: `{"email_address":"alice@example.com","forward_to":["owner@example.com"]}`},
 		{name: "update forwarding", method: http.MethodPatch, path: "/api/smtp-identities/identity/forwarding", body: `{"forward_to":["owner@example.com"]}`},
+		{name: "credentials", method: http.MethodGet, path: "/api/smtp-identities/identity/credentials"},
 		{name: "rotate", method: http.MethodPost, path: "/api/smtp-identities/identity/rotate"},
 		{name: "delete", method: http.MethodDelete, path: "/api/smtp-identities/identity"},
+		{name: "list domains", method: http.MethodGet, path: "/api/smtp-domains"},
+		{name: "create domain", method: http.MethodPost, path: "/api/smtp-domains", body: `{"domain":"customer.example"}`},
+		{name: "check domain", method: http.MethodPost, path: "/api/smtp-domains/1/check-dns"},
 	}
 	for _, testCase := range testCases {
 		testCase := testCase
@@ -1463,6 +1586,11 @@ func newTestHTTPServerWithSMTPIdentities(t *testing.T) (*Server, *smtpidentity.R
 
 func newTestHTTPServerWithSMTPIdentitiesAndValidator(t *testing.T, validator SessionValidator) (*Server, *smtpidentity.Repository) {
 	t.Helper()
+	return newTestHTTPServerWithSMTPIdentitiesValidatorAndResolver(t, validator, nil)
+}
+
+func newTestHTTPServerWithSMTPIdentitiesValidatorAndResolver(t *testing.T, validator SessionValidator, resolver smtpidentity.DNSResolver) (*Server, *smtpidentity.Repository) {
+	t.Helper()
 	secretKey := strings.Repeat("a", 64)
 	keeper, err := tenant.NewSecretKeeper(secretKey)
 	if err != nil {
@@ -1514,11 +1642,15 @@ func newTestHTTPServerWithSMTPIdentitiesAndValidator(t *testing.T, validator Ses
 	if err != nil {
 		t.Fatalf("identity repository: %v", err)
 	}
-	identityService := smtpidentity.NewService(identityRepo, smtpidentity.PublicSettings{
+	publicSettings := smtpidentity.PublicSettings{
 		Host:         "smtp.example.com",
 		Port:         587,
 		SecurityMode: "starttls",
-	})
+	}
+	identityService := smtpidentity.NewService(identityRepo, publicSettings)
+	if resolver != nil {
+		identityService = smtpidentity.NewServiceWithDNSResolver(identityRepo, publicSettings, resolver)
+	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
 	server, err := NewServer(Config{
 		ListenAddr:          ":0",
@@ -1734,6 +1866,20 @@ func (validator *stubValidator) ValidateRequest(_ *http.Request) (*sessionvalida
 		roles = []string{"admin"}
 	}
 	return &sessionvalidator.Claims{UserEmail: email, UserRoles: roles}, nil
+}
+
+type fakeDNSResolver map[string][]string
+
+func (resolver fakeDNSResolver) LookupTXT(_ context.Context, name string) ([]string, error) {
+	values, ok := resolver[name]
+	if !ok {
+		return nil, errors.New("dns record not found")
+	}
+	return values, nil
+}
+
+func (resolver fakeDNSResolver) set(name string, values []string) {
+	resolver[name] = values
 }
 
 type stubNotificationService struct {

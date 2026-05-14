@@ -32,9 +32,8 @@ const (
 )
 
 var (
-	errTenantIDRequired    = errors.New("tenant_id is required")
-	errTenantAccessDenied  = errors.New("tenant access denied")
-	errAdminAccessRequired = errors.New("admin access required")
+	errTenantIDRequired   = errors.New("tenant_id is required")
+	errTenantAccessDenied = errors.New("tenant access denied")
 )
 
 // SessionValidator exposes the subset of validator behaviour we depend on.
@@ -101,9 +100,13 @@ func NewServer(cfg Config) (*Server, error) {
 	protected.POST("/notifications/:id/cancel", handler.cancelNotification)
 	if cfg.SMTPIdentityService != nil {
 		identityHandler := newSMTPIdentityHandler(cfg.SMTPIdentityService, cfg.TenantRepository, cfg.Logger)
+		protected.GET("/smtp-domains", identityHandler.listSenderDomains)
+		protected.POST("/smtp-domains", identityHandler.createSenderDomain)
+		protected.POST("/smtp-domains/:id/check-dns", identityHandler.checkSenderDomainDNS)
 		protected.GET("/smtp-identities", identityHandler.listIdentities)
 		protected.POST("/smtp-identities", identityHandler.createIdentity)
 		protected.PATCH("/smtp-identities/:id/forwarding", identityHandler.updateForwarding)
+		protected.GET("/smtp-identities/:id/credentials", identityHandler.getCredentials)
 		protected.POST("/smtp-identities/:id/rotate", identityHandler.rotateIdentity)
 		protected.DELETE("/smtp-identities/:id", identityHandler.deleteIdentity)
 	}
