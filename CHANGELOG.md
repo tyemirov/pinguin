@@ -11,6 +11,7 @@
 - Add backend-backed search and infinite scroll for dashboard notification events, including cursor pagination and a single top-level refresh control.
 
 ### Bug Fixes
+- Require `make release`, `make publish`, and `make deploy` to run only from clean local `master` matching `origin/master` with zero open PRs, and print the verified branch/commit before production work starts.
 - Delete legacy NULL-owner configured SMTP sender-domain rows before seeding the current allowlist so startup does not crash on the unique domain index.
 - Accept SMTP forwarding `MAIL FROM:<>` null reverse-path traffic so DSNs and auto-generated loop-safe messages can reach configured shared-address routes.
 - Replace the generated placeholder logo with the canonical Pinguin turquoise envelope mark.
@@ -37,6 +38,7 @@
 - Align Pinguin SMTP setup with gateway high-port publishing so MX and SMTPS use `8025` and `8465` on the host.
 
 ### Testing
+- Add production workflow contract coverage for the shared release/publish/deploy Git guard.
 - Add sender-domain storage coverage for deleting legacy NULL-owner configured rows without a compatibility migration.
 - Add backend and browser coverage for sender-domain DNS setup, manual checks, and verified-domain SMTP identity creation.
 - Add backend and browser coverage for retrieving existing SMTP relay credentials and rotating them from inside the modal.
@@ -58,6 +60,7 @@
 - Add deployment contract coverage for the sibling gateway SMTP host-port configuration.
 
 ### Docs
+- Document the production Git-state requirements for release, publish, and deploy commands.
 - Document that Pinguin does not support backward compatibility, legacy schemas, legacy data, or fallback code paths.
 - Update SMTP relay docs to describe reusable credential viewing instead of one-time password display.
 - Document shared-address forwarding DNS setup and verification using `mx.pinguin.mprlab.com`.

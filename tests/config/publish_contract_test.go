@@ -68,6 +68,8 @@ func TestPublishScriptBuildsDockerOnly(t *testing.T) {
 
 	publishScript := string(readRepoFile(t, "scripts", "publish.sh"))
 	requiredSnippets := []string{
+		"source \"${repo_root}/scripts/production_git_guard.sh\"",
+		"verify_production_git_state \"publish\" \"${PUBLISH_BRANCH}\" \"${PUBLISH_REMOTE}\"",
 		"DOCKER_CONTEXT_DIR=\"${DOCKER_BUILD_CONTEXT:-.}\"",
 		"PLATFORMS=\"${PUBLISH_PLATFORMS:-linux/amd64,linux/arm64}\"",
 		"timeout -k 350s -s SIGKILL 350s make ci",
@@ -94,6 +96,46 @@ func TestPublishScriptBuildsDockerOnly(t *testing.T) {
 	}
 	if strings.Contains(publishScript, "DOCKER_CONTEXT:-") {
 		t.Fatalf("publish script must not treat Docker CLI DOCKER_CONTEXT as a build context")
+	}
+}
+
+func TestProductionGitGuardRequiresMasterRemoteAndNoOpenPRs(t *testing.T) {
+	t.Helper()
+
+	guardScript := string(readRepoFile(t, "scripts", "production_git_guard.sh"))
+	requiredSnippets := []string{
+		"verify_production_git_state()",
+		"branch=\"${2:-master}\"",
+		"branch}\" != \"master\"",
+		"git status --porcelain",
+		"git fetch --prune \"${remote}\" \"+refs/heads/${branch}:refs/remotes/${remote}/${branch}\"",
+		"refs/remotes/${remote}/${branch}",
+		"gh pr list --state open --limit 1000 --json number --jq 'length'",
+		"requires zero open PRs",
+		"branch=${branch} remote=${remote}/${branch} commit=${head_sha} open_prs=0",
+	}
+	for _, requiredSnippet := range requiredSnippets {
+		if !strings.Contains(guardScript, requiredSnippet) {
+			t.Fatalf("production git guard missing contract snippet %q", requiredSnippet)
+		}
+	}
+}
+
+func TestReleaseScriptUsesProductionGitGuard(t *testing.T) {
+	t.Helper()
+
+	releaseScript := string(readRepoFile(t, "scripts", "release.sh"))
+	requiredSnippets := []string{
+		"RELEASE_BRANCH=\"${RELEASE_BRANCH:-master}\"",
+		"RELEASE_REMOTE=\"${RELEASE_REMOTE:-origin}\"",
+		"source \"${repo_root}/scripts/production_git_guard.sh\"",
+		"verify_production_git_state \"release\" \"${RELEASE_BRANCH}\" \"${RELEASE_REMOTE}\"",
+		"release default branch must be ${RELEASE_BRANCH}",
+	}
+	for _, requiredSnippet := range requiredSnippets {
+		if !strings.Contains(releaseScript, requiredSnippet) {
+			t.Fatalf("release script missing production git guard snippet %q", requiredSnippet)
+		}
 	}
 }
 
@@ -127,6 +169,8 @@ func TestDeployScriptDeploysBackendThenLegacyPages(t *testing.T) {
 		"SKIP_BACKEND=\"false\"",
 		"SKIP_PAGES=\"false\"",
 		"SKIP_PAGES_VERIFY=\"false\"",
+		"source \"${repo_root}/scripts/production_git_guard.sh\"",
+		"verify_production_git_state \"deploy\" \"${PUBLISH_BRANCH}\" \"${PUBLISH_REMOTE}\"",
 		"verify_gateway_smtp_port_contract",
 		"PINGUIN_SMTP_HOST_PORT=8465",
 		"PINGUIN_SMTP_FORWARDING_HOST_PORT=8025",
@@ -162,6 +206,8 @@ func TestDeployScriptDeploysBackendThenLegacyPages(t *testing.T) {
 		"Production deployment is intentionally parameterless",
 		"make deploy",
 		"defaults to the sibling `mprlab-gateway` checkout",
+		"clean local `master` branch that exactly matches `origin/master`",
+		"zero open pull requests",
 		"After `make deploy`, configure the edge gateway to forward `25 -> tutosh:8025` and `465 -> tutosh:8465`",
 		"only for non-production targets",
 	} {
