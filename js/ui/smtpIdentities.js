@@ -3,6 +3,7 @@ import { dispatchToast } from '../core/events.js';
 
 /** @typedef {import('../types.d.js').SMTPIdentity} SMTPIdentity */
 /** @typedef {import('../types.d.js').SMTPCredentials} SMTPCredentials */
+/** @typedef {import('../types.d.js').SMTPSenderDomain} SMTPSenderDomain */
 
 /**
  * @param {{
@@ -19,13 +20,17 @@ export function createSMTPIdentities(options) {
     strings,
     actions,
     identities: /** @type {SMTPIdentity[]} */ ([]),
+    domains: /** @type {SMTPSenderDomain[]} */ ([]),
     credentials: /** @type {SMTPCredentials | null} */ (null),
     credentialNotice: /** @type {{ variant: string, message: string } | null} */ (null),
     editingIdentityId: '',
+    domainName: '',
     emailAddress: '',
     forwardToText: '',
     isLoading: false,
+    isLoadingDomains: false,
     isSubmitting: false,
+    checkingDomainId: 0,
     errorMessage: '',
     init() {
       this.refreshIfAuthenticated();
@@ -33,19 +38,38 @@ export function createSMTPIdentities(options) {
         () => authStore().isAuthenticated,
         (isAuthenticated) => {
           if (isAuthenticated) {
-            this.loadIdentities();
-      } else {
-        this.identities = [];
-        this.credentials = null;
-        this.credentialNotice = null;
-        this.cancelForwardingEdit();
-      }
+            this.loadWorkspace();
+          } else {
+            this.identities = [];
+            this.domains = [];
+            this.credentials = null;
+            this.credentialNotice = null;
+            this.cancelForwardingEdit();
+          }
         },
       );
     },
     async refreshIfAuthenticated() {
       if (authStore().isAuthenticated) {
-        await this.loadIdentities();
+        await this.loadWorkspace();
+      }
+    },
+    async loadWorkspace() {
+      await Promise.all([this.loadDomains(), this.loadIdentities()]);
+    },
+    async loadDomains() {
+      if (!authStore().isAuthenticated) {
+        return;
+      }
+      this.isLoadingDomains = true;
+      this.errorMessage = '';
+      try {
+        this.domains = await apiClient.listSMTPDomains();
+      } catch (error) {
+        this.errorMessage = this.strings.domainLoadError;
+        dispatchToast({ variant: 'error', message: this.errorMessage });
+      } finally {
+        this.isLoadingDomains = false;
       }
     },
     async loadIdentities() {
@@ -63,6 +87,56 @@ export function createSMTPIdentities(options) {
         this.isLoading = false;
       }
     },
+    async createDomain(event) {
+      event?.preventDefault();
+      const domainName = this.domainName.trim();
+      if (!domainName) {
+        this.errorMessage = this.strings.domainCreateError;
+        dispatchToast({ variant: 'error', message: this.errorMessage });
+        return;
+      }
+      this.isSubmitting = true;
+      this.errorMessage = '';
+      try {
+        const domain = await apiClient.createSMTPDomain(domainName);
+        if (!domain) {
+          throw new Error('missing_domain');
+        }
+        this.upsertDomain(domain);
+        this.domainName = '';
+        dispatchToast({ variant: 'success', message: this.strings.domainCreateSuccess });
+      } catch (error) {
+        this.errorMessage = this.strings.domainCreateError;
+        dispatchToast({ variant: 'error', message: this.errorMessage });
+      } finally {
+        this.isSubmitting = false;
+      }
+    },
+    async checkDomain(domain) {
+      this.checkingDomainId = domain.id;
+      this.errorMessage = '';
+      try {
+        const checkedDomain = await apiClient.checkSMTPDomainDNS(domain.id);
+        if (!checkedDomain) {
+          throw new Error('missing_domain');
+        }
+        this.upsertDomain(checkedDomain);
+        dispatchToast({ variant: 'success', message: this.strings.domainCheckSuccess });
+      } catch (error) {
+        this.errorMessage = this.strings.domainCheckError;
+        dispatchToast({ variant: 'error', message: this.errorMessage });
+      } finally {
+        this.checkingDomainId = 0;
+      }
+    },
+    upsertDomain(domain) {
+      const index = this.domains.findIndex((candidate) => candidate.id === domain.id);
+      if (index === -1) {
+        this.domains = [...this.domains, domain].sort((left, right) => left.domain.localeCompare(right.domain));
+        return;
+      }
+      this.domains = this.domains.map((candidate) => (candidate.id === domain.id ? domain : candidate));
+    },
     async createIdentity(event) {
       event?.preventDefault();
       if (this.editingIdentityId) {
@@ -73,6 +147,11 @@ export function createSMTPIdentities(options) {
       const forwardTo = this.parseForwardRecipients();
       if (!emailAddress || forwardTo.length === 0) {
         this.errorMessage = this.strings.createError;
+        dispatchToast({ variant: 'error', message: this.errorMessage });
+        return;
+      }
+      if (!this.isSenderDomainVerified()) {
+        this.errorMessage = this.strings.domainRequiredNotice;
         dispatchToast({ variant: 'error', message: this.errorMessage });
         return;
       }
@@ -128,8 +207,26 @@ export function createSMTPIdentities(options) {
         this.isSubmitting = false;
       }
     },
-    async rotateIdentity(identity) {
-      if (!window.confirm(this.strings.rotateConfirm)) {
+    async viewCredentials(identity) {
+      this.isSubmitting = true;
+      this.errorMessage = '';
+      try {
+        const credentials = await apiClient.getSMTPIdentityCredentials(identity.id);
+        if (!credentials) {
+          throw new Error('missing_credentials');
+        }
+        this.credentials = credentials;
+        this.setCredentialNotice('success', this.strings.credentialsLoadSuccess);
+        this.openCredentialsDialog();
+      } catch (error) {
+        this.errorMessage = this.strings.credentialsLoadError;
+        dispatchToast({ variant: 'error', message: this.errorMessage });
+      } finally {
+        this.isSubmitting = false;
+      }
+    },
+    async rotateIdentity(identity, shouldConfirm = false) {
+      if (shouldConfirm && !window.confirm(this.strings.rotateConfirm)) {
         return;
       }
       this.isSubmitting = true;
@@ -148,6 +245,11 @@ export function createSMTPIdentities(options) {
         dispatchToast({ variant: 'error', message: this.errorMessage });
       } finally {
         this.isSubmitting = false;
+      }
+    },
+    async rotateCurrentCredentials() {
+      if (this.credentials) {
+        await this.rotateIdentity(this.credentials.identity, false);
       }
     },
     async deleteIdentity(identity) {
@@ -172,6 +274,40 @@ export function createSMTPIdentities(options) {
         .split(/[\n,;]/)
         .map((value) => value.trim())
         .filter(Boolean);
+    },
+    senderDomainFromEmail() {
+      const normalizedEmail = this.emailAddress.trim().toLowerCase();
+      const atIndex = normalizedEmail.lastIndexOf('@');
+      if (atIndex === -1) {
+        return '';
+      }
+      return normalizedEmail.slice(atIndex + 1).trim();
+    },
+    senderDomainRecord() {
+      const domainName = this.senderDomainFromEmail();
+      if (!domainName) {
+        return null;
+      }
+      return this.domains.find((domain) => domain.domain === domainName) || null;
+    },
+    isSenderDomainVerified() {
+      if (this.editingIdentityId) {
+        return true;
+      }
+      const domain = this.senderDomainRecord();
+      return Boolean(domain && domain.status === 'verified');
+    },
+    senderDomainNotice() {
+      if (this.editingIdentityId || !this.emailAddress.trim()) {
+        return '';
+      }
+      return this.isSenderDomainVerified() ? '' : this.strings.domainRequiredNotice;
+    },
+    domainStatusLabel(domain) {
+      return domain.status === 'verified' ? this.strings.domainVerifiedLabel : this.strings.domainPendingLabel;
+    },
+    checkStatusLabel(check) {
+      return check.passed ? this.strings.domainVerifiedLabel : this.strings.domainPendingLabel;
     },
     async copyCredentialValue(value, successMessage) {
       try {
