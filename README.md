@@ -9,6 +9,7 @@ Pinguin also ships an optional HTTP + browser workspace for inspecting queued no
 ## Table of Contents
 
 - [Features](#features)
+- [Compatibility Policy](#compatibility-policy)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Configuration](#configuration)
@@ -55,6 +56,14 @@ Pinguin also ships an optional HTTP + browser workspace for inspecting queued no
 
 - **SMTP Send-As Identities:**
   Dashboard users can create, view, rotate, and delete one-address SMTP credentials for Gmail Send-As. SMTP identity passwords are stored encrypted at rest and can be reopened from the SMTP relay page.
+
+---
+
+## Compatibility Policy
+
+Pinguin supports only the current product contract and current schema. There is no backward compatibility layer.
+
+Legacy data, legacy schemas, deprecated config keys, old endpoints, historical users, and obsolete behavior are invalid state. The service deletes or rejects them rather than preserving them, translating them, or routing through fallback behavior. New work must keep a single runtime code path.
 
 ---
 
