@@ -42,8 +42,16 @@ else
 fi
 DRY_RUN="false"
 SKIP_PAGES_VERIFY="false"
-RELEASE_BRANCH="${RELEASE_BRANCH:-master}"
-RELEASE_REMOTE="${RELEASE_REMOTE:-origin}"
+if [[ -v RELEASE_BRANCH ]] && [[ -n "${RELEASE_BRANCH}" ]]; then
+  RELEASE_BRANCH="${RELEASE_BRANCH}"
+else
+  RELEASE_BRANCH="master"
+fi
+if [[ -v RELEASE_REMOTE ]] && [[ -n "${RELEASE_REMOTE}" ]]; then
+  RELEASE_REMOTE="${RELEASE_REMOTE}"
+else
+  RELEASE_REMOTE="origin"
+fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

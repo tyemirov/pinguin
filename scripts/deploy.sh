@@ -180,7 +180,9 @@ command -v git >/dev/null 2>&1 || { echo "error: git is required" >&2; exit 1; }
 repo_root="$(git rev-parse --show-toplevel)"
 cd "${repo_root}"
 source "${repo_root}/scripts/production_git_guard.sh"
-verify_production_git_state "deploy" "${PUBLISH_BRANCH}" "${PUBLISH_REMOTE}"
+if [[ "${SKIP_BACKEND}" != "true" || "${SKIP_PAGES}" != "true" ]]; then
+  verify_production_git_state "deploy" "${PUBLISH_BRANCH}" "${PUBLISH_REMOTE}"
+fi
 source_commit="$(git rev-parse --verify HEAD)"
 source_short="$(git rev-parse --short HEAD)"
 resolve_gateway_dir() {
@@ -250,7 +252,7 @@ fi
 if [[ "${SKIP_BACKEND}" != "true" ]]; then
   verify_gateway_smtp_port_contract
   echo "==> [deploy] Deploying Pinguin backend through mprlab-gateway"
-  timeout --foreground -k 1200s -s SIGKILL 1200s make -C "${GATEWAY_DIR}" deploy TARGET=pinguin
+  timeout --foreground -k 1200s -s SIGKILL 1200s make -C "${GATEWAY_DIR}" deploy-pinguin-backend
   echo "==> [deploy] Gateway SMTP host ports are ready; remaining operator mapping is edge 25 -> tutosh:8025 and edge 465 -> tutosh:8465"
 fi
 
