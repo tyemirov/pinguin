@@ -798,20 +798,149 @@ func TestRepositoryRotateReportsCredentialAndSaveFailures(t *testing.T) {
 	})
 }
 
-func TestRepositoryCredentialsReportsStoredPasswordFailures(t *testing.T) {
-	t.Run("legacy password", func(t *testing.T) {
-		repository, database := newIdentityRepository(t)
+func TestMigrateStoredCredentialPasswordsPopulatesInvalidRows(t *testing.T) {
+	database := newIdentityDatabase(t)
+	repository, repositoryErr := NewRepository(database, strings.Repeat("a", 64))
+	if repositoryErr != nil {
+		t.Fatalf("new repository: %v", repositoryErr)
+	}
+	seedSenderDomain(t, database, "example.com")
+
+	validIdentity, validPassword, validCreateErr := repository.Create(context.Background(), mustAddress(t, "valid@example.com"), defaultForwardRecipients(t))
+	if validCreateErr != nil {
+		t.Fatalf("create valid identity: %v", validCreateErr)
+	}
+	missingCipherID := "missing-cipher-identity"
+	if err := database.Create(&Identity{
+		ID:           missingCipherID,
+		EmailAddress: "missing@example.com",
+		Username:     "smtp-missing",
+		Status:       IdentityStatusActive,
+	}).Error; err != nil {
+		t.Fatalf("seed missing cipher identity: %v", err)
+	}
+	if err := database.Create(&ForwardRecipient{ID: missingCipherID + "-forward", IdentityID: missingCipherID, EmailAddress: "owner@example.com"}).Error; err != nil {
+		t.Fatalf("seed forwarding recipient for %s: %v", missingCipherID, err)
+	}
+
+	if migrateErr := MigrateStoredCredentialPasswords(context.Background(), database, strings.Repeat("a", 64)); migrateErr != nil {
+		t.Fatalf("migrate stored credential passwords: %v", migrateErr)
+	}
+	migratedRepository, migratedRepositoryErr := NewRepository(database, strings.Repeat("a", 64))
+	if migratedRepositoryErr != nil {
+		t.Fatalf("new migrated repository: %v", migratedRepositoryErr)
+	}
+	identities, listErr := migratedRepository.List(context.Background())
+	if listErr != nil {
+		t.Fatalf("list identities after migration: %v", listErr)
+	}
+	if len(identities) != 2 {
+		t.Fatalf("expected all active identities after migration, got %+v", identities)
+	}
+	identitiesByID := make(map[string]PublicIdentity, len(identities))
+	for _, identity := range identities {
+		identitiesByID[identity.ID] = identity
+	}
+	if identitiesByID[validIdentity.ID].Username != validIdentity.Username {
+		t.Fatalf("expected valid identity to keep existing username")
+	}
+	if _, validPasswordAfterMigration, credentialsErr := migratedRepository.Credentials(context.Background(), validIdentity.ID); credentialsErr != nil || validPasswordAfterMigration != validPassword {
+		t.Fatalf("expected valid credentials to remain unchanged password=%q err=%v", validPasswordAfterMigration, credentialsErr)
+	}
+	identity, password, credentialsErr := migratedRepository.Credentials(context.Background(), missingCipherID)
+	if credentialsErr != nil {
+		t.Fatalf("retrieve migrated credentials for %s: %v", missingCipherID, credentialsErr)
+	}
+	if password == "" || identity.Username == "" || identity.Username == "smtp-missing" {
+		t.Fatalf("expected migrated credentials for %s, identity=%+v password=%q", missingCipherID, identity, password)
+	}
+	if len(identitiesByID[missingCipherID].ForwardTo) != 1 || identitiesByID[missingCipherID].ForwardTo[0] != "owner@example.com" {
+		t.Fatalf("expected forwarding recipients to remain for %s, got %+v", missingCipherID, identitiesByID[missingCipherID].ForwardTo)
+	}
+	if _, authErr := migratedRepository.Authenticate(context.Background(), identity.Username, password); authErr != nil {
+		t.Fatalf("expected migrated credentials to authenticate for %s: %v", missingCipherID, authErr)
+	}
+}
+
+func TestMigrateStoredCredentialPasswordsReportsFailures(t *testing.T) {
+	t.Run("nil database", func(t *testing.T) {
+		migrateErr := MigrateStoredCredentialPasswords(context.Background(), nil, strings.Repeat("a", 64))
+		if migrateErr == nil || !strings.Contains(migrateErr.Error(), "database is required") {
+			t.Fatalf("expected nil database failure, got %v", migrateErr)
+		}
+	})
+
+	t.Run("invalid key", func(t *testing.T) {
+		database := newIdentityDatabase(t)
+		migrateErr := MigrateStoredCredentialPasswords(context.Background(), database, "short")
+		if migrateErr == nil || !strings.Contains(migrateErr.Error(), "invalid master key") {
+			t.Fatalf("expected invalid key failure, got %v", migrateErr)
+		}
+	})
+
+	t.Run("list", func(t *testing.T) {
+		database := newIdentityDatabase(t)
+		closeIdentityDatabase(t, database)
+		migrateErr := MigrateStoredCredentialPasswords(context.Background(), database, strings.Repeat("a", 64))
+		if migrateErr == nil || !strings.Contains(migrateErr.Error(), "list identities") {
+			t.Fatalf("expected migration list failure, got %v", migrateErr)
+		}
+	})
+
+	t.Run("generate credentials", func(t *testing.T) {
+		database := newIdentityDatabase(t)
 		if err := database.Create(&Identity{
-			ID:           "legacy-identity",
-			EmailAddress: "alice@example.com",
-			Username:     "smtp-legacy",
+			ID:           "invalid-identity",
+			EmailAddress: "invalid@example.com",
+			Username:     "smtp-invalid",
 			Status:       IdentityStatusActive,
 		}).Error; err != nil {
-			t.Fatalf("seed legacy identity: %v", err)
+			t.Fatalf("seed invalid identity: %v", err)
 		}
-		_, _, credentialsErr := repository.Credentials(context.Background(), "legacy-identity")
-		if !errors.Is(credentialsErr, ErrPasswordUnavailable) {
-			t.Fatalf("expected password unavailable, got %v", credentialsErr)
+		repository := &Repository{
+			db:        database,
+			key:       bytes.Repeat([]byte{0xaa}, 32),
+			random:    identityFailingReader{err: io.ErrUnexpectedEOF},
+			clockFunc: func() time.Time { return time.Now().UTC() },
+		}
+		migrateErr := repository.migrateStoredCredentialPasswords(context.Background())
+		if migrateErr == nil || !strings.Contains(migrateErr.Error(), "generate credentials") || !errors.Is(migrateErr, io.ErrUnexpectedEOF) {
+			t.Fatalf("expected credential generation failure, got %v", migrateErr)
+		}
+	})
+
+	t.Run("update identity", func(t *testing.T) {
+		database := newIdentityDatabase(t)
+		if err := database.Create(&Identity{
+			ID:           "invalid-identity",
+			EmailAddress: "invalid@example.com",
+			Username:     "smtp-invalid",
+			Status:       IdentityStatusActive,
+		}).Error; err != nil {
+			t.Fatalf("seed invalid identity: %v", err)
+		}
+		registerIdentityUpdateError(t, database)
+		migrateErr := MigrateStoredCredentialPasswords(context.Background(), database, strings.Repeat("a", 64))
+		if migrateErr == nil || !strings.Contains(migrateErr.Error(), "update identity") {
+			t.Fatalf("expected identity update failure, got %v", migrateErr)
+		}
+	})
+}
+
+func TestRepositoryCredentialsReportsStoredPasswordFailures(t *testing.T) {
+	t.Run("missing ciphertext", func(t *testing.T) {
+		repository, database := newIdentityRepository(t)
+		if err := database.Create(&Identity{
+			ID:           "missing-cipher-identity",
+			EmailAddress: "alice@example.com",
+			Username:     "smtp-missing-cipher",
+			Status:       IdentityStatusActive,
+		}).Error; err != nil {
+			t.Fatalf("seed missing cipher identity: %v", err)
+		}
+		_, _, credentialsErr := repository.Credentials(context.Background(), "missing-cipher-identity")
+		if credentialsErr == nil || !strings.Contains(credentialsErr.Error(), "ciphertext too short") {
+			t.Fatalf("expected missing ciphertext error, got %v", credentialsErr)
 		}
 	})
 
@@ -866,6 +995,47 @@ func TestRepositoryCredentialsReportsStoredPasswordFailures(t *testing.T) {
 			t.Fatalf("expected bad ciphertext error, got %v", credentialsErr)
 		}
 	})
+}
+
+func TestRepositoryCredentialsDoNotMutateInvalidStoredRows(t *testing.T) {
+	repository, database := newIdentityRepository(t)
+	missingCipherID := "missing-cipher-identity"
+	if err := database.Create(&Identity{
+		ID:           missingCipherID,
+		EmailAddress: "missing@example.com",
+		Username:     "smtp-missing",
+		Status:       IdentityStatusActive,
+	}).Error; err != nil {
+		t.Fatalf("seed missing cipher identity: %v", err)
+	}
+	seedSenderDomain(t, database, "example.com")
+	corruptIdentity, _, createErr := repository.Create(context.Background(), mustAddress(t, "corrupt@example.com"), defaultForwardRecipients(t))
+	if createErr != nil {
+		t.Fatalf("create corrupt candidate identity: %v", createErr)
+	}
+	var storedCorruptIdentity Identity
+	if err := database.Where(&Identity{ID: corruptIdentity.ID}).First(&storedCorruptIdentity).Error; err != nil {
+		t.Fatalf("fetch corrupt candidate identity: %v", err)
+	}
+	storedCorruptIdentity.PasswordCipher[len(storedCorruptIdentity.PasswordCipher)-1] ^= 1
+	if err := database.Model(&Identity{}).Where(&Identity{ID: corruptIdentity.ID}).Update("password_cipher", storedCorruptIdentity.PasswordCipher).Error; err != nil {
+		t.Fatalf("corrupt password cipher: %v", err)
+	}
+	for _, identityID := range []string{missingCipherID, corruptIdentity.ID} {
+		_, _, credentialsErr := repository.Credentials(context.Background(), identityID)
+		if credentialsErr == nil {
+			t.Fatalf("expected invalid credentials error for %s", identityID)
+		}
+	}
+	for _, identityID := range []string{missingCipherID, corruptIdentity.ID} {
+		var count int64
+		if err := database.Model(&Identity{}).Where(&Identity{ID: identityID}).Count(&count).Error; err != nil {
+			t.Fatalf("count identity %s: %v", identityID, err)
+		}
+		if count != 1 {
+			t.Fatalf("expected invalid identity %s to remain for migration, got %d", identityID, count)
+		}
+	}
 }
 
 func TestRepositoryDeleteReportsSaveFailure(t *testing.T) {
@@ -930,6 +1100,16 @@ func TestRepositoryAuthenticateReportsInvalidStoredAddress(t *testing.T) {
 
 func newIdentityRepository(t *testing.T) (*Repository, *gorm.DB) {
 	t.Helper()
+	database := newIdentityDatabase(t)
+	repository, repositoryErr := NewRepository(database, strings.Repeat("a", 64))
+	if repositoryErr != nil {
+		t.Fatalf("new repository: %v", repositoryErr)
+	}
+	return repository, database
+}
+
+func newIdentityDatabase(t *testing.T) *gorm.DB {
+	t.Helper()
 	database, databaseErr := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "identity.db")), &gorm.Config{})
 	if databaseErr != nil {
 		t.Fatalf("open database: %v", databaseErr)
@@ -937,11 +1117,7 @@ func newIdentityRepository(t *testing.T) (*Repository, *gorm.DB) {
 	if migrateErr := database.AutoMigrate(&SenderDomain{}, &Identity{}, &ForwardRecipient{}); migrateErr != nil {
 		t.Fatalf("migrate database: %v", migrateErr)
 	}
-	repository, repositoryErr := NewRepository(database, strings.Repeat("a", 64))
-	if repositoryErr != nil {
-		t.Fatalf("new repository: %v", repositoryErr)
-	}
-	return repository, database
+	return database
 }
 
 func closeIdentityDatabase(t *testing.T, database *gorm.DB) {

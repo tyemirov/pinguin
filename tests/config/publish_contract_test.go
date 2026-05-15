@@ -185,9 +185,10 @@ func TestDeployScriptDeploysBackendThenLegacyPages(t *testing.T) {
 		"gateway_deploy_target=\"deploy-pinguin\"",
 		"gateway_deploy_target=\"deploy-pinguin-backend\"",
 		"gateway_pages_verify_enabled=\"false\"",
+		"MPRLAB_APP_MANIFEST=\"${repo_root}/deploy/app.yml\"",
 		"MPRLAB_GATEWAY_PAGES_VERIFY_ENABLED=\"${gateway_pages_verify_enabled}\"",
 		"MPRLAB_PINGUIN_PAGES_URL=\"${PAGES_URL}\"",
-		"make -C \"${GATEWAY_DIR}\" MPRLAB_GATEWAY_PAGES_VERIFY_ENABLED=\"${gateway_pages_verify_enabled}\" MPRLAB_PINGUIN_PAGES_URL=\"${PAGES_URL}\" \"${gateway_deploy_target}\"",
+		"make -C \"${GATEWAY_DIR}\" MPRLAB_APP_MANIFEST=\"${repo_root}/deploy/app.yml\" MPRLAB_GATEWAY_PAGES_VERIFY_ENABLED=\"${gateway_pages_verify_enabled}\" MPRLAB_PINGUIN_PAGES_URL=\"${PAGES_URL}\" \"${gateway_deploy_target}\"",
 		"edge 25 -> tutosh:8025 and edge 465 -> tutosh:8465",
 		"Verifying ${IMAGE_REPOSITORY}:latest matches ${TAG}",
 	}
@@ -238,7 +239,8 @@ func TestDeployScriptDeploysBackendThenLegacyPages(t *testing.T) {
 		"Production deployment is intentionally parameterless",
 		"make deploy",
 		"defaults to the sibling `mprlab-gateway` checkout",
-		"gateway Ansible inventory models the GitHub Pages publication as a `pages_resources` entry",
+		"deploy/app.yml",
+		"That app manifest owns the GitHub Pages resource",
 		"clean local `master` branch that exactly matches `origin/master`",
 		"zero open pull requests",
 		"After `make deploy`, configure the edge gateway to forward `25 -> tutosh:8025` and `465 -> tutosh:8465`",
@@ -246,6 +248,22 @@ func TestDeployScriptDeploysBackendThenLegacyPages(t *testing.T) {
 	} {
 		if !strings.Contains(readme, requiredSnippet) {
 			t.Fatalf("README missing plain deploy contract snippet %q", requiredSnippet)
+		}
+	}
+
+	appManifest := string(readRepoFile(t, "deploy", "app.yml"))
+	for _, requiredSnippet := range []string{
+		"app_name: pinguin",
+		"gateway_target: pinguin",
+		"resources:",
+		"type: github_pages_make_target",
+		"target: pages-deploy",
+		"url: https://pinguin.mprlab.com/",
+		"url_variable: mprlab_pinguin_pages_url",
+		"source_marker_path: /pinguin-pages-build.json",
+	} {
+		if !strings.Contains(appManifest, requiredSnippet) {
+			t.Fatalf("deploy/app.yml missing Pages resource snippet %q", requiredSnippet)
 		}
 	}
 }
