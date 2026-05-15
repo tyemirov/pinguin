@@ -31,21 +31,21 @@ func TestServiceEnvExamplesCoverConfigTemplates(t *testing.T) {
 	}
 }
 
-func TestPinguinSMTPSubmissionTemplateSupportsFourSenderDomains(t *testing.T) {
+func TestPinguinSMTPSubmissionTemplateDoesNotUseStaticSenderDomains(t *testing.T) {
 	templateKeys := parseTemplateEnvKeys(string(readRepoFile(t, "configs/config.pinguin.yml")))
 	exampleKeys := parseEnvExampleKeys(string(readRepoFile(t, "configs/.env.pinguin.example")))
 
-	for _, requiredKey := range []string{
+	for _, legacyKey := range []string{
 		"SMTP_SUBMISSION_SENDER_DOMAIN_1",
 		"SMTP_SUBMISSION_SENDER_DOMAIN_2",
 		"SMTP_SUBMISSION_SENDER_DOMAIN_3",
 		"SMTP_SUBMISSION_SENDER_DOMAIN_4",
 	} {
-		if !stringSliceContains(templateKeys, requiredKey) {
-			t.Fatalf("configs/config.pinguin.yml does not reference %s", requiredKey)
+		if stringSliceContains(templateKeys, legacyKey) {
+			t.Fatalf("configs/config.pinguin.yml still references %s", legacyKey)
 		}
-		if !exampleKeys[requiredKey] {
-			t.Fatalf("configs/.env.pinguin.example does not define %s", requiredKey)
+		if exampleKeys[legacyKey] {
+			t.Fatalf("configs/.env.pinguin.example still defines %s", legacyKey)
 		}
 	}
 }

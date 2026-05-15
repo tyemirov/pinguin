@@ -10,37 +10,6 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-func TestNormalizeSenderDomains(t *testing.T) {
-	domains, err := NormalizeSenderDomains([]string{" Example.COM ", "", "Other.example"})
-	if err != nil {
-		t.Fatalf("normalize domains: %v", err)
-	}
-	if strings.Join(domains, ",") != "example.com,other.example" {
-		t.Fatalf("unexpected domains %v", domains)
-	}
-}
-
-func TestNormalizeSenderDomainsRejectsInvalidInput(t *testing.T) {
-	testCases := []struct {
-		name    string
-		domains []string
-		wantErr string
-	}{
-		{name: "empty", domains: []string{" ", ""}, wantErr: "no domains configured"},
-		{name: "duplicate", domains: []string{"Example.com", "example.COM"}, wantErr: "duplicate domain example.com"},
-		{name: "invalid", domains: []string{"bad domain"}, wantErr: "sender_domain.invalid"},
-	}
-	for _, testCase := range testCases {
-		testCase := testCase
-		t.Run(testCase.name, func(t *testing.T) {
-			_, err := NormalizeSenderDomains(testCase.domains)
-			if err == nil || !strings.Contains(err.Error(), testCase.wantErr) {
-				t.Fatalf("expected %q error, got %v", testCase.wantErr, err)
-			}
-		})
-	}
-}
-
 func TestNormalizeSenderDomainRejectsInvalidDNSNames(t *testing.T) {
 	testCases := []string{
 		"localhost",
@@ -61,28 +30,13 @@ func TestNormalizeSenderDomainRejectsInvalidDNSNames(t *testing.T) {
 	}
 }
 
-func TestReplaceSenderDomainsResetsConfiguredDomains(t *testing.T) {
-	_, database := newIdentityRepository(t)
-	if err := ReplaceSenderDomains(context.Background(), database, []string{"Example.com", "Second.example"}); err != nil {
-		t.Fatalf("replace domains: %v", err)
-	}
-	if err := ReplaceSenderDomains(context.Background(), database, []string{"Final.example"}); err != nil {
-		t.Fatalf("replace domains second time: %v", err)
-	}
-
-	var domains []SenderDomain
-	if err := database.Order(clause.OrderByColumn{Column: clause.Column{Name: "domain"}}).Find(&domains).Error; err != nil {
-		t.Fatalf("list sender domains: %v", err)
-	}
-	if len(domains) != 1 || domains[0].Domain != "final.example" {
-		t.Fatalf("unexpected stored domains %+v", domains)
-	}
-}
-
-func TestReplaceSenderDomainsReplacesLegacyConfiguredDomains(t *testing.T) {
+func TestCleanupLegacySenderDomainsDeletesUnownedDomains(t *testing.T) {
 	_, database := newIdentityRepository(t)
 	if err := database.Omit("OwnerEmail").Create(&SenderDomain{Domain: "legacy.example"}).Error; err != nil {
 		t.Fatalf("seed legacy sender domain: %v", err)
+	}
+	if err := database.Create(&SenderDomain{Domain: "operator.example", Status: SenderDomainStatusVerified}).Error; err != nil {
+		t.Fatalf("seed configured sender domain: %v", err)
 	}
 	if err := database.Create(&SenderDomain{
 		OwnerEmail: "member@example.com",
@@ -92,58 +46,30 @@ func TestReplaceSenderDomainsReplacesLegacyConfiguredDomains(t *testing.T) {
 		t.Fatalf("seed user sender domain: %v", err)
 	}
 
-	if err := ReplaceSenderDomains(context.Background(), database, []string{"Legacy.example", "operator.example"}); err != nil {
-		t.Fatalf("replace legacy domains: %v", err)
+	if err := CleanupLegacySenderDomains(context.Background(), database); err != nil {
+		t.Fatalf("cleanup legacy domains: %v", err)
 	}
 
 	var domains []SenderDomain
 	if err := database.Order(clause.OrderByColumn{Column: clause.Column{Name: "domain"}}).Find(&domains).Error; err != nil {
 		t.Fatalf("list sender domains: %v", err)
 	}
-	if len(domains) != 3 {
+	if len(domains) != 1 {
 		t.Fatalf("unexpected stored domain count %+v", domains)
 	}
 	if domains[0].Domain != "customer.example" || domains[0].OwnerEmail != "member@example.com" {
 		t.Fatalf("expected user-owned domain to remain, got %+v", domains[0])
 	}
-	if domains[1].Domain != "legacy.example" || domains[1].OwnerEmail != "" || domains[1].Status != SenderDomainStatusVerified {
-		t.Fatalf("expected legacy domain to be replaced as configured, got %+v", domains[1])
-	}
-	if domains[2].Domain != "operator.example" || domains[2].OwnerEmail != "" || domains[2].Status != SenderDomainStatusVerified {
-		t.Fatalf("expected operator domain to be configured, got %+v", domains[2])
-	}
 }
 
-func TestReplaceSenderDomainsReportsStorageFailures(t *testing.T) {
-	t.Run("normalization", func(t *testing.T) {
-		_, database := newIdentityRepository(t)
-		if err := ReplaceSenderDomains(context.Background(), database, []string{"example.com", "EXAMPLE.com"}); err == nil {
-			t.Fatalf("expected normalization error")
-		}
-	})
-
-	t.Run("reset", func(t *testing.T) {
-		_, database := newIdentityRepository(t)
-		if err := database.Callback().Delete().Before("gorm:delete").Register("pinguin:force_sender_domain_reset_error", func(tx *gorm.DB) {
-			tx.AddError(errors.New("forced sender domain reset failure"))
-		}); err != nil {
-			t.Fatalf("register callback: %v", err)
-		}
-		if err := ReplaceSenderDomains(context.Background(), database, []string{"example.com"}); err == nil || !strings.Contains(err.Error(), "reset") {
-			t.Fatalf("expected reset storage error, got %v", err)
-		}
-	})
-
-	t.Run("create", func(t *testing.T) {
-		_, database := newIdentityRepository(t)
-		if err := database.Callback().Create().Before("gorm:create").Register("pinguin:force_sender_domain_create_error", func(tx *gorm.DB) {
-			tx.AddError(errors.New("forced sender domain create failure"))
-		}); err != nil {
-			t.Fatalf("register callback: %v", err)
-		}
-		err := ReplaceSenderDomains(context.Background(), database, []string{"example.com"})
-		if err == nil || !strings.Contains(err.Error(), "sender domain example.com") {
-			t.Fatalf("expected create storage error, got %v", err)
-		}
-	})
+func TestCleanupLegacySenderDomainsReportsStorageFailures(t *testing.T) {
+	_, database := newIdentityRepository(t)
+	if err := database.Callback().Delete().Before("gorm:delete").Register("pinguin:force_sender_domain_cleanup_error", func(tx *gorm.DB) {
+		tx.AddError(errors.New("forced sender domain cleanup failure"))
+	}); err != nil {
+		t.Fatalf("register callback: %v", err)
+	}
+	if err := CleanupLegacySenderDomains(context.Background(), database); err == nil || !strings.Contains(err.Error(), "cleanup") {
+		t.Fatalf("expected cleanup storage error, got %v", err)
+	}
 }

@@ -300,13 +300,9 @@ smtpSubmission:
   maxMessageBytes: 26214400
   maxRecipients: 100
   allowInsecureAuth: true
-  # Optional operator-owned domains. Authenticated users can add and verify
-  # their own sender domains from the SMTP relay page.
-  senderDomains:
-    - example.com
 ```
 
-`smtpSubmission.senderDomains` seeds operator-owned verified domains for exact sender identities such as `alice@example.com`. Public relay onboarding does not require editing YAML: authenticated users add a sender domain in the SMTP relay page, publish the DNS records Pinguin shows, and click **Check DNS**. Pinguin marks the domain verified only when the ownership TXT, SPF authorization, and DMARC records match the displayed specification. Non-admin users can create SMTP relay identities only for their own verified domains. In `deliveryMode: direct`, Pinguin accepts the authenticated submission and delivers the raw message to each recipient domain's MX hosts using the authenticated identity as the envelope sender. DKIM signing, bounce processing, and mailbox hosting remain outside Pinguin.
+Sender domains are not configured in YAML. Authenticated users add a sender domain in the SMTP relay page, publish the DNS records Pinguin shows, and click **Check DNS**. Pinguin marks the domain verified only when the ownership TXT, SPF authorization, and DMARC records match the displayed specification. Users can create SMTP relay identities only for their own verified domains. In `deliveryMode: direct`, Pinguin accepts the authenticated submission and delivers the raw message to each recipient domain's MX hosts using the authenticated identity as the envelope sender. DKIM signing, bounce processing, and mailbox hosting remain outside Pinguin.
 
 The Marco Polo gateway deployment accepts public SMTPS on edge port `465`, forwards it to `tutosh:8465`, publishes that high host port to Caddy's container `:465`, and proxies the decrypted SMTP session to Pinguin's private `listenAddr` on the Docker network. That is why production direct-relay config leaves `tlsListenAddr`, `tlsCertPath`, and `tlsKeyPath` empty and sets `allowInsecureAuth: true`; do not publish the private Pinguin SMTP listener directly to the internet.
 

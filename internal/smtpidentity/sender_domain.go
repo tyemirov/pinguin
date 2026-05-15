@@ -76,51 +76,16 @@ type PublicSenderDomain struct {
 	UpdatedAt     time.Time   `json:"updated_at"`
 }
 
-// ReplaceSenderDomains makes the SMTP submission sender-domain allowlist match configuration.
-func ReplaceSenderDomains(ctx context.Context, db *gorm.DB, domains []string) error {
-	normalizedDomains, normalizeErr := NormalizeSenderDomains(domains)
-	if normalizeErr != nil {
-		return normalizeErr
+// CleanupLegacySenderDomains removes config-seeded sender domains that predate owner-scoped DNS verification.
+func CleanupLegacySenderDomains(ctx context.Context, db *gorm.DB) error {
+	configuredOwnerClause := clause.Or(
+		clause.Eq{Column: clause.Column{Name: ownerEmailColumn}, Value: ""},
+		clause.Eq{Column: clause.Column{Name: ownerEmailColumn}, Value: nil},
+	)
+	if err := db.WithContext(ctx).Where(configuredOwnerClause).Delete(&SenderDomain{}).Error; err != nil {
+		return fmt.Errorf("smtp identity sender domains cleanup: %w", err)
 	}
-	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		configuredOwnerClause := clause.Or(
-			clause.Eq{Column: clause.Column{Name: ownerEmailColumn}, Value: ""},
-			clause.Eq{Column: clause.Column{Name: ownerEmailColumn}, Value: nil},
-		)
-		if err := tx.Where(configuredOwnerClause).Delete(&SenderDomain{}).Error; err != nil {
-			return fmt.Errorf("smtp identity sender domains: reset: %w", err)
-		}
-		for _, domain := range normalizedDomains {
-			if err := tx.Create(&SenderDomain{Domain: domain, Status: SenderDomainStatusVerified}).Error; err != nil {
-				return fmt.Errorf("smtp identity sender domain %s: %w", domain, err)
-			}
-		}
-		return nil
-	})
-}
-
-// NormalizeSenderDomains returns lower-cased unique sender domains.
-func NormalizeSenderDomains(domains []string) ([]string, error) {
-	seenDomains := make(map[string]struct{}, len(domains))
-	normalizedDomains := make([]string, 0, len(domains))
-	for _, domain := range domains {
-		normalizedDomain, domainErr := NormalizeSenderDomain(domain)
-		if domainErr != nil {
-			return nil, domainErr
-		}
-		if normalizedDomain == "" {
-			continue
-		}
-		if _, exists := seenDomains[normalizedDomain]; exists {
-			return nil, fmt.Errorf("smtp identity sender domains: duplicate domain %s", normalizedDomain)
-		}
-		seenDomains[normalizedDomain] = struct{}{}
-		normalizedDomains = append(normalizedDomains, normalizedDomain)
-	}
-	if len(normalizedDomains) == 0 {
-		return nil, fmt.Errorf("smtp identity sender domains: no domains configured")
-	}
-	return normalizedDomains, nil
+	return nil
 }
 
 // NormalizeSenderDomain validates and normalizes one DNS sender domain.

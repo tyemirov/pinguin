@@ -61,7 +61,6 @@ smtpSubmission:
   maxMessageBytes: 1048576
   maxRecipients: 25
   allowInsecureAuth: true
-  senderDomains: [one.test]
   relay:
     host: ${SMTP_SUBMISSION_RELAY_HOST}
     port: ${SMTP_SUBMISSION_RELAY_PORT}
@@ -129,7 +128,6 @@ smtpSubmission:
 			MaxMessageBytes:   1048576,
 			MaxRecipients:     25,
 			AllowInsecureAuth: true,
-			SenderDomains:     []string{"one.test"},
 			Relay: SMTPSubmissionRelayConfig{
 				Host:     "relay.one.test",
 				Port:     2525,
@@ -258,8 +256,6 @@ smtpSubmission:
   maxMessageBytes: 26214400
   maxRecipients: 100
   allowInsecureAuth: true
-  senderDomains:
-    - mprlab.com
 `)
 	t.Setenv("MASTER_ENCRYPTION_KEY", "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
 
@@ -293,9 +289,6 @@ tenants:
   configPath: tenants.yml
 web:
   enabled: false
-smtpSubmission:
-  senderDomains:
-    - mprlab.com
 smtpForwarding:
   enabled: true
   hostname: mx.pinguin.mprlab.com
@@ -385,31 +378,23 @@ smtpSubmission:
   maxMessageBytes: 1048576
   maxRecipients: 25
   allowInsecureAuth: true
-  senderDomains:
-    - ${SMTP_SUBMISSION_SENDER_DOMAIN_1}
-    - ${SMTP_SUBMISSION_SENDER_DOMAIN_2}
-    - ${SMTP_SUBMISSION_SENDER_DOMAIN_3}
-    - ${SMTP_SUBMISSION_SENDER_DOMAIN_4}
   relay:
     host: relay.one.test
     port: 2525
     username: relay-user
-    password: relay-secret
+    password: ${SMTP_SUBMISSION_RELAY_PASSWORD}
 `)
-	t.Setenv("SMTP_SUBMISSION_SENDER_DOMAIN_1", "mprlab.com")
-	t.Setenv("SMTP_SUBMISSION_SENDER_DOMAIN_2", "poodlescanner.com")
-	t.Setenv("SMTP_SUBMISSION_SENDER_DOMAIN_3", "temirov.com")
 
 	_, err := loadConfigFromPath(configPath)
 	if err == nil {
 		t.Fatalf("expected missing environment variable error")
 	}
-	if !strings.Contains(err.Error(), "configuration: missing environment variables: SMTP_SUBMISSION_SENDER_DOMAIN_4") {
+	if !strings.Contains(err.Error(), "configuration: missing environment variables: SMTP_SUBMISSION_RELAY_PASSWORD") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestLoadConfigAllowsDefinedBlankEnvironmentVariables(t *testing.T) {
+func TestLoadConfigRejectsLegacySMTPSenderDomains(t *testing.T) {
 	configPath := writeConfigFile(t, `
 server:
   databasePath: app.db
@@ -432,23 +417,17 @@ smtpSubmission:
   maxRecipients: 25
   allowInsecureAuth: true
   senderDomains:
-    - ${SMTP_SUBMISSION_SENDER_DOMAIN_1}
-    - ${SMTP_SUBMISSION_SENDER_DOMAIN_2}
+    - example.com
   relay:
     host: relay.one.test
     port: 2525
     username: relay-user
     password: relay-secret
 `)
-	t.Setenv("SMTP_SUBMISSION_SENDER_DOMAIN_1", "mprlab.com")
-	t.Setenv("SMTP_SUBMISSION_SENDER_DOMAIN_2", "")
 
-	cfg, err := loadConfigFromPath(configPath)
-	if err != nil {
-		t.Fatalf("LoadConfig returned error: %v", err)
-	}
-	if !reflect.DeepEqual(cfg.SMTPSubmission.SenderDomains, []string{"mprlab.com"}) {
-		t.Fatalf("unexpected sender domains %v", cfg.SMTPSubmission.SenderDomains)
+	_, err := loadConfigFromPath(configPath)
+	if err == nil || !strings.Contains(err.Error(), "smtpSubmission.senderDomains is no longer supported") {
+		t.Fatalf("expected legacy senderDomains error, got %v", err)
 	}
 }
 
@@ -671,7 +650,6 @@ func TestValidateConfigRejectsInvalidSMTPSubmissionModeAndPublicSettings(t *test
 			MaxMessageBytes:    1048576,
 			MaxRecipients:      25,
 			AllowInsecureAuth:  true,
-			SenderDomains:      []string{"example.com"},
 		},
 	}
 	err := validateConfig(cfg)

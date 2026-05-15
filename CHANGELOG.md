@@ -11,6 +11,7 @@
 - Add backend-backed search and infinite scroll for dashboard notification events, including cursor pagination and a single top-level refresh control.
 
 ### Bug Fixes
+- Make SMTP sender domains fully API/DB-owned by rejecting legacy `smtpSubmission.senderDomains`, deleting unowned configured-domain rows at startup, and surfacing sender-domain API validation errors in the SMTP relay UI.
 - Move the gateway-executed GitHub Pages deployment resource into `deploy/app.yml` so Pinguin owns the deployable frontend contract while gateway Ansible owns execution.
 - Align production workflow contract tests and docs with the current release branch defaults and `deploy-pinguin-backend` gateway target.
 - Require `make release`, `make publish`, and `make deploy` to run only from clean local `master` matching `origin/master` with zero open PRs, and print the verified branch/commit before production work starts.

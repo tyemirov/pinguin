@@ -640,10 +640,10 @@ func TestSMTPIdentityLifecycle(t *testing.T) {
 func TestSMTPIdentityRoutesAllowAuthenticatedDomainVerification(t *testing.T) {
 	t.Helper()
 	resolver := fakeDNSResolver{}
-	server, _ := newTestHTTPServerWithSMTPIdentitiesValidatorAndResolver(t, &stubValidator{
+	server, _ := newTestHTTPServerWithSMTPIdentitiesValidatorAndResolverSeeded(t, &stubValidator{
 		email: "member@example.com",
 		roles: []string{"user"},
-	}, resolver)
+	}, resolver, false)
 
 	blockedRecorder := httptest.NewRecorder()
 	blockedRequest := httptest.NewRequest(http.MethodPost, "/api/smtp-identities", strings.NewReader(`{"email_address":"alice@example.com","forward_to":["owner@example.com"]}`))
@@ -659,8 +659,15 @@ func TestSMTPIdentityRoutesAllowAuthenticatedDomainVerification(t *testing.T) {
 	createDomainRequest.Host = "example.com"
 	createDomainRequest.Header.Set("Content-Type", "application/json")
 	server.httpServer.Handler.ServeHTTP(createDomainRecorder, createDomainRequest)
-	if createDomainRecorder.Code != http.StatusConflict {
-		t.Fatalf("expected configured global domain to remain operator-owned, got %d body=%s", createDomainRecorder.Code, createDomainRecorder.Body.String())
+	if createDomainRecorder.Code != http.StatusCreated {
+		t.Fatalf("expected arbitrary sender domain create 201, got %d body=%s", createDomainRecorder.Code, createDomainRecorder.Body.String())
+	}
+	var createdExampleDomain smtpidentity.PublicSenderDomain
+	if err := json.Unmarshal(createDomainRecorder.Body.Bytes(), &createdExampleDomain); err != nil {
+		t.Fatalf("decode arbitrary sender domain: %v", err)
+	}
+	if createdExampleDomain.Domain != "example.com" || createdExampleDomain.Status != string(smtpidentity.SenderDomainStatusPending) {
+		t.Fatalf("unexpected arbitrary sender domain payload: %+v", createdExampleDomain)
 	}
 
 	createOwnedDomainRecorder := httptest.NewRecorder()
@@ -691,7 +698,11 @@ func TestSMTPIdentityRoutesAllowAuthenticatedDomainVerification(t *testing.T) {
 	if err := json.Unmarshal(listDomainsRecorder.Body.Bytes(), &listDomainsPayload); err != nil {
 		t.Fatalf("decode sender domain list: %v", err)
 	}
-	if len(listDomainsPayload.Domains) != 1 || listDomainsPayload.Domains[0].Domain != "customer.example" {
+	listedDomains := make(map[string]bool, len(listDomainsPayload.Domains))
+	for _, listedDomain := range listDomainsPayload.Domains {
+		listedDomains[listedDomain.Domain] = true
+	}
+	if len(listDomainsPayload.Domains) != 2 || !listedDomains["example.com"] || !listedDomains["customer.example"] {
 		t.Fatalf("unexpected sender domain list: %+v", listDomainsPayload.Domains)
 	}
 	resolver.set(createdDomain.DNSRecords[0].Host, []string{createdDomain.DNSRecords[0].Value})
@@ -1604,6 +1615,10 @@ func newTestHTTPServerWithSMTPIdentitiesAndValidator(t *testing.T, validator Ses
 }
 
 func newTestHTTPServerWithSMTPIdentitiesValidatorAndResolver(t *testing.T, validator SessionValidator, resolver smtpidentity.DNSResolver) (*Server, *smtpidentity.Repository) {
+	return newTestHTTPServerWithSMTPIdentitiesValidatorAndResolverSeeded(t, validator, resolver, true)
+}
+
+func newTestHTTPServerWithSMTPIdentitiesValidatorAndResolverSeeded(t *testing.T, validator SessionValidator, resolver smtpidentity.DNSResolver, seedVerifiedDomain bool) (*Server, *smtpidentity.Repository) {
 	t.Helper()
 	secretKey := strings.Repeat("a", 64)
 	keeper, err := tenant.NewSecretKeeper(secretKey)
@@ -1648,8 +1663,8 @@ func newTestHTTPServerWithSMTPIdentitiesValidatorAndResolver(t *testing.T, valid
 	if err := tenant.Bootstrap(context.Background(), dbInstance, keeper, cfg); err != nil {
 		t.Fatalf("bootstrap tenants: %v", err)
 	}
-	if err := smtpidentity.ReplaceSenderDomains(context.Background(), dbInstance, []string{"example.com"}); err != nil {
-		t.Fatalf("bootstrap smtp sender domains: %v", err)
+	if seedVerifiedDomain {
+		seedHTTPAPISenderDomain(t, dbInstance, "user@example.com", "example.com")
 	}
 	tenantRepo := tenant.NewRepository(dbInstance, keeper)
 	identityRepo, err := smtpidentity.NewRepository(dbInstance, secretKey)
@@ -1680,6 +1695,18 @@ func newTestHTTPServerWithSMTPIdentitiesValidatorAndResolver(t *testing.T, valid
 	return server, identityRepo
 }
 
+func seedHTTPAPISenderDomain(t *testing.T, dbInstance *gorm.DB, ownerEmail string, domain string) {
+	t.Helper()
+	if err := dbInstance.Create(&smtpidentity.SenderDomain{
+		OwnerEmail:        ownerEmail,
+		Domain:            domain,
+		Status:            smtpidentity.SenderDomainStatusVerified,
+		VerificationToken: "test-token",
+	}).Error; err != nil {
+		t.Fatalf("seed smtp sender domain: %v", err)
+	}
+}
+
 func newTestHTTPServerWithBrokenSMTPIdentities(t *testing.T) (*Server, *smtpidentity.Repository) {
 	t.Helper()
 	return newTestHTTPServerWithBrokenSMTPIdentitiesAndValidator(t, &stubValidator{})
@@ -1695,9 +1722,7 @@ func newTestHTTPServerWithBrokenSMTPIdentitiesAndValidator(t *testing.T, validat
 	if err := dbInstance.AutoMigrate(&smtpidentity.SenderDomain{}, &smtpidentity.Identity{}, &smtpidentity.ForwardRecipient{}); err != nil {
 		t.Fatalf("migrate sqlite: %v", err)
 	}
-	if err := smtpidentity.ReplaceSenderDomains(context.Background(), dbInstance, []string{"example.com"}); err != nil {
-		t.Fatalf("seed sender domains: %v", err)
-	}
+	seedHTTPAPISenderDomain(t, dbInstance, "user@example.com", "example.com")
 	identityRepo, err := smtpidentity.NewRepository(dbInstance, secretKey)
 	if err != nil {
 		t.Fatalf("identity repository: %v", err)

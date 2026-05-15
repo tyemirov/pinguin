@@ -66,7 +66,6 @@ type SMTPSubmissionConfig struct {
 	MaxMessageBytes    int64
 	MaxRecipients      int
 	AllowInsecureAuth  bool
-	SenderDomains      []string
 	Relay              SMTPSubmissionRelayConfig
 }
 
@@ -140,8 +139,17 @@ type smtpSubmissionSection struct {
 	MaxMessageBytes    int64                      `yaml:"maxMessageBytes"`
 	MaxRecipients      int                        `yaml:"maxRecipients"`
 	AllowInsecureAuth  bool                       `yaml:"allowInsecureAuth"`
-	SenderDomains      []string                   `yaml:"senderDomains"`
+	SenderDomains      legacySenderDomains        `yaml:"senderDomains"`
 	Relay              smtpSubmissionRelaySection `yaml:"relay"`
+}
+
+type legacySenderDomains struct {
+	present bool
+}
+
+func (legacy *legacySenderDomains) UnmarshalYAML(*yaml.Node) error {
+	legacy.present = true
+	return nil
 }
 
 type smtpSubmissionRelaySection struct {
@@ -236,6 +244,9 @@ func loadConfigFromPath(configPath string) (Config, error) {
 	if err := yaml.Unmarshal([]byte(expanded), &fileCfg); err != nil {
 		return Config{}, fmt.Errorf("configuration: parse yaml: %w", err)
 	}
+	if fileCfg.SMTPSubmission.SenderDomains.present {
+		return Config{}, fmt.Errorf("configuration: smtpSubmission.senderDomains is no longer supported; add sender domains through /api/smtp-domains")
+	}
 
 	webEnabled := true
 	if fileCfg.Web.Enabled != nil {
@@ -265,7 +276,6 @@ func loadConfigFromPath(configPath string) (Config, error) {
 			MaxMessageBytes:    fileCfg.SMTPSubmission.MaxMessageBytes,
 			MaxRecipients:      fileCfg.SMTPSubmission.MaxRecipients,
 			AllowInsecureAuth:  fileCfg.SMTPSubmission.AllowInsecureAuth,
-			SenderDomains:      normalizeStrings(fileCfg.SMTPSubmission.SenderDomains),
 			Relay: SMTPSubmissionRelayConfig{
 				Host:     strings.TrimSpace(fileCfg.SMTPSubmission.Relay.Host),
 				Port:     fileCfg.SMTPSubmission.Relay.Port,
