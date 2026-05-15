@@ -633,6 +633,38 @@ mpr-header [data-mpr-header="google-signin"] button {
   resize: vertical;
 }
 
+.identity-record-button {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-color);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.identity-record-button:hover {
+  text-decoration: underline;
+}
+
+.identity-record-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.identity-record-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.identity-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 180px;
+}
+
 .credentials-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -654,9 +686,33 @@ mpr-header [data-mpr-header="google-signin"] button {
   display: block;
 }
 
+.credentials-field {
+  display: block;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.credentials-field__label {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
 .copy-field input {
   min-width: 0;
   padding-right: 3rem;
+}
+
+.credential-plain-text {
+  display: block;
+  min-width: 0;
+  padding: 0.65rem 3rem 0.65rem 0.85rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-color);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .copy-field__button {

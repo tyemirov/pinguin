@@ -22,6 +22,12 @@ async function expectInputValueFits(input: Locator) {
     .toBe(true);
 }
 
+async function expectElementTextFits(element: Locator) {
+  await expect
+    .poll(() => element.evaluate((node) => node.scrollWidth <= node.clientWidth + 1))
+    .toBe(true);
+}
+
 test.describe('Authenticated pages', () => {
   test.beforeEach(async ({ page, request }) => {
     await resetNotifications(request);
@@ -422,17 +428,21 @@ test.describe('Authenticated pages', () => {
     await expect(panel.getByTestId('smtp-identity-row')).toHaveCount(1);
     await expect(panel.getByText('alice@example.com')).toBeVisible();
     await expect(panel.getByText('owner@example.com, maria@example.com')).toBeVisible();
+    const identityRow = panel.getByTestId('smtp-identity-row');
+    await expect(identityRow.getByRole('button', { name: 'View password' })).toHaveCount(0);
+    await expect(identityRow.getByRole('button', { name: 'Rotate' })).toHaveCount(0);
     const credentials = panel.getByTestId('smtp-credentials');
     const credentialInputs = credentials.locator('input');
-    await expect(credentialInputs).toHaveCount(5);
+    await expect(credentialInputs).toHaveCount(4);
     await expect(credentials.locator('input:not([readonly])')).toHaveCount(0);
     await expect(credentialInputs.nth(0)).toHaveValue('smtp.pinguin.test');
     await expect(credentialInputs.nth(1)).toHaveValue('465');
     await expect(credentialInputs.nth(2)).toHaveValue('ssl');
     await expect(credentialInputs.nth(3)).toHaveValue('smtp_JAYbQkNwQvT-LZI1');
-    await expect(credentialInputs.nth(4)).toHaveValue('pgsmtp_UVSZ9mxDW6ZeV-tNwApoddcyCjOM5uA');
+    const passwordValue = credentials.getByTestId('smtp-password-value');
+    await expect(passwordValue).toHaveText('pgsmtp_UVSZ9mxDW6ZeV-tNwApoddcyCjOM5uA');
     await expectInputValueFits(credentialInputs.nth(3));
-    await expectInputValueFits(credentialInputs.nth(4));
+    await expectElementTextFits(passwordValue);
     const copyButtons = credentials.locator('.copy-field__button');
     await expect(copyButtons).toHaveCount(3);
     await expect(copyButtons).toHaveText(['', '', '']);
@@ -499,17 +509,23 @@ test.describe('Authenticated pages', () => {
     await configureRuntime(page, { authenticated: true });
     await page.goto('/smtp-relay.html');
     const panel = page.getByTestId('smtp-identities');
-    await panel.getByRole('button', { name: 'View password' }).click();
+    const identityRow = panel.getByTestId('smtp-identity-row');
+    await expect(identityRow).toHaveCount(1);
+    await expect(identityRow.getByRole('button', { name: 'View password' })).toHaveCount(0);
+    await expect(identityRow.getByRole('button', { name: 'Rotate' })).toHaveCount(0);
+    await identityRow.getByRole('button', { name: 'Open Gmail SMTP settings for alice@example.com' }).click();
     const credentials = panel.getByTestId('smtp-credentials');
     const credentialInputs = credentials.locator('input');
     await expect(credentialInputs.nth(3)).toHaveValue('smtp_test_1');
-    await expect(credentialInputs.nth(4)).toHaveValue('pgsmtp_existing_visible_password');
+    const passwordValue = credentials.getByTestId('smtp-password-value');
+    await expect(passwordValue).toHaveText('pgsmtp_existing_visible_password');
+    await expect(credentials.getByLabel('Password', { exact: true })).toHaveCount(0);
     await expect(credentials.getByTestId('smtp-credential-notice')).toHaveText('SMTP credentials loaded');
     await credentials.getByRole('button', { name: 'Rotate credentials' }).click();
     await expect(credentialInputs.nth(3)).toHaveValue('smtp_rotated_JAYbQkNwQvT-LZI1');
-    await expect(credentialInputs.nth(4)).toHaveValue('pgsmtp_rotated_UVSZ9mxDW6ZeV-tNwApoddcyCjOM5uA');
+    await expect(passwordValue).toHaveText('pgsmtp_rotated_UVSZ9mxDW6ZeV-tNwApoddcyCjOM5uA');
     await expectInputValueFits(credentialInputs.nth(3));
-    await expectInputValueFits(credentialInputs.nth(4));
+    await expectElementTextFits(passwordValue);
     await expect(credentials.getByTestId('smtp-credential-notice')).toHaveText('SMTP credentials rotated');
     await expect(page.locator('.toast', { hasText: 'SMTP credentials rotated' })).toHaveCount(0);
   });

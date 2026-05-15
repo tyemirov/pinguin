@@ -113,7 +113,7 @@ export const STRINGS = Object.freeze({
     deleteSuccess: "SMTP identity deleted",
     deleteConfirm: "Delete this SMTP identity?",
     editForwardingLabel: "Edit forwarding owners",
-    viewPasswordLabel: "View password",
+    openCredentialsLabel: "Open Gmail SMTP settings for",
     cancelEditLabel: "Cancel edit",
     rotateConfirm: "Rotate credentials for this SMTP identity?",
     rotateCredentialsLabel: "Rotate credentials",
@@ -150,7 +150,6 @@ export const STRINGS = Object.freeze({
     logout: "Sign out",
     create: "Create",
     copy: "Copy",
-    rotate: "Rotate",
     delete: "Delete",
   },
 });
