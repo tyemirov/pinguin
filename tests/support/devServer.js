@@ -76,10 +76,14 @@ function createDefaultState() {
   return {
     notifications: defaultNotifications(),
     tenants: defaultTenants(),
+    smtpDomains: [],
     smtpIdentities: [],
     failList: false,
     failReschedule: false,
     failCancel: false,
+    failSMTPDomainList: false,
+    failSMTPDomainCreate: false,
+    failSMTPDomainCheck: false,
     failSMTPList: false,
     failSMTPCreate: false,
     failSMTPForwardingUpdate: false,
@@ -133,12 +137,19 @@ function applyOverrides(payload) {
   serverState.smtpIdentities = Array.isArray(payload.smtpIdentities)
     ? payload.smtpIdentities.map((item) => ({
         ...item,
+        password: typeof item.password === 'string' ? item.password : 'pgsmtp_existing_visible_password',
         forward_to: Array.isArray(item.forward_to) ? item.forward_to : ['owner@example.com'],
       }))
+    : [];
+  serverState.smtpDomains = Array.isArray(payload.smtpDomains)
+    ? seededSMTPDomains(payload.smtpDomains)
     : [];
   serverState.failList = Boolean(payload.failList);
   serverState.failReschedule = Boolean(payload.failReschedule);
   serverState.failCancel = Boolean(payload.failCancel);
+  serverState.failSMTPDomainList = Boolean(payload.failSMTPDomainList);
+  serverState.failSMTPDomainCreate = Boolean(payload.failSMTPDomainCreate);
+  serverState.failSMTPDomainCheck = Boolean(payload.failSMTPDomainCheck);
   serverState.failSMTPList = Boolean(payload.failSMTPList);
   serverState.failSMTPCreate = Boolean(payload.failSMTPCreate);
   serverState.failSMTPForwardingUpdate = Boolean(payload.failSMTPForwardingUpdate);
@@ -295,7 +306,56 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 500, { error: 'smtp_identity_list_failed' });
       return;
     }
-    sendJson(res, 200, { identities: serverState.smtpIdentities });
+    sendJson(res, 200, { identities: serverState.smtpIdentities.map(publicSMTPIdentity) });
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/smtp-domains') {
+    if (serverState.failSMTPDomainList) {
+      sendJson(res, 500, { error: 'smtp_domain_list_failed' });
+      return;
+    }
+    sendJson(res, 200, { domains: serverState.smtpDomains });
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/smtp-domains') {
+    if (serverState.failSMTPDomainCreate) {
+      sendJson(res, 500, { error: 'smtp_domain_create_failed' });
+      return;
+    }
+    const body = await readJson(req);
+    const domainName = normalizeDomain(body.domain);
+    if (!domainName) {
+      sendJson(res, 400, { error: 'sender domain is invalid' });
+      return;
+    }
+    if (serverState.smtpDomains.some((domain) => domain.domain === domainName)) {
+      sendJson(res, 409, { error: 'sender domain is already registered' });
+      return;
+    }
+    const domain = newSMTPDomain(domainName);
+    serverState.smtpDomains.push(domain);
+    sendJson(res, 201, domain);
+    return;
+  }
+
+  const checkSMTPDomainMatch = url.pathname.match(/^\/api\/smtp-domains\/([^/]+)\/check-dns$/);
+  if (checkSMTPDomainMatch && req.method === 'POST') {
+    if (serverState.failSMTPDomainCheck) {
+      sendJson(res, 500, { error: 'smtp_domain_check_failed' });
+      return;
+    }
+    const domain = serverState.smtpDomains.find((item) => String(item.id) === checkSMTPDomainMatch[1]);
+    if (!domain) {
+      sendJson(res, 404, { error: 'sender domain not found' });
+      return;
+    }
+    domain.status = 'verified';
+    domain.last_checked_at = new Date().toISOString();
+    domain.updated_at = domain.last_checked_at;
+    domain.dns_checks = dnsChecksForDomain(domain, true);
+    sendJson(res, 200, domain);
     return;
   }
 
@@ -311,6 +371,11 @@ const server = http.createServer(async (req, res) => {
       : [];
     if (!emailAddress || forwardTo.length === 0) {
       sendJson(res, 400, { error: 'email_address is invalid' });
+      return;
+    }
+    const senderDomain = emailAddress.split('@').pop().toLowerCase();
+    if (!serverState.smtpDomains.some((domain) => domain.domain === senderDomain && domain.status === 'verified')) {
+      sendJson(res, 422, { error: 'sender domain is not verified' });
       return;
     }
     const identity = newSMTPIdentity(emailAddress, forwardTo);
@@ -340,7 +405,18 @@ const server = http.createServer(async (req, res) => {
     }
     identity.forward_to = forwardTo;
     identity.updated_at = new Date().toISOString();
-    sendJson(res, 200, identity);
+    sendJson(res, 200, publicSMTPIdentity(identity));
+    return;
+  }
+
+  const credentialsSMTPMatch = url.pathname.match(/^\/api\/smtp-identities\/([^/]+)\/credentials$/);
+  if (credentialsSMTPMatch && req.method === 'GET') {
+    const identity = serverState.smtpIdentities.find((item) => item.id === credentialsSMTPMatch[1]);
+    if (!identity) {
+      sendJson(res, 404, { error: 'smtp identity not found' });
+      return;
+    }
+    sendJson(res, 200, credentialsForIdentity(identity, identity.password));
     return;
   }
 
@@ -356,8 +432,9 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     identity.username = `smtp_rotated_JAYbQkNwQvT-LZI${serverState.smtpIdentities.length}`;
+    identity.password = 'pgsmtp_rotated_UVSZ9mxDW6ZeV-tNwApoddcyCjOM5uA';
     identity.updated_at = new Date().toISOString();
-    sendJson(res, 200, credentialsForIdentity(identity, 'pgsmtp_rotated_UVSZ9mxDW6ZeV-tNwApoddcyCjOM5uA'));
+    sendJson(res, 200, credentialsForIdentity(identity, identity.password));
     return;
   }
 
@@ -509,6 +586,90 @@ function paginateNotifications(source, searchParams) {
   };
 }
 
+function normalizeDomain(value) {
+  const domain = String(value || '').trim().toLowerCase().replace(/\.$/, '');
+  if (!domain || !domain.includes('.') || /[@/:\\\s]/.test(domain)) {
+    return '';
+  }
+  return domain;
+}
+
+function seededSMTPDomains(items) {
+  const domains = [];
+  for (const item of items) {
+    const requestedID = Number(item.id || 0);
+    let domainID = Number.isInteger(requestedID) && requestedID > 0 ? requestedID : domains.length + 1;
+    while (domains.some((domain) => domain.id === domainID)) {
+      domainID += 1;
+    }
+    domains.push(newSMTPDomain(item.domain || 'example.com', item.status || 'pending', domainID));
+  }
+  return domains;
+}
+
+function nextSMTPDomainID() {
+  let domainID = serverState.smtpDomains.length + 1;
+  while (serverState.smtpDomains.some((domain) => domain.id === domainID)) {
+    domainID += 1;
+  }
+  return domainID;
+}
+
+function newSMTPDomain(domainName, status = 'pending', id = nextSMTPDomainID()) {
+  const now = new Date().toISOString();
+  const domain = normalizeDomain(domainName);
+  const domainIndex = Number(id);
+  const token = `test-domain-token-${domainIndex}`;
+  const record = {
+    id: Number(domainIndex),
+    domain,
+    status,
+    dns_records: dnsRecordsForDomain(domain, token),
+    dns_checks: [],
+    last_checked_at: null,
+    created_at: now,
+    updated_at: now,
+  };
+  if (status === 'verified') {
+    record.last_checked_at = now;
+    record.dns_checks = dnsChecksForDomain(record, true);
+  }
+  return record;
+}
+
+function dnsRecordsForDomain(domain, token) {
+  return [
+    {
+      type: 'TXT',
+      host: `_pinguin-challenge.${domain}`,
+      value: `pinguin-domain-verification=${token}`,
+      purpose: 'Verify domain ownership',
+    },
+    {
+      type: 'TXT',
+      host: domain,
+      value: 'v=spf1 a:smtp.pinguin.test ~all',
+      purpose: 'Authorize Pinguin SMTP relay',
+    },
+    {
+      type: 'TXT',
+      host: `_dmarc.${domain}`,
+      value: 'v=DMARC1; p=none',
+      purpose: 'Publish a DMARC policy',
+    },
+  ];
+}
+
+function dnsChecksForDomain(domain, passed) {
+  return domain.dns_records.map((record) => ({
+    type: record.type,
+    host: record.host,
+    expected: record.type === 'TXT' && record.host === domain.domain ? 'a:smtp.pinguin.test' : record.value,
+    passed,
+    message: passed ? 'DNS record matched' : 'DNS record is missing',
+  }));
+}
+
 function newSMTPIdentity(emailAddress, forwardTo = ['owner@example.com']) {
   const now = new Date().toISOString();
   const identityIndex = serverState.smtpIdentities.length + 1;
@@ -516,6 +677,7 @@ function newSMTPIdentity(emailAddress, forwardTo = ['owner@example.com']) {
     id: `smtp-id-${identityIndex}`,
     email_address: emailAddress,
     username: `smtp_JAYbQkNwQvT-LZI${identityIndex}`,
+    password: 'pgsmtp_UVSZ9mxDW6ZeV-tNwApoddcyCjOM5uA',
     forward_to: forwardTo,
     status: 'active',
     last_used_at: null,
@@ -524,9 +686,15 @@ function newSMTPIdentity(emailAddress, forwardTo = ['owner@example.com']) {
   };
 }
 
-function credentialsForIdentity(identity, password = 'pgsmtp_UVSZ9mxDW6ZeV-tNwApoddcyCjOM5uA') {
+function publicSMTPIdentity(identity) {
+  const publicIdentity = { ...identity };
+  delete publicIdentity.password;
+  return publicIdentity;
+}
+
+function credentialsForIdentity(identity, password = identity.password) {
   return {
-    identity,
+    identity: publicSMTPIdentity(identity),
     smtp_settings: {
       host: 'smtp.pinguin.test',
       port: 465,

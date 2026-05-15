@@ -407,8 +407,17 @@ test.describe('Authenticated pages', () => {
     await page.goto('/smtp-relay.html');
     const panel = page.getByTestId('smtp-identities');
     await expect(panel.getByRole('heading', { name: 'SMTP relay' })).toBeVisible();
+    await expect(panel.getByText('Add a sender domain before creating SMTP credentials.')).toBeVisible();
+    await panel.getByLabel('Sending domain').fill('example.com');
+    await panel.getByRole('button', { name: 'Add domain' }).click();
+    const domainCard = panel.getByTestId('smtp-domain-card');
+    await expect(domainCard).toContainText('_pinguin-challenge.example.com');
+    await expect(domainCard).toContainText('v=spf1 a:smtp.pinguin.test ~all');
     await panel.getByLabel('Sender address').fill('alice@example.com');
     await panel.getByLabel('Forward copies to').fill('owner@example.com\nmaria@example.com');
+    await expect(panel.getByRole('button', { name: 'Create' })).toBeDisabled();
+    await domainCard.getByRole('button', { name: 'Check DNS' }).click();
+    await expect(domainCard.getByText('Verified').first()).toBeVisible();
     await panel.getByRole('button', { name: 'Create' }).click();
     await expect(panel.getByTestId('smtp-identity-row')).toHaveCount(1);
     await expect(panel.getByText('alice@example.com')).toBeVisible();
@@ -443,11 +452,35 @@ test.describe('Authenticated pages', () => {
     await expectClipboardText(page, 'pgsmtp_UVSZ9mxDW6ZeV-tNwApoddcyCjOM5uA');
     await expect(credentialNotice).toHaveText('Password copied');
     await expect(page.locator('.toast', { hasText: 'Password copied' })).toHaveCount(0);
+    await expect(credentials.getByRole('button', { name: 'Rotate credentials' })).toBeVisible();
     await panel.getByRole('button', { name: 'Close Gmail SMTP settings' }).click();
     await expect(credentials).toBeHidden();
   });
 
-  test('rotates SMTP identity credentials', async ({ page, request }) => {
+  test('checks seeded SMTP domains by unique setup IDs', async ({ page, request }) => {
+    await resetNotifications(request, {
+      smtpDomains: [
+        { domain: 'alpha.example', status: 'pending' },
+        { domain: 'bravo.example', status: 'pending' },
+      ],
+    });
+    await configureRuntime(page, { authenticated: true });
+    await page.goto('/smtp-relay.html');
+    const panel = page.getByTestId('smtp-identities');
+    const domainCards = panel.getByTestId('smtp-domain-card');
+    await expect(domainCards).toHaveCount(2);
+    const alphaDomain = domainCards.filter({ hasText: 'alpha.example' });
+    const bravoDomain = domainCards.filter({ hasText: 'bravo.example' });
+    await expect(alphaDomain.getByText('Pending DNS').first()).toBeVisible();
+    await expect(bravoDomain.getByText('Pending DNS').first()).toBeVisible();
+
+    await bravoDomain.getByRole('button', { name: 'Check DNS' }).click();
+
+    await expect(bravoDomain.getByText('Verified').first()).toBeVisible();
+    await expect(alphaDomain.getByText('Pending DNS').first()).toBeVisible();
+  });
+
+  test('opens existing SMTP identity password and rotates inside the modal', async ({ page, request }) => {
     const now = new Date().toISOString();
     await resetNotifications(request, {
       smtpIdentities: [
@@ -455,6 +488,7 @@ test.describe('Authenticated pages', () => {
           id: 'smtp-id-1',
           email_address: 'alice@example.com',
           username: 'smtp_test_1',
+          password: 'pgsmtp_existing_visible_password',
           status: 'active',
           last_used_at: null,
           created_at: now,
@@ -465,10 +499,13 @@ test.describe('Authenticated pages', () => {
     await configureRuntime(page, { authenticated: true });
     await page.goto('/smtp-relay.html');
     const panel = page.getByTestId('smtp-identities');
-    page.once('dialog', (dialog) => dialog.accept());
-    await panel.getByRole('button', { name: 'Rotate' }).click();
+    await panel.getByRole('button', { name: 'View password' }).click();
     const credentials = panel.getByTestId('smtp-credentials');
     const credentialInputs = credentials.locator('input');
+    await expect(credentialInputs.nth(3)).toHaveValue('smtp_test_1');
+    await expect(credentialInputs.nth(4)).toHaveValue('pgsmtp_existing_visible_password');
+    await expect(credentials.getByTestId('smtp-credential-notice')).toHaveText('SMTP credentials loaded');
+    await credentials.getByRole('button', { name: 'Rotate credentials' }).click();
     await expect(credentialInputs.nth(3)).toHaveValue('smtp_rotated_JAYbQkNwQvT-LZI1');
     await expect(credentialInputs.nth(4)).toHaveValue('pgsmtp_rotated_UVSZ9mxDW6ZeV-tNwApoddcyCjOM5uA');
     await expectInputValueFits(credentialInputs.nth(3));

@@ -6,6 +6,7 @@ import { RUNTIME_CONFIG } from '../constants.js';
 /** @typedef {import('../types.d.js').TenantOption} TenantOption */
 /** @typedef {import('../types.d.js').SMTPIdentity} SMTPIdentity */
 /** @typedef {import('../types.d.js').SMTPCredentials} SMTPCredentials */
+/** @typedef {import('../types.d.js').SMTPSenderDomain} SMTPSenderDomain */
 
 function getFetcher() {
   if (typeof window !== 'undefined' && typeof window.apiFetch === 'function') {
@@ -85,6 +86,47 @@ function mapSMTPCredentials(raw) {
     },
     username: raw?.username || '',
     password: raw?.password || '',
+  };
+}
+
+function mapSMTPSenderDomain(raw) {
+  if (!raw) {
+    return null;
+  }
+  const id = Number(raw.id || 0);
+  if (!Number.isInteger(id) || id <= 0) {
+    return null;
+  }
+  const dnsRecords = Array.isArray(raw.dns_records)
+    ? raw.dns_records
+        .map((record) => ({
+          type: String(record?.type || ''),
+          host: String(record?.host || ''),
+          value: String(record?.value || ''),
+          purpose: String(record?.purpose || ''),
+        }))
+        .filter((record) => record.type && record.host && record.value)
+    : [];
+  const dnsChecks = Array.isArray(raw.dns_checks)
+    ? raw.dns_checks
+        .map((check) => ({
+          type: String(check?.type || ''),
+          host: String(check?.host || ''),
+          expected: String(check?.expected || ''),
+          passed: Boolean(check?.passed),
+          message: String(check?.message || ''),
+        }))
+        .filter((check) => check.type && check.host)
+    : [];
+  return {
+    id,
+    domain: String(raw.domain || ''),
+    status: String(raw.status || 'pending'),
+    dnsRecords,
+    dnsChecks,
+    lastCheckedAt: raw.last_checked_at || null,
+    createdAt: raw.created_at || '',
+    updatedAt: raw.updated_at || '',
   };
 }
 
@@ -183,6 +225,26 @@ export function createApiClient(baseUrl = RUNTIME_CONFIG.apiBaseUrl) {
         identities.map(mapSMTPIdentity).filter(Boolean)
       );
     },
+    async listSMTPDomains() {
+      const payload = await request('/smtp-domains', { method: 'GET', headers: {} });
+      const domains = Array.isArray(payload?.domains) ? payload.domains : [];
+      return /** @type {SMTPSenderDomain[]} */ (
+        domains.map(mapSMTPSenderDomain).filter(Boolean)
+      );
+    },
+    async createSMTPDomain(domain) {
+      const payload = await request('/smtp-domains', {
+        method: 'POST',
+        body: JSON.stringify({ domain }),
+      });
+      return /** @type {SMTPSenderDomain | null} */ (mapSMTPSenderDomain(payload));
+    },
+    async checkSMTPDomainDNS(domainId) {
+      const payload = await request(`/smtp-domains/${encodeURIComponent(domainId)}/check-dns`, {
+        method: 'POST',
+      });
+      return /** @type {SMTPSenderDomain | null} */ (mapSMTPSenderDomain(payload));
+    },
     async createSMTPIdentity(emailAddress, forwardTo) {
       const payload = await request('/smtp-identities', {
         method: 'POST',
@@ -196,6 +258,13 @@ export function createApiClient(baseUrl = RUNTIME_CONFIG.apiBaseUrl) {
         body: JSON.stringify({ forward_to: forwardTo }),
       });
       return /** @type {SMTPIdentity | null} */ (mapSMTPIdentity(payload));
+    },
+    async getSMTPIdentityCredentials(identityId) {
+      const payload = await request(`/smtp-identities/${encodeURIComponent(identityId)}/credentials`, {
+        method: 'GET',
+        headers: {},
+      });
+      return /** @type {SMTPCredentials | null} */ (mapSMTPCredentials(payload));
     },
     async rotateSMTPIdentity(identityId) {
       const payload = await request(`/smtp-identities/${encodeURIComponent(identityId)}/rotate`, {

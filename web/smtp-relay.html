@@ -59,6 +59,91 @@
             <p class="text-muted" x-text="strings.subtitle"></p>
           </div>
         </header>
+        <section class="domain-setup" aria-labelledby="smtp-domain-setup-title">
+          <header class="domain-setup__header">
+            <h3 id="smtp-domain-setup-title" x-text="strings.domainSetupTitle"></h3>
+          </header>
+          <form class="domain-form" x-on:submit.prevent="createDomain">
+            <label>
+              <span x-text="strings.domainLabel"></span>
+              <input
+                type="text"
+                x-model="domainName"
+                :placeholder="strings.domainPlaceholder"
+                autocomplete="off"
+                required
+              />
+            </label>
+            <button
+              class="button primary"
+              type="submit"
+              :disabled="isSubmitting"
+              x-text="strings.domainAddLabel"
+            ></button>
+          </form>
+          <template x-if="isLoadingDomains">
+            <p class="empty-state" x-text="strings.domainLoadingState"></p>
+          </template>
+          <template x-if="!isLoadingDomains && domains.length === 0">
+            <p class="notice" data-variant="info" x-text="strings.domainEmptyState"></p>
+          </template>
+          <div class="domain-list">
+            <template x-for="domain in domains" :key="domain.id">
+              <section class="domain-item" data-testid="smtp-domain-card">
+                <header class="domain-item__header">
+                  <div>
+                    <strong x-text="domain.domain"></strong>
+                    <span
+                      class="status-badge"
+                      :data-variant="domain.status === 'verified' ? 'sent' : 'queued'"
+                      x-text="domainStatusLabel(domain)"
+                    ></span>
+                  </div>
+                  <button
+                    class="button secondary"
+                    type="button"
+                    :disabled="checkingDomainId === domain.id"
+                    x-on:click="checkDomain(domain)"
+                    x-text="strings.domainCheckLabel"
+                  ></button>
+                </header>
+                <div class="table-wrapper">
+                  <table class="dns-table">
+                    <thead>
+                      <tr>
+                        <th x-text="strings.domainTypeColumn"></th>
+                        <th x-text="strings.domainHostColumn"></th>
+                        <th x-text="strings.domainValueColumn"></th>
+                        <th x-text="strings.domainPurposeColumn"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <template x-for="record in domain.dnsRecords" :key="record.host + record.value">
+                        <tr>
+                          <td x-text="record.type"></td>
+                          <td><code x-text="record.host"></code></td>
+                          <td><code x-text="record.value"></code></td>
+                          <td x-text="record.purpose"></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+                <template x-if="domain.dnsChecks.length > 0">
+                  <ul class="dns-checks">
+                    <template x-for="check in domain.dnsChecks" :key="check.host + check.expected">
+                      <li :data-state="check.passed ? 'passed' : 'pending'">
+                        <span x-text="checkStatusLabel(check)"></span>
+                        <strong x-text="check.host"></strong>
+                        <small x-text="check.message"></small>
+                      </li>
+                    </template>
+                  </ul>
+                </template>
+              </section>
+            </template>
+          </div>
+        </section>
         <form class="identity-form" x-on:submit.prevent="createIdentity">
           <label>
             <span x-text="strings.emailLabel"></span>
@@ -84,7 +169,7 @@
           <button
             class="button primary"
             type="submit"
-            :disabled="isSubmitting"
+            :disabled="isSubmitting || (!editingIdentityId && !isSenderDomainVerified())"
             x-text="editingIdentityId ? actions.saveChanges : actions.create"
           ></button>
           <button
@@ -95,6 +180,9 @@
             x-text="strings.cancelEditLabel"
           ></button>
         </form>
+        <template x-if="senderDomainNotice()">
+          <p class="notice" data-variant="info" x-text="senderDomainNotice()"></p>
+        </template>
         <template x-if="errorMessage">
           <p class="notice" data-variant="error" x-text="errorMessage"></p>
         </template>
@@ -140,7 +228,14 @@
                       <button
                         class="button secondary"
                         type="button"
-                        x-on:click="rotateIdentity(identity)"
+                        x-on:click="viewCredentials(identity)"
+                        :disabled="isSubmitting"
+                        x-text="strings.viewPasswordLabel"
+                      ></button>
+                      <button
+                        class="button secondary"
+                        type="button"
+                        x-on:click="rotateIdentity(identity, true)"
                         :disabled="isSubmitting"
                         x-text="actions.rotate"
                       ></button>
@@ -247,6 +342,15 @@
                     </button>
                   </span>
                 </label>
+                <footer class="dialog__actions credentials-grid__full">
+                  <button
+                    class="button secondary"
+                    type="button"
+                    :disabled="isSubmitting"
+                    x-on:click="rotateCurrentCredentials()"
+                    x-text="strings.rotateCredentialsLabel"
+                  ></button>
+                </footer>
               </div>
             </template>
           </form>
