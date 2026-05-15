@@ -67,6 +67,27 @@
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 - Document the remaining edge mappings after gateway deployment: `25 -> tutosh:8025` and `465 -> tutosh:8465`.
 
+## [v0.4.12] - 2026-05-14
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Documented that Pinguin does not support backward compatibility, legacy schemas, legacy data, or fallback code paths.
+- Added a Compatibility Policy section explaining the removal of legacy data and single runtime path enforcement.
+- Updated SMTP relay documentation to describe reusable credential viewing instead of one-time display.
+
+### Bug Fixes 🐛
+- Fixed startup crash caused by legacy sender-domain rows with NULL owner_email by deleting these legacy rows before re-seeding the configured allowlist.
+
+### Testing 🧪
+- Added sender-domain storage tests covering deletion of legacy NULL-owner configured rows without compatibility migration.
+- Expanded black-box SMTP forwarding and deployment contract coverage.
+
+### Docs 📚
+- Added Compatibility Policy documentation emphasizing no backward compatibility and legacy data removal.
+- Updated README with Compatibility Policy details.
+
 ## [v0.4.11] - 2026-05-14
 
 ### Features ✨
