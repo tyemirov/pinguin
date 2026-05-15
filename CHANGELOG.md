@@ -64,6 +64,34 @@
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 - Document the remaining edge mappings after gateway deployment: `25 -> tutosh:8025` and `465 -> tutosh:8465`.
 
+## [v0.4.11] - 2026-05-14
+
+### Features ✨
+- Add sender domain setup workspace for SMTP relay with domain verification and credential APIs.
+- Enable authenticated users to add, verify, and manage sender domains and SMTP identities with exact DNS record checks.
+- Allow admins to view and rotate SMTP relay credentials inside the Gmail SMTP settings modal with passwords stored encrypted at rest.
+
+### Improvements ⚙️
+- Bypass tenant lookup for SMTP domains to simplify domain access.
+- Remove validation requirement for static sender domains when using SMTP forwarding.
+- Align UI and API workflows with verified domain ownership and reusable SMTP credentials.
+- Enhance HTTP API with new endpoints for listing, creating, checking DNS, and retrieving credentials of sender domains.
+
+### Bug Fixes 🐛
+- Fix access control to enforce tenant authorization on notification endpoints.
+- Reject one-time password leaks in SMTP identity list responses.
+- Correct validation logic for SMTP forwarding configuration.
+
+### Testing 🧪
+- Add backend and browser coverage for sender-domain DNS setup, manual DNS checks, and verified-domain SMTP identity creation.
+- Add coverage for retrieving and rotating existing SMTP relay credentials from the modal.
+- Extend black-box testing for SMTP forwarding, notification search, and the dashboard event log.
+
+### Docs 📚
+- Update SMTP relay documentation to describe reusable credential viewing and rotation instead of one-time password display.
+- Clarify shared-address forwarding DNS setup and verification process.
+- Revise README and architecture notes regarding sender-domain allowlist and SMTP relay workflows.
+
 ## [v0.4.10] - 2026-05-14
 
 ### Features ✨
