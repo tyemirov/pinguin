@@ -71,6 +71,28 @@
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 - Document the remaining edge mappings after gateway deployment: `25 -> tutosh:8025` and `465 -> tutosh:8465`.
 
+## [v0.4.14] - 2026-05-15
+
+### Features ✨
+- GitHub Pages publishing is now managed under gateway Ansible ownership via a new `pages-deploy` target.
+- Introduced a `pages-deploy` Makefile target and deployment script to integrate Pages publishing into Ansible workflow.
+
+### Improvements ⚙️
+- Updated deployment and release scripts to reflect the new deployment flow and targets.
+- Deployment now verifies operator is on clean `master` branch matching `origin/master` with zero open PRs before proceeding.
+- Gateway Ansible deploy includes both backend and Pages publishing, replacing legacy post-Ansible publishing steps.
+- README and contract tests aligned with new deployment and GitHub Pages ownership changes.
+
+### Bug Fixes 🐛
+- Fixed production guard contract tests that failed due to outdated environment defaults and deploy targets.
+
+### Testing 🧪
+- Contract and production workflow tests updated to cover new deployment targets and workflows.
+
+### Docs 📚
+- Updated README describing new deployment process and integration with gateway Ansible for Pages publishing.
+- Enhanced documentation and contract test notes for deployment guard requirements and workflow.
+
 ## [v0.4.13] - 2026-05-14
 
 ### Features ✨
