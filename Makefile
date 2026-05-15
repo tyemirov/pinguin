@@ -35,7 +35,7 @@ LONG_TIMEOUT := timeout -k 350s -s SIGKILL 350s
 COVERAGE_PROFILE ?= coverage.out
 COVERAGE_REQUIRED_TOTAL ?= 100.0%
 
-.PHONY: format check-format lint test test-unit test-integration test-fast test-slow test-coverage test-frontend build release release-artifacts publish deploy pages-build pages-publish-branch up down ci
+.PHONY: format check-format lint test test-unit test-integration test-fast test-slow test-coverage test-frontend build release release-artifacts publish deploy pages-build pages-publish-branch pages-deploy up down ci
 
 format:
 	$(SHORT_TIMEOUT) gofmt -w $(GO_SOURCES)
@@ -116,6 +116,9 @@ pages-build:
 
 pages-publish-branch:
 	@PAGES_PUBLISH_SOURCE_BRANCH="$(PAGES_PUBLISH_SOURCE_BRANCH)" PAGES_PUBLISH_REMOTE="$(PAGES_PUBLISH_REMOTE)" PAGES_PUBLISH_BRANCH="$(PAGES_PUBLISH_BRANCH)" PAGES_PUBLISH_FORCE="$(PAGES_PUBLISH_FORCE)" ./scripts/publish_pages_branch.sh
+
+pages-deploy:
+	@PAGES_URL="$(PAGES_URL)" PAGES_REPOSITORY="$(PAGES_REPOSITORY)" PAGES_PUBLISH_SOURCE_BRANCH="$(PAGES_PUBLISH_SOURCE_BRANCH)" PAGES_PUBLISH_REMOTE="$(PAGES_PUBLISH_REMOTE)" PAGES_PUBLISH_BRANCH="$(PAGES_PUBLISH_BRANCH)" ./scripts/deploy_pages.sh
 
 up:
 	$(LONG_TIMEOUT) $(DOCKER_COMPOSE) --profile $(COMPOSE_PROFILE) up -d --build

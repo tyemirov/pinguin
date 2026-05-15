@@ -46,6 +46,7 @@ func TestMakePublishAndDeploySplitDockerAndLegacyPages(t *testing.T) {
 		"./scripts/deploy.sh $(DEPLOY_ARGS)",
 		"./scripts/build_pages_artifact.sh",
 		"./scripts/publish_pages_branch.sh",
+		"./scripts/deploy_pages.sh",
 	}
 	for _, requiredSnippet := range requiredSnippets {
 		if !strings.Contains(makefile, requiredSnippet) {
@@ -173,6 +174,7 @@ func TestDeployScriptDeploysBackendThenLegacyPages(t *testing.T) {
 		"SKIP_PAGES_VERIFY=\"false\"",
 		"source \"${repo_root}/scripts/production_git_guard.sh\"",
 		"verify_production_git_state \"deploy\" \"${PUBLISH_BRANCH}\" \"${PUBLISH_REMOTE}\"",
+		"GitHub Pages is deployed through gateway Ansible",
 		"verify_gateway_smtp_port_contract",
 		"PINGUIN_SMTP_HOST_PORT=8465",
 		"PINGUIN_SMTP_FORWARDING_HOST_PORT=8025",
@@ -180,9 +182,21 @@ func TestDeployScriptDeploysBackendThenLegacyPages(t *testing.T) {
 		"${PINGUIN_SMTP_FORWARDING_HOST_PORT}:${PINGUIN_SMTP_FORWARDING_PUBLIC_PORT}",
 		"mprlab_verify_pinguin_smtp_port: 8465",
 		"mprlab_verify_pinguin_mx_port: 8025",
-		"make -C \"${GATEWAY_DIR}\" deploy-pinguin-backend",
+		"gateway_deploy_target=\"deploy-pinguin\"",
+		"gateway_deploy_target=\"deploy-pinguin-backend\"",
+		"gateway_pages_verify_enabled=\"false\"",
+		"MPRLAB_GATEWAY_PAGES_VERIFY_ENABLED=\"${gateway_pages_verify_enabled}\"",
+		"MPRLAB_PINGUIN_PAGES_URL=\"${PAGES_URL}\"",
+		"make -C \"${GATEWAY_DIR}\" MPRLAB_GATEWAY_PAGES_VERIFY_ENABLED=\"${gateway_pages_verify_enabled}\" MPRLAB_PINGUIN_PAGES_URL=\"${PAGES_URL}\" \"${gateway_deploy_target}\"",
 		"edge 25 -> tutosh:8025 and edge 465 -> tutosh:8465",
 		"Verifying ${IMAGE_REPOSITORY}:latest matches ${TAG}",
+	}
+	for _, requiredSnippet := range requiredSnippets {
+		if !strings.Contains(deployScript, requiredSnippet) {
+			t.Fatalf("deploy script missing contract snippet %q", requiredSnippet)
+		}
+	}
+	for _, forbiddenSnippet := range []string{
 		"./scripts/publish_pages_branch.sh",
 		"trigger_legacy_pages_deploy",
 		"gh api --method POST \"repos/${PAGES_REPOSITORY}/pages/builds\"",
@@ -193,14 +207,30 @@ func TestDeployScriptDeploysBackendThenLegacyPages(t *testing.T) {
 		"verify_live_pages_source_commit",
 		"sourceCommit",
 		"expected_commit",
-	}
-	for _, requiredSnippet := range requiredSnippets {
-		if !strings.Contains(deployScript, requiredSnippet) {
-			t.Fatalf("deploy script missing contract snippet %q", requiredSnippet)
+	} {
+		if strings.Contains(deployScript, forbiddenSnippet) {
+			t.Fatalf("deploy script still owns Ansible-managed Pages snippet %q", forbiddenSnippet)
 		}
 	}
 	if strings.Contains(deployScript, "PAGES_PUBLISH_FORCE") {
 		t.Fatalf("deploy script must not force empty Pages publish commits")
+	}
+
+	pagesDeployScript := string(readRepoFile(t, "scripts", "deploy_pages.sh"))
+	for _, requiredSnippet := range []string{
+		"./scripts/publish_pages_branch.sh",
+		"gh api --method POST \"repos/${PAGES_REPOSITORY}/pages/builds\"",
+		"\"build_type\":\"legacy\"",
+		"\"path\":\"/\"",
+		"curl --fail --silent --show-error --location --max-time 30 \"${PAGES_URL}\"",
+		"pinguin-pages-build.json?source=",
+		"verify_live_pages_source_commit",
+		"sourceCommit",
+		"PAGES_VERIFY_SKIP",
+	} {
+		if !strings.Contains(pagesDeployScript, requiredSnippet) {
+			t.Fatalf("Pages deploy script missing contract snippet %q", requiredSnippet)
+		}
 	}
 
 	readme := string(readRepoFile(t, "README.md"))
@@ -208,6 +238,7 @@ func TestDeployScriptDeploysBackendThenLegacyPages(t *testing.T) {
 		"Production deployment is intentionally parameterless",
 		"make deploy",
 		"defaults to the sibling `mprlab-gateway` checkout",
+		"gateway Ansible inventory models the GitHub Pages publication as a `pages_resources` entry",
 		"clean local `master` branch that exactly matches `origin/master`",
 		"zero open pull requests",
 		"After `make deploy`, configure the edge gateway to forward `25 -> tutosh:8025` and `465 -> tutosh:8465`",

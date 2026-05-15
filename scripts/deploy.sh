@@ -7,7 +7,7 @@ Usage:
   scripts/deploy.sh [options]
 
 Deploys the Pinguin backend through mprlab-gateway, then publishes legacy
-gh-pages only after backend verification succeeds. Deployment is allowed only
+gh-pages through the gateway Ansible app resource. Deployment is allowed only
 from clean local master matching origin/master with zero open PRs.
 
 Options:
@@ -43,10 +43,6 @@ IMAGE_REPOSITORY="$(env_or_default DOCKER_IMAGE ghcr.io/tyemirov/pinguin)"
 PAGES_URL="$(env_or_default PAGES_URL https://pinguin.mprlab.com/)"
 PUBLISH_BRANCH="$(env_or_default PAGES_PUBLISH_SOURCE_BRANCH master)"
 PUBLISH_REMOTE="$(env_or_default PAGES_PUBLISH_REMOTE origin)"
-PAGES_BRANCH="$(env_or_default PAGES_PUBLISH_BRANCH gh-pages)"
-PAGES_REPOSITORY="$(env_or_default PAGES_REPOSITORY tyemirov/pinguin)"
-PAGES_VERIFY_ATTEMPTS="$(env_or_default PAGES_VERIFY_ATTEMPTS 18)"
-PAGES_VERIFY_DELAY_SEC="$(env_or_default PAGES_VERIFY_DELAY_SEC 10)"
 TAG="$(env_or_default DEPLOY_TAG "")"
 SKIP_CI="false"
 SKIP_IMAGE_VERIFY="false"
@@ -57,68 +53,6 @@ SKIP_PAGES_VERIFY="false"
 image_digest() {
   local image_ref="$1"
   docker buildx imagetools inspect "$image_ref" | awk '/^Digest:/ { print $2; exit }'
-}
-
-configure_legacy_pages() {
-  command -v gh >/dev/null 2>&1 || { echo "error: gh is required to configure legacy GitHub Pages" >&2; exit 1; }
-  echo "==> [deploy] Configuring GitHub Pages legacy source ${PAGES_BRANCH}/ for ${PAGES_REPOSITORY}"
-  pages_payload="$(mktemp)"
-  trap 'rm -f "${pages_payload}"' RETURN
-  printf '{"build_type":"legacy","source":{"branch":"%s","path":"/"}}\n' "${PAGES_BRANCH}" > "${pages_payload}"
-
-  if gh api "repos/${PAGES_REPOSITORY}/pages" >/dev/null 2>&1; then
-    gh api --method PUT "repos/${PAGES_REPOSITORY}/pages" --input "${pages_payload}" >/dev/null
-  else
-    gh api --method POST "repos/${PAGES_REPOSITORY}/pages" --input "${pages_payload}" >/dev/null
-  fi
-
-  pages_build_type="$(gh api "repos/${PAGES_REPOSITORY}/pages" --jq ".build_type")"
-  pages_branch="$(gh api "repos/${PAGES_REPOSITORY}/pages" --jq ".source.branch")"
-  pages_path="$(gh api "repos/${PAGES_REPOSITORY}/pages" --jq ".source.path")"
-  if [[ "${pages_build_type}" != "legacy" || "${pages_branch}" != "${PAGES_BRANCH}" || "${pages_path}" != "/" ]]; then
-    echo "error: GitHub Pages is not configured for legacy ${PAGES_BRANCH}/ publishing; got build_type=${pages_build_type} source=${pages_branch}${pages_path}" >&2
-    exit 1
-  fi
-}
-
-trigger_legacy_pages_deploy() {
-  command -v gh >/dev/null 2>&1 || { echo "error: gh is required to trigger GitHub Pages deployment" >&2; exit 1; }
-  echo "==> [deploy] Triggering GitHub Pages build for ${PAGES_REPOSITORY}"
-  gh api --method POST "repos/${PAGES_REPOSITORY}/pages/builds" >/dev/null
-}
-
-pages_build_marker_url() {
-  local base_url="${PAGES_URL%/}"
-  printf "%s/pinguin-pages-build.json?source=%s\n" "${base_url}" "${source_short}"
-}
-
-verify_live_pages_source_commit() {
-  local expected_commit="$1"
-  local marker_url="$2"
-  local attempt
-  local payload
-  local last_payload=""
-
-  for attempt in $(seq 1 "${PAGES_VERIFY_ATTEMPTS}"); do
-    if payload="$(curl --fail --silent --show-error --location --max-time 30 "${marker_url}" 2>&1)"; then
-      last_payload="${payload}"
-      if [[ "${payload}" == *"\"sourceCommit\":\"${expected_commit}\""* ]]; then
-        echo "==> [deploy] Verified Pages artifact source ${expected_commit}"
-        return 0
-      fi
-      echo "==> [deploy] Waiting for Pages artifact source ${expected_commit}; marker returned ${payload}" >&2
-    else
-      last_payload="${payload}"
-      echo "==> [deploy] Waiting for Pages artifact source ${expected_commit}; marker fetch failed: ${payload}" >&2
-    fi
-
-    if [[ "${attempt}" != "${PAGES_VERIFY_ATTEMPTS}" ]]; then
-      sleep "${PAGES_VERIFY_DELAY_SEC}"
-    fi
-  done
-
-  echo "error: ${PAGES_URL} did not serve Pages artifact source ${expected_commit}; last marker response: ${last_payload}" >&2
-  exit 1
 }
 
 while [[ $# -gt 0 ]]; do
@@ -183,8 +117,12 @@ source "${repo_root}/scripts/production_git_guard.sh"
 if [[ "${SKIP_BACKEND}" != "true" || "${SKIP_PAGES}" != "true" ]]; then
   verify_production_git_state "deploy" "${PUBLISH_BRANCH}" "${PUBLISH_REMOTE}"
 fi
-source_commit="$(git rev-parse --verify HEAD)"
-source_short="$(git rev-parse --short HEAD)"
+
+if [[ "${SKIP_BACKEND}" == "true" && "${SKIP_PAGES}" != "true" ]]; then
+  echo "error: GitHub Pages is deployed through gateway Ansible; use --skip-backend only with --skip-pages" >&2
+  exit 1
+fi
+
 resolve_gateway_dir() {
   local candidate
   if [[ -n "${GATEWAY_DIR}" ]]; then
@@ -251,31 +189,17 @@ fi
 
 if [[ "${SKIP_BACKEND}" != "true" ]]; then
   verify_gateway_smtp_port_contract
-  echo "==> [deploy] Deploying Pinguin backend through mprlab-gateway"
-  timeout --foreground -k 1200s -s SIGKILL 1200s make -C "${GATEWAY_DIR}" deploy-pinguin-backend
-  echo "==> [deploy] Gateway SMTP host ports are ready; remaining operator mapping is edge 25 -> tutosh:8025 and edge 465 -> tutosh:8465"
-fi
-
-if [[ "${SKIP_PAGES}" != "true" ]]; then
-  [[ -f "web/index.html" ]] || { echo "error: web/index.html is required for Pages publishing" >&2; exit 1; }
-  [[ -f "web/dashboard.html" ]] || { echo "error: web/dashboard.html is required for Pages compatibility redirect" >&2; exit 1; }
-  [[ -f "web/event-log.html" ]] || { echo "error: web/event-log.html is required for Pages publishing" >&2; exit 1; }
-  [[ -f "web/smtp-relay.html" ]] || { echo "error: web/smtp-relay.html is required for Pages publishing" >&2; exit 1; }
-  [[ -f "web/CNAME" ]] || { echo "error: web/CNAME is required for Pages custom domain publishing" >&2; exit 1; }
-  [[ -f "web/.nojekyll" ]] || { echo "error: web/.nojekyll is required for branch Pages publishing without Jekyll" >&2; exit 1; }
-  echo "==> [deploy] Publishing GitHub Pages after backend verification"
-  PAGES_PUBLISH_SOURCE_BRANCH="${PUBLISH_BRANCH}" PAGES_PUBLISH_REMOTE="${PUBLISH_REMOTE}" PAGES_PUBLISH_BRANCH="${PAGES_BRANCH}" ./scripts/publish_pages_branch.sh
-  configure_legacy_pages
-  trigger_legacy_pages_deploy
-fi
-
-if [[ "${SKIP_PAGES_VERIFY}" != "true" ]]; then
-  command -v curl >/dev/null 2>&1 || { echo "error: curl is required for Pages verification" >&2; exit 1; }
-  echo "==> [deploy] Verifying ${PAGES_URL}"
-  timeout -k 60s -s SIGKILL 60s curl --fail --silent --show-error --location --max-time 30 "${PAGES_URL}" >/dev/null
-  if [[ "${SKIP_PAGES}" != "true" ]]; then
-    verify_live_pages_source_commit "${source_commit}" "$(pages_build_marker_url)"
+  gateway_deploy_target="deploy-pinguin"
+  if [[ "${SKIP_PAGES}" == "true" ]]; then
+    gateway_deploy_target="deploy-pinguin-backend"
   fi
+  gateway_pages_verify_enabled="true"
+  if [[ "${SKIP_PAGES_VERIFY}" == "true" ]]; then
+    gateway_pages_verify_enabled="false"
+  fi
+  echo "==> [deploy] Deploying Pinguin backend through mprlab-gateway"
+  timeout --foreground -k 1200s -s SIGKILL 1200s make -C "${GATEWAY_DIR}" MPRLAB_GATEWAY_PAGES_VERIFY_ENABLED="${gateway_pages_verify_enabled}" MPRLAB_PINGUIN_PAGES_URL="${PAGES_URL}" "${gateway_deploy_target}"
+  echo "==> [deploy] Gateway SMTP host ports are ready; remaining operator mapping is edge 25 -> tutosh:8025 and edge 465 -> tutosh:8465"
 fi
 
 echo "Pinguin deploy complete"
