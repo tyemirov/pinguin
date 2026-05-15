@@ -490,6 +490,21 @@ test.describe('Authenticated pages', () => {
     await expect(alphaDomain.getByText('Pending DNS').first()).toBeVisible();
   });
 
+  test('shows sender-domain API validation errors', async ({ page, request }) => {
+    await resetNotifications(request, {
+      smtpDomains: [{ domain: 'example.com', status: 'pending' }],
+    });
+    await configureRuntime(page, { authenticated: true });
+    await page.goto('/smtp-relay.html');
+    const panel = page.getByTestId('smtp-identities');
+
+    await panel.getByLabel('Sending domain').fill('example.com');
+    await panel.getByRole('button', { name: 'Add domain' }).click();
+
+    await expect(panel.locator('.notice[data-variant="error"]')).toHaveText('Sender domain is already registered.');
+    await expectToast(page, 'Sender domain is already registered.');
+  });
+
   test('opens existing SMTP identity password and rotates inside the modal', async ({ page, request }) => {
     const now = new Date().toISOString();
     await resetNotifications(request, {

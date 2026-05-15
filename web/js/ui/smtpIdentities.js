@@ -106,11 +106,22 @@ export function createSMTPIdentities(options) {
         this.domainName = '';
         dispatchToast({ variant: 'success', message: this.strings.domainCreateSuccess });
       } catch (error) {
-        this.errorMessage = this.strings.domainCreateError;
+        this.errorMessage = this.domainCreateErrorMessage(error);
         dispatchToast({ variant: 'error', message: this.errorMessage });
       } finally {
         this.isSubmitting = false;
       }
+    },
+    domainCreateErrorMessage(error) {
+      if (error instanceof Error) {
+        if (error.message === 'sender domain is already registered') {
+          return this.strings.domainCreateExistsError;
+        }
+        if (error.message === 'sender domain is invalid') {
+          return this.strings.domainCreateInvalidError;
+        }
+      }
+      return this.strings.domainCreateError;
     },
     async checkDomain(domain) {
       this.checkingDomainId = domain.id;
