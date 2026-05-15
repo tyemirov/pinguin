@@ -855,12 +855,6 @@ func TestSMTPIdentityValidationAndErrorMapping(t *testing.T) {
 	if selfForwardRecorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected direct self forwarding mapping to 400, got %d", selfForwardRecorder.Code)
 	}
-	unavailablePasswordRecorder := httptest.NewRecorder()
-	unavailablePasswordContext, _ := gin.CreateTestContext(unavailablePasswordRecorder)
-	handler.writeError(unavailablePasswordContext, smtpidentity.ErrPasswordUnavailable)
-	if unavailablePasswordRecorder.Code != http.StatusConflict {
-		t.Fatalf("expected direct unavailable password mapping to 409, got %d", unavailablePasswordRecorder.Code)
-	}
 }
 
 func TestSMTPIdentityRejectsSessionWithoutUsableEmail(t *testing.T) {
@@ -1704,16 +1698,16 @@ func newTestHTTPServerWithBrokenSMTPIdentitiesAndValidator(t *testing.T, validat
 	if err := smtpidentity.ReplaceSenderDomains(context.Background(), dbInstance, []string{"example.com"}); err != nil {
 		t.Fatalf("seed sender domains: %v", err)
 	}
+	identityRepo, err := smtpidentity.NewRepository(dbInstance, secretKey)
+	if err != nil {
+		t.Fatalf("identity repository: %v", err)
+	}
 	sqlDB, err := dbInstance.DB()
 	if err != nil {
 		t.Fatalf("get sql db: %v", err)
 	}
 	if err := sqlDB.Close(); err != nil {
 		t.Fatalf("close sql db: %v", err)
-	}
-	identityRepo, err := smtpidentity.NewRepository(dbInstance, secretKey)
-	if err != nil {
-		t.Fatalf("identity repository: %v", err)
 	}
 	identityService := smtpidentity.NewService(identityRepo, smtpidentity.PublicSettings{
 		Host:         "smtp.example.com",

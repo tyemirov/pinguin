@@ -242,8 +242,6 @@ func (handler *smtpIdentityHandler) writeError(contextGin *gin.Context, err erro
 		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "forward_to contains duplicate addresses"})
 	case errors.Is(err, smtpidentity.ErrForwardRecipientSelf):
 		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "forward_to cannot include the shared sender address"})
-	case errors.Is(err, smtpidentity.ErrPasswordUnavailable):
-		contextGin.JSON(http.StatusConflict, gin.H{"error": "smtp identity password is unavailable; rotate credentials"})
 	default:
 		handler.logger.Error("smtp_identity_handler_error", "error", err)
 		contextGin.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})

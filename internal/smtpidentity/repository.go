@@ -53,8 +53,6 @@ var (
 	ErrForwardRecipientDuplicate = errors.New("smtp_identity.forward_recipient_duplicate")
 	// ErrForwardRecipientSelf indicates a shared identity forwards back to itself.
 	ErrForwardRecipientSelf = errors.New("smtp_identity.forward_recipient_self")
-	// ErrPasswordUnavailable indicates stored credentials predate password retrieval.
-	ErrPasswordUnavailable = errors.New("smtp_identity.password_unavailable")
 )
 
 // IdentityStatus captures SMTP identity lifecycle state.
@@ -130,12 +128,9 @@ func NewRepository(db *gorm.DB, rawMasterKey string) (*Repository, error) {
 	if db == nil {
 		return nil, fmt.Errorf("smtp identity: database is required")
 	}
-	key, decodeErr := hex.DecodeString(strings.TrimSpace(rawMasterKey))
+	key, decodeErr := decodeMasterKey(rawMasterKey)
 	if decodeErr != nil {
-		return nil, fmt.Errorf("smtp identity: invalid master key: %w", decodeErr)
-	}
-	if len(key) != 32 {
-		return nil, fmt.Errorf("smtp identity: master key must decode to 32 bytes")
+		return nil, decodeErr
 	}
 	return &Repository{
 		db:        db,
@@ -143,6 +138,71 @@ func NewRepository(db *gorm.DB, rawMasterKey string) (*Repository, error) {
 		random:    rand.Reader,
 		clockFunc: func() time.Time { return time.Now().UTC() },
 	}, nil
+}
+
+// MigrateStoredCredentialPasswords populates retrievable SMTP passwords for active rows created before password ciphertext storage.
+func MigrateStoredCredentialPasswords(ctx context.Context, db *gorm.DB, rawMasterKey string) error {
+	if db == nil {
+		return fmt.Errorf("smtp identity credential migration: database is required")
+	}
+	key, decodeErr := decodeMasterKey(rawMasterKey)
+	if decodeErr != nil {
+		return decodeErr
+	}
+	repository := &Repository{
+		db:        db,
+		key:       key,
+		random:    rand.Reader,
+		clockFunc: func() time.Time { return time.Now().UTC() },
+	}
+	return repository.migrateStoredCredentialPasswords(ctx)
+}
+
+func decodeMasterKey(rawMasterKey string) ([]byte, error) {
+	key, decodeErr := hex.DecodeString(strings.TrimSpace(rawMasterKey))
+	if decodeErr != nil {
+		return nil, fmt.Errorf("smtp identity: invalid master key: %w", decodeErr)
+	}
+	if len(key) != 32 {
+		return nil, fmt.Errorf("smtp identity: master key must decode to 32 bytes")
+	}
+	return key, nil
+}
+
+func (repository *Repository) migrateStoredCredentialPasswords(ctx context.Context) error {
+	var records []Identity
+	if err := repository.db.WithContext(ctx).Where(&Identity{Status: IdentityStatusActive}).Find(&records).Error; err != nil {
+		return fmt.Errorf("smtp identity credential migration: list identities: %w", err)
+	}
+	for _, record := range records {
+		if len(record.PasswordCipher) != 0 {
+			continue
+		}
+		if err := repository.migrateStoredCredentialPassword(ctx, record); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (repository *Repository) migrateStoredCredentialPassword(ctx context.Context, record Identity) error {
+	username, _, salt, digest, passwordCipher, credentialErr := repository.newCredential()
+	if credentialErr != nil {
+		return fmt.Errorf("smtp identity credential migration: generate credentials for %s: %w", record.ID, credentialErr)
+	}
+	now := repository.clockFunc()
+	if updateErr := repository.db.WithContext(ctx).Model(&Identity{}).
+		Where(&Identity{ID: record.ID, Status: IdentityStatusActive}).
+		Updates(map[string]interface{}{
+			usernameColumn:    username,
+			"password_salt":   salt,
+			"password_digest": digest,
+			"password_cipher": passwordCipher,
+			updatedAtColumn:   now,
+		}).Error; updateErr != nil {
+		return fmt.Errorf("smtp identity credential migration: update identity %s: %w", record.ID, updateErr)
+	}
+	return nil
 }
 
 // List returns active SMTP identities without secrets.
@@ -262,9 +322,6 @@ func (repository *Repository) CredentialsForScope(ctx context.Context, scope Acc
 	record, fetchErr := repository.requireIdentityForScope(ctx, scope, identityID)
 	if fetchErr != nil {
 		return PublicIdentity{}, "", fetchErr
-	}
-	if len(record.PasswordCipher) == 0 {
-		return PublicIdentity{}, "", ErrPasswordUnavailable
 	}
 	password, decryptErr := repository.decryptPassword(record.PasswordCipher)
 	if decryptErr != nil {

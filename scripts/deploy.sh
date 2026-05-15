@@ -198,7 +198,7 @@ if [[ "${SKIP_BACKEND}" != "true" ]]; then
     gateway_pages_verify_enabled="false"
   fi
   echo "==> [deploy] Deploying Pinguin backend through mprlab-gateway"
-  timeout --foreground -k 1200s -s SIGKILL 1200s make -C "${GATEWAY_DIR}" MPRLAB_GATEWAY_PAGES_VERIFY_ENABLED="${gateway_pages_verify_enabled}" MPRLAB_PINGUIN_PAGES_URL="${PAGES_URL}" "${gateway_deploy_target}"
+  timeout --foreground -k 1200s -s SIGKILL 1200s make -C "${GATEWAY_DIR}" MPRLAB_APP_MANIFEST="${repo_root}/deploy/app.yml" MPRLAB_GATEWAY_PAGES_VERIFY_ENABLED="${gateway_pages_verify_enabled}" MPRLAB_PINGUIN_PAGES_URL="${PAGES_URL}" "${gateway_deploy_target}"
   echo "==> [deploy] Gateway SMTP host ports are ready; remaining operator mapping is edge 25 -> tutosh:8025 and edge 465 -> tutosh:8465"
 fi
 
