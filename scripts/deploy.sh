@@ -7,7 +7,8 @@ Usage:
   scripts/deploy.sh [options]
 
 Deploys the Pinguin backend through mprlab-gateway, then publishes legacy
-gh-pages only after backend verification succeeds.
+gh-pages only after backend verification succeeds. Deployment is allowed only
+from clean local master matching origin/master with zero open PRs.
 
 Options:
   --gateway-dir <path>       Gateway checkout. Default: $GATEWAY_DIR or sibling ../mprlab-gateway
@@ -178,6 +179,8 @@ command -v git >/dev/null 2>&1 || { echo "error: git is required" >&2; exit 1; }
 
 repo_root="$(git rev-parse --show-toplevel)"
 cd "${repo_root}"
+source "${repo_root}/scripts/production_git_guard.sh"
+verify_production_git_state "deploy" "${PUBLISH_BRANCH}" "${PUBLISH_REMOTE}"
 source_commit="$(git rev-parse --verify HEAD)"
 source_short="$(git rev-parse --short HEAD)"
 resolve_gateway_dir() {

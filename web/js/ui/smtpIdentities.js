@@ -303,6 +303,9 @@ export function createSMTPIdentities(options) {
       }
       return this.isSenderDomainVerified() ? '' : this.strings.domainRequiredNotice;
     },
+    credentialsRecordLabel(identity) {
+      return `${this.strings.openCredentialsLabel} ${identity.emailAddress}`;
+    },
     domainStatusLabel(domain) {
       return domain.status === 'verified' ? this.strings.domainVerifiedLabel : this.strings.domainPendingLabel;
     },

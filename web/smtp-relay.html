@@ -211,33 +211,27 @@
               <template x-for="identity in identities" :key="identity.id">
                 <tr data-testid="smtp-identity-row">
                   <td>
-                    <strong x-text="identity.emailAddress"></strong>
+                    <button
+                      class="identity-record-button"
+                      type="button"
+                      :aria-label="credentialsRecordLabel(identity)"
+                      :disabled="isSubmitting"
+                      x-on:click="viewCredentials(identity)"
+                    >
+                      <strong x-text="identity.emailAddress"></strong>
+                    </button>
                   </td>
                   <td x-text="identity.username"></td>
                   <td x-text="identity.forwardTo.join(', ')"></td>
                   <td x-text="formatTimestamp(identity.lastUsedAt)"></td>
-                  <td style="min-width: 180px">
-                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap">
+                  <td>
+                    <div class="identity-actions">
                       <button
                         class="button secondary"
                         type="button"
                         x-on:click="editForwarding(identity)"
                         :disabled="isSubmitting"
                         x-text="strings.editForwardingLabel"
-                      ></button>
-                      <button
-                        class="button secondary"
-                        type="button"
-                        x-on:click="viewCredentials(identity)"
-                        :disabled="isSubmitting"
-                        x-text="strings.viewPasswordLabel"
-                      ></button>
-                      <button
-                        class="button secondary"
-                        type="button"
-                        x-on:click="rotateIdentity(identity, true)"
-                        :disabled="isSubmitting"
-                        x-text="actions.rotate"
                       ></button>
                       <button
                         class="button danger"
@@ -324,10 +318,14 @@
                     </button>
                   </span>
                 </label>
-                <label class="credentials-grid__full">
-                  <span x-text="strings.passwordLabel"></span>
+                <div class="credentials-field credentials-grid__full">
+                  <span class="credentials-field__label" x-text="strings.passwordLabel"></span>
                   <span class="copy-field">
-                    <input type="text" readonly aria-readonly="true" :value="credentials.password" />
+                    <span
+                      class="credential-plain-text"
+                      data-testid="smtp-password-value"
+                      x-text="credentials.password"
+                    ></span>
                     <button
                       class="copy-field__button"
                       type="button"
@@ -341,7 +339,7 @@
                       </svg>
                     </button>
                   </span>
-                </label>
+                </div>
                 <footer class="dialog__actions credentials-grid__full">
                   <button
                     class="button secondary"

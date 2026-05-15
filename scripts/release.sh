@@ -7,7 +7,8 @@ Usage:
   scripts/release.sh [options]
 
 Cuts a repository release from the default branch without publishing images,
-publishing Pages, or deploying production.
+publishing Pages, or deploying production. Release is allowed only from clean
+local master matching origin/master with zero open PRs.
 
 Options:
   --bump <patch|minor|major>  SemVer bump when RELEASE_VERSION is not set. Default: patch
@@ -41,6 +42,8 @@ else
 fi
 DRY_RUN="false"
 SKIP_PAGES_VERIFY="false"
+RELEASE_BRANCH="${RELEASE_BRANCH:-master}"
+RELEASE_REMOTE="${RELEASE_REMOTE:-origin}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -95,6 +98,8 @@ command -v python3 >/dev/null 2>&1 || { echo "error: python3 is required" >&2; e
 
 repo_root="$(git rev-parse --show-toplevel)"
 cd "${repo_root}"
+source "${repo_root}/scripts/production_git_guard.sh"
+verify_production_git_state "release" "${RELEASE_BRANCH}" "${RELEASE_REMOTE}"
 
 resolve_release_helper() {
   local candidate
@@ -234,6 +239,10 @@ echo "==> [release] Running preflight"
 "${HELPER}" preflight --release-timestamp "${release_timestamp}" | tee "${preflight_json}"
 default_branch="$(json_value "${preflight_json}" "default_branch")"
 [[ -n "${default_branch}" ]] || { echo "error: release helper did not report default_branch" >&2; exit 1; }
+if [[ "${default_branch}" != "${RELEASE_BRANCH}" ]]; then
+  echo "error: release default branch must be ${RELEASE_BRANCH}; helper reported ${default_branch}" >&2
+  exit 1
+fi
 
 if [[ "${DRY_RUN}" == "true" ]]; then
   next_version="$(select_version "${preflight_json}")"

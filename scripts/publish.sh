@@ -8,9 +8,10 @@ Usage:
 
 Publishes from master by:
   1. validating clean local master matches origin/master
-  2. running make ci
-  3. validating a pushed release tag points at HEAD
-  4. building and pushing the linux/amd64 and linux/arm64 Docker image manifest to GHCR
+  2. verifying there are zero open PRs
+  3. running make ci
+  4. validating a pushed release tag points at HEAD
+  5. building and pushing the linux/amd64 and linux/arm64 Docker image manifest to GHCR
 
 This command does not publish GitHub Pages. Run make deploy after make publish.
 
@@ -101,25 +102,11 @@ done
 command -v docker >/dev/null 2>&1 || { echo "error: docker is required" >&2; exit 1; }
 command -v gh >/dev/null 2>&1 || { echo "error: gh is required for registry authentication" >&2; exit 1; }
 
-timeout -k 30s -s SIGKILL 30s git fetch "${PUBLISH_REMOTE}" "${PUBLISH_BRANCH}" --prune
-
-current_branch="$(git branch --show-current)"
-if [[ "${current_branch}" != "${PUBLISH_BRANCH}" ]]; then
-  echo "error: publishing is allowed only from branch '${PUBLISH_BRANCH}' (current: '${current_branch:-detached HEAD}')" >&2
-  exit 1
-fi
-
-if [[ -n "$(git status --porcelain)" ]]; then
-  echo "error: working tree is dirty; commit or stash changes before publishing" >&2
-  exit 1
-fi
-
+repo_root="$(git rev-parse --show-toplevel)"
+cd "${repo_root}"
+source "${repo_root}/scripts/production_git_guard.sh"
+verify_production_git_state "publish" "${PUBLISH_BRANCH}" "${PUBLISH_REMOTE}"
 head_sha="$(git rev-parse HEAD)"
-remote_sha="$(git rev-parse "${PUBLISH_REMOTE}/${PUBLISH_BRANCH}")"
-if [[ "${head_sha}" != "${remote_sha}" ]]; then
-  echo "error: local ${PUBLISH_BRANCH} is not at ${PUBLISH_REMOTE}/${PUBLISH_BRANCH}; push or pull first" >&2
-  exit 1
-fi
 
 if [[ -z "${TAG}" ]]; then
   TAG="$(git tag --points-at HEAD --list 'v*' --sort=-version:refname | head -n 1)"

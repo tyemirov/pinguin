@@ -431,7 +431,7 @@ The Pinguin Docker image declares `/web` as a separate volume for the UI bundle;
 
 ### Publish Docker, then deploy backend and Pages
 
-GitHub Actions are disabled for Pinguin. Publication is an explicit local operation from a clean `master` checkout that matches `origin/master`.
+GitHub Actions are disabled for Pinguin. Release, publish, and deploy are explicit local production operations from a clean local `master` branch that exactly matches `origin/master` with zero open pull requests. These commands print the branch and commit they verified before doing production work; any other branch, dirty worktree, local/remote mismatch, or open PR is a hard failure.
 
 Use the publish target to run validation, then build and push the `linux/amd64,linux/arm64` Docker image manifest to GHCR:
 
@@ -446,7 +446,7 @@ Use the deploy target after `make publish` to deploy the backend through `mprlab
 make deploy
 ```
 
-`make publish` defaults to `ghcr.io/tyemirov/pinguin:latest` and `linux/amd64,linux/arm64`. `make deploy` defaults to the sibling `mprlab-gateway` checkout, the `tyemirov/pinguin` Pages repository, and the `gh-pages` branch. The deploy script verifies that the gateway checkout publishes Caddy's SMTP listeners on high host ports `8025` and `8465` before it runs `make -C ../mprlab-gateway deploy TARGET=pinguin`. After `make deploy`, configure the edge gateway to forward `25 -> tutosh:8025` and `465 -> tutosh:8465`; no Pinguin app port mapping is required. Override `DOCKER_IMAGE`, `DOCKER_TAG`, `PUBLISH_PLATFORMS`, `PAGES_REPOSITORY`, `PAGES_PUBLISH_REMOTE`, or `PAGES_PUBLISH_BRANCH` only for non-production targets. `gh` must be authenticated with Pages write access so deploy can verify/update the legacy Pages source.
+`make publish` defaults to `ghcr.io/tyemirov/pinguin:latest` and `linux/amd64,linux/arm64`. `make deploy` defaults to the sibling `mprlab-gateway` checkout, the `tyemirov/pinguin` Pages repository, and the `gh-pages` branch. The deploy script verifies the production Git state, then verifies that the gateway checkout publishes Caddy's SMTP listeners on high host ports `8025` and `8465` before it runs `make -C ../mprlab-gateway deploy TARGET=pinguin`. After `make deploy`, configure the edge gateway to forward `25 -> tutosh:8025` and `465 -> tutosh:8465`; no Pinguin app port mapping is required. Override `DOCKER_IMAGE`, `DOCKER_TAG`, `PUBLISH_PLATFORMS`, `PAGES_REPOSITORY`, `PAGES_PUBLISH_REMOTE`, or `PAGES_PUBLISH_BRANCH` only for non-production targets. `gh` must be authenticated with repository and Pages access so deploy can verify open PRs and update/verify the legacy Pages source.
 
 1. Copy the sample environment files and update the placeholders. **Use the same signing key in both files** so TAuth and Pinguin agree on JWT validation.
 
