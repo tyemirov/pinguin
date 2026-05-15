@@ -2,6 +2,8 @@ package smtpidentity
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -24,10 +26,13 @@ const (
 	credentialSaltBytes     = 16
 	credentialPasswordBytes = 24
 	credentialUsernameBytes = 12
+	credentialNonceBytes    = 12
+	domainVerificationBytes = 24
 	activeStatusValue       = string(IdentityStatusActive)
 	deletedStatusValue      = string(IdentityStatusDeleted)
 	identityIDColumn        = "id"
 	lastUsedAtColumn        = "last_used_at"
+	ownerEmailColumn        = "owner_email"
 	statusColumn            = "status"
 	updatedAtColumn         = "updated_at"
 	usernameColumn          = "username"
@@ -48,6 +53,8 @@ var (
 	ErrForwardRecipientDuplicate = errors.New("smtp_identity.forward_recipient_duplicate")
 	// ErrForwardRecipientSelf indicates a shared identity forwards back to itself.
 	ErrForwardRecipientSelf = errors.New("smtp_identity.forward_recipient_self")
+	// ErrPasswordUnavailable indicates stored credentials predate password retrieval.
+	ErrPasswordUnavailable = errors.New("smtp_identity.password_unavailable")
 )
 
 // IdentityStatus captures SMTP identity lifecycle state.
@@ -63,10 +70,12 @@ const (
 // Identity stores SMTP submission credentials.
 type Identity struct {
 	ID             string `gorm:"primaryKey"`
+	OwnerEmail     string `gorm:"index"`
 	EmailAddress   string `gorm:"uniqueIndex"`
 	Username       string `gorm:"uniqueIndex"`
 	PasswordSalt   []byte
 	PasswordDigest []byte
+	PasswordCipher []byte
 	Status         IdentityStatus `gorm:"index"`
 	LastUsedAt     *time.Time
 	ForwardTo      []ForwardRecipient `gorm:"foreignKey:IdentityID;constraint:OnDelete:CASCADE"`
@@ -102,6 +111,12 @@ type AuthenticatedIdentity struct {
 	Username     string
 }
 
+// AccessScope constrains authenticated HTTP SMTP relay management to one owner unless admin access is present.
+type AccessScope struct {
+	OwnerEmail string
+	Admin      bool
+}
+
 // Repository stores and verifies SMTP identities.
 type Repository struct {
 	db        *gorm.DB
@@ -132,12 +147,21 @@ func NewRepository(db *gorm.DB, rawMasterKey string) (*Repository, error) {
 
 // List returns active SMTP identities without secrets.
 func (repository *Repository) List(ctx context.Context) ([]PublicIdentity, error) {
+	return repository.ListForScope(ctx, AccessScope{Admin: true})
+}
+
+// ListForScope returns active SMTP identities visible to the authenticated owner scope.
+func (repository *Repository) ListForScope(ctx context.Context, scope AccessScope) ([]PublicIdentity, error) {
 	var records []Identity
-	if err := repository.db.WithContext(ctx).
+	query := repository.db.WithContext(ctx).
 		Preload("ForwardTo", func(db *gorm.DB) *gorm.DB {
 			return db.Order(clause.OrderByColumn{Column: clause.Column{Name: "email_address"}})
 		}).
-		Where(&Identity{Status: IdentityStatusActive}).
+		Where(&Identity{Status: IdentityStatusActive})
+	if !scope.Admin {
+		query = query.Where(clause.Eq{Column: clause.Column{Name: ownerEmailColumn}, Value: normalizeOwnerEmail(scope.OwnerEmail)})
+	}
+	if err := query.
 		Order(clause.OrderByColumn{Column: clause.Column{Name: "email_address"}}).
 		Find(&records).Error; err != nil {
 		return nil, fmt.Errorf("smtp identity list: %w", err)
@@ -151,7 +175,13 @@ func (repository *Repository) List(ctx context.Context) ([]PublicIdentity, error
 
 // Create creates or reactivates an exact sender identity.
 func (repository *Repository) Create(ctx context.Context, address Address, forwardTo []Address) (PublicIdentity, string, error) {
-	if allowedErr := repository.requireSenderDomain(ctx, address.Domain()); allowedErr != nil {
+	return repository.CreateForScope(ctx, AccessScope{Admin: true}, address, forwardTo)
+}
+
+// CreateForScope creates or reactivates an exact sender identity owned by a verified sender domain.
+func (repository *Repository) CreateForScope(ctx context.Context, scope AccessScope, address Address, forwardTo []Address) (PublicIdentity, string, error) {
+	ownerEmail := normalizeOwnerEmail(scope.OwnerEmail)
+	if allowedErr := repository.requireSenderDomainForScope(ctx, scope, address.Domain()); allowedErr != nil {
 		return PublicIdentity{}, "", allowedErr
 	}
 	if recipientErr := validateForwardRecipients(forwardTo); recipientErr != nil {
@@ -170,15 +200,17 @@ func (repository *Repository) Create(ctx context.Context, address Address, forwa
 	if findErr != nil && !errors.Is(findErr, gorm.ErrRecordNotFound) {
 		return PublicIdentity{}, "", fmt.Errorf("smtp identity create: find existing: %w", findErr)
 	}
-	username, password, salt, digest, credentialErr := repository.newCredential()
+	username, password, salt, digest, passwordCipher, credentialErr := repository.newCredential()
 	if credentialErr != nil {
 		return PublicIdentity{}, "", credentialErr
 	}
 	now := repository.clockFunc()
 	if findErr == nil {
+		existing.OwnerEmail = ownerEmail
 		existing.Username = username
 		existing.PasswordSalt = salt
 		existing.PasswordDigest = digest
+		existing.PasswordCipher = passwordCipher
 		existing.Status = IdentityStatusActive
 		existing.LastUsedAt = nil
 		existing.UpdatedAt = now
@@ -198,10 +230,12 @@ func (repository *Repository) Create(ctx context.Context, address Address, forwa
 	}
 	record := Identity{
 		ID:             uuid.NewString(),
+		OwnerEmail:     ownerEmail,
 		EmailAddress:   address.String(),
 		Username:       username,
 		PasswordSalt:   salt,
 		PasswordDigest: digest,
+		PasswordCipher: passwordCipher,
 		Status:         IdentityStatusActive,
 		CreatedAt:      now,
 		UpdatedAt:      now,
@@ -218,12 +252,38 @@ func (repository *Repository) Create(ctx context.Context, address Address, forwa
 	return publicIdentity(record), password, nil
 }
 
+// Credentials returns the current active credentials for a sender identity.
+func (repository *Repository) Credentials(ctx context.Context, identityID string) (PublicIdentity, string, error) {
+	return repository.CredentialsForScope(ctx, AccessScope{Admin: true}, identityID)
+}
+
+// CredentialsForScope returns the current active credentials visible to the owner scope.
+func (repository *Repository) CredentialsForScope(ctx context.Context, scope AccessScope, identityID string) (PublicIdentity, string, error) {
+	record, fetchErr := repository.requireIdentityForScope(ctx, scope, identityID)
+	if fetchErr != nil {
+		return PublicIdentity{}, "", fetchErr
+	}
+	if len(record.PasswordCipher) == 0 {
+		return PublicIdentity{}, "", ErrPasswordUnavailable
+	}
+	password, decryptErr := repository.decryptPassword(record.PasswordCipher)
+	if decryptErr != nil {
+		return PublicIdentity{}, "", fmt.Errorf("smtp identity credentials: decrypt password: %w", decryptErr)
+	}
+	return publicIdentity(record), password, nil
+}
+
 // UpdateForwarding replaces the forwarding recipients for an active identity.
 func (repository *Repository) UpdateForwarding(ctx context.Context, identityID string, forwardTo []Address) (PublicIdentity, error) {
+	return repository.UpdateForwardingForScope(ctx, AccessScope{Admin: true}, identityID, forwardTo)
+}
+
+// UpdateForwardingForScope replaces forwarding recipients for an identity visible to the owner scope.
+func (repository *Repository) UpdateForwardingForScope(ctx context.Context, scope AccessScope, identityID string, forwardTo []Address) (PublicIdentity, error) {
 	if recipientErr := validateForwardRecipients(forwardTo); recipientErr != nil {
 		return PublicIdentity{}, recipientErr
 	}
-	record, fetchErr := repository.requireIdentity(ctx, identityID)
+	record, fetchErr := repository.requireIdentityForScope(ctx, scope, identityID)
 	if fetchErr != nil {
 		return PublicIdentity{}, fetchErr
 	}
@@ -256,17 +316,23 @@ func (repository *Repository) UpdateForwarding(ctx context.Context, identityID s
 
 // Rotate replaces credentials for an active identity.
 func (repository *Repository) Rotate(ctx context.Context, identityID string) (PublicIdentity, string, error) {
-	record, fetchErr := repository.requireIdentity(ctx, identityID)
+	return repository.RotateForScope(ctx, AccessScope{Admin: true}, identityID)
+}
+
+// RotateForScope replaces credentials for an active identity visible to the owner scope.
+func (repository *Repository) RotateForScope(ctx context.Context, scope AccessScope, identityID string) (PublicIdentity, string, error) {
+	record, fetchErr := repository.requireIdentityForScope(ctx, scope, identityID)
 	if fetchErr != nil {
 		return PublicIdentity{}, "", fetchErr
 	}
-	username, password, salt, digest, credentialErr := repository.newCredential()
+	username, password, salt, digest, passwordCipher, credentialErr := repository.newCredential()
 	if credentialErr != nil {
 		return PublicIdentity{}, "", credentialErr
 	}
 	record.Username = username
 	record.PasswordSalt = salt
 	record.PasswordDigest = digest
+	record.PasswordCipher = passwordCipher
 	record.UpdatedAt = repository.clockFunc()
 	if saveErr := repository.db.WithContext(ctx).Save(&record).Error; saveErr != nil {
 		return PublicIdentity{}, "", fmt.Errorf("smtp identity rotate: %w", saveErr)
@@ -276,7 +342,12 @@ func (repository *Repository) Rotate(ctx context.Context, identityID string) (Pu
 
 // Delete disables an identity so it can no longer authenticate.
 func (repository *Repository) Delete(ctx context.Context, identityID string) error {
-	record, fetchErr := repository.requireIdentity(ctx, identityID)
+	return repository.DeleteForScope(ctx, AccessScope{Admin: true}, identityID)
+}
+
+// DeleteForScope disables an identity visible to the owner scope so it can no longer authenticate.
+func (repository *Repository) DeleteForScope(ctx context.Context, scope AccessScope, identityID string) error {
+	record, fetchErr := repository.requireIdentityForScope(ctx, scope, identityID)
 	if fetchErr != nil {
 		return fetchErr
 	}
@@ -306,6 +377,12 @@ func (repository *Repository) ResolveForwarding(ctx context.Context, address Add
 	if len(record.ForwardTo) == 0 {
 		return Address{}, nil, false, nil
 	}
+	if domainErr := repository.requireSenderDomainForIdentity(ctx, record.OwnerEmail, address.Domain()); domainErr != nil {
+		if errors.Is(domainErr, ErrSenderDomainNotAllowed) {
+			return Address{}, nil, false, nil
+		}
+		return Address{}, nil, false, domainErr
+	}
 	recipients := make([]Address, 0, len(record.ForwardTo))
 	for _, recipientRecord := range record.ForwardTo {
 		recipient, recipientErr := NewAddress(recipientRecord.EmailAddress)
@@ -333,13 +410,19 @@ func (repository *Repository) Authenticate(ctx context.Context, username string,
 	if subtle.ConstantTimeCompare(digest, record.PasswordDigest) != 1 {
 		return AuthenticatedIdentity{}, ErrAuthenticationFailed
 	}
-	now := repository.clockFunc()
-	if markErr := repository.markAuthenticatedIdentityUsed(ctx, record, now); markErr != nil {
-		return AuthenticatedIdentity{}, markErr
-	}
 	address, addressErr := NewAddress(record.EmailAddress)
 	if addressErr != nil {
 		return AuthenticatedIdentity{}, fmt.Errorf("smtp identity auth: stored address: %w", addressErr)
+	}
+	if domainErr := repository.requireSenderDomainForIdentity(ctx, record.OwnerEmail, address.Domain()); domainErr != nil {
+		if errors.Is(domainErr, ErrSenderDomainNotAllowed) {
+			return AuthenticatedIdentity{}, ErrAuthenticationFailed
+		}
+		return AuthenticatedIdentity{}, domainErr
+	}
+	now := repository.clockFunc()
+	if markErr := repository.markAuthenticatedIdentityUsed(ctx, record, now); markErr != nil {
+		return AuthenticatedIdentity{}, markErr
 	}
 	return AuthenticatedIdentity{
 		ID:           record.ID,
@@ -369,11 +452,15 @@ func (repository *Repository) markAuthenticatedIdentityUsed(ctx context.Context,
 	return nil
 }
 
-func (repository *Repository) requireIdentity(ctx context.Context, identityID string) (Identity, error) {
+func (repository *Repository) requireIdentityForScope(ctx context.Context, scope AccessScope, identityID string) (Identity, error) {
 	normalizedIdentityID := strings.TrimSpace(identityID)
 	var record Identity
-	err := repository.db.WithContext(ctx).
-		Where(&Identity{ID: normalizedIdentityID, Status: IdentityStatusActive}).
+	query := repository.db.WithContext(ctx).
+		Where(&Identity{ID: normalizedIdentityID, Status: IdentityStatusActive})
+	if !scope.Admin {
+		query = query.Where(clause.Eq{Column: clause.Column{Name: ownerEmailColumn}, Value: normalizeOwnerEmail(scope.OwnerEmail)})
+	}
+	err := query.
 		First(&record).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -384,11 +471,35 @@ func (repository *Repository) requireIdentity(ctx context.Context, identityID st
 	return record, nil
 }
 
-func (repository *Repository) requireSenderDomain(ctx context.Context, domain string) error {
+func (repository *Repository) requireSenderDomainForScope(ctx context.Context, scope AccessScope, domain string) error {
+	ownerEmail := normalizeOwnerEmail(scope.OwnerEmail)
 	normalizedDomain := strings.ToLower(strings.TrimSpace(domain))
 	var domainRecord SenderDomain
-	err := repository.db.WithContext(ctx).
-		Where(&SenderDomain{Domain: normalizedDomain}).
+	query := repository.db.WithContext(ctx).
+		Where(clause.Eq{Column: clause.Column{Name: "domain"}, Value: normalizedDomain})
+	if scope.Admin {
+		query = query.Where(
+			clause.Or(
+				clause.And(
+					clause.Eq{Column: clause.Column{Name: ownerEmailColumn}, Value: ownerEmail},
+					clause.Eq{Column: clause.Column{Name: statusColumn}, Value: senderDomainVerifiedStatus},
+				),
+				clause.And(
+					clause.Eq{Column: clause.Column{Name: ownerEmailColumn}, Value: ""},
+					clause.Or(
+						clause.Eq{Column: clause.Column{Name: statusColumn}, Value: senderDomainVerifiedStatus},
+						clause.Eq{Column: clause.Column{Name: statusColumn}, Value: ""},
+					),
+				),
+			),
+		)
+	} else {
+		query = query.Where(clause.And(
+			clause.Eq{Column: clause.Column{Name: ownerEmailColumn}, Value: ownerEmail},
+			clause.Eq{Column: clause.Column{Name: statusColumn}, Value: senderDomainVerifiedStatus},
+		))
+	}
+	err := query.
 		First(&domainRecord).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -397,6 +508,10 @@ func (repository *Repository) requireSenderDomain(ctx context.Context, domain st
 		return fmt.Errorf("smtp identity sender domain lookup: domain %s: %w", normalizedDomain, err)
 	}
 	return nil
+}
+
+func (repository *Repository) requireSenderDomainForIdentity(ctx context.Context, ownerEmail string, domain string) error {
+	return repository.requireSenderDomainForScope(ctx, AccessScope{OwnerEmail: ownerEmail, Admin: true}, domain)
 }
 
 func validateForwardRecipients(forwardTo []Address) error {
@@ -451,22 +566,26 @@ func forwardRecipientRecords(identityID string, forwardTo []Address, now time.Ti
 	return records
 }
 
-func (repository *Repository) newCredential() (string, string, []byte, []byte, error) {
+func (repository *Repository) newCredential() (string, string, []byte, []byte, []byte, error) {
 	usernameToken, usernameErr := repository.randomToken(credentialUsernameBytes)
 	if usernameErr != nil {
-		return "", "", nil, nil, usernameErr
+		return "", "", nil, nil, nil, usernameErr
 	}
 	passwordToken, passwordErr := repository.randomToken(credentialPasswordBytes)
 	if passwordErr != nil {
-		return "", "", nil, nil, passwordErr
+		return "", "", nil, nil, nil, passwordErr
 	}
 	salt := make([]byte, credentialSaltBytes)
 	if _, readErr := io.ReadFull(repository.random, salt); readErr != nil {
-		return "", "", nil, nil, fmt.Errorf("smtp identity credential: salt: %w", readErr)
+		return "", "", nil, nil, nil, fmt.Errorf("smtp identity credential: salt: %w", readErr)
 	}
 	password := "pgsmtp_" + passwordToken
 	digest := repository.digest(salt, password)
-	return "smtp_" + usernameToken, password, salt, digest, nil
+	passwordCipher, cipherErr := repository.encryptPassword(password)
+	if cipherErr != nil {
+		return "", "", nil, nil, nil, fmt.Errorf("smtp identity credential: password cipher: %w", cipherErr)
+	}
+	return "smtp_" + usernameToken, password, salt, digest, passwordCipher, nil
 }
 
 func (repository *Repository) randomToken(byteCount int) (string, error) {
@@ -483,6 +602,37 @@ func (repository *Repository) digest(salt []byte, password string) []byte {
 	mac.Write([]byte{0})
 	mac.Write([]byte(password))
 	return mac.Sum(nil)
+}
+
+func (repository *Repository) encryptPassword(password string) ([]byte, error) {
+	block, blockErr := aes.NewCipher(repository.key)
+	if blockErr != nil {
+		return nil, blockErr
+	}
+	gcm, _ := cipher.NewGCM(block)
+	nonce := make([]byte, credentialNonceBytes)
+	if _, readErr := io.ReadFull(repository.random, nonce); readErr != nil {
+		return nil, readErr
+	}
+	return gcm.Seal(nonce, nonce, []byte(password), nil), nil
+}
+
+func (repository *Repository) decryptPassword(ciphertext []byte) (string, error) {
+	block, blockErr := aes.NewCipher(repository.key)
+	if blockErr != nil {
+		return "", blockErr
+	}
+	gcm, _ := cipher.NewGCM(block)
+	if len(ciphertext) < gcm.NonceSize() {
+		return "", errors.New("ciphertext too short")
+	}
+	nonce := ciphertext[:gcm.NonceSize()]
+	payload := ciphertext[gcm.NonceSize():]
+	plaintext, openErr := gcm.Open(nil, nonce, payload, nil)
+	if openErr != nil {
+		return "", openErr
+	}
+	return string(plaintext), nil
 }
 
 func publicIdentity(record Identity) PublicIdentity {

@@ -25,13 +25,27 @@ func TestRepositoryCreateAuthenticateRotateAndDelete(t *testing.T) {
 		t.Fatalf("create identity: %v", createErr)
 	}
 	if password == "" {
-		t.Fatalf("expected one-time password")
+		t.Fatalf("expected generated password")
 	}
 	if identity.EmailAddress != "alice@example.com" || identity.Username == "" {
 		t.Fatalf("unexpected identity: %+v", identity)
 	}
 	if len(identity.ForwardTo) != 1 || identity.ForwardTo[0] != "owner@example.com" {
 		t.Fatalf("unexpected forwarding recipients: %+v", identity.ForwardTo)
+	}
+	retrievedIdentity, retrievedPassword, credentialsErr := repository.Credentials(context.Background(), identity.ID)
+	if credentialsErr != nil {
+		t.Fatalf("retrieve identity credentials: %v", credentialsErr)
+	}
+	if retrievedIdentity.ID != identity.ID || retrievedPassword != password {
+		t.Fatalf("unexpected retrieved credentials identity=%+v password=%s", retrievedIdentity, retrievedPassword)
+	}
+	var storedIdentity Identity
+	if fetchErr := database.Where(&Identity{ID: identity.ID}).First(&storedIdentity).Error; fetchErr != nil {
+		t.Fatalf("fetch stored identity: %v", fetchErr)
+	}
+	if len(storedIdentity.PasswordCipher) == 0 || bytes.Contains(storedIdentity.PasswordCipher, []byte(password)) {
+		t.Fatalf("expected encrypted stored password, got %q", string(storedIdentity.PasswordCipher))
 	}
 
 	authenticated, authErr := repository.Authenticate(context.Background(), identity.Username, password)
@@ -51,6 +65,13 @@ func TestRepositoryCreateAuthenticateRotateAndDelete(t *testing.T) {
 	}
 	if _, oldAuthErr := repository.Authenticate(context.Background(), identity.Username, password); !errors.Is(oldAuthErr, ErrAuthenticationFailed) {
 		t.Fatalf("expected old credentials to fail, got %v", oldAuthErr)
+	}
+	_, retrievedRotatedPassword, rotatedCredentialsErr := repository.Credentials(context.Background(), identity.ID)
+	if rotatedCredentialsErr != nil {
+		t.Fatalf("retrieve rotated credentials: %v", rotatedCredentialsErr)
+	}
+	if retrievedRotatedPassword != rotatedPassword {
+		t.Fatalf("expected retrievable rotated password, got %s", retrievedRotatedPassword)
 	}
 	if _, newAuthErr := repository.Authenticate(context.Background(), rotatedIdentity.Username, rotatedPassword); newAuthErr != nil {
 		t.Fatalf("expected rotated credentials to authenticate: %v", newAuthErr)
@@ -118,6 +139,178 @@ func TestRepositoryRejectsAddressOutsideSenderDomains(t *testing.T) {
 	}
 }
 
+func TestRepositoryVerifiedSenderDomainScopeControlsIdentityUse(t *testing.T) {
+	repository, _ := newIdentityRepository(t)
+	scope := AccessScope{OwnerEmail: "member@example.com"}
+	otherScope := AccessScope{OwnerEmail: "other@example.com"}
+	domain, domainErr := repository.CreateSenderDomainForScope(context.Background(), scope, "Customer.Example")
+	if domainErr != nil {
+		t.Fatalf("create sender domain: %v", domainErr)
+	}
+	if domain.Status != SenderDomainStatusPending || domain.OwnerEmail != "member@example.com" {
+		t.Fatalf("unexpected pending sender domain: %+v", domain)
+	}
+
+	address := mustAddress(t, "alice@customer.example")
+	if _, _, createErr := repository.CreateForScope(context.Background(), scope, address, defaultForwardRecipients(t)); !errors.Is(createErr, ErrSenderDomainNotAllowed) {
+		t.Fatalf("expected unverified sender domain to block identity create, got %v", createErr)
+	}
+	verifiedAt := time.Date(2031, 2, 3, 4, 5, 6, 0, time.UTC)
+	if _, updateErr := repository.UpdateSenderDomainStatusForScope(context.Background(), scope, domain.ID, SenderDomainStatusVerified, verifiedAt); updateErr != nil {
+		t.Fatalf("verify sender domain: %v", updateErr)
+	}
+	identity, password, createErr := repository.CreateForScope(context.Background(), scope, address, defaultForwardRecipients(t))
+	if createErr != nil {
+		t.Fatalf("create identity after verification: %v", createErr)
+	}
+	visibleIdentities, listErr := repository.ListForScope(context.Background(), scope)
+	if listErr != nil {
+		t.Fatalf("list owner identities: %v", listErr)
+	}
+	if len(visibleIdentities) != 1 || visibleIdentities[0].ID != identity.ID {
+		t.Fatalf("expected owner to see created identity, got %+v", visibleIdentities)
+	}
+	otherVisibleIdentities, otherListErr := repository.ListForScope(context.Background(), otherScope)
+	if otherListErr != nil {
+		t.Fatalf("list other identities: %v", otherListErr)
+	}
+	if len(otherVisibleIdentities) != 0 {
+		t.Fatalf("expected other owner isolation, got %+v", otherVisibleIdentities)
+	}
+	if _, _, credentialsErr := repository.CredentialsForScope(context.Background(), otherScope, identity.ID); !errors.Is(credentialsErr, ErrIdentityNotFound) {
+		t.Fatalf("expected other owner credentials lookup to be hidden, got %v", credentialsErr)
+	}
+	if _, authErr := repository.Authenticate(context.Background(), identity.Username, password); authErr != nil {
+		t.Fatalf("authenticate verified identity: %v", authErr)
+	}
+	if _, updateErr := repository.UpdateSenderDomainStatusForScope(context.Background(), scope, domain.ID, SenderDomainStatusPending, verifiedAt.Add(time.Hour)); updateErr != nil {
+		t.Fatalf("unverify sender domain: %v", updateErr)
+	}
+	if _, authErr := repository.Authenticate(context.Background(), identity.Username, password); !errors.Is(authErr, ErrAuthenticationFailed) {
+		t.Fatalf("expected pending sender domain to disable SMTP auth, got %v", authErr)
+	}
+	if _, _, exists, resolveErr := repository.ResolveForwarding(context.Background(), address); resolveErr != nil || exists {
+		t.Fatalf("expected pending sender domain to disable forwarding route, exists=%v err=%v", exists, resolveErr)
+	}
+}
+
+func TestRepositoryRejectsSenderDomainClaimedByAnotherOwner(t *testing.T) {
+	repository, _ := newIdentityRepository(t)
+	if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, "customer.example"); domainErr != nil {
+		t.Fatalf("create sender domain: %v", domainErr)
+	}
+	if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "other@example.com"}, "customer.example"); !errors.Is(domainErr, ErrSenderDomainExists) {
+		t.Fatalf("expected sender domain ownership conflict, got %v", domainErr)
+	}
+}
+
+func TestRepositorySenderDomainSetupErrorPaths(t *testing.T) {
+	t.Run("idempotent owner create fills missing token", func(t *testing.T) {
+		repository, database := newIdentityRepository(t)
+		if err := database.Create(&SenderDomain{OwnerEmail: "member@example.com", Domain: "customer.example", Status: SenderDomainStatusPending}).Error; err != nil {
+			t.Fatalf("seed sender domain: %v", err)
+		}
+		domain, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, "customer.example")
+		if domainErr != nil {
+			t.Fatalf("idempotent domain create: %v", domainErr)
+		}
+		if domain.VerificationToken == "" {
+			t.Fatalf("expected missing token to be filled")
+		}
+	})
+	t.Run("admin can read existing owner domain", func(t *testing.T) {
+		repository, _ := newIdentityRepository(t)
+		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, "customer.example"); domainErr != nil {
+			t.Fatalf("create sender domain: %v", domainErr)
+		}
+		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "admin@example.com", Admin: true}, "customer.example"); domainErr != nil {
+			t.Fatalf("admin read sender domain: %v", domainErr)
+		}
+	})
+	t.Run("invalid domain", func(t *testing.T) {
+		repository, _ := newIdentityRepository(t)
+		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, "bad domain"); !errors.Is(domainErr, ErrInvalidSenderDomain) {
+			t.Fatalf("expected invalid domain, got %v", domainErr)
+		}
+		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, " "); !errors.Is(domainErr, ErrInvalidSenderDomain) {
+			t.Fatalf("expected blank domain, got %v", domainErr)
+		}
+	})
+	t.Run("random token failure", func(t *testing.T) {
+		repository, _ := newIdentityRepository(t)
+		repository.random = identityFailingReader{err: io.ErrUnexpectedEOF}
+		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, "customer.example"); !errors.Is(domainErr, io.ErrUnexpectedEOF) {
+			t.Fatalf("expected token failure, got %v", domainErr)
+		}
+	})
+	t.Run("create storage failure", func(t *testing.T) {
+		repository, database := newIdentityRepository(t)
+		if dropErr := database.Migrator().DropTable(&SenderDomain{}); dropErr != nil {
+			t.Fatalf("drop sender domains: %v", dropErr)
+		}
+		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, "customer.example"); domainErr == nil || !strings.Contains(domainErr.Error(), "lookup") {
+			t.Fatalf("expected lookup storage failure, got %v", domainErr)
+		}
+	})
+	t.Run("create save failure", func(t *testing.T) {
+		repository, database := newIdentityRepository(t)
+		registerSenderDomainCreateError(t, database)
+		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, "customer.example"); domainErr == nil || !strings.Contains(domainErr.Error(), "create") {
+			t.Fatalf("expected create storage failure, got %v", domainErr)
+		}
+	})
+	t.Run("missing token save failure", func(t *testing.T) {
+		repository, database := newIdentityRepository(t)
+		if err := database.Create(&SenderDomain{OwnerEmail: "member@example.com", Domain: "customer.example", Status: SenderDomainStatusPending}).Error; err != nil {
+			t.Fatalf("seed sender domain: %v", err)
+		}
+		registerSenderDomainUpdateError(t, database)
+		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, "customer.example"); domainErr == nil || !strings.Contains(domainErr.Error(), "token") {
+			t.Fatalf("expected token storage failure, got %v", domainErr)
+		}
+	})
+	t.Run("missing token random failure", func(t *testing.T) {
+		repository, database := newIdentityRepository(t)
+		if err := database.Create(&SenderDomain{OwnerEmail: "member@example.com", Domain: "customer.example", Status: SenderDomainStatusPending}).Error; err != nil {
+			t.Fatalf("seed sender domain: %v", err)
+		}
+		repository.random = identityFailingReader{err: io.ErrUnexpectedEOF}
+		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, "customer.example"); !errors.Is(domainErr, io.ErrUnexpectedEOF) {
+			t.Fatalf("expected missing token random failure, got %v", domainErr)
+		}
+	})
+	t.Run("list and lookup storage failures", func(t *testing.T) {
+		repository, database := newIdentityRepository(t)
+		closeIdentityDatabase(t, database)
+		if _, listErr := repository.ListSenderDomainsForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}); listErr == nil {
+			t.Fatalf("expected list storage failure")
+		}
+		if _, lookupErr := repository.RequireSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, 1); lookupErr == nil {
+			t.Fatalf("expected lookup storage failure")
+		}
+	})
+	t.Run("not found and update fetch failure", func(t *testing.T) {
+		repository, _ := newIdentityRepository(t)
+		if _, lookupErr := repository.RequireSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, 404); !errors.Is(lookupErr, ErrSenderDomainNotFound) {
+			t.Fatalf("expected missing sender domain, got %v", lookupErr)
+		}
+		if _, updateErr := repository.UpdateSenderDomainStatusForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, 404, SenderDomainStatusVerified, time.Now().UTC()); !errors.Is(updateErr, ErrSenderDomainNotFound) {
+			t.Fatalf("expected missing update sender domain, got %v", updateErr)
+		}
+	})
+	t.Run("update save failure", func(t *testing.T) {
+		repository, database := newIdentityRepository(t)
+		domain, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, "customer.example")
+		if domainErr != nil {
+			t.Fatalf("create sender domain: %v", domainErr)
+		}
+		registerSenderDomainUpdateError(t, database)
+		if _, updateErr := repository.UpdateSenderDomainStatusForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, domain.ID, SenderDomainStatusVerified, time.Now().UTC()); updateErr == nil || !strings.Contains(updateErr.Error(), "status") {
+			t.Fatalf("expected status save failure, got %v", updateErr)
+		}
+	})
+}
+
 func TestRepositoryCreatePreservesSenderDomainStorageFailure(t *testing.T) {
 	repository, database := newIdentityRepository(t)
 	sqlDatabase, sqlErr := database.DB()
@@ -134,6 +327,25 @@ func TestRepositoryCreatePreservesSenderDomainStorageFailure(t *testing.T) {
 	}
 	if errors.Is(createErr, ErrSenderDomainNotAllowed) {
 		t.Fatalf("expected storage failure to remain distinct from sender-domain policy, got %v", createErr)
+	}
+}
+
+func TestRepositoryRequiresSenderDomainStorageForSMTPUse(t *testing.T) {
+	repository, database := newIdentityRepository(t)
+	seedSenderDomain(t, database, "example.com")
+	address := mustAddress(t, "alice@example.com")
+	identity, password, createErr := repository.Create(context.Background(), address, defaultForwardRecipients(t))
+	if createErr != nil {
+		t.Fatalf("create identity: %v", createErr)
+	}
+	if dropErr := database.Migrator().DropTable(&SenderDomain{}); dropErr != nil {
+		t.Fatalf("drop sender domains: %v", dropErr)
+	}
+	if _, authErr := repository.Authenticate(context.Background(), identity.Username, password); authErr == nil || errors.Is(authErr, ErrAuthenticationFailed) {
+		t.Fatalf("expected sender domain storage auth failure, got %v", authErr)
+	}
+	if _, _, exists, resolveErr := repository.ResolveForwarding(context.Background(), address); resolveErr == nil || exists {
+		t.Fatalf("expected sender domain storage forwarding failure, exists=%v err=%v", exists, resolveErr)
 	}
 }
 
@@ -169,6 +381,10 @@ func TestRepositoryRotateReportsMissingIdentityAsNotFound(t *testing.T) {
 	_, _, rotateErr := repository.Rotate(context.Background(), "missing-identity")
 	if !errors.Is(rotateErr, ErrIdentityNotFound) {
 		t.Fatalf("expected identity not found, got %v", rotateErr)
+	}
+	_, _, credentialsErr := repository.Credentials(context.Background(), "missing-identity")
+	if !errors.Is(credentialsErr, ErrIdentityNotFound) {
+		t.Fatalf("expected credentials identity not found, got %v", credentialsErr)
 	}
 }
 
@@ -332,6 +548,7 @@ func TestRepositoryCreateReportsCredentialFailures(t *testing.T) {
 		{name: "username token", reader: identityFailingReader{err: io.ErrUnexpectedEOF}},
 		{name: "password token", reader: io.MultiReader(bytes.NewReader(make([]byte, credentialUsernameBytes)), identityFailingReader{err: io.ErrUnexpectedEOF})},
 		{name: "salt", reader: io.MultiReader(bytes.NewReader(make([]byte, credentialUsernameBytes+credentialPasswordBytes)), identityFailingReader{err: io.ErrUnexpectedEOF})},
+		{name: "password cipher nonce", reader: io.MultiReader(bytes.NewReader(make([]byte, credentialUsernameBytes+credentialPasswordBytes+credentialSaltBytes)), identityFailingReader{err: io.ErrUnexpectedEOF})},
 	}
 	for _, testCase := range testCases {
 		testCase := testCase
@@ -345,6 +562,15 @@ func TestRepositoryCreateReportsCredentialFailures(t *testing.T) {
 			}
 		})
 	}
+	t.Run("password cipher key", func(t *testing.T) {
+		repository, database := newIdentityRepository(t)
+		seedSenderDomain(t, database, "example.com")
+		repository.key = []byte("short")
+		_, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"), defaultForwardRecipients(t))
+		if createErr == nil || !strings.Contains(createErr.Error(), "password cipher") {
+			t.Fatalf("expected password cipher failure, got %v", createErr)
+		}
+	})
 }
 
 func TestRepositoryCreateReportsIdentityStorageFailures(t *testing.T) {
@@ -372,7 +598,7 @@ func TestRepositoryCreateReportsIdentityStorageFailures(t *testing.T) {
 		}).Error; err != nil {
 			t.Fatalf("seed identity: %v", err)
 		}
-		repository.random = bytes.NewReader(make([]byte, credentialUsernameBytes+credentialPasswordBytes+credentialSaltBytes))
+		repository.random = bytes.NewReader(make([]byte, credentialUsernameBytes+credentialPasswordBytes+credentialSaltBytes+credentialNonceBytes))
 		_, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"), defaultForwardRecipients(t))
 		if createErr == nil || !strings.Contains(createErr.Error(), "smtp identity create") {
 			t.Fatalf("expected create storage failure, got %v", createErr)
@@ -431,6 +657,21 @@ func TestRepositoryCreateReportsIdentityStorageFailures(t *testing.T) {
 }
 
 func TestRepositoryUpdateForwardingReportsStorageFailures(t *testing.T) {
+	t.Run("stored address", func(t *testing.T) {
+		repository, database := newIdentityRepository(t)
+		if err := database.Create(&Identity{
+			ID:           "invalid-address-identity",
+			EmailAddress: "bad address",
+			Username:     "smtp-invalid-address",
+			Status:       IdentityStatusActive,
+		}).Error; err != nil {
+			t.Fatalf("seed identity: %v", err)
+		}
+		if _, updateErr := repository.UpdateForwarding(context.Background(), "invalid-address-identity", defaultForwardRecipients(t)); updateErr == nil || !strings.Contains(updateErr.Error(), "stored address") {
+			t.Fatalf("expected stored address update failure, got %v", updateErr)
+		}
+	})
+
 	t.Run("lookup", func(t *testing.T) {
 		repository, database := newIdentityRepository(t)
 		closeIdentityDatabase(t, database)
@@ -557,6 +798,76 @@ func TestRepositoryRotateReportsCredentialAndSaveFailures(t *testing.T) {
 	})
 }
 
+func TestRepositoryCredentialsReportsStoredPasswordFailures(t *testing.T) {
+	t.Run("legacy password", func(t *testing.T) {
+		repository, database := newIdentityRepository(t)
+		if err := database.Create(&Identity{
+			ID:           "legacy-identity",
+			EmailAddress: "alice@example.com",
+			Username:     "smtp-legacy",
+			Status:       IdentityStatusActive,
+		}).Error; err != nil {
+			t.Fatalf("seed legacy identity: %v", err)
+		}
+		_, _, credentialsErr := repository.Credentials(context.Background(), "legacy-identity")
+		if !errors.Is(credentialsErr, ErrPasswordUnavailable) {
+			t.Fatalf("expected password unavailable, got %v", credentialsErr)
+		}
+	})
+
+	t.Run("short ciphertext", func(t *testing.T) {
+		repository, database := newIdentityRepository(t)
+		if err := database.Create(&Identity{
+			ID:             "short-cipher-identity",
+			EmailAddress:   "alice@example.com",
+			Username:       "smtp-short-cipher",
+			PasswordCipher: []byte("short"),
+			Status:         IdentityStatusActive,
+		}).Error; err != nil {
+			t.Fatalf("seed short cipher identity: %v", err)
+		}
+		_, _, credentialsErr := repository.Credentials(context.Background(), "short-cipher-identity")
+		if credentialsErr == nil || !strings.Contains(credentialsErr.Error(), "ciphertext too short") {
+			t.Fatalf("expected short ciphertext error, got %v", credentialsErr)
+		}
+	})
+
+	t.Run("bad key", func(t *testing.T) {
+		repository, database := newIdentityRepository(t)
+		seedSenderDomain(t, database, "example.com")
+		identity, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"), defaultForwardRecipients(t))
+		if createErr != nil {
+			t.Fatalf("create identity: %v", createErr)
+		}
+		repository.key = []byte("short")
+		_, _, credentialsErr := repository.Credentials(context.Background(), identity.ID)
+		if credentialsErr == nil || !strings.Contains(credentialsErr.Error(), "invalid key size") {
+			t.Fatalf("expected invalid key error, got %v", credentialsErr)
+		}
+	})
+
+	t.Run("bad ciphertext", func(t *testing.T) {
+		repository, database := newIdentityRepository(t)
+		seedSenderDomain(t, database, "example.com")
+		identity, _, createErr := repository.Create(context.Background(), mustAddress(t, "alice@example.com"), defaultForwardRecipients(t))
+		if createErr != nil {
+			t.Fatalf("create identity: %v", createErr)
+		}
+		var stored Identity
+		if err := database.Where(&Identity{ID: identity.ID}).First(&stored).Error; err != nil {
+			t.Fatalf("fetch identity: %v", err)
+		}
+		stored.PasswordCipher[len(stored.PasswordCipher)-1] ^= 1
+		if err := database.Model(&Identity{}).Where(&Identity{ID: identity.ID}).Update("password_cipher", stored.PasswordCipher).Error; err != nil {
+			t.Fatalf("corrupt password cipher: %v", err)
+		}
+		_, _, credentialsErr := repository.Credentials(context.Background(), identity.ID)
+		if credentialsErr == nil || !strings.Contains(credentialsErr.Error(), "message authentication failed") {
+			t.Fatalf("expected bad ciphertext error, got %v", credentialsErr)
+		}
+	})
+}
+
 func TestRepositoryDeleteReportsSaveFailure(t *testing.T) {
 	repository, database := newIdentityRepository(t)
 	seedSenderDomain(t, database, "example.com")
@@ -655,6 +966,40 @@ func registerIdentityUpdateError(t *testing.T, database *gorm.DB) {
 	t.Cleanup(func() {
 		if err := database.Callback().Update().Remove(callbackName); err != nil {
 			t.Fatalf("remove update callback: %v", err)
+		}
+	})
+}
+
+func registerSenderDomainUpdateError(t *testing.T, database *gorm.DB) {
+	t.Helper()
+	callbackName := "pinguin:force_sender_domain_update_error"
+	if err := database.Callback().Update().Before("gorm:update").Register(callbackName, func(tx *gorm.DB) {
+		if _, ok := tx.Statement.Dest.(*SenderDomain); ok {
+			tx.AddError(errors.New("forced sender domain update failure"))
+		}
+	}); err != nil {
+		t.Fatalf("register sender domain update callback: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := database.Callback().Update().Remove(callbackName); err != nil {
+			t.Fatalf("remove sender domain update callback: %v", err)
+		}
+	})
+}
+
+func registerSenderDomainCreateError(t *testing.T, database *gorm.DB) {
+	t.Helper()
+	callbackName := "pinguin:force_sender_domain_create_error"
+	if err := database.Callback().Create().Before("gorm:create").Register(callbackName, func(tx *gorm.DB) {
+		if _, ok := tx.Statement.Dest.(*SenderDomain); ok {
+			tx.AddError(errors.New("forced sender domain create failure"))
+		}
+	}); err != nil {
+		t.Fatalf("register sender domain create callback: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := database.Callback().Create().Remove(callbackName); err != nil {
+			t.Fatalf("remove sender domain create callback: %v", err)
 		}
 	})
 }

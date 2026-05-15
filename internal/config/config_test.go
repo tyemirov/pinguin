@@ -475,7 +475,6 @@ func TestValidateConfigRejectsInvalidSMTPForwarding(t *testing.T) {
 		t.Fatalf("expected validation error")
 	}
 	for _, expected := range []string{
-		"smtpSubmission.senderDomains",
 		"smtpForwarding.hostname",
 		"smtpForwarding.listenAddr",
 		"smtpForwarding.maxMessageBytes",
@@ -491,7 +490,7 @@ func TestValidateConfigRejectsInvalidSMTPForwarding(t *testing.T) {
 	}
 }
 
-func TestValidateConfigRequiresSenderDomainsForSMTPForwarding(t *testing.T) {
+func TestValidateConfigAllowsSMTPForwardingWithoutStaticSenderDomains(t *testing.T) {
 	cfg := Config{
 		DatabasePath:         "app.db",
 		GRPCAuthToken:        "token",
@@ -517,12 +516,8 @@ func TestValidateConfigRequiresSenderDomainsForSMTPForwarding(t *testing.T) {
 			},
 		},
 	}
-	err := validateConfig(cfg)
-	if err == nil {
-		t.Fatalf("expected validation error")
-	}
-	if !strings.Contains(err.Error(), "smtpSubmission.senderDomains") {
-		t.Fatalf("expected sender-domain validation error, got %v", err)
+	if err := validateConfig(cfg); err != nil {
+		t.Fatalf("expected dynamic sender domains to satisfy forwarding config, got %v", err)
 	}
 }
 
@@ -645,7 +640,6 @@ func TestValidateConfigAggregatesMissingFields(t *testing.T) {
 		"server.databasePath",
 		"web.listenAddr",
 		"smtpSubmission.hostname",
-		"smtpSubmission.senderDomains",
 		"tenants[0].displayName",
 		"tenants[0].domains",
 	} {

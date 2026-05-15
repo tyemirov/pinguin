@@ -15,6 +15,7 @@ const PLAYWRIGHT_AVATAR_URL =
 
 export async function configureRuntime(page: Page, options: ConfigureRuntimeOptions) {
   const baseUrl = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:4174';
+  const runtimeToken = `${Date.now()}-${Math.random()}`;
   await page.context().clearCookies();
   if (options.authenticated) {
     await page.context().addCookies([
@@ -31,25 +32,34 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
     displayName: 'Playwright Tenant',
   };
   await page.addInitScript(
-    ({ authenticated, avatarUrl }) => {
-      if (!window.name) {
-        const defaultProfile = {
-          user_email: 'playwright@example.com',
-          user_display_name: 'Playwright User',
-          user_avatar_url: avatarUrl,
-          display: 'Playwright User',
-          given_name: 'Playwright',
-          avatar_url: avatarUrl,
+    ({ authenticated, avatarUrl, token }) => {
+      const defaultProfile = {
+        user_email: 'playwright@example.com',
+        user_display_name: 'Playwright User',
+        user_avatar_url: avatarUrl,
+        display: 'Playwright User',
+        given_name: 'Playwright',
+        avatar_url: avatarUrl,
+      };
+      let payload = {};
+      try {
+        payload = window.name ? JSON.parse(window.name) : {};
+      } catch {
+        payload = {};
+      }
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        payload = {};
+      }
+      if (payload.__configureRuntimeToken !== token) {
+        payload.__configureRuntimeToken = token;
+        payload.__mockAuth = {
+          authenticated,
+          profile: defaultProfile,
         };
-        window.name = JSON.stringify({
-          __mockAuth: {
-            authenticated,
-            profile: defaultProfile,
-          },
-        });
+        window.name = JSON.stringify(payload);
       }
     },
-    { authenticated: options.authenticated, avatarUrl: PLAYWRIGHT_AVATAR_URL },
+    { authenticated: options.authenticated, avatarUrl: PLAYWRIGHT_AVATAR_URL, token: runtimeToken },
   );
   await page.addInitScript(
     ({ authenticated, tenantPayload, avatarUrl }) => {
@@ -94,11 +104,78 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
         }
       };
       window.__persistMockAuth();
+      const authSnapshot = () => {
+        if (window.__mockAuth && window.__mockAuth.authenticated) {
+          return { status: 'authenticated', profile: window.__mockAuth.profile || defaultProfile };
+        }
+        return { status: 'unauthenticated' };
+      };
+      window.MPRUI = {
+        ...(window.MPRUI || {}),
+        whenAutoOrchestrationReady: () => Promise.resolve(),
+        resolveAuthProfileSnapshot: () => authSnapshot(),
+      };
+      const publishMockAuth = () => {
+        const header = document.querySelector('mpr-header');
+        const userMenu = header?.querySelector('[data-mpr-header="user-menu"]');
+        const snapshot = authSnapshot();
+        if (snapshot.status === 'authenticated') {
+          const profile = snapshot.profile || defaultProfile;
+          header?.setAttribute('data-mpr-auth-status', 'authenticated');
+          header?.setAttribute('data-user-email', profile.user_email || '');
+          header?.setAttribute('data-user-display', profile.user_display_name || profile.display || '');
+          header?.setAttribute('data-user-avatar-url', profile.user_avatar_url || profile.avatar_url || '');
+          userMenu?.setAttribute('data-mpr-user-status', 'authenticated');
+          userMenu?.setAttribute('data-user-email', profile.user_email || '');
+          userMenu?.setAttribute('data-user-display', profile.user_display_name || profile.display || '');
+          userMenu?.setAttribute('data-user-avatar-url', profile.user_avatar_url || profile.avatar_url || '');
+          if (userMenu instanceof HTMLElement) {
+            userMenu.style.display = 'inline-flex';
+            const name = userMenu.querySelector('[data-mpr-user="name"]');
+            if (name) {
+              name.textContent = profile.user_display_name || profile.display || '';
+            }
+            const trigger = userMenu.querySelector('[data-mpr-user="trigger"]');
+            if (trigger instanceof HTMLElement) {
+              trigger.style.display = 'inline-flex';
+            }
+          }
+          document.dispatchEvent(new CustomEvent('mpr-ui:auth:authenticated', { detail: { profile } }));
+          return;
+        }
+        header?.setAttribute('data-mpr-auth-status', 'unauthenticated');
+        userMenu?.setAttribute('data-mpr-user-status', 'unauthenticated');
+        if (userMenu instanceof HTMLElement) {
+          userMenu.style.display = 'none';
+          const trigger = userMenu.querySelector('[data-mpr-user="trigger"]');
+          if (trigger instanceof HTMLElement) {
+            trigger.style.display = 'none';
+          }
+        }
+        document.dispatchEvent(new CustomEvent('mpr-ui:auth:unauthenticated'));
+      };
+      window.__publishMockAuth = publishMockAuth;
+      document.addEventListener('click', (event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        if (!target?.closest('[data-mpr-user="logout"]')) {
+          return;
+        }
+        event.preventDefault();
+        window.__mockAuth = window.__mockAuth || { authenticated: false };
+        window.__mockAuth.authenticated = false;
+        window.__persistMockAuth && window.__persistMockAuth();
+        publishMockAuth();
+      });
+      document.addEventListener('DOMContentLoaded', () => {
+        setTimeout(publishMockAuth, 0);
+        setTimeout(publishMockAuth, 100);
+      });
     },
     {
       authenticated: options.authenticated,
       tenantPayload: tenant,
       avatarUrl: PLAYWRIGHT_AVATAR_URL,
+      token: runtimeToken,
     },
   );
 }

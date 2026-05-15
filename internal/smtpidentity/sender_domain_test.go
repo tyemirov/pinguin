@@ -28,6 +28,7 @@ func TestNormalizeSenderDomainsRejectsInvalidInput(t *testing.T) {
 	}{
 		{name: "empty", domains: []string{" ", ""}, wantErr: "no domains configured"},
 		{name: "duplicate", domains: []string{"Example.com", "example.COM"}, wantErr: "duplicate domain example.com"},
+		{name: "invalid", domains: []string{"bad domain"}, wantErr: "sender_domain.invalid"},
 	}
 	for _, testCase := range testCases {
 		testCase := testCase
@@ -35,6 +36,26 @@ func TestNormalizeSenderDomainsRejectsInvalidInput(t *testing.T) {
 			_, err := NormalizeSenderDomains(testCase.domains)
 			if err == nil || !strings.Contains(err.Error(), testCase.wantErr) {
 				t.Fatalf("expected %q error, got %v", testCase.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestNormalizeSenderDomainRejectsInvalidDNSNames(t *testing.T) {
+	testCases := []string{
+		"localhost",
+		"bad..example",
+		"-bad.example",
+		"bad-.example",
+		strings.Repeat("a", 64) + ".example",
+		strings.Repeat("a", 250) + ".com",
+		"bad_underscore.example",
+	}
+	for _, rawDomain := range testCases {
+		rawDomain := rawDomain
+		t.Run(rawDomain, func(t *testing.T) {
+			if _, err := NormalizeSenderDomain(rawDomain); !errors.Is(err, ErrInvalidSenderDomain) {
+				t.Fatalf("expected invalid domain for %q, got %v", rawDomain, err)
 			}
 		})
 	}

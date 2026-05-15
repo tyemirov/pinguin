@@ -399,12 +399,6 @@ func validateConfig(cfg Config) error {
 		}
 	}
 
-	if cfg.SMTPSubmission.Enabled || cfg.SMTPForwarding.Enabled {
-		if countNonEmptyStrings(cfg.SMTPSubmission.SenderDomains) == 0 {
-			errors = append(errors, "missing smtpSubmission.senderDomains")
-		}
-	}
-
 	if cfg.SMTPForwarding.Enabled {
 		requireString(cfg.SMTPForwarding.Hostname, "smtpForwarding.hostname", &errors)
 		requireString(cfg.SMTPForwarding.ListenAddr, "smtpForwarding.listenAddr", &errors)
