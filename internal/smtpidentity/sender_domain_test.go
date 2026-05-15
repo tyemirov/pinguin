@@ -79,6 +79,41 @@ func TestReplaceSenderDomainsResetsConfiguredDomains(t *testing.T) {
 	}
 }
 
+func TestReplaceSenderDomainsReplacesLegacyConfiguredDomains(t *testing.T) {
+	_, database := newIdentityRepository(t)
+	if err := database.Omit("OwnerEmail").Create(&SenderDomain{Domain: "legacy.example"}).Error; err != nil {
+		t.Fatalf("seed legacy sender domain: %v", err)
+	}
+	if err := database.Create(&SenderDomain{
+		OwnerEmail: "member@example.com",
+		Domain:     "customer.example",
+		Status:     SenderDomainStatusVerified,
+	}).Error; err != nil {
+		t.Fatalf("seed user sender domain: %v", err)
+	}
+
+	if err := ReplaceSenderDomains(context.Background(), database, []string{"Legacy.example", "operator.example"}); err != nil {
+		t.Fatalf("replace legacy domains: %v", err)
+	}
+
+	var domains []SenderDomain
+	if err := database.Order(clause.OrderByColumn{Column: clause.Column{Name: "domain"}}).Find(&domains).Error; err != nil {
+		t.Fatalf("list sender domains: %v", err)
+	}
+	if len(domains) != 3 {
+		t.Fatalf("unexpected stored domain count %+v", domains)
+	}
+	if domains[0].Domain != "customer.example" || domains[0].OwnerEmail != "member@example.com" {
+		t.Fatalf("expected user-owned domain to remain, got %+v", domains[0])
+	}
+	if domains[1].Domain != "legacy.example" || domains[1].OwnerEmail != "" || domains[1].Status != SenderDomainStatusVerified {
+		t.Fatalf("expected legacy domain to be replaced as configured, got %+v", domains[1])
+	}
+	if domains[2].Domain != "operator.example" || domains[2].OwnerEmail != "" || domains[2].Status != SenderDomainStatusVerified {
+		t.Fatalf("expected operator domain to be configured, got %+v", domains[2])
+	}
+}
+
 func TestReplaceSenderDomainsReportsStorageFailures(t *testing.T) {
 	t.Run("normalization", func(t *testing.T) {
 		_, database := newIdentityRepository(t)

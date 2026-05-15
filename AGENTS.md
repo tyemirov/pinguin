@@ -28,6 +28,10 @@ Pinguin is a production‑quality notification service written in Go. It exposes
 
 All rules for validation, error handling, invariants, and “confident programming” (no defensive checks, edge-only validation, smart constructors, CI gates) are defined in POLICY.md. Treat that document as binding; this file does not restate them.
 
+### Legacy & Compatibility Policy
+
+Pinguin does not support backward compatibility. Legacy data, schemas, config keys, endpoints, users, and historical behavior are invalid state. Delete or reject them rather than preserving, migrating, translating, or routing around them. The application supports one current code path only; do not add compatibility branches, fallbacks, or migration shims.
+
 ### Build & Test Commands
 
 - Use the repository `Makefile` for local automation. Invoke `make test`, `make lint`, `make ci`, or other documented targets instead of running ad-hoc tool commands.

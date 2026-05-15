@@ -7,6 +7,8 @@
 - **Fail fast** (dev) and **wrap errors with context** at boundaries (prod).
 - **Narrow interfaces**: accept domain types, not loose primitives, when a domain type exists.
 - **No duplicate checks** in core; once validated, don’t re-validate.
+- **No backward compatibility**: legacy data, schemas, config keys, endpoints, and behavior are invalid state to delete or reject, not preserve.
+- **Single code path only**: do not add compatibility branches, migration shims, or fallbacks for historical behavior.
 - Tests target **contracts/invariants**, not defensive branches.
 - Testing follows an **inverted test pyramid**: prefer high-value black-box integration tests over unit tests; unit tests are optional implementation guardrails, not product-level acceptance tests.
 - We **strive for 100% test coverage** driven primarily by integration/black-box suites that exercise observable behavior and contracts rather than internal implementation details; replacing clunky unit tests with stronger integration coverage is encouraged.
@@ -25,8 +27,24 @@
    - **Prod boundary**: **wrap** with operation + subject + stable code.
 
 6. **No silent fallbacks** or “best-effort” paths unless a product requirement is cited in the commit.
+7. **No backward compatibility**. Do not preserve legacy data, legacy schemas, legacy users, deprecated config, old endpoints, or historical behavior. Delete invalid legacy state and support only the current product contract.
+8. **Single code path**. Do not add compatibility branches, dual-read/dual-write flows, automatic legacy migrations, or fallback behavior. Current inputs must follow the current schema; old inputs must fail fast or be deleted by explicit cleanup.
 
 ---
+
+## Legacy & Compatibility Policy
+
+Pinguin does not support backward compatibility. Historical data, schemas, config shapes, feature flags, routes, users, or behavior that no longer match the current product contract are legacy state. Legacy state must not be preserved, translated, or kept alive through fallback code.
+
+When legacy state is discovered:
+
+- Delete obsolete rows, tables, files, config keys, or code paths without reservation.
+- Reject outdated external inputs at the edge with explicit errors.
+- Keep exactly one current runtime code path.
+- Tests should prove legacy state is removed or rejected, not that it continues working.
+- Documentation and changelogs should describe legacy cleanup as deletion, not migration or compatibility support.
+
+The only acceptable cleanup for legacy persisted state is a destructive cleanup that leaves the application in the current schema and behavior. Do not implement automatic migration shims, compatibility reads, preservation modes, or "best effort" fallbacks.
 
 ## B. Invariants & contracts (declare per module)
 

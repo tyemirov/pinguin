@@ -83,7 +83,11 @@ func ReplaceSenderDomains(ctx context.Context, db *gorm.DB, domains []string) er
 		return normalizeErr
 	}
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where(clause.Eq{Column: clause.Column{Name: ownerEmailColumn}, Value: ""}).Delete(&SenderDomain{}).Error; err != nil {
+		configuredOwnerClause := clause.Or(
+			clause.Eq{Column: clause.Column{Name: ownerEmailColumn}, Value: ""},
+			clause.Eq{Column: clause.Column{Name: ownerEmailColumn}, Value: nil},
+		)
+		if err := tx.Where(configuredOwnerClause).Delete(&SenderDomain{}).Error; err != nil {
 			return fmt.Errorf("smtp identity sender domains: reset: %w", err)
 		}
 		for _, domain := range normalizedDomains {
