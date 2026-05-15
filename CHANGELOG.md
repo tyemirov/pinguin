@@ -70,6 +70,40 @@
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 - Document the remaining edge mappings after gateway deployment: `25 -> tutosh:8025` and `465 -> tutosh:8465`.
 
+## [v0.4.13] - 2026-05-14
+
+### Features ✨
+- Added a shared production Git guard to ensure release, publish, and deploy commands run only from a clean local `master` branch matching `origin/master` with zero open PRs.
+- Introduced Playwright tests for SMTP relay identity modal interaction, improving UI security controls.
+
+### Improvements ⚙️
+- Updated production workflows to verify Git state and zero open PRs before running release, publish, and deploy tasks.
+- Enhanced deployment script to enforce production Git guard and verify gateway SMTP listener ports.
+- Refined publishing process to include Git state verification and improved documentation.
+- Added comprehensive contract testing coverage for production Git guard usage.
+- Improved CSS styling for base styles.
+- Updated SMTP relay UI to move password and rotation controls inside modals for better security and UX.
+- Backend alignment with gateway high-port publishing for MX and SMTPS on ports 8025 and 8465.
+- Replaced placeholder logo with canonical Pinguin turquoise envelope mark.
+
+### Bug Fixes 🐛
+- Fixed production deploy completing without validating clean Git state.
+- Resolved startup crashes caused by legacy NULL-owner sender-domain rows by deleting them before seeding the allowlist.
+- Allowed null reverse-path SMTP forwarding for DSNs and loop-safe messages.
+- Corrected issue exposing SMTP relay passwords and rotate actions by confining them to modals only.
+
+### Testing 🧪
+- Added contract coverage for the production Git guard in release, publish, and deploy scripts.
+- Expanded backend and frontend test coverage for sender-domain handling and SMTP relay credential management.
+- Included production workflow contract coverage verifying release and publish processes.
+- Improved end-to-end dashboard and UI test stability with updated artifacts.
+
+### Docs 📚
+- Documented new production Git-state requirements for release, publish, and deploy commands.
+- Updated deployment and publishing procedures with stricter validation details.
+- Clarified SMTP relay identity and DNS setup documentation.
+- Strengthened guidance on backwards compatibility limitations and shared-address forwarding verification.
+
 ## [v0.4.12] - 2026-05-14
 
 ### Features ✨
