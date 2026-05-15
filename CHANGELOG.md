@@ -72,6 +72,29 @@
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 - Document the remaining edge mappings after gateway deployment: `25 -> tutosh:8025` and `465 -> tutosh:8465`.
 
+## [v0.4.15] - 2026-05-15
+
+### Features ✨
+- Add initial deployment configuration file `deploy/app.yml` to manage GitHub Pages deployment within the Pinguin app.
+
+### Improvements ⚙️
+- Migrate stored SMTP identity credential passwords during server startup to improve security handling.
+- Refactor deployment process: move GitHub Pages deployment resource into `deploy/app.yml` so Pinguin owns the deployable frontend contract while gateway Ansible owns execution.
+- Enhance deployment documentation detailing environment variables and verification steps for production deploys.
+
+### Bug Fixes 🐛
+- Remove legacy unresolved password error response from SMTP identity handling for more consistent error mappings.
+- Fix SMTP sender domain replacement logic and tenant bootstrap integration with credential migration.
+- Prevent server startup failure by deleting legacy NULL-owner SMTP sender-domain rows before seeding.
+
+### Testing 🧪
+- Add tests covering SMTP credential migration during server run.
+- Adjust test suite to expect SMTP credential migration alongside other bootstrapping and TLS setup steps.
+
+### Docs 📚
+- Update README deployment section to describe new app manifest usage and gateway forwarding configuration.
+- Synchronize documentation to reflect the centralized deployment control and updated release preparation steps.
+
 ## [v0.4.14] - 2026-05-15
 
 ### Features ✨
