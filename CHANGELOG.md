@@ -11,6 +11,7 @@
 - Add backend-backed search and infinite scroll for dashboard notification events, including cursor pagination and a single top-level refresh control.
 
 ### Bug Fixes
+- Align production workflow contract tests and docs with the current release branch defaults and `deploy-pinguin-backend` gateway target.
 - Require `make release`, `make publish`, and `make deploy` to run only from clean local `master` matching `origin/master` with zero open PRs, and print the verified branch/commit before production work starts.
 - Delete legacy NULL-owner configured SMTP sender-domain rows before seeding the current allowlist so startup does not crash on the unique domain index.
 - Accept SMTP forwarding `MAIL FROM:<>` null reverse-path traffic so DSNs and auto-generated loop-safe messages can reach configured shared-address routes.

@@ -126,8 +126,10 @@ func TestReleaseScriptUsesProductionGitGuard(t *testing.T) {
 
 	releaseScript := string(readRepoFile(t, "scripts", "release.sh"))
 	requiredSnippets := []string{
-		"RELEASE_BRANCH=\"${RELEASE_BRANCH:-master}\"",
-		"RELEASE_REMOTE=\"${RELEASE_REMOTE:-origin}\"",
+		"if [[ -v RELEASE_BRANCH ]] && [[ -n \"${RELEASE_BRANCH}\" ]]; then",
+		"RELEASE_BRANCH=\"master\"",
+		"if [[ -v RELEASE_REMOTE ]] && [[ -n \"${RELEASE_REMOTE}\" ]]; then",
+		"RELEASE_REMOTE=\"origin\"",
 		"source \"${repo_root}/scripts/production_git_guard.sh\"",
 		"verify_production_git_state \"release\" \"${RELEASE_BRANCH}\" \"${RELEASE_REMOTE}\"",
 		"release default branch must be ${RELEASE_BRANCH}",
@@ -178,7 +180,7 @@ func TestDeployScriptDeploysBackendThenLegacyPages(t *testing.T) {
 		"${PINGUIN_SMTP_FORWARDING_HOST_PORT}:${PINGUIN_SMTP_FORWARDING_PUBLIC_PORT}",
 		"mprlab_verify_pinguin_smtp_port: 8465",
 		"mprlab_verify_pinguin_mx_port: 8025",
-		"make -C \"${GATEWAY_DIR}\" deploy TARGET=pinguin",
+		"make -C \"${GATEWAY_DIR}\" deploy-pinguin-backend",
 		"edge 25 -> tutosh:8025 and edge 465 -> tutosh:8465",
 		"Verifying ${IMAGE_REPOSITORY}:latest matches ${TAG}",
 		"./scripts/publish_pages_branch.sh",
