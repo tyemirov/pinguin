@@ -73,6 +73,31 @@
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 - Document the remaining edge mappings after gateway deployment: `25 -> tutosh:8025` and `465 -> tutosh:8465`.
 
+## [v0.4.16] - 2026-05-15
+
+### Features ✨
+- Users can now add and verify sender domains through the SMTP relay page with DNS verification (TXT, SPF, DMARC) gating domain ownership.
+- All sender domains are managed via API and database instead of static YAML configuration.
+
+### Improvements ⚙️
+- Removed legacy `smtpSubmission.senderDomains` YAML configuration; sender domains are fully API/DB owned.
+- SMTP sender domain validation errors are surfaced in the SMTP relay UI for better visibility.
+- Cleaned up legacy sender domain data automatically during startup.
+- Documentation updated to reflect the new sender domain ownership and verification flow.
+- Production SMTP relay setup simplified by shifting TLS termination to gateway and removing direct TLS config from Pinguin.
+
+### Bug Fixes 🐛
+- Fixed handling of dynamic SMTP sender domains to prevent incorrect legacy configurations.
+- Rejected legacy sender domain YAML entries to avoid startup failures and inconsistent states.
+
+### Testing 🧪
+- Updated server tests to cover legacy sender domain cleanup instead of sender domain replacement.
+- Enhanced test coverage for SMTP identity repository initialization and sender domain cleanup error paths.
+
+### Docs 📚
+- Updated README and SMTP delivery plan documentation to remove deprecated YAML sender domain config and describe new API-backed sender domain verification process.
+- Adjusted architecture documentation to clarify sender domain management changes.
+
 ## [v0.4.15] - 2026-05-15
 
 ### Features ✨
