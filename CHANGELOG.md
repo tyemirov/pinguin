@@ -11,11 +11,11 @@
 - Add backend-backed search and infinite scroll for dashboard notification events, including cursor pagination and a single top-level refresh control.
 
 ### Bug Fixes
-- Make SMTP sender domains fully API/DB-owned by rejecting legacy `smtpSubmission.senderDomains`, deleting unowned configured-domain rows at startup, and surfacing sender-domain API validation errors in the SMTP relay UI.
+- Prune dead sender-domain config cleanup, SMTP identity credential migration, the obsolete `failed` notification status path, and the old `dashboard.html` redirect so current runtime behavior has no compatibility shims.
+- Make SMTP sender domains fully API/DB-owned by rejecting unknown static sender-domain config, removing static config/env references, and surfacing sender-domain API validation errors in the SMTP relay UI.
 - Move the gateway-executed GitHub Pages deployment resource into `deploy/app.yml` so Pinguin owns the deployable frontend contract while gateway Ansible owns execution.
 - Align production workflow contract tests and docs with the current release branch defaults and `deploy-pinguin-backend` gateway target.
 - Require `make release`, `make publish`, and `make deploy` to run only from clean local `master` matching `origin/master` with zero open PRs, and print the verified branch/commit before production work starts.
-- Delete legacy NULL-owner configured SMTP sender-domain rows before seeding the current allowlist so startup does not crash on the unique domain index.
 - Accept SMTP forwarding `MAIL FROM:<>` null reverse-path traffic so DSNs and auto-generated loop-safe messages can reach configured shared-address routes.
 - Replace the generated placeholder logo with the canonical Pinguin turquoise envelope mark.
 - Enforce tenant authorization before honoring `tenant_id` on notification list, reschedule, and cancel endpoints.
@@ -23,7 +23,6 @@
 - Honor configured tenant admin emails for dashboard tenant access and global SMTP identity management.
 - Restore the deploy script's gateway handoff to the generic `deploy TARGET=pinguin` dispatcher before legacy Pages publication.
 - Remove stale tenant bootstrap records so deleted tenants no longer leave active admin access behind.
-- Match the legacy failed-notification `errored` search alias only when the query exactly equals `errored`.
 - Keep the landing and dashboard header branded as `[logo] Pinguin` even when runtime tenant metadata belongs to a notification consumer, and serve the Pinguin favicon from `/favicon.svg`.
 - Restore production login rendering by moving the frontend onto the `mpr-ui` `/config-ui.yaml` orchestration contract and removing the direct `tauth.js` loader.
 - Align the local Docker browser origin with the configured Google OAuth client by moving the UI to `http://localhost:8080`, the API to `http://localhost:8081`, and TAuth to `http://localhost:8082`.
@@ -42,7 +41,6 @@
 
 ### Testing
 - Add production workflow contract coverage for the shared release/publish/deploy Git guard.
-- Add sender-domain storage coverage for deleting legacy NULL-owner configured rows without a compatibility migration.
 - Add backend and browser coverage for sender-domain DNS setup, manual checks, and verified-domain SMTP identity creation.
 - Add backend and browser coverage for retrieving existing SMTP relay credentials and rotating them from inside the modal.
 - Add black-box SMTP forwarding coverage for accept/forward, unknown-recipient rejection, size limits, relay failures, and startup wiring.
@@ -53,7 +51,6 @@
 - Add backend coverage proving non-admin SMTP identity routes return 403 before touching identity storage.
 - Add backend coverage for configured tenant admin authorization.
 - Add backend coverage for pruning tenant bootstrap records that disappear from config.
-- Add backend coverage preventing partial search terms from broadening to legacy failed-notification aliases.
 - Add backend and browser coverage for explicit tenant notification listing and dashboard switching between tenant event views.
 - Add browser coverage for the Pinguin logo/favicon header contract, including a regression where runtime config returns `PoodleScanner` tenant metadata.
 - Add browser coverage for the landing header login path and for the `mpr-ui@latest` config contract.

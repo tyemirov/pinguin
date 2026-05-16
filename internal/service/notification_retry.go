@@ -105,7 +105,7 @@ func pendingJobsFilter(maxRetries int, currentTime time.Time) clause.Expression 
 	return clause.And(
 		clause.IN{
 			Column: clause.Column{Table: pendingJobsNotificationsTable, Name: pendingJobsStatusColumn},
-			Values: []interface{}{model.StatusQueued, model.StatusErrored, model.StatusFailed},
+			Values: []interface{}{model.StatusQueued, model.StatusErrored},
 		},
 		clause.Lt{Column: clause.Column{Table: pendingJobsNotificationsTable, Name: pendingJobsRetryCountColumn}, Value: maxRetries},
 		clause.Or(

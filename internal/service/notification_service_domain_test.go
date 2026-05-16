@@ -42,11 +42,11 @@ func TestListNotificationsFiltersByStatus(t *testing.T) {
 		UpdatedAt:        now.Add(time.Second),
 	})
 	insertNotificationRecord(t, database, model.Notification{
-		NotificationID:   "notif-legacy-failed",
+		NotificationID:   "notif-errored",
 		NotificationType: model.NotificationEmail,
 		Recipient:        "errored@example.com",
 		Message:          "errored",
-		Status:           model.StatusFailed,
+		Status:           model.StatusErrored,
 		CreatedAt:        now.Add(2 * time.Second),
 		UpdatedAt:        now.Add(2 * time.Second),
 	})

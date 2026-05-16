@@ -37,7 +37,6 @@ const (
 	StatusErrored   NotificationStatus = "errored"
 	StatusCancelled NotificationStatus = "cancelled"
 	StatusUnknown   NotificationStatus = "unknown"
-	StatusFailed    NotificationStatus = "failed" // legacy value kept for previously persisted rows
 )
 
 const (
@@ -68,8 +67,6 @@ func CanonicalStatus(status NotificationStatus) NotificationStatus {
 	switch status {
 	case StatusQueued, StatusSent, StatusErrored, StatusCancelled, StatusUnknown:
 		return status
-	case StatusFailed:
-		return StatusErrored
 	default:
 		return ""
 	}
@@ -219,7 +216,7 @@ type NotificationListResponsePage struct {
 	NextCursor    string
 }
 
-// NormalizedStatuses removes duplicates and legacy aliases while preserving order.
+// NormalizedStatuses removes duplicates while preserving order.
 func (filters NotificationListFilters) NormalizedStatuses() []NotificationStatus {
 	if len(filters.Statuses) == 0 {
 		return nil
@@ -373,13 +370,13 @@ func SaveNotification(ctx context.Context, db *gorm.DB, n *Notification) error {
 	return db.WithContext(ctx).Save(n).Error
 }
 
-func GetQueuedOrFailedNotifications(ctx context.Context, db *gorm.DB, tenantID string, maxRetries int, currentTime time.Time) ([]Notification, error) {
+func GetPendingRetryNotifications(ctx context.Context, db *gorm.DB, tenantID string, maxRetries int, currentTime time.Time) ([]Notification, error) {
 	var notifications []Notification
 	tenantIDColumn := clause.Column{Name: notificationTenantIDColumn}
 	statusColumn := clause.Column{Name: notificationStatusColumn}
 	retryCountColumn := clause.Column{Name: notificationRetryCountColumn}
 	scheduledForColumn := clause.Column{Name: notificationScheduledForColumn}
-	statusValues := []interface{}{StatusQueued, StatusErrored, StatusFailed}
+	statusValues := []interface{}{StatusQueued, StatusErrored}
 	err := db.WithContext(ctx).
 		Preload("Attachments").
 		Where(clause.And(
@@ -440,9 +437,6 @@ func notificationListQuery(ctx context.Context, db *gorm.DB, filters Notificatio
 		statusValues := make([]interface{}, 0, len(statuses))
 		for _, status := range statuses {
 			statusValues = append(statusValues, status)
-			if status == StatusErrored {
-				statusValues = append(statusValues, StatusFailed)
-			}
 		}
 		query = query.Where(clause.IN{Column: clause.Column{Name: notificationStatusColumn}, Values: statusValues})
 	}
@@ -467,9 +461,6 @@ func notificationSearchCondition(query NotificationSearchQuery) clause.Expressio
 	expressions := make([]clause.Expression, 0, len(columns)+1)
 	for _, columnName := range columns {
 		expressions = append(expressions, clause.Like{Column: clause.Column{Name: columnName}, Value: pattern})
-	}
-	if strings.EqualFold(value, string(StatusErrored)) {
-		expressions = append(expressions, clause.Eq{Column: clause.Column{Name: notificationStatusColumn}, Value: StatusFailed})
 	}
 	return clause.Or(expressions...)
 }

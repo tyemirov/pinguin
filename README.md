@@ -1,6 +1,6 @@
 # Pinguin Notification Service
 
-Pinguin is a notification service written in Go. It exposes a gRPC interface for sending **email** and **SMS** notifications. The service uses SQLite (via GORM) for persistent storage and runs a background worker to retry failed notifications using exponential backoff. Structured logging is provided using Go’s built‑in `slog` package.
+Pinguin is a notification service written in Go. It exposes a gRPC interface for sending **email** and **SMS** notifications. The service uses SQLite (via GORM) for persistent storage and runs a background worker to retry errored notifications using exponential backoff. Structured logging is provided using Go’s built‑in `slog` package.
 
 Pinguin also ships an optional HTTP + browser workspace for inspecting queued notifications and managing SMTP relay access; set `web.enabled: false` in `config.yml` to run gRPC-only.
 
@@ -43,7 +43,7 @@ Pinguin also ships an optional HTTP + browser workspace for inspecting queued no
   Uses SQLite with GORM to store notifications and track their statuses.
 
 - **Background Worker:**  
-  Processes queued or failed notifications and retries them with exponential backoff.
+  Processes queued or errored notifications and retries them with exponential backoff.
 
 - **Reusable Scheduler Package:**  
   The retry worker is built on `github.com/tyemirov/utils/scheduler`, exposing repository and dispatcher interfaces so other binaries can embed the same persistence-agnostic scheduler without reimplementing the ticker, backoff, or status bookkeeping logic.
@@ -144,7 +144,7 @@ Export the referenced environment variables before starting the server only when
   Number of seconds to wait when establishing outbound SMTP/Twilio connections. A value of `5` seconds works well for most deployments.
 
 - **OPERATION_TIMEOUT_SEC:**  
-  Maximum number of seconds to wait for a send attempt before treating it as failed. Set this to `30` seconds unless your provider requires longer operations.
+  Maximum number of seconds to wait for a send attempt before treating it as errored. Set this to `30` seconds unless your provider requires longer operations.
 - **HTTP_LISTEN_ADDR:**  
   Address used by the Gin HTTP server that exposes runtime config and the JSON `/api/*` endpoints (local Compose uses `:8081`). The HTTP stack no longer serves static assets directly—use a separate host such as GitHub Pages at `https://pinguin.mprlab.com` (production) or ghttp (`http://localhost:8080`) for `/web`.
 - **HTTP_ALLOWED_ORIGINS:**  
@@ -165,7 +165,7 @@ Export the referenced environment variables before starting the server only when
   Pinguin reads TAuth `user_roles` from the signed session and configured `tenants[].admins` emails. Sessions with the `admin` role or a configured admin email can view and manage notifications for every tenant. Other authenticated sessions can only list, reschedule, or cancel notifications for tenants whose `tenants[].domains` entry matches the user's email domain.
 
 - **MAX_RETRIES:**  
-  Maximum number of times the background worker will retry sending a failed notification.
+  Maximum number of times the background worker will retry sending an errored notification.
 
 - **RETRY_INTERVAL_SEC:**  
   Base interval (in seconds) between retry scans. The actual backoff is exponential.
@@ -670,10 +670,10 @@ grpcurl -d '{
     - **SMS:** Sent using Twilio’s REST API.
 
 3. **Background Worker:**  
-   A background worker periodically polls the database for notifications that are still queued or have failed and reattempts sending them with exponential backoff.
+   A background worker periodically polls the database for notifications that are still queued or errored and reattempts sending them with exponential backoff.
 
 4. **Status Retrieval:**  
-   Clients can query the notification’s status using the `GetNotificationStatus` RPC or the `/api/notifications` HTTP endpoint until the status changes to `sent`, `cancelled`, or `errored` (legacy `failed` values are still returned for historical rows).
+   Clients can query the notification’s status using the `GetNotificationStatus` RPC or the `/api/notifications` HTTP endpoint until the status changes to `sent`, `cancelled`, or `errored`.
 
 ---
 

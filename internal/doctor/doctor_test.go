@@ -198,31 +198,31 @@ func TestRunValidatesSMTPForwardingConfig(t *testing.T) {
 		}
 	}
 
-	dynamicSenderDomainsConfigPath := filepath.Join(tempDir, "dynamic-forwarding-sender-domains.yml")
-	writeTestConfig(t, dynamicSenderDomainsConfigPath, forwardingWithoutSenderDomainsConfigYAML)
-	dynamicSenderDomainsReport, dynamicSenderDomainsErr := Run(context.Background(), Options{
-		ConfigPaths: []string{dynamicSenderDomainsConfigPath},
+	dynamicForwardingConfigPath := filepath.Join(tempDir, "dynamic-forwarding.yml")
+	writeTestConfig(t, dynamicForwardingConfigPath, dynamicForwardingConfigYAML)
+	dynamicForwardingReport, dynamicForwardingErr := Run(context.Background(), Options{
+		ConfigPaths: []string{dynamicForwardingConfigPath},
 	})
-	if dynamicSenderDomainsErr != nil {
-		t.Fatalf("expected no dynamic sender domains run error, got %v", dynamicSenderDomainsErr)
+	if dynamicForwardingErr != nil {
+		t.Fatalf("expected no dynamic forwarding run error, got %v", dynamicForwardingErr)
 	}
-	if dynamicSenderDomainsReport.Summary.ValidConfigs != 1 {
-		t.Fatalf("expected forwarding config without sender domains to be valid, got %+v", dynamicSenderDomainsReport.Summary)
+	if dynamicForwardingReport.Summary.ValidConfigs != 1 {
+		t.Fatalf("expected forwarding config to be valid, got %+v", dynamicForwardingReport.Summary)
 	}
 
-	legacySenderDomainsConfigPath := filepath.Join(tempDir, "legacy-sender-domains.yml")
-	writeTestConfig(t, legacySenderDomainsConfigPath, legacySenderDomainsConfigYAML)
-	legacySenderDomainsReport, legacySenderDomainsErr := Run(context.Background(), Options{
-		ConfigPaths: []string{legacySenderDomainsConfigPath},
+	unknownSMTPSubmissionConfigPath := filepath.Join(tempDir, "unknown-smtp-submission-field.yml")
+	writeTestConfig(t, unknownSMTPSubmissionConfigPath, unknownSMTPSubmissionConfigYAML)
+	unknownSMTPSubmissionReport, unknownSMTPSubmissionErr := Run(context.Background(), Options{
+		ConfigPaths: []string{unknownSMTPSubmissionConfigPath},
 	})
-	if legacySenderDomainsErr != nil {
-		t.Fatalf("expected no legacy sender domains run error, got %v", legacySenderDomainsErr)
+	if unknownSMTPSubmissionErr != nil {
+		t.Fatalf("expected no unknown smtp submission run error, got %v", unknownSMTPSubmissionErr)
 	}
-	if legacySenderDomainsReport.Summary.ValidConfigs != 0 {
-		t.Fatalf("expected legacy sender domains config to be invalid")
+	if unknownSMTPSubmissionReport.Summary.ValidConfigs != 0 {
+		t.Fatalf("expected unknown smtp submission config to be invalid")
 	}
-	if !containsDiagnosticError(legacySenderDomainsReport.Diagnostics[0].Errors, "smtpSubmission.senderDomains is no longer supported") {
-		t.Fatalf("expected legacy sender-domain diagnostic, got %v", legacySenderDomainsReport.Diagnostics[0].Errors)
+	if !containsDiagnosticError(unknownSMTPSubmissionReport.Diagnostics[0].Errors, "field unsupportedOption not found") {
+		t.Fatalf("expected unknown smtp submission diagnostic, got %v", unknownSMTPSubmissionReport.Diagnostics[0].Errors)
 	}
 }
 
@@ -295,7 +295,7 @@ web:
 	}
 }
 
-func TestRunHandlesMappingTenantItemsAndSMTPSubmission(t *testing.T) {
+func TestRunRejectsMappingTenantItems(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "config.yml")
 	writeTestConfig(t, configPath, mappingItemsSMTPSubmissionConfigYAML)
@@ -306,14 +306,11 @@ func TestRunHandlesMappingTenantItemsAndSMTPSubmission(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if report.Summary.ValidConfigs != 1 {
-		t.Fatalf("expected valid config, got errors %v", report.Diagnostics[0].Errors)
+	if report.Summary.ValidConfigs != 0 {
+		t.Fatalf("expected tenants.items config to be invalid")
 	}
-	if len(report.Diagnostics[0].Warnings) == 0 {
-		t.Fatalf("expected master key warning")
-	}
-	if len(report.Diagnostics[0].TenantIDs) != 1 || report.Diagnostics[0].TenantIDs[0] != "mapped" {
-		t.Fatalf("expected mapped tenant id, got %v", report.Diagnostics[0].TenantIDs)
+	if !containsDiagnosticError(report.Diagnostics[0].Errors, "tenants.items is not supported") {
+		t.Fatalf("expected tenants.items diagnostic, got %v", report.Diagnostics[0].Errors)
 	}
 }
 
@@ -359,11 +356,31 @@ func TestFormatSummaryIncludesInvalidAndCleanCrossValidation(t *testing.T) {
 
 func TestPinguinYAMLNodeDefaultKind(t *testing.T) {
 	var node pinguinYAMLNode
-	if err := node.UnmarshalYAML(&yaml.Node{Kind: yaml.ScalarNode, Value: "ignored"}); err != nil {
-		t.Fatalf("default kind should be ignored, got %v", err)
+	if err := node.UnmarshalYAML(&yaml.Node{Kind: yaml.ScalarNode, Value: "ignored"}); err == nil || !strings.Contains(err.Error(), "tenants must be a list") {
+		t.Fatalf("expected invalid tenant shape error, got %v", err)
 	}
 	if tenants := node.AllTenants(); tenants != nil {
 		t.Fatalf("expected no tenants, got %+v", tenants)
+	}
+}
+
+func TestPinguinYAMLNodeAcceptsCurrentMappingShape(t *testing.T) {
+	var node pinguinYAMLNode
+	if err := yaml.Unmarshal([]byte(`
+configPath: " tenants.yml "
+tenants:
+  - id: mapped
+    displayName: Mapped Tenant
+    domains:
+      - mapped.example.com
+`), &node); err != nil {
+		t.Fatalf("unmarshal current mapping shape: %v", err)
+	}
+	if node.ConfigPath != "tenants.yml" {
+		t.Fatalf("expected trimmed config path, got %q", node.ConfigPath)
+	}
+	if len(node.AllTenants()) != 1 || node.AllTenants()[0].ID != "mapped" {
+		t.Fatalf("expected mapped tenant, got %+v", node.AllTenants())
 	}
 }
 
@@ -393,6 +410,18 @@ func TestPinguinYAMLNodeDecodeErrors(t *testing.T) {
 	if err := mapping.UnmarshalYAML(mappingNode); err == nil {
 		t.Fatalf("expected mapping decode error")
 	}
+
+	invalidCurrentMappingNode := &yaml.Node{
+		Kind: yaml.MappingNode,
+		Content: []*yaml.Node{
+			{Kind: yaml.ScalarNode, Value: "tenants"},
+			{Kind: yaml.MappingNode},
+		},
+	}
+	var currentMapping pinguinYAMLNode
+	if err := currentMapping.UnmarshalYAML(invalidCurrentMappingNode); err == nil {
+		t.Fatalf("expected current mapping decode error")
+	}
 }
 
 func TestDoctorValidationHelpersCoverErrorBranches(t *testing.T) {
@@ -413,11 +442,6 @@ func TestDoctorValidationHelpersCoverErrorBranches(t *testing.T) {
 		if !containsDiagnosticError(smtpResult.Errors, expected) {
 			t.Fatalf("expected SMTP validation error %q in %v", expected, smtpResult.Errors)
 		}
-	}
-	legacySenderDomainsResult := DiagnosticResult{Valid: true}
-	validateLegacySMTPSenderDomainsConfig(pinguinSMTPSubmission{SenderDomains: legacySenderDomains{present: true}}, &legacySenderDomainsResult)
-	if !containsDiagnosticError(legacySenderDomainsResult.Errors, "smtpSubmission.senderDomains is no longer supported") {
-		t.Fatalf("expected legacy sender-domain validation error in %v", legacySenderDomainsResult.Errors)
 	}
 	invalidSMTPResult := DiagnosticResult{Valid: true}
 	validateSMTPSubmissionConfig(pinguinSMTPSubmission{
@@ -827,7 +851,7 @@ tenants:
       - demo.example.com
 `
 
-const legacySenderDomainsConfigYAML = `
+const unknownSMTPSubmissionConfigYAML = `
 server:
   databasePath: /data/pinguin.db
   grpcAuthToken: test-token-123
@@ -848,8 +872,7 @@ smtpSubmission:
   maxMessageBytes: 26214400
   maxRecipients: 100
   allowInsecureAuth: true
-  senderDomains:
-    - mprlab.com
+  unsupportedOption: true
   relay:
     host: smtp-relay.example.com
     port: 587
@@ -863,7 +886,7 @@ tenants:
       - demo.example.com
 `
 
-const forwardingWithoutSenderDomainsConfigYAML = `
+const dynamicForwardingConfigYAML = `
 server:
   databasePath: /data/pinguin.db
   grpcAuthToken: test-token-123

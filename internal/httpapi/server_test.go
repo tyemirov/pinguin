@@ -848,6 +848,12 @@ func TestSMTPIdentityValidationAndErrorMapping(t *testing.T) {
 	if invalidAddressRecorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected direct invalid address mapping to 400, got %d", invalidAddressRecorder.Code)
 	}
+	senderDomainExistsRecorder := httptest.NewRecorder()
+	senderDomainExistsContext, _ := gin.CreateTestContext(senderDomainExistsRecorder)
+	handler.writeError(senderDomainExistsContext, smtpidentity.ErrSenderDomainExists)
+	if senderDomainExistsRecorder.Code != http.StatusConflict {
+		t.Fatalf("expected direct sender-domain duplicate mapping to 409, got %d", senderDomainExistsRecorder.Code)
+	}
 	missingForwardRecorder := httptest.NewRecorder()
 	missingForwardContext, _ := gin.CreateTestContext(missingForwardRecorder)
 	handler.writeError(missingForwardContext, smtpidentity.ErrForwardRecipientsRequired)
@@ -1562,8 +1568,8 @@ func TestSmallHelpers(t *testing.T) {
 	if isMissingNotificationID(nil) {
 		t.Fatalf("nil error should not look like missing id")
 	}
-	statuses := parseStatusFilters([]string{" queued ", "queued", "", "FAILED"})
-	if len(statuses) != 2 || statuses[0] != model.StatusQueued || statuses[1] != model.StatusFailed {
+	statuses := parseStatusFilters([]string{" queued ", "queued", "", "ERRORED"})
+	if len(statuses) != 2 || statuses[0] != model.StatusQueued || statuses[1] != model.StatusErrored {
 		t.Fatalf("unexpected statuses %v", statuses)
 	}
 	if base := buildAPIBaseURL(nil); base != "/api" {

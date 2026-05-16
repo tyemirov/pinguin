@@ -187,8 +187,8 @@ func (clientInstance *NotificationClient) SendNotificationAndWait(req *grpcapi.N
 		switch resp.Status {
 		case grpcapi.Status_SENT:
 			return resp, nil
-		case grpcapi.Status_FAILED:
-			return resp, fmt.Errorf("notification failed")
+		case grpcapi.Status_ERRORED:
+			return resp, fmt.Errorf("notification errored")
 		}
 
 		if time.Since(startTime) > pollTimeout {

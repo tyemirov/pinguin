@@ -1,14 +1,10 @@
 package smtpidentity
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
-
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 const (
@@ -74,18 +70,6 @@ type PublicSenderDomain struct {
 	LastCheckedAt *time.Time  `json:"last_checked_at,omitempty"`
 	CreatedAt     time.Time   `json:"created_at"`
 	UpdatedAt     time.Time   `json:"updated_at"`
-}
-
-// CleanupLegacySenderDomains removes config-seeded sender domains that predate owner-scoped DNS verification.
-func CleanupLegacySenderDomains(ctx context.Context, db *gorm.DB) error {
-	configuredOwnerClause := clause.Or(
-		clause.Eq{Column: clause.Column{Name: ownerEmailColumn}, Value: ""},
-		clause.Eq{Column: clause.Column{Name: ownerEmailColumn}, Value: nil},
-	)
-	if err := db.WithContext(ctx).Where(configuredOwnerClause).Delete(&SenderDomain{}).Error; err != nil {
-		return fmt.Errorf("smtp identity sender domains cleanup: %w", err)
-	}
-	return nil
 }
 
 // NormalizeSenderDomain validates and normalizes one DNS sender domain.

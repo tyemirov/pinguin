@@ -281,14 +281,14 @@ func TestBootstrapRejectsDisabledStatusAndMissingDomains(t *testing.T) {
 	err = Bootstrap(context.Background(), dbInstance, keeper, BootstrapConfig{
 		Tenants: []BootstrapTenant{
 			func() BootstrapTenant {
-				spec := bootstrapTenantSpec("legacy-status", []string{"status.example"})
+				spec := bootstrapTenantSpec("unsupported-status", []string{"status.example"})
 				spec.Status = "active"
 				return spec
 			}(),
 		},
 	})
 	if err == nil || !strings.Contains(err.Error(), "status is no longer supported") {
-		t.Fatalf("expected legacy status error, got %v", err)
+		t.Fatalf("expected unsupported status error, got %v", err)
 	}
 
 	err = Bootstrap(context.Background(), dbInstance, keeper, BootstrapConfig{

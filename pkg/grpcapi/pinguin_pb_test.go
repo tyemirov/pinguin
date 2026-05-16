@@ -28,7 +28,7 @@ func TestEnumHelpers(t *testing.T) {
 	if Status_SENT.String() != "SENT" {
 		t.Fatalf("unexpected status string for SENT")
 	}
-	if Status_FAILED.Enum() == nil || *Status_FAILED.Enum() != Status_FAILED {
+	if Status_SENT.Enum() == nil || *Status_SENT.Enum() != Status_SENT {
 		t.Fatalf("Enum helper did not round-trip status")
 	}
 	if Status_CANCELLED.Descriptor() == nil || Status_CANCELLED.Type() == nil {

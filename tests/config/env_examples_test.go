@@ -31,25 +31,6 @@ func TestServiceEnvExamplesCoverConfigTemplates(t *testing.T) {
 	}
 }
 
-func TestPinguinSMTPSubmissionTemplateDoesNotUseStaticSenderDomains(t *testing.T) {
-	templateKeys := parseTemplateEnvKeys(string(readRepoFile(t, "configs/config.pinguin.yml")))
-	exampleKeys := parseEnvExampleKeys(string(readRepoFile(t, "configs/.env.pinguin.example")))
-
-	for _, legacyKey := range []string{
-		"SMTP_SUBMISSION_SENDER_DOMAIN_1",
-		"SMTP_SUBMISSION_SENDER_DOMAIN_2",
-		"SMTP_SUBMISSION_SENDER_DOMAIN_3",
-		"SMTP_SUBMISSION_SENDER_DOMAIN_4",
-	} {
-		if stringSliceContains(templateKeys, legacyKey) {
-			t.Fatalf("configs/config.pinguin.yml still references %s", legacyKey)
-		}
-		if exampleKeys[legacyKey] {
-			t.Fatalf("configs/.env.pinguin.example still defines %s", legacyKey)
-		}
-	}
-}
-
 func TestLocalPinguinEnvCoversConfigTemplateWhenPresent(t *testing.T) {
 	envPath := "configs/.env.pinguin"
 	if _, statErr := os.Stat(repoPath(envPath)); statErr != nil {
@@ -80,15 +61,6 @@ func parseEnvExampleKeys(contents string) map[string]bool {
 		}
 	}
 	return keys
-}
-
-func stringSliceContains(values []string, expected string) bool {
-	for _, value := range values {
-		if value == expected {
-			return true
-		}
-	}
-	return false
 }
 
 func parseTemplateEnvKeys(contents string) []string {

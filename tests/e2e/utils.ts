@@ -382,8 +382,8 @@ export async function expectPinguinHeaderBrand(page: Page) {
 }
 
 export async function expectSharedHeaderUserMenu(page: Page) {
-  const legacyProfileChip = page.getByTestId('profile-chip');
-  await expect(legacyProfileChip).toHaveCount(0);
+  const duplicateProfileChip = page.getByTestId('profile-chip');
+  await expect(duplicateProfileChip).toHaveCount(0);
 
   const header = page.locator('mpr-header').first();
   await expect(header).toBeVisible();
