@@ -401,7 +401,7 @@ type serverDependencies struct {
 	newTenantRepository            func(*gorm.DB, *tenant.SecretKeeper) *tenant.Repository
 	migrateSMTPIdentityCredentials func(context.Context, *gorm.DB, string) error
 	newSMTPIdentityRepository      func(*gorm.DB, string) (*smtpidentity.Repository, error)
-	replaceSenderDomains           func(context.Context, *gorm.DB, []string) error
+	cleanupLegacySenderDomains     func(context.Context, *gorm.DB) error
 	newSMTPIdentityService         func(*smtpidentity.Repository, smtpidentity.PublicSettings) *smtpidentity.Service
 	newNotificationService         func(*gorm.DB, *slog.Logger, config.Config, *tenant.Repository) service.NotificationService
 	loadTLSConfig                  func(string, string) (*tls.Config, error)
@@ -439,7 +439,7 @@ func productionServerDependencies() serverDependencies {
 		newTenantRepository:            tenant.NewRepository,
 		migrateSMTPIdentityCredentials: smtpidentity.MigrateStoredCredentialPasswords,
 		newSMTPIdentityRepository:      smtpidentity.NewRepository,
-		replaceSenderDomains:           smtpidentity.ReplaceSenderDomains,
+		cleanupLegacySenderDomains:     smtpidentity.CleanupLegacySenderDomains,
 		newSMTPIdentityService:         smtpidentity.NewService,
 		newNotificationService:         service.NewNotificationService,
 		loadTLSConfig:                  smtpsubmission.LoadTLSConfig,
@@ -539,11 +539,9 @@ func runServer(args []string, dependencies serverDependencies) int {
 		mainLogger.Error("Failed to initialize SMTP identity repository", "error", smtpIdentityRepoErr)
 		return 1
 	}
-	if len(configuration.SMTPSubmission.SenderDomains) > 0 {
-		if senderDomainErr := dependencies.replaceSenderDomains(context.Background(), databaseInstance, configuration.SMTPSubmission.SenderDomains); senderDomainErr != nil {
-			mainLogger.Error("Failed to configure SMTP submission sender domains", "error", senderDomainErr)
-			return 1
-		}
+	if senderDomainErr := dependencies.cleanupLegacySenderDomains(context.Background(), databaseInstance); senderDomainErr != nil {
+		mainLogger.Error("Failed to clean up legacy SMTP submission sender domains", "error", senderDomainErr)
+		return 1
 	}
 	smtpIdentityService := dependencies.newSMTPIdentityService(smtpIdentityRepo, smtpPublicSettings(configuration.SMTPSubmission))
 
@@ -690,8 +688,8 @@ func withServerDependencyDefaults(dependencies serverDependencies) serverDepende
 	if dependencies.newSMTPIdentityRepository == nil {
 		dependencies.newSMTPIdentityRepository = production.newSMTPIdentityRepository
 	}
-	if dependencies.replaceSenderDomains == nil {
-		dependencies.replaceSenderDomains = production.replaceSenderDomains
+	if dependencies.cleanupLegacySenderDomains == nil {
+		dependencies.cleanupLegacySenderDomains = production.cleanupLegacySenderDomains
 	}
 	if dependencies.newSMTPIdentityService == nil {
 		dependencies.newSMTPIdentityService = production.newSMTPIdentityService

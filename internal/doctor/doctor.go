@@ -97,20 +97,29 @@ type pinguinTAuth struct {
 }
 
 type pinguinSMTPSubmission struct {
-	Enabled            bool             `yaml:"enabled"`
-	Hostname           string           `yaml:"hostname"`
-	ListenAddr         string           `yaml:"listenAddr"`
-	TLSListenAddr      string           `yaml:"tlsListenAddr"`
-	TLSCertPath        string           `yaml:"tlsCertPath"`
-	TLSKeyPath         string           `yaml:"tlsKeyPath"`
-	PublicPort         int              `yaml:"publicPort"`
-	PublicSecurityMode string           `yaml:"publicSecurityMode"`
-	DeliveryMode       string           `yaml:"deliveryMode"`
-	MaxMessageBytes    int64            `yaml:"maxMessageBytes"`
-	MaxRecipients      int              `yaml:"maxRecipients"`
-	AllowInsecureAuth  bool             `yaml:"allowInsecureAuth"`
-	SenderDomains      []string         `yaml:"senderDomains"`
-	Relay              pinguinSMTPRelay `yaml:"relay"`
+	Enabled            bool                `yaml:"enabled"`
+	Hostname           string              `yaml:"hostname"`
+	ListenAddr         string              `yaml:"listenAddr"`
+	TLSListenAddr      string              `yaml:"tlsListenAddr"`
+	TLSCertPath        string              `yaml:"tlsCertPath"`
+	TLSKeyPath         string              `yaml:"tlsKeyPath"`
+	PublicPort         int                 `yaml:"publicPort"`
+	PublicSecurityMode string              `yaml:"publicSecurityMode"`
+	DeliveryMode       string              `yaml:"deliveryMode"`
+	MaxMessageBytes    int64               `yaml:"maxMessageBytes"`
+	MaxRecipients      int                 `yaml:"maxRecipients"`
+	AllowInsecureAuth  bool                `yaml:"allowInsecureAuth"`
+	SenderDomains      legacySenderDomains `yaml:"senderDomains"`
+	Relay              pinguinSMTPRelay    `yaml:"relay"`
+}
+
+type legacySenderDomains struct {
+	present bool
+}
+
+func (legacy *legacySenderDomains) UnmarshalYAML(*yaml.Node) error {
+	legacy.present = true
+	return nil
 }
 
 type pinguinSMTPRelay struct {
@@ -255,7 +264,7 @@ func validateConfig(configPath string, expandEnv bool) (DiagnosticResult, *pingu
 		validateWebConfig(config.Web, &result)
 	}
 	validateSMTPSubmissionConfig(config.SMTPSubmission, &result)
-	validateSMTPSenderDomainsConfig(config.SMTPSubmission, config.SMTPForwarding, &result)
+	validateLegacySMTPSenderDomainsConfig(config.SMTPSubmission, &result)
 	validateSMTPForwardingConfig(config.SMTPForwarding, &result)
 
 	for _, tenant := range config.Tenants.AllTenants() {
@@ -394,15 +403,12 @@ func validateSMTPSubmissionConfig(submission pinguinSMTPSubmission, result *Diag
 	}
 }
 
-func validateSMTPSenderDomainsConfig(submission pinguinSMTPSubmission, forwarding pinguinSMTPForwarding, result *DiagnosticResult) {
-	if !submission.Enabled && !forwarding.Enabled {
-		return
-	}
-	if countNonEmpty(submission.SenderDomains) > 0 {
+func validateLegacySMTPSenderDomainsConfig(submission pinguinSMTPSubmission, result *DiagnosticResult) {
+	if !submission.SenderDomains.present {
 		return
 	}
 	result.Valid = false
-	result.Errors = append(result.Errors, "smtpSubmission.senderDomains is required when SMTP submission or SMTP forwarding is enabled")
+	result.Errors = append(result.Errors, "smtpSubmission.senderDomains is no longer supported; add sender domains through /api/smtp-domains")
 }
 
 func validateSMTPForwardingConfig(forwarding pinguinSMTPForwarding, result *DiagnosticResult) {
@@ -449,16 +455,6 @@ func normalizeSMTPDeliveryMode(value string) string {
 		return "upstream"
 	}
 	return normalized
-}
-
-func countNonEmpty(values []string) int {
-	count := 0
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			count++
-		}
-	}
-	return count
 }
 
 func validateTenantConfig(tenant pinguinTenant, webEnabled bool, result *DiagnosticResult) {

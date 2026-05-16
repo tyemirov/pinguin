@@ -87,6 +87,8 @@ export const STRINGS = Object.freeze({
     domainCreateSuccess: "Sender domain added",
     domainCheckSuccess: "DNS check completed",
     domainCreateError: "Unable to add sender domain.",
+    domainCreateExistsError: "Sender domain is already registered.",
+    domainCreateInvalidError: "Enter a valid sender domain.",
     domainLoadError: "Unable to load sender domains.",
     domainCheckError: "Unable to check DNS.",
     domainRequiredNotice: "Verify this sender domain before creating SMTP credentials.",

@@ -534,7 +534,6 @@ func TestRunServerStartsWebAndSMTPSubmission(testHandle *testing.T) {
 		MaxMessageBytes:   1024,
 		MaxRecipients:     2,
 		AllowInsecureAuth: true,
-		SenderDomains:     []string{"example.com"},
 	}
 	state, dependencies := newServerTestDependencies(cfg)
 	state.httpServer.shutdownErr = errors.New("shutdown failed")
@@ -544,8 +543,8 @@ func TestRunServerStartsWebAndSMTPSubmission(testHandle *testing.T) {
 	}
 	waitForClosed(testHandle, state.smtpStarter.started)
 	waitForClosed(testHandle, state.httpServer.started)
-	if !state.bootstrapFileCalled || !state.smtpCredentialsMigrated || !state.senderDomainsReplaced || !state.tlsLoaded {
-		testHandle.Fatalf("expected file/bootstrap/migration/tls/sender-domain setup, state=%+v", state)
+	if !state.bootstrapFileCalled || !state.smtpCredentialsMigrated || !state.legacySenderDomainsCleaned || !state.tlsLoaded {
+		testHandle.Fatalf("expected file/bootstrap/migration/tls/legacy-sender-domain cleanup, state=%+v", state)
 	}
 	if !state.httpServer.shutdownCalled {
 		testHandle.Fatalf("expected HTTP shutdown")
@@ -686,12 +685,8 @@ func TestRunServerErrorPaths(testHandle *testing.T) {
 		{name: "smtp identity repository", config: serverTestConfig, mutate: func(deps *serverDependencies) {
 			deps.newSMTPIdentityRepository = func(*gorm.DB, string) (*smtpidentity.Repository, error) { return nil, expectedErr }
 		}},
-		{name: "sender domains", config: func() config.Config {
-			cfg := serverTestConfig()
-			cfg.SMTPSubmission.SenderDomains = []string{"example.com"}
-			return cfg
-		}, mutate: func(deps *serverDependencies) {
-			deps.replaceSenderDomains = func(context.Context, *gorm.DB, []string) error { return expectedErr }
+		{name: "legacy sender-domain cleanup", config: serverTestConfig, mutate: func(deps *serverDependencies) {
+			deps.cleanupLegacySenderDomains = func(context.Context, *gorm.DB) error { return expectedErr }
 		}},
 		{name: "tls load", config: func() config.Config {
 			cfg := serverTestConfig()
@@ -1160,17 +1155,17 @@ func configSMTPSubmission(listenAddr string, tlsListenAddr string) config.SMTPSu
 }
 
 type serverTestState struct {
-	bootstrapCalled         bool
-	bootstrapFileCalled     bool
-	smtpCredentialsMigrated bool
-	senderDomainsReplaced   bool
-	tlsLoaded               bool
-	grpcServed              bool
-	smtpConfig              smtpsubmission.Config
-	smtpForwardingConfig    smtpforwarding.Config
-	smtpStarter             *fakeSMTPStarter
-	smtpForwardingStarter   *fakeSMTPForwardingStarter
-	httpServer              *fakeHTTPServer
+	bootstrapCalled            bool
+	bootstrapFileCalled        bool
+	smtpCredentialsMigrated    bool
+	legacySenderDomainsCleaned bool
+	tlsLoaded                  bool
+	grpcServed                 bool
+	smtpConfig                 smtpsubmission.Config
+	smtpForwardingConfig       smtpforwarding.Config
+	smtpStarter                *fakeSMTPStarter
+	smtpForwardingStarter      *fakeSMTPForwardingStarter
+	httpServer                 *fakeHTTPServer
 }
 
 func serverTestConfig() config.Config {
@@ -1245,8 +1240,8 @@ func newServerTestDependencies(cfg config.Config) (*serverTestState, serverDepen
 		newSMTPIdentityRepository: func(*gorm.DB, string) (*smtpidentity.Repository, error) {
 			return &smtpidentity.Repository{}, nil
 		},
-		replaceSenderDomains: func(context.Context, *gorm.DB, []string) error {
-			state.senderDomainsReplaced = true
+		cleanupLegacySenderDomains: func(context.Context, *gorm.DB) error {
+			state.legacySenderDomainsCleaned = true
 			return nil
 		},
 		newSMTPIdentityService: func(repository *smtpidentity.Repository, settings smtpidentity.PublicSettings) *smtpidentity.Service {
