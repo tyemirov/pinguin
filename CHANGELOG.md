@@ -70,6 +70,37 @@
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 - Document the remaining edge mappings after gateway deployment: `25 -> tutosh:8025` and `465 -> tutosh:8465`.
 
+## [v0.4.17] - 2026-05-16
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Prune dead sender-domain config cleanup, SMTP identity credential migration, obsolete notification status path, and legacy dashboard redirect to remove compatibility shims.
+- Make SMTP sender domains fully API/DB-owned by rejecting unknown static config and removing static references; surface validation errors in SMTP relay UI.
+- Update internal doctor logic, related tests, and clean startup by deleting legacy NULL-owner SMTP sender-domain rows.
+- Align production deploy resources and workflows with current release branch and contract defaults.
+- Enforce tenant authorization on notification list, reschedule, and cancel endpoints.
+- Accept SMTP forwarding with `MAIL FROM:<>` null reverse-path for DSNs and loop-safe messages.
+- Brand landing and dashboard headers with Pinguin logo and favicon consistently.
+- Move frontend loading to `mpr-ui` orchestration and update local Docker origins to align with Google OAuth client.
+
+### Bug Fixes 🐛
+- Fix startup crash caused by legacy NULL-owner configured SMTP sender-domain rows.
+- Correct status mapping by removing deprecated `failed` notification handling.
+- Restore production login rendering and dashboard tenant admin email handling.
+- Remove stale tenant bootstrap records to prevent lingering admin access.
+
+### Testing 🧪
+- Add backend and browser coverage for sender-domain DNS setup, SMTP identity creation and rotation, forwarding scenarios, tenant authorization, and notification listing.
+- Add production workflow contract coverage for release, publish, deploy guards.
+- Add browser coverage for Pinguin logo, landing header login, and frontend config contracts.
+
+### Docs 📚
+- Update README to replace references from "failed" to "errored" notification status.
+- Clarify background worker processes queued and errored notifications.
+- Revise environment variable descriptions to reflect updated error terminology.
+
 ## [v0.4.16] - 2026-05-15
 
 ### Features ✨
