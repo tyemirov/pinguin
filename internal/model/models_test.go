@@ -20,9 +20,9 @@ func TestNotificationListFiltersNormalizeStatuses(t *testing.T) {
 		Statuses: []NotificationStatus{
 			StatusQueued,
 			NotificationStatus("ignored"),
-			StatusFailed,
+			StatusErrored,
 			StatusCancelled,
-			StatusFailed,
+			StatusErrored,
 		},
 	}
 
@@ -45,7 +45,6 @@ func TestCanonicalStatusCoversAllStatuses(t *testing.T) {
 		StatusErrored:   StatusErrored,
 		StatusCancelled: StatusCancelled,
 		StatusUnknown:   StatusUnknown,
-		StatusFailed:    StatusErrored,
 		"invalid":       "",
 	}
 	for input, expected := range testCases {
@@ -287,7 +286,7 @@ func TestDatabaseHelpersFilterAndRetrieve(t *testing.T) {
 
 	notifications := []Notification{
 		mergeNotification(baseNotification, Notification{NotificationID: "queued-now"}),
-		mergeNotification(baseNotification, Notification{NotificationID: "failed", Status: StatusFailed, RetryCount: 1}),
+		mergeNotification(baseNotification, Notification{NotificationID: "errored", Status: StatusErrored, RetryCount: 1}),
 		mergeNotification(baseNotification, Notification{NotificationID: "scheduled-future", ScheduledFor: timePointer(time.Now().UTC().Add(30 * time.Minute))}),
 	}
 
@@ -297,7 +296,7 @@ func TestDatabaseHelpersFilterAndRetrieve(t *testing.T) {
 		}
 	}
 
-	pending, pendingError := GetQueuedOrFailedNotifications(ctx, database, modelTestTenantID, 5, time.Now().UTC())
+	pending, pendingError := GetPendingRetryNotifications(ctx, database, modelTestTenantID, 5, time.Now().UTC())
 	if pendingError != nil {
 		t.Fatalf("pending retrieval error: %v", pendingError)
 	}
@@ -333,8 +332,8 @@ func TestDatabaseHelpersFilterAndRetrieve(t *testing.T) {
 	if listErroredError != nil {
 		t.Fatalf("list errored notifications: %v", listErroredError)
 	}
-	if len(listedErrored) != 1 || listedErrored[0].Status != StatusFailed {
-		t.Fatalf("expected legacy failed record through errored filter, got %+v", listedErrored)
+	if len(listedErrored) != 1 || listedErrored[0].Status != StatusErrored {
+		t.Fatalf("expected errored record through errored filter, got %+v", listedErrored)
 	}
 	allNotifications, listAllError := ListNotificationsAll(ctx, database, NotificationListFilters{Statuses: []NotificationStatus{StatusSent}})
 	if listAllError != nil {
@@ -347,8 +346,8 @@ func TestDatabaseHelpersFilterAndRetrieve(t *testing.T) {
 	if listAllErroredError != nil {
 		t.Fatalf("list all errored notifications: %v", listAllErroredError)
 	}
-	if len(allErroredNotifications) != 1 || allErroredNotifications[0].Status != StatusFailed {
-		t.Fatalf("expected failed record through all errored filter, got %+v", allErroredNotifications)
+	if len(allErroredNotifications) != 1 || allErroredNotifications[0].Status != StatusErrored {
+		t.Fatalf("expected errored record through all errored filter, got %+v", allErroredNotifications)
 	}
 
 	_, missingError := MustGetNotificationByID(ctx, database, modelTestTenantID, "missing")
@@ -399,12 +398,12 @@ func TestListNotificationsPageSearchesAndPaginates(t *testing.T) {
 		},
 		{
 			TenantID:         modelTestTenantID,
-			NotificationID:   "notif-failed",
+			NotificationID:   "notif-errored",
 			NotificationType: NotificationEmail,
-			Recipient:        "failed@example.com",
-			Subject:          "Failed",
+			Recipient:        "errored@example.com",
+			Subject:          "Errored",
 			Message:          "other body",
-			Status:           StatusFailed,
+			Status:           StatusErrored,
 			CreatedAt:        now.Add(3 * time.Second),
 			UpdatedAt:        now.Add(3 * time.Second),
 		},
@@ -461,19 +460,8 @@ func TestListNotificationsPageSearchesAndPaginates(t *testing.T) {
 	if statusPageErr != nil {
 		t.Fatalf("status page: %v", statusPageErr)
 	}
-	if len(statusPage.Notifications) != 1 || statusPage.Notifications[0].NotificationID != "notif-failed" {
-		t.Fatalf("expected legacy failed record through errored search, got %+v", statusPage.Notifications)
-	}
-	partialAliasSearch, partialAliasSearchErr := NewNotificationSearchQuery("or")
-	if partialAliasSearchErr != nil {
-		t.Fatalf("partial alias search: %v", partialAliasSearchErr)
-	}
-	partialAliasPage, partialAliasPageErr := ListNotificationsPage(ctx, database, modelTestTenantID, NotificationListFilters{SearchQuery: partialAliasSearch}, DefaultNotificationListPageRequest())
-	if partialAliasPageErr != nil {
-		t.Fatalf("partial alias page: %v", partialAliasPageErr)
-	}
-	if len(partialAliasPage.Notifications) != 0 {
-		t.Fatalf("expected partial alias search to skip legacy failed record, got %+v", partialAliasPage.Notifications)
+	if len(statusPage.Notifications) != 1 || statusPage.Notifications[0].NotificationID != "notif-errored" {
+		t.Fatalf("expected errored record through errored search, got %+v", statusPage.Notifications)
 	}
 }
 
@@ -501,7 +489,7 @@ func TestDatabaseHelpersReturnStorageErrors(t *testing.T) {
 	if err := SaveNotification(ctx, database, &Notification{}); err == nil {
 		t.Fatalf("expected save storage error")
 	}
-	if _, err := GetQueuedOrFailedNotifications(ctx, database, modelTestTenantID, 3, time.Now().UTC()); err == nil {
+	if _, err := GetPendingRetryNotifications(ctx, database, modelTestTenantID, 3, time.Now().UTC()); err == nil {
 		t.Fatalf("expected pending storage error")
 	}
 	if _, err := ListNotifications(ctx, database, modelTestTenantID, NotificationListFilters{}); err == nil {

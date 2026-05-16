@@ -107,15 +107,14 @@ func TestMapGrpcStatuses(t *testing.T) {
 	statuses := mapGrpcStatuses([]grpcapi.Status{
 		grpcapi.Status_QUEUED,
 		grpcapi.Status_SENT,
-		grpcapi.Status_FAILED,
 		grpcapi.Status_CANCELLED,
 		grpcapi.Status_ERRORED,
 		grpcapi.Status_UNKNOWN,
 	})
-	if len(statuses) != 6 {
-		t.Fatalf("expected 6 statuses, got %d", len(statuses))
+	if len(statuses) != 5 {
+		t.Fatalf("expected 5 statuses, got %d", len(statuses))
 	}
-	if statuses[0] != model.StatusQueued || statuses[3] != model.StatusCancelled || statuses[4] != model.StatusErrored {
+	if statuses[0] != model.StatusQueued || statuses[2] != model.StatusCancelled || statuses[3] != model.StatusErrored {
 		t.Fatalf("unexpected status mapping %v", statuses)
 	}
 	if mapGrpcStatuses([]grpcapi.Status{grpcapi.Status(99)}) != nil {
@@ -177,15 +176,6 @@ func TestMapModelToGrpcResponse(t *testing.T) {
 	})
 	if cancelled.Status != grpcapi.Status_CANCELLED {
 		t.Fatalf("expected cancelled status, got %v", cancelled.Status)
-	}
-	failed := mapModelToGrpcResponse(model.NotificationResponse{
-		NotificationType: model.NotificationEmail,
-		Status:           model.StatusFailed,
-		CreatedAt:        now,
-		UpdatedAt:        now,
-	})
-	if failed.Status != grpcapi.Status_FAILED {
-		t.Fatalf("expected failed status, got %v", failed.Status)
 	}
 	unknown := mapModelToGrpcResponse(model.NotificationResponse{
 		NotificationType: "push",
@@ -507,9 +497,6 @@ func TestRunServerSuccessWithInlineTenants(testHandle *testing.T) {
 	if !state.bootstrapCalled || state.bootstrapFileCalled {
 		testHandle.Fatalf("expected inline bootstrap, state=%+v", state)
 	}
-	if !state.smtpCredentialsMigrated {
-		testHandle.Fatalf("expected SMTP credential migration")
-	}
 	if !state.grpcServed {
 		testHandle.Fatalf("expected grpc server to be served")
 	}
@@ -543,8 +530,8 @@ func TestRunServerStartsWebAndSMTPSubmission(testHandle *testing.T) {
 	}
 	waitForClosed(testHandle, state.smtpStarter.started)
 	waitForClosed(testHandle, state.httpServer.started)
-	if !state.bootstrapFileCalled || !state.smtpCredentialsMigrated || !state.legacySenderDomainsCleaned || !state.tlsLoaded {
-		testHandle.Fatalf("expected file/bootstrap/migration/tls/legacy-sender-domain cleanup, state=%+v", state)
+	if !state.bootstrapFileCalled || !state.tlsLoaded {
+		testHandle.Fatalf("expected file/bootstrap/tls setup, state=%+v", state)
 	}
 	if !state.httpServer.shutdownCalled {
 		testHandle.Fatalf("expected HTTP shutdown")
@@ -679,14 +666,8 @@ func TestRunServerErrorPaths(testHandle *testing.T) {
 			cfg.TenantBootstrap = tenant.BootstrapConfig{}
 			return cfg
 		}},
-		{name: "smtp identity credential migration", config: serverTestConfig, mutate: func(deps *serverDependencies) {
-			deps.migrateSMTPIdentityCredentials = func(context.Context, *gorm.DB, string) error { return expectedErr }
-		}},
 		{name: "smtp identity repository", config: serverTestConfig, mutate: func(deps *serverDependencies) {
 			deps.newSMTPIdentityRepository = func(*gorm.DB, string) (*smtpidentity.Repository, error) { return nil, expectedErr }
-		}},
-		{name: "legacy sender-domain cleanup", config: serverTestConfig, mutate: func(deps *serverDependencies) {
-			deps.cleanupLegacySenderDomains = func(context.Context, *gorm.DB) error { return expectedErr }
 		}},
 		{name: "tls load", config: func() config.Config {
 			cfg := serverTestConfig()
@@ -886,7 +867,7 @@ func TestServerDependencyDefaultsAndProductionWrappers(testHandle *testing.T) {
 	if defaulted.loadConfig == nil || defaulted.newLogger == nil || defaulted.initDB == nil || defaulted.exit == nil {
 		testHandle.Fatalf("expected production defaults to be populated")
 	}
-	if defaulted.migrateSMTPIdentityCredentials == nil || defaulted.newSMTPForwarder == nil || defaulted.newSMTPForwardingServer == nil {
+	if defaulted.newSMTPForwarder == nil || defaulted.newSMTPForwardingServer == nil {
 		testHandle.Fatalf("expected SMTP forwarding defaults to be populated")
 	}
 
@@ -1155,17 +1136,15 @@ func configSMTPSubmission(listenAddr string, tlsListenAddr string) config.SMTPSu
 }
 
 type serverTestState struct {
-	bootstrapCalled            bool
-	bootstrapFileCalled        bool
-	smtpCredentialsMigrated    bool
-	legacySenderDomainsCleaned bool
-	tlsLoaded                  bool
-	grpcServed                 bool
-	smtpConfig                 smtpsubmission.Config
-	smtpForwardingConfig       smtpforwarding.Config
-	smtpStarter                *fakeSMTPStarter
-	smtpForwardingStarter      *fakeSMTPForwardingStarter
-	httpServer                 *fakeHTTPServer
+	bootstrapCalled       bool
+	bootstrapFileCalled   bool
+	tlsLoaded             bool
+	grpcServed            bool
+	smtpConfig            smtpsubmission.Config
+	smtpForwardingConfig  smtpforwarding.Config
+	smtpStarter           *fakeSMTPStarter
+	smtpForwardingStarter *fakeSMTPForwardingStarter
+	httpServer            *fakeHTTPServer
 }
 
 func serverTestConfig() config.Config {
@@ -1233,16 +1212,8 @@ func newServerTestDependencies(cfg config.Config) (*serverTestState, serverDepen
 		newTenantRepository: func(*gorm.DB, *tenant.SecretKeeper) *tenant.Repository {
 			return nil
 		},
-		migrateSMTPIdentityCredentials: func(context.Context, *gorm.DB, string) error {
-			state.smtpCredentialsMigrated = true
-			return nil
-		},
 		newSMTPIdentityRepository: func(*gorm.DB, string) (*smtpidentity.Repository, error) {
 			return &smtpidentity.Repository{}, nil
-		},
-		cleanupLegacySenderDomains: func(context.Context, *gorm.DB) error {
-			state.legacySenderDomainsCleaned = true
-			return nil
 		},
 		newSMTPIdentityService: func(repository *smtpidentity.Repository, settings smtpidentity.PublicSettings) *smtpidentity.Service {
 			return smtpidentity.NewService(repository, settings)

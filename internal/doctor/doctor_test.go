@@ -198,31 +198,31 @@ func TestRunValidatesSMTPForwardingConfig(t *testing.T) {
 		}
 	}
 
-	dynamicSenderDomainsConfigPath := filepath.Join(tempDir, "dynamic-forwarding-sender-domains.yml")
-	writeTestConfig(t, dynamicSenderDomainsConfigPath, forwardingWithoutSenderDomainsConfigYAML)
-	dynamicSenderDomainsReport, dynamicSenderDomainsErr := Run(context.Background(), Options{
-		ConfigPaths: []string{dynamicSenderDomainsConfigPath},
+	dynamicForwardingConfigPath := filepath.Join(tempDir, "dynamic-forwarding.yml")
+	writeTestConfig(t, dynamicForwardingConfigPath, dynamicForwardingConfigYAML)
+	dynamicForwardingReport, dynamicForwardingErr := Run(context.Background(), Options{
+		ConfigPaths: []string{dynamicForwardingConfigPath},
 	})
-	if dynamicSenderDomainsErr != nil {
-		t.Fatalf("expected no dynamic sender domains run error, got %v", dynamicSenderDomainsErr)
+	if dynamicForwardingErr != nil {
+		t.Fatalf("expected no dynamic forwarding run error, got %v", dynamicForwardingErr)
 	}
-	if dynamicSenderDomainsReport.Summary.ValidConfigs != 1 {
-		t.Fatalf("expected forwarding config without sender domains to be valid, got %+v", dynamicSenderDomainsReport.Summary)
+	if dynamicForwardingReport.Summary.ValidConfigs != 1 {
+		t.Fatalf("expected forwarding config to be valid, got %+v", dynamicForwardingReport.Summary)
 	}
 
-	legacySenderDomainsConfigPath := filepath.Join(tempDir, "legacy-sender-domains.yml")
-	writeTestConfig(t, legacySenderDomainsConfigPath, legacySenderDomainsConfigYAML)
-	legacySenderDomainsReport, legacySenderDomainsErr := Run(context.Background(), Options{
-		ConfigPaths: []string{legacySenderDomainsConfigPath},
+	unknownSMTPSubmissionConfigPath := filepath.Join(tempDir, "unknown-smtp-submission-field.yml")
+	writeTestConfig(t, unknownSMTPSubmissionConfigPath, unknownSMTPSubmissionConfigYAML)
+	unknownSMTPSubmissionReport, unknownSMTPSubmissionErr := Run(context.Background(), Options{
+		ConfigPaths: []string{unknownSMTPSubmissionConfigPath},
 	})
-	if legacySenderDomainsErr != nil {
-		t.Fatalf("expected no legacy sender domains run error, got %v", legacySenderDomainsErr)
+	if unknownSMTPSubmissionErr != nil {
+		t.Fatalf("expected no unknown smtp submission run error, got %v", unknownSMTPSubmissionErr)
 	}
-	if legacySenderDomainsReport.Summary.ValidConfigs != 0 {
-		t.Fatalf("expected legacy sender domains config to be invalid")
+	if unknownSMTPSubmissionReport.Summary.ValidConfigs != 0 {
+		t.Fatalf("expected unknown smtp submission config to be invalid")
 	}
-	if !containsDiagnosticError(legacySenderDomainsReport.Diagnostics[0].Errors, "smtpSubmission.senderDomains is no longer supported") {
-		t.Fatalf("expected legacy sender-domain diagnostic, got %v", legacySenderDomainsReport.Diagnostics[0].Errors)
+	if !containsDiagnosticError(unknownSMTPSubmissionReport.Diagnostics[0].Errors, "field unsupportedOption not found") {
+		t.Fatalf("expected unknown smtp submission diagnostic, got %v", unknownSMTPSubmissionReport.Diagnostics[0].Errors)
 	}
 }
 
@@ -413,11 +413,6 @@ func TestDoctorValidationHelpersCoverErrorBranches(t *testing.T) {
 		if !containsDiagnosticError(smtpResult.Errors, expected) {
 			t.Fatalf("expected SMTP validation error %q in %v", expected, smtpResult.Errors)
 		}
-	}
-	legacySenderDomainsResult := DiagnosticResult{Valid: true}
-	validateLegacySMTPSenderDomainsConfig(pinguinSMTPSubmission{SenderDomains: legacySenderDomains{present: true}}, &legacySenderDomainsResult)
-	if !containsDiagnosticError(legacySenderDomainsResult.Errors, "smtpSubmission.senderDomains is no longer supported") {
-		t.Fatalf("expected legacy sender-domain validation error in %v", legacySenderDomainsResult.Errors)
 	}
 	invalidSMTPResult := DiagnosticResult{Valid: true}
 	validateSMTPSubmissionConfig(pinguinSMTPSubmission{
@@ -827,7 +822,7 @@ tenants:
       - demo.example.com
 `
 
-const legacySenderDomainsConfigYAML = `
+const unknownSMTPSubmissionConfigYAML = `
 server:
   databasePath: /data/pinguin.db
   grpcAuthToken: test-token-123
@@ -848,8 +843,7 @@ smtpSubmission:
   maxMessageBytes: 26214400
   maxRecipients: 100
   allowInsecureAuth: true
-  senderDomains:
-    - mprlab.com
+  unsupportedOption: true
   relay:
     host: smtp-relay.example.com
     port: 587
@@ -863,7 +857,7 @@ tenants:
       - demo.example.com
 `
 
-const forwardingWithoutSenderDomainsConfigYAML = `
+const dynamicForwardingConfigYAML = `
 server:
   databasePath: /data/pinguin.db
   grpcAuthToken: test-token-123

@@ -50,7 +50,6 @@ tenants:
 web:
   enabled: true
   listenAddr: :8080
-  staticRoot: web
   allowedOrigins:
     - https://app.local
     - https://alt.local
@@ -394,7 +393,7 @@ smtpSubmission:
 	}
 }
 
-func TestLoadConfigRejectsLegacySMTPSenderDomains(t *testing.T) {
+func TestLoadConfigRejectsUnknownSMTPSubmissionFields(t *testing.T) {
 	configPath := writeConfigFile(t, `
 server:
   databasePath: app.db
@@ -416,8 +415,7 @@ smtpSubmission:
   maxMessageBytes: 1048576
   maxRecipients: 25
   allowInsecureAuth: true
-  senderDomains:
-    - example.com
+  unsupportedOption: true
   relay:
     host: relay.one.test
     port: 2525
@@ -426,8 +424,8 @@ smtpSubmission:
 `)
 
 	_, err := loadConfigFromPath(configPath)
-	if err == nil || !strings.Contains(err.Error(), "smtpSubmission.senderDomains is no longer supported") {
-		t.Fatalf("expected legacy senderDomains error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "field unsupportedOption not found") {
+		t.Fatalf("expected unknown smtpSubmission field error, got %v", err)
 	}
 }
 
@@ -526,12 +524,9 @@ func TestTenantConfigUnmarshalShapes(t *testing.T) {
 		t.Fatalf("unexpected sequence config %+v", sequence)
 	}
 
-	var items tenantConfig
-	if err := yaml.Unmarshal([]byte("items:\n  - id: tenant-two\n    displayName: Two\nconfigPath: ignored.yml\n"), &items); err != nil {
-		t.Fatalf("unmarshal items: %v", err)
-	}
-	if len(items.Tenants) != 1 || items.Tenants[0].ID != "tenant-two" || items.ConfigPath != "ignored.yml" {
-		t.Fatalf("unexpected items config %+v", items)
+	var unsupported tenantConfig
+	if err := yaml.Unmarshal([]byte("items:\n  - id: tenant-two\n    displayName: Two\nconfigPath: ignored.yml\n"), &unsupported); err == nil || !strings.Contains(err.Error(), "tenants.items is not supported") {
+		t.Fatalf("expected unsupported items error, got %v", err)
 	}
 
 	var invalid tenantConfig
@@ -558,8 +553,19 @@ func TestTenantConfigUnmarshalShapes(t *testing.T) {
 			{Kind: yaml.MappingNode},
 		},
 	}
-	if err := items.UnmarshalYAML(mappingNode); err == nil {
+	if err := unsupported.UnmarshalYAML(mappingNode); err == nil {
 		t.Fatalf("expected mapping decode error")
+	}
+
+	invalidKnownMappingNode := &yaml.Node{
+		Kind: yaml.MappingNode,
+		Content: []*yaml.Node{
+			{Kind: yaml.ScalarNode, Value: "tenants"},
+			{Kind: yaml.MappingNode},
+		},
+	}
+	if err := unsupported.UnmarshalYAML(invalidKnownMappingNode); err == nil {
+		t.Fatalf("expected known mapping decode error")
 	}
 }
 

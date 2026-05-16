@@ -139,17 +139,7 @@ type smtpSubmissionSection struct {
 	MaxMessageBytes    int64                      `yaml:"maxMessageBytes"`
 	MaxRecipients      int                        `yaml:"maxRecipients"`
 	AllowInsecureAuth  bool                       `yaml:"allowInsecureAuth"`
-	SenderDomains      legacySenderDomains        `yaml:"senderDomains"`
 	Relay              smtpSubmissionRelaySection `yaml:"relay"`
-}
-
-type legacySenderDomains struct {
-	present bool
-}
-
-func (legacy *legacySenderDomains) UnmarshalYAML(*yaml.Node) error {
-	legacy.present = true
-	return nil
 }
 
 type smtpSubmissionRelaySection struct {
@@ -196,24 +186,36 @@ func (cfg *tenantConfig) UnmarshalYAML(value *yaml.Node) error {
 		cfg.Tenants = tenants
 		return nil
 	case yaml.MappingNode:
+		if unknownKey := firstUnknownYAMLMappingKey(value, "configPath", "tenants"); unknownKey != "" {
+			return fmt.Errorf("configuration: tenants.%s is not supported", unknownKey)
+		}
 		var decoded struct {
 			ConfigPath string                   `yaml:"configPath"`
 			Tenants    []tenant.BootstrapTenant `yaml:"tenants"`
-			Items      []tenant.BootstrapTenant `yaml:"items"`
 		}
 		if err := value.Decode(&decoded); err != nil {
 			return fmt.Errorf("configuration: parse tenants: %w", err)
 		}
 		cfg.ConfigPath = strings.TrimSpace(decoded.ConfigPath)
-		if len(decoded.Items) > 0 {
-			cfg.Tenants = decoded.Items
-			return nil
-		}
 		cfg.Tenants = decoded.Tenants
 		return nil
 	default:
 		return fmt.Errorf("configuration: tenants must be a list")
 	}
+}
+
+func firstUnknownYAMLMappingKey(value *yaml.Node, allowedKeys ...string) string {
+	allowed := make(map[string]struct{}, len(allowedKeys))
+	for _, allowedKey := range allowedKeys {
+		allowed[allowedKey] = struct{}{}
+	}
+	for index := 0; index+1 < len(value.Content); index += 2 {
+		key := strings.TrimSpace(value.Content[index].Value)
+		if _, ok := allowed[key]; !ok {
+			return key
+		}
+	}
+	return ""
 }
 
 // LoadConfig reads the YAML config file (with environment expansion) into Config.
@@ -241,11 +243,10 @@ func loadConfigFromPath(configPath string) (Config, error) {
 	}
 
 	var fileCfg fileConfig
-	if err := yaml.Unmarshal([]byte(expanded), &fileCfg); err != nil {
+	decoder := yaml.NewDecoder(strings.NewReader(expanded))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&fileCfg); err != nil {
 		return Config{}, fmt.Errorf("configuration: parse yaml: %w", err)
-	}
-	if fileCfg.SMTPSubmission.SenderDomains.present {
-		return Config{}, fmt.Errorf("configuration: smtpSubmission.senderDomains is no longer supported; add sender domains through /api/smtp-domains")
 	}
 
 	webEnabled := true

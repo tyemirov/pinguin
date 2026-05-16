@@ -217,8 +217,6 @@ func mapModelToGrpcResponse(modelResp model.NotificationResponse) *grpcapi.Notif
 		grpcStatus = grpcapi.Status_CANCELLED
 	case model.StatusErrored:
 		grpcStatus = grpcapi.Status_ERRORED
-	case model.StatusFailed:
-		grpcStatus = grpcapi.Status_FAILED
 	default:
 		grpcStatus = grpcapi.Status_UNKNOWN
 	}
@@ -302,8 +300,6 @@ func mapGrpcStatuses(source []grpcapi.Status) []model.NotificationStatus {
 			result = append(result, model.StatusQueued)
 		case grpcapi.Status_SENT:
 			result = append(result, model.StatusSent)
-		case grpcapi.Status_FAILED:
-			result = append(result, model.StatusFailed)
 		case grpcapi.Status_CANCELLED:
 			result = append(result, model.StatusCancelled)
 		case grpcapi.Status_ERRORED:
@@ -392,28 +388,26 @@ type httpServerRunner interface {
 }
 
 type serverDependencies struct {
-	loadConfig                     func() (config.Config, error)
-	newLogger                      func(string) *slog.Logger
-	initDB                         func(string, *slog.Logger) (*gorm.DB, error)
-	newSecretKeeper                func(string) (*tenant.SecretKeeper, error)
-	bootstrapTenants               func(context.Context, *gorm.DB, *tenant.SecretKeeper, tenant.BootstrapConfig) error
-	bootstrapTenantsFromFile       func(context.Context, *gorm.DB, *tenant.SecretKeeper, string) error
-	newTenantRepository            func(*gorm.DB, *tenant.SecretKeeper) *tenant.Repository
-	migrateSMTPIdentityCredentials func(context.Context, *gorm.DB, string) error
-	newSMTPIdentityRepository      func(*gorm.DB, string) (*smtpidentity.Repository, error)
-	cleanupLegacySenderDomains     func(context.Context, *gorm.DB) error
-	newSMTPIdentityService         func(*smtpidentity.Repository, smtpidentity.PublicSettings) *smtpidentity.Service
-	newNotificationService         func(*gorm.DB, *slog.Logger, config.Config, *tenant.Repository) service.NotificationService
-	loadTLSConfig                  func(string, string) (*tls.Config, error)
-	newSMTPRelay                   func(*slog.Logger, config.Config) smtpsubmission.RawRelay
-	newSMTPSubmissionServer        func(smtpsubmission.Config) (smtpSubmissionStarter, error)
-	newSMTPForwarder               func(*slog.Logger, config.Config) (smtpforwarding.Forwarder, error)
-	newSMTPForwardingServer        func(smtpforwarding.Config) (smtpForwardingStarter, error)
-	newSessionValidator            func(sessionvalidator.Config) (httpapi.SessionValidator, error)
-	newHTTPServer                  func(httpapi.Config) (httpServerRunner, error)
-	listen                         func(string, string) (net.Listener, error)
-	serveGRPC                      func(net.Listener, service.NotificationService, *tenant.Repository, *slog.Logger, string) error
-	exit                           func(int)
+	loadConfig                func() (config.Config, error)
+	newLogger                 func(string) *slog.Logger
+	initDB                    func(string, *slog.Logger) (*gorm.DB, error)
+	newSecretKeeper           func(string) (*tenant.SecretKeeper, error)
+	bootstrapTenants          func(context.Context, *gorm.DB, *tenant.SecretKeeper, tenant.BootstrapConfig) error
+	bootstrapTenantsFromFile  func(context.Context, *gorm.DB, *tenant.SecretKeeper, string) error
+	newTenantRepository       func(*gorm.DB, *tenant.SecretKeeper) *tenant.Repository
+	newSMTPIdentityRepository func(*gorm.DB, string) (*smtpidentity.Repository, error)
+	newSMTPIdentityService    func(*smtpidentity.Repository, smtpidentity.PublicSettings) *smtpidentity.Service
+	newNotificationService    func(*gorm.DB, *slog.Logger, config.Config, *tenant.Repository) service.NotificationService
+	loadTLSConfig             func(string, string) (*tls.Config, error)
+	newSMTPRelay              func(*slog.Logger, config.Config) smtpsubmission.RawRelay
+	newSMTPSubmissionServer   func(smtpsubmission.Config) (smtpSubmissionStarter, error)
+	newSMTPForwarder          func(*slog.Logger, config.Config) (smtpforwarding.Forwarder, error)
+	newSMTPForwardingServer   func(smtpforwarding.Config) (smtpForwardingStarter, error)
+	newSessionValidator       func(sessionvalidator.Config) (httpapi.SessionValidator, error)
+	newHTTPServer             func(httpapi.Config) (httpServerRunner, error)
+	listen                    func(string, string) (net.Listener, error)
+	serveGRPC                 func(net.Listener, service.NotificationService, *tenant.Repository, *slog.Logger, string) error
+	exit                      func(int)
 }
 
 func main() {
@@ -430,19 +424,17 @@ func runServerAndExit(args []string, dependencies serverDependencies) {
 
 func productionServerDependencies() serverDependencies {
 	return serverDependencies{
-		loadConfig:                     config.LoadConfig,
-		newLogger:                      logging.NewLogger,
-		initDB:                         db.InitDB,
-		newSecretKeeper:                tenant.NewSecretKeeper,
-		bootstrapTenants:               tenant.Bootstrap,
-		bootstrapTenantsFromFile:       tenant.BootstrapFromFile,
-		newTenantRepository:            tenant.NewRepository,
-		migrateSMTPIdentityCredentials: smtpidentity.MigrateStoredCredentialPasswords,
-		newSMTPIdentityRepository:      smtpidentity.NewRepository,
-		cleanupLegacySenderDomains:     smtpidentity.CleanupLegacySenderDomains,
-		newSMTPIdentityService:         smtpidentity.NewService,
-		newNotificationService:         service.NewNotificationService,
-		loadTLSConfig:                  smtpsubmission.LoadTLSConfig,
+		loadConfig:                config.LoadConfig,
+		newLogger:                 logging.NewLogger,
+		initDB:                    db.InitDB,
+		newSecretKeeper:           tenant.NewSecretKeeper,
+		bootstrapTenants:          tenant.Bootstrap,
+		bootstrapTenantsFromFile:  tenant.BootstrapFromFile,
+		newTenantRepository:       tenant.NewRepository,
+		newSMTPIdentityRepository: smtpidentity.NewRepository,
+		newSMTPIdentityService:    smtpidentity.NewService,
+		newNotificationService:    service.NewNotificationService,
+		loadTLSConfig:             smtpsubmission.LoadTLSConfig,
 		newSMTPRelay: func(logger *slog.Logger, cfg config.Config) smtpsubmission.RawRelay {
 			if cfg.SMTPSubmission.DeliveryMode == "direct" {
 				return smtpsubmission.NewDirectMXRelay(logger, cfg)
@@ -530,17 +522,9 @@ func runServer(args []string, dependencies serverDependencies) int {
 		return 1
 	}
 	tenantRepo := dependencies.newTenantRepository(databaseInstance, secretKeeper)
-	if migrateErr := dependencies.migrateSMTPIdentityCredentials(context.Background(), databaseInstance, configuration.MasterEncryptionKey); migrateErr != nil {
-		mainLogger.Error("Failed to migrate SMTP identity credentials", "error", migrateErr)
-		return 1
-	}
 	smtpIdentityRepo, smtpIdentityRepoErr := dependencies.newSMTPIdentityRepository(databaseInstance, configuration.MasterEncryptionKey)
 	if smtpIdentityRepoErr != nil {
 		mainLogger.Error("Failed to initialize SMTP identity repository", "error", smtpIdentityRepoErr)
-		return 1
-	}
-	if senderDomainErr := dependencies.cleanupLegacySenderDomains(context.Background(), databaseInstance); senderDomainErr != nil {
-		mainLogger.Error("Failed to clean up legacy SMTP submission sender domains", "error", senderDomainErr)
 		return 1
 	}
 	smtpIdentityService := dependencies.newSMTPIdentityService(smtpIdentityRepo, smtpPublicSettings(configuration.SMTPSubmission))
@@ -682,14 +666,8 @@ func withServerDependencyDefaults(dependencies serverDependencies) serverDepende
 	if dependencies.newTenantRepository == nil {
 		dependencies.newTenantRepository = production.newTenantRepository
 	}
-	if dependencies.migrateSMTPIdentityCredentials == nil {
-		dependencies.migrateSMTPIdentityCredentials = production.migrateSMTPIdentityCredentials
-	}
 	if dependencies.newSMTPIdentityRepository == nil {
 		dependencies.newSMTPIdentityRepository = production.newSMTPIdentityRepository
-	}
-	if dependencies.cleanupLegacySenderDomains == nil {
-		dependencies.cleanupLegacySenderDomains = production.cleanupLegacySenderDomains
 	}
 	if dependencies.newSMTPIdentityService == nil {
 		dependencies.newSMTPIdentityService = production.newSMTPIdentityService

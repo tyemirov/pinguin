@@ -146,7 +146,7 @@ func TestNotificationClientFailurePaths(t *testing.T) {
 	t.Cleanup(func() { sendPollInterval = 2 * time.Second })
 	sendPollInterval = 5 * time.Millisecond
 
-	failureAddr := startServerWithStatuses(t, grpcapi.Status_FAILED, grpcapi.Status_FAILED)
+	failureAddr := startServerWithStatuses(t, grpcapi.Status_ERRORED, grpcapi.Status_ERRORED)
 	settings, err := NewSettings(failureAddr, "token", "tenant", 5, 1)
 	if err != nil {
 		t.Fatalf("NewSettings error: %v", err)
@@ -158,8 +158,8 @@ func TestNotificationClientFailurePaths(t *testing.T) {
 	defer clientInstance.Close()
 
 	resp, err := clientInstance.SendNotificationAndWait(&grpcapi.NotificationRequest{})
-	if err == nil || resp.Status != grpcapi.Status_FAILED {
-		t.Fatalf("expected failure status and error, got resp=%v err=%v", resp, err)
+	if err == nil || resp.Status != grpcapi.Status_ERRORED {
+		t.Fatalf("expected errored status and error, got resp=%v err=%v", resp, err)
 	}
 
 	timeoutAddr := startServerWithStatuses(t, grpcapi.Status_QUEUED, grpcapi.Status_QUEUED)
