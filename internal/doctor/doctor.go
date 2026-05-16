@@ -138,44 +138,56 @@ type pinguinTenant struct {
 type pinguinYAMLNode struct {
 	ConfigPath string          `yaml:"configPath"`
 	Tenants    []pinguinTenant `yaml:"tenants"`
-	Items      []pinguinTenant `yaml:"items"`
 	Raw        *yaml.Node      `yaml:"-"`
 }
 
-func (n *pinguinYAMLNode) UnmarshalYAML(value *yaml.Node) error {
-	n.Raw = value
+func (node *pinguinYAMLNode) UnmarshalYAML(value *yaml.Node) error {
+	node.Raw = value
 	switch value.Kind {
 	case yaml.SequenceNode:
 		var tenants []pinguinTenant
-		if err := value.Decode(&tenants); err != nil {
-			return err
+		if decodeErr := value.Decode(&tenants); decodeErr != nil {
+			return fmt.Errorf("configuration: parse tenants: %w", decodeErr)
 		}
-		n.Tenants = tenants
+		node.ConfigPath = ""
+		node.Tenants = tenants
 		return nil
 	case yaml.MappingNode:
+		if unknownKey := firstUnsupportedTenantMappingKey(value, "configPath", "tenants"); unknownKey != "" {
+			return fmt.Errorf("configuration: tenants.%s is not supported", unknownKey)
+		}
 		type decoded struct {
 			ConfigPath string          `yaml:"configPath"`
 			Tenants    []pinguinTenant `yaml:"tenants"`
-			Items      []pinguinTenant `yaml:"items"`
 		}
-		var d decoded
-		if err := value.Decode(&d); err != nil {
-			return err
+		var decodedConfig decoded
+		if decodeErr := value.Decode(&decodedConfig); decodeErr != nil {
+			return fmt.Errorf("configuration: parse tenants: %w", decodeErr)
 		}
-		n.ConfigPath = d.ConfigPath
-		n.Tenants = d.Tenants
-		n.Items = d.Items
+		node.ConfigPath = strings.TrimSpace(decodedConfig.ConfigPath)
+		node.Tenants = decodedConfig.Tenants
 		return nil
 	default:
-		return nil
+		return fmt.Errorf("configuration: tenants must be a list")
 	}
 }
 
-func (n *pinguinYAMLNode) AllTenants() []pinguinTenant {
-	if len(n.Items) > 0 {
-		return n.Items
+func firstUnsupportedTenantMappingKey(value *yaml.Node, allowedKeys ...string) string {
+	allowed := make(map[string]struct{}, len(allowedKeys))
+	for _, allowedKey := range allowedKeys {
+		allowed[allowedKey] = struct{}{}
 	}
-	return n.Tenants
+	for contentIndex := 0; contentIndex+1 < len(value.Content); contentIndex += 2 {
+		key := strings.TrimSpace(value.Content[contentIndex].Value)
+		if _, ok := allowed[key]; !ok {
+			return key
+		}
+	}
+	return ""
+}
+
+func (node *pinguinYAMLNode) AllTenants() []pinguinTenant {
+	return node.Tenants
 }
 
 // Run executes the doctor validation for the specified configurations.

@@ -295,7 +295,7 @@ web:
 	}
 }
 
-func TestRunHandlesMappingTenantItemsAndSMTPSubmission(t *testing.T) {
+func TestRunRejectsMappingTenantItems(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "config.yml")
 	writeTestConfig(t, configPath, mappingItemsSMTPSubmissionConfigYAML)
@@ -306,14 +306,11 @@ func TestRunHandlesMappingTenantItemsAndSMTPSubmission(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if report.Summary.ValidConfigs != 1 {
-		t.Fatalf("expected valid config, got errors %v", report.Diagnostics[0].Errors)
+	if report.Summary.ValidConfigs != 0 {
+		t.Fatalf("expected tenants.items config to be invalid")
 	}
-	if len(report.Diagnostics[0].Warnings) == 0 {
-		t.Fatalf("expected master key warning")
-	}
-	if len(report.Diagnostics[0].TenantIDs) != 1 || report.Diagnostics[0].TenantIDs[0] != "mapped" {
-		t.Fatalf("expected mapped tenant id, got %v", report.Diagnostics[0].TenantIDs)
+	if !containsDiagnosticError(report.Diagnostics[0].Errors, "tenants.items is not supported") {
+		t.Fatalf("expected tenants.items diagnostic, got %v", report.Diagnostics[0].Errors)
 	}
 }
 
@@ -359,11 +356,31 @@ func TestFormatSummaryIncludesInvalidAndCleanCrossValidation(t *testing.T) {
 
 func TestPinguinYAMLNodeDefaultKind(t *testing.T) {
 	var node pinguinYAMLNode
-	if err := node.UnmarshalYAML(&yaml.Node{Kind: yaml.ScalarNode, Value: "ignored"}); err != nil {
-		t.Fatalf("default kind should be ignored, got %v", err)
+	if err := node.UnmarshalYAML(&yaml.Node{Kind: yaml.ScalarNode, Value: "ignored"}); err == nil || !strings.Contains(err.Error(), "tenants must be a list") {
+		t.Fatalf("expected invalid tenant shape error, got %v", err)
 	}
 	if tenants := node.AllTenants(); tenants != nil {
 		t.Fatalf("expected no tenants, got %+v", tenants)
+	}
+}
+
+func TestPinguinYAMLNodeAcceptsCurrentMappingShape(t *testing.T) {
+	var node pinguinYAMLNode
+	if err := yaml.Unmarshal([]byte(`
+configPath: " tenants.yml "
+tenants:
+  - id: mapped
+    displayName: Mapped Tenant
+    domains:
+      - mapped.example.com
+`), &node); err != nil {
+		t.Fatalf("unmarshal current mapping shape: %v", err)
+	}
+	if node.ConfigPath != "tenants.yml" {
+		t.Fatalf("expected trimmed config path, got %q", node.ConfigPath)
+	}
+	if len(node.AllTenants()) != 1 || node.AllTenants()[0].ID != "mapped" {
+		t.Fatalf("expected mapped tenant, got %+v", node.AllTenants())
 	}
 }
 
@@ -392,6 +409,18 @@ func TestPinguinYAMLNodeDecodeErrors(t *testing.T) {
 	var mapping pinguinYAMLNode
 	if err := mapping.UnmarshalYAML(mappingNode); err == nil {
 		t.Fatalf("expected mapping decode error")
+	}
+
+	invalidCurrentMappingNode := &yaml.Node{
+		Kind: yaml.MappingNode,
+		Content: []*yaml.Node{
+			{Kind: yaml.ScalarNode, Value: "tenants"},
+			{Kind: yaml.MappingNode},
+		},
+	}
+	var currentMapping pinguinYAMLNode
+	if err := currentMapping.UnmarshalYAML(invalidCurrentMappingNode); err == nil {
+		t.Fatalf("expected current mapping decode error")
 	}
 }
 
