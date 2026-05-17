@@ -12,6 +12,7 @@ import (
 	"time"
 
 	runtimeconfig "github.com/tyemirov/pinguin/internal/config"
+	"github.com/tyemirov/pinguin/internal/tenant"
 	"gopkg.in/yaml.v3"
 )
 
@@ -128,12 +129,7 @@ type pinguinSMTPForwarding struct {
 	Relay           pinguinSMTPRelay `yaml:"relay"`
 }
 
-type pinguinTenant struct {
-	ID          string   `yaml:"id"`
-	DisplayName string   `yaml:"displayName"`
-	Domains     []string `yaml:"domains"`
-	Admins      []string `yaml:"admins"`
-}
+type pinguinTenant = tenant.BootstrapTenant
 
 type pinguinYAMLNode struct {
 	ConfigPath string          `yaml:"configPath"`
@@ -270,7 +266,8 @@ func validateConfig(configPath string, expandEnv bool) (DiagnosticResult, *pingu
 	validateSMTPSubmissionConfig(config.SMTPSubmission, &result)
 	validateSMTPForwardingConfig(config.SMTPForwarding, &result)
 
-	for _, tenant := range config.Tenants.AllTenants() {
+	tenants := tenantsForValidation(config.Tenants, &result)
+	for _, tenant := range tenants {
 		tenantID := strings.TrimSpace(tenant.ID)
 		if tenantID != "" {
 			result.TenantIDs = append(result.TenantIDs, tenantID)
@@ -283,6 +280,38 @@ func validateConfig(configPath string, expandEnv bool) (DiagnosticResult, *pingu
 	sort.Strings(result.TenantIDs)
 
 	return result, &config
+}
+
+func tenantsForValidation(config pinguinYAMLNode, result *DiagnosticResult) []pinguinTenant {
+	tenants := config.AllTenants()
+	if len(tenants) > 0 {
+		return tenants
+	}
+	tenantConfigPath := strings.TrimSpace(config.ConfigPath)
+	if tenantConfigPath == "" {
+		result.Valid = false
+		result.Errors = append(result.Errors, "tenants.configPath is required when no inline tenants are configured")
+		return nil
+	}
+
+	rawContents, readErr := os.ReadFile(tenantConfigPath)
+	if readErr != nil {
+		result.Valid = false
+		result.Errors = append(result.Errors, fmt.Sprintf("tenants.configPath read %s: %v", tenantConfigPath, readErr))
+		return nil
+	}
+	var bootstrapConfig tenant.BootstrapConfig
+	if parseErr := yaml.Unmarshal(rawContents, &bootstrapConfig); parseErr != nil {
+		result.Valid = false
+		result.Errors = append(result.Errors, fmt.Sprintf("tenants.configPath parse_yaml: %v", parseErr))
+		return nil
+	}
+	if len(bootstrapConfig.Tenants) == 0 {
+		result.Valid = false
+		result.Errors = append(result.Errors, fmt.Sprintf("tenants.configPath %s has no tenants configured", tenantConfigPath))
+		return nil
+	}
+	return bootstrapConfig.Tenants
 }
 
 func validateServerConfig(server pinguinServer, webEnabled bool, result *DiagnosticResult) {

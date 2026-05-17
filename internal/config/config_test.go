@@ -429,6 +429,56 @@ smtpSubmission:
 	}
 }
 
+func TestLoadConfigRejectsUnsupportedTenantFields(t *testing.T) {
+	for _, testCase := range []struct {
+		name          string
+		tenantSnippet string
+		expected      string
+	}{
+		{
+			name: "legacy_status",
+			tenantSnippet: `
+    status: active`,
+			expected: "tenants[].status is no longer supported",
+		},
+		{
+			name: "legacy_identity",
+			tenantSnippet: `
+    identity:
+      googleClientId: google-client
+      tauthBaseUrl: https://tauth-api.mprlab.com`,
+			expected: "tenants[].identity is not supported",
+		},
+		{
+			name: "unknown_tenant_field",
+			tenantSnippet: `
+    unsupportedOption: true`,
+			expected: "tenants[].unsupportedOption is not supported",
+		},
+		{
+			name: "unknown_email_profile_field",
+			tenantSnippet: `
+    emailProfile:
+      host: smtp.one.test
+      port: 587
+      username: smtp-user
+      password: smtp-pass
+      fromAddress: noreply@one.test
+      unsupportedOption: true`,
+			expected: "tenants[].emailProfile.unsupportedOption is not supported",
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			configPath := writeConfigFile(t, tenantConfigWithSnippet(testCase.tenantSnippet))
+
+			_, err := loadConfigFromPath(configPath)
+			if err == nil || !strings.Contains(err.Error(), testCase.expected) {
+				t.Fatalf("expected tenant schema error containing %q, got %v", testCase.expected, err)
+			}
+		})
+	}
+}
+
 func TestValidateConfigRejectsInvalidSMTPForwarding(t *testing.T) {
 	cfg := Config{
 		DatabasePath:         "app.db",
@@ -786,4 +836,24 @@ func writeConfigFile(t *testing.T, contents string) string {
 		t.Fatalf("write config file: %v", err)
 	}
 	return path
+}
+
+func tenantConfigWithSnippet(tenantSnippet string) string {
+	return `
+server:
+  databasePath: app.db
+  grpcAuthToken: token
+  logLevel: INFO
+  maxRetries: 3
+  retryIntervalSec: 30
+  masterEncryptionKey: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  connectionTimeoutSec: 5
+  operationTimeoutSec: 10
+tenants:
+  - id: tenant-one
+    displayName: One Corp
+    domains: [one.test]` + tenantSnippet + `
+web:
+  enabled: false
+`
 }
