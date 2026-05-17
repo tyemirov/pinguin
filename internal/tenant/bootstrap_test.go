@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -247,6 +248,74 @@ func TestBootstrapFromFileReportsReadAndParseErrors(t *testing.T) {
 	}
 	if err := BootstrapFromFile(context.Background(), dbInstance, keeper, invalidPath); err == nil {
 		t.Fatalf("expected parse error")
+	}
+}
+
+func TestBootstrapYAMLStrictSchemaEdges(t *testing.T) {
+	var config BootstrapConfig
+	if err := config.UnmarshalYAML(nil); err != nil {
+		t.Fatalf("nil config unmarshal: %v", err)
+	}
+	if err := yaml.Unmarshal([]byte("- id: tenant-one\n"), &config); err == nil || !strings.Contains(err.Error(), "config must be a mapping") {
+		t.Fatalf("expected config mapping error, got %v", err)
+	}
+	if err := yaml.Unmarshal([]byte("items: []\n"), &config); err == nil || !strings.Contains(err.Error(), "items is not supported") {
+		t.Fatalf("expected unsupported root key error, got %v", err)
+	}
+
+	var tenantSpec BootstrapTenant
+	if err := tenantSpec.UnmarshalYAML(nil); err != nil {
+		t.Fatalf("nil tenant unmarshal: %v", err)
+	}
+	if err := yaml.Unmarshal([]byte("tenants:\n  - broken\n"), &config); err == nil || !strings.Contains(err.Error(), "tenants[] must be a mapping") {
+		t.Fatalf("expected tenant mapping error, got %v", err)
+	}
+	if err := yaml.Unmarshal([]byte("tenants:\n  - unsupportedOption: true\n"), &config); err == nil || !strings.Contains(err.Error(), "tenants[].unsupportedOption is not supported") {
+		t.Fatalf("expected unsupported tenant field error, got %v", err)
+	}
+	if err := yaml.Unmarshal([]byte("tenants:\n  - status: active\n"), &config); err == nil || !strings.Contains(err.Error(), "tenants[].status is no longer supported") {
+		t.Fatalf("expected unsupported tenant status error, got %v", err)
+	}
+
+	var emailProfile BootstrapEmailProfile
+	if err := emailProfile.UnmarshalYAML(nil); err != nil {
+		t.Fatalf("nil email profile unmarshal: %v", err)
+	}
+	if err := yaml.Unmarshal([]byte("tenants:\n  - emailProfile: broken\n"), &config); err == nil || !strings.Contains(err.Error(), "emailProfile must be a mapping") {
+		t.Fatalf("expected email profile mapping error, got %v", err)
+	}
+	if err := yaml.Unmarshal([]byte("tenants:\n  - emailProfile:\n      port: []\n"), &config); err == nil {
+		t.Fatalf("expected email profile decode error")
+	}
+	if err := yaml.Unmarshal([]byte("tenants:\n  - emailProfile:\n      unsupportedOption: true\n"), &config); err == nil || !strings.Contains(err.Error(), "emailProfile.unsupportedOption is not supported") {
+		t.Fatalf("expected unsupported email profile field error, got %v", err)
+	}
+
+	var smsProfile BootstrapSMSProfile
+	if err := smsProfile.UnmarshalYAML(nil); err != nil {
+		t.Fatalf("nil sms profile unmarshal: %v", err)
+	}
+	if err := yaml.Unmarshal([]byte("tenants:\n  - smsProfile: broken\n"), &config); err == nil || !strings.Contains(err.Error(), "smsProfile must be a mapping") {
+		t.Fatalf("expected sms profile mapping error, got %v", err)
+	}
+	if err := yaml.Unmarshal([]byte("tenants:\n  - smsProfile:\n      unsupportedOption: true\n"), &config); err == nil || !strings.Contains(err.Error(), "smsProfile.unsupportedOption is not supported") {
+		t.Fatalf("expected unsupported sms profile field error, got %v", err)
+	}
+	if err := yaml.Unmarshal([]byte("tenants:\n  - smsProfile:\n      accountSid: []\n"), &config); err == nil {
+		t.Fatalf("expected sms profile decode error")
+	}
+
+	if yamlMappingHasKey(nil, "status") {
+		t.Fatalf("nil mapping should not contain key")
+	}
+	if yamlMappingHasKey(&yaml.Node{Kind: yaml.ScalarNode, Value: "status"}, "status") {
+		t.Fatalf("scalar mapping should not contain key")
+	}
+	if !yamlMappingHasKey(&yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
+		{Kind: yaml.ScalarNode, Value: "status"},
+		{Kind: yaml.ScalarNode, Value: "active"},
+	}}, "status") {
+		t.Fatalf("mapping should contain status key")
 	}
 }
 

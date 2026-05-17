@@ -50,6 +50,198 @@ func TestRunValidatesCurrentServerTAuthConfig(t *testing.T) {
 	}
 }
 
+func TestRunValidatesCurrentRuntimeTenantSchema(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yml")
+	writeTestConfig(t, configPath, currentRuntimeTenantFieldsConfigYAML)
+
+	report, err := Run(context.Background(), Options{
+		ConfigPaths: []string{configPath},
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if report.Summary.ValidConfigs != 1 {
+		t.Fatalf("expected current runtime tenant schema to be valid, got errors: %v", report.Diagnostics[0].Errors)
+	}
+}
+
+func TestRunRejectsUnsupportedTenantFields(t *testing.T) {
+	for _, testCase := range []struct {
+		name          string
+		tenantSnippet string
+		expected      string
+	}{
+		{
+			name: "legacy_status",
+			tenantSnippet: `
+    status: active`,
+			expected: "tenants[].status is no longer supported",
+		},
+		{
+			name: "legacy_identity",
+			tenantSnippet: `
+    identity:
+      googleClientId: google-client
+      tauthBaseUrl: https://tauth-api.mprlab.com`,
+			expected: "tenants[].identity is not supported",
+		},
+		{
+			name: "unknown_tenant_field",
+			tenantSnippet: `
+    unsupportedOption: true`,
+			expected: "tenants[].unsupportedOption is not supported",
+		},
+		{
+			name: "unknown_sms_profile_field",
+			tenantSnippet: `
+    smsProfile:
+      accountSid: sid
+      authToken: token
+      fromNumber: "+10000000000"
+      unsupportedOption: true`,
+			expected: "tenants[].smsProfile.unsupportedOption is not supported",
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			configPath := filepath.Join(t.TempDir(), "config.yml")
+			writeTestConfig(t, configPath, doctorTenantConfigWithSnippet(testCase.tenantSnippet))
+
+			report, err := Run(context.Background(), Options{
+				ConfigPaths: []string{configPath},
+			})
+			if err != nil {
+				t.Fatalf("expected no run error, got %v", err)
+			}
+			if report.Summary.ValidConfigs != 0 {
+				t.Fatalf("expected unsupported tenant config to be invalid")
+			}
+			if !containsDiagnosticError(report.Diagnostics[0].Errors, testCase.expected) {
+				t.Fatalf("expected unsupported tenant diagnostic containing %q, got %v", testCase.expected, report.Diagnostics[0].Errors)
+			}
+		})
+	}
+}
+
+func TestRunValidatesTenantConfigPath(t *testing.T) {
+	tempDir := t.TempDir()
+	tenantConfigPath := filepath.Join(tempDir, "tenants.yml")
+	writeTestConfig(t, tenantConfigPath, `
+tenants:
+  - id: mapped
+    displayName: Mapped Tenant
+    domains:
+      - mapped.example.com
+`)
+	configPath := filepath.Join(tempDir, "config.yml")
+	writeTestConfig(t, configPath, doctorConfigWithTenantConfigPath(tenantConfigPath))
+
+	report, err := Run(context.Background(), Options{
+		ConfigPaths: []string{configPath},
+	})
+	if err != nil {
+		t.Fatalf("expected no run error, got %v", err)
+	}
+	if report.Summary.ValidConfigs != 1 {
+		t.Fatalf("expected tenant config path to be valid, got %v", report.Diagnostics[0].Errors)
+	}
+	if !containsString(report.Diagnostics[0].TenantIDs, "mapped") {
+		t.Fatalf("expected tenant IDs to include external tenant, got %v", report.Diagnostics[0].TenantIDs)
+	}
+}
+
+func TestRunRejectsInvalidTenantConfigPath(t *testing.T) {
+	tempDir := t.TempDir()
+	tenantConfigPath := filepath.Join(tempDir, "tenants.yml")
+	writeTestConfig(t, tenantConfigPath, `
+tenants:
+  - id: mapped
+    displayName: Mapped Tenant
+    domains:
+      - mapped.example.com
+    status: active
+`)
+	configPath := filepath.Join(tempDir, "config.yml")
+	writeTestConfig(t, configPath, doctorConfigWithTenantConfigPath(tenantConfigPath))
+
+	report, err := Run(context.Background(), Options{
+		ConfigPaths: []string{configPath},
+	})
+	if err != nil {
+		t.Fatalf("expected no run error, got %v", err)
+	}
+	if report.Summary.ValidConfigs != 0 {
+		t.Fatalf("expected invalid tenant config path")
+	}
+	if !containsDiagnosticError(report.Diagnostics[0].Errors, "tenants[].status is no longer supported") {
+		t.Fatalf("expected tenant config path diagnostic, got %v", report.Diagnostics[0].Errors)
+	}
+}
+
+func TestRunRejectsUnreadableAndEmptyTenantConfigPath(t *testing.T) {
+	for _, testCase := range []struct {
+		name             string
+		writeTenantFile  bool
+		tenantFileYAML   string
+		expectedFragment string
+	}{
+		{
+			name:             "unreadable",
+			expectedFragment: "tenants.configPath read",
+		},
+		{
+			name:            "empty",
+			writeTenantFile: true,
+			tenantFileYAML: `
+tenants: []
+`,
+			expectedFragment: "has no tenants configured",
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			tenantConfigPath := filepath.Join(tempDir, "tenants.yml")
+			if testCase.writeTenantFile {
+				writeTestConfig(t, tenantConfigPath, testCase.tenantFileYAML)
+			}
+			configPath := filepath.Join(tempDir, "config.yml")
+			writeTestConfig(t, configPath, doctorConfigWithTenantConfigPath(tenantConfigPath))
+
+			report, err := Run(context.Background(), Options{
+				ConfigPaths: []string{configPath},
+			})
+			if err != nil {
+				t.Fatalf("expected no run error, got %v", err)
+			}
+			if report.Summary.ValidConfigs != 0 {
+				t.Fatalf("expected invalid tenant config path")
+			}
+			if !containsDiagnosticError(report.Diagnostics[0].Errors, testCase.expectedFragment) {
+				t.Fatalf("expected tenant config path diagnostic containing %q, got %v", testCase.expectedFragment, report.Diagnostics[0].Errors)
+			}
+		})
+	}
+}
+
+func TestRunRejectsMissingTenantSource(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yml")
+	writeTestConfig(t, configPath, doctorConfigWithTenantConfigPath(""))
+
+	report, err := Run(context.Background(), Options{
+		ConfigPaths: []string{configPath},
+	})
+	if err != nil {
+		t.Fatalf("expected no run error, got %v", err)
+	}
+	if report.Summary.ValidConfigs != 0 {
+		t.Fatalf("expected missing tenant source to be invalid")
+	}
+	if !containsDiagnosticError(report.Diagnostics[0].Errors, "tenants.configPath") {
+		t.Fatalf("expected missing tenant source diagnostic, got %v", report.Diagnostics[0].Errors)
+	}
+}
+
 func TestRunValidatesInvalidConfig(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "config.yml")
@@ -540,6 +732,15 @@ func containsDiagnosticError(errors []string, expected string) bool {
 	return false
 }
 
+func containsString(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}
+
 func TestFormatReportProducesValidJSON(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "config.yml")
@@ -592,6 +793,52 @@ func writeTestConfig(t *testing.T, path string, content string) {
 	}
 }
 
+func doctorTenantConfigWithSnippet(tenantSnippet string) string {
+	return `
+server:
+  databasePath: /data/pinguin.db
+  grpcAuthToken: test-token-123
+  logLevel: INFO
+  maxRetries: 3
+  retryIntervalSec: 60
+  masterEncryptionKey: test-encryption-key-at-least-32-chars
+  connectionTimeoutSec: 30
+  operationTimeoutSec: 60
+
+web:
+  enabled: false
+
+tenants:
+  - id: demo
+    displayName: Demo Tenant
+    domains:
+      - demo.example.com` + tenantSnippet + `
+`
+}
+
+func doctorConfigWithTenantConfigPath(tenantConfigPath string) string {
+	configPathBlock := ""
+	if tenantConfigPath != "" {
+		configPathBlock = "  configPath: " + tenantConfigPath + "\n"
+	}
+	return `
+server:
+  databasePath: /data/pinguin.db
+  grpcAuthToken: test-token-123
+  logLevel: INFO
+  maxRetries: 3
+  retryIntervalSec: 60
+  masterEncryptionKey: test-encryption-key-at-least-32-chars
+  connectionTimeoutSec: 30
+  operationTimeoutSec: 60
+
+web:
+  enabled: false
+
+tenants:
+` + configPathBlock
+}
+
 const currentServerTAuthConfigYAML = `
 server:
   databasePath: /data/pinguin.db
@@ -619,6 +866,39 @@ tenants:
       - demo.example.com
     admins:
       - admin@example.com
+`
+
+const currentRuntimeTenantFieldsConfigYAML = `
+server:
+  databasePath: /data/pinguin.db
+  grpcAuthToken: test-token-123
+  logLevel: INFO
+  maxRetries: 3
+  retryIntervalSec: 60
+  masterEncryptionKey: test-encryption-key-at-least-32-chars
+  connectionTimeoutSec: 30
+  operationTimeoutSec: 60
+
+web:
+  enabled: false
+
+tenants:
+  - id: demo
+    displayName: Demo Tenant
+    supportEmail: support@example.com
+    enabled: true
+    domains:
+      - demo.example.com
+    emailProfile:
+      host: smtp.example.com
+      port: 587
+      username: smtp-user
+      password: smtp-pass
+      fromAddress: noreply@example.com
+    smsProfile:
+      accountSid: sid
+      authToken: token
+      fromNumber: "+10000000000"
 `
 
 const validConfigYAML = `

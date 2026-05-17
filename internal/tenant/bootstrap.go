@@ -17,17 +17,60 @@ type BootstrapConfig struct {
 	Tenants []BootstrapTenant `json:"tenants" yaml:"tenants"`
 }
 
+func (cfg *BootstrapConfig) UnmarshalYAML(value *yaml.Node) error {
+	if value == nil {
+		*cfg = BootstrapConfig{}
+		return nil
+	}
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf("tenant bootstrap: config must be a mapping")
+	}
+	if unsupportedKey := firstUnsupportedBootstrapYAMLMappingKey(value, "tenants"); unsupportedKey != "" {
+		return fmt.Errorf("tenant bootstrap: %s is not supported", unsupportedKey)
+	}
+	type rawBootstrapConfig BootstrapConfig
+	var decoded rawBootstrapConfig
+	if err := value.Decode(&decoded); err != nil {
+		return err
+	}
+	*cfg = BootstrapConfig(decoded)
+	return nil
+}
+
 // BootstrapTenant declares per-tenant metadata.
 type BootstrapTenant struct {
 	ID           string                `json:"id" yaml:"id"`
 	DisplayName  string                `json:"displayName" yaml:"displayName"`
 	SupportEmail string                `json:"supportEmail" yaml:"supportEmail"`
 	Enabled      *bool                 `json:"enabled" yaml:"enabled"`
-	Status       string                `json:"status" yaml:"status"`
+	Status       string                `json:"status,omitempty" yaml:"status,omitempty"`
 	Domains      []string              `json:"domains" yaml:"domains"`
 	Admins       []string              `json:"admins" yaml:"admins"`
 	EmailProfile BootstrapEmailProfile `json:"emailProfile" yaml:"emailProfile"`
 	SMSProfile   *BootstrapSMSProfile  `json:"smsProfile" yaml:"smsProfile"`
+}
+
+func (spec *BootstrapTenant) UnmarshalYAML(value *yaml.Node) error {
+	if value == nil {
+		*spec = BootstrapTenant{}
+		return nil
+	}
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf("tenant bootstrap: tenants[] must be a mapping")
+	}
+	if yamlMappingHasKey(value, "status") {
+		return fmt.Errorf("tenant bootstrap: tenants[].status is no longer supported; use tenants[].enabled (true|false)")
+	}
+	if unsupportedKey := firstUnsupportedBootstrapYAMLMappingKey(value, "id", "displayName", "supportEmail", "enabled", "domains", "admins", "emailProfile", "smsProfile"); unsupportedKey != "" {
+		return fmt.Errorf("tenant bootstrap: tenants[].%s is not supported", unsupportedKey)
+	}
+	type rawBootstrapTenant BootstrapTenant
+	var decoded rawBootstrapTenant
+	if err := value.Decode(&decoded); err != nil {
+		return err
+	}
+	*spec = BootstrapTenant(decoded)
+	return nil
 }
 
 // BootstrapEmailProfile defines SMTP credentials.
@@ -39,11 +82,77 @@ type BootstrapEmailProfile struct {
 	FromAddress string `json:"fromAddress" yaml:"fromAddress"`
 }
 
+func (profile *BootstrapEmailProfile) UnmarshalYAML(value *yaml.Node) error {
+	if value == nil {
+		*profile = BootstrapEmailProfile{}
+		return nil
+	}
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf("tenant bootstrap: tenants[].emailProfile must be a mapping")
+	}
+	if unsupportedKey := firstUnsupportedBootstrapYAMLMappingKey(value, "host", "port", "username", "password", "fromAddress"); unsupportedKey != "" {
+		return fmt.Errorf("tenant bootstrap: tenants[].emailProfile.%s is not supported", unsupportedKey)
+	}
+	type rawBootstrapEmailProfile BootstrapEmailProfile
+	var decoded rawBootstrapEmailProfile
+	if err := value.Decode(&decoded); err != nil {
+		return err
+	}
+	*profile = BootstrapEmailProfile(decoded)
+	return nil
+}
+
 // BootstrapSMSProfile defines Twilio credentials.
 type BootstrapSMSProfile struct {
 	AccountSID string `json:"accountSid" yaml:"accountSid"`
 	AuthToken  string `json:"authToken" yaml:"authToken"`
 	FromNumber string `json:"fromNumber" yaml:"fromNumber"`
+}
+
+func (profile *BootstrapSMSProfile) UnmarshalYAML(value *yaml.Node) error {
+	if value == nil {
+		*profile = BootstrapSMSProfile{}
+		return nil
+	}
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf("tenant bootstrap: tenants[].smsProfile must be a mapping")
+	}
+	if unsupportedKey := firstUnsupportedBootstrapYAMLMappingKey(value, "accountSid", "authToken", "fromNumber"); unsupportedKey != "" {
+		return fmt.Errorf("tenant bootstrap: tenants[].smsProfile.%s is not supported", unsupportedKey)
+	}
+	type rawBootstrapSMSProfile BootstrapSMSProfile
+	var decoded rawBootstrapSMSProfile
+	if err := value.Decode(&decoded); err != nil {
+		return err
+	}
+	*profile = BootstrapSMSProfile(decoded)
+	return nil
+}
+
+func firstUnsupportedBootstrapYAMLMappingKey(value *yaml.Node, allowedKeys ...string) string {
+	allowed := make(map[string]struct{}, len(allowedKeys))
+	for _, allowedKey := range allowedKeys {
+		allowed[allowedKey] = struct{}{}
+	}
+	for contentIndex := 0; contentIndex+1 < len(value.Content); contentIndex += 2 {
+		key := strings.TrimSpace(value.Content[contentIndex].Value)
+		if _, ok := allowed[key]; !ok {
+			return key
+		}
+	}
+	return ""
+}
+
+func yamlMappingHasKey(value *yaml.Node, key string) bool {
+	if value == nil || value.Kind != yaml.MappingNode {
+		return false
+	}
+	for contentIndex := 0; contentIndex+1 < len(value.Content); contentIndex += 2 {
+		if strings.TrimSpace(value.Content[contentIndex].Value) == key {
+			return true
+		}
+	}
+	return false
 }
 
 // BootstrapFromFile loads tenants from a YAML file and upserts them.
