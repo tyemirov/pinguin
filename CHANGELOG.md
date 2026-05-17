@@ -70,6 +70,28 @@
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 - Document the remaining edge mappings after gateway deployment: `25 -> tutosh:8025` and `465 -> tutosh:8465`.
 
+## [v0.4.18] - 2026-05-16
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Enhanced tenant bootstrap and doctor modules for improved tenant schema validation.
+- Support loading tenants from external config paths with detailed validation and error reporting.
+- Improved YAML unmarshalling with strict schema checks rejecting unsupported fields in tenant configs.
+
+### Bug Fixes 🐛
+- Fixed handling of legacy and unsupported tenant fields by producing clear validation errors.
+- Resolved issues with tenant config loading, including errors from missing or unreadable tenant config files.
+
+### Testing 🧪
+- Added comprehensive tests validating tenant bootstrap schema enforcement.
+- Added tests for tenant config path handling with various valid and invalid tenant configurations.
+- Updated tests in doctor module to cover tenant schema validation and error cases.
+
+### Docs 📚
+- _No changes._
+
 ## [v0.4.17] - 2026-05-16
 
 ### Features ✨
