@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/glebarez/sqlite"
@@ -14,6 +15,12 @@ import (
 	"github.com/tyemirov/pinguin/internal/tenant"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+)
+
+const (
+	sqliteBusyTimeoutMilliseconds = 10000
+	sqliteJournalMode             = "WAL"
+	sqlitePragmaQueryKey          = "_pragma"
 )
 
 func InitDB(dbPath string, logger *slog.Logger) (*gorm.DB, error) {
@@ -27,7 +34,7 @@ func InitDB(dbPath string, logger *slog.Logger) (*gorm.DB, error) {
 	}
 
 	gormLogger := &slogGormLogger{logger: logger}
-	database, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
+	database, err := gorm.Open(sqlite.Open(sqliteDSN(dbPath)), &gorm.Config{
 		Logger: gormLogger,
 	})
 	if err != nil {
@@ -39,6 +46,22 @@ func InitDB(dbPath string, logger *slog.Logger) (*gorm.DB, error) {
 	}
 
 	return database, nil
+}
+
+func sqliteDSN(dbPath string) string {
+	separator := "?"
+	if strings.Contains(dbPath, "?") {
+		separator = "&"
+	}
+	return fmt.Sprintf(
+		"%s%s%s=busy_timeout(%d)&%s=journal_mode(%s)",
+		dbPath,
+		separator,
+		sqlitePragmaQueryKey,
+		sqliteBusyTimeoutMilliseconds,
+		sqlitePragmaQueryKey,
+		sqliteJournalMode,
+	)
 }
 
 var migrateDatabaseSchema = func(database *gorm.DB) error {
@@ -79,13 +102,12 @@ func (l *slogGormLogger) Error(_ context.Context, msg string, data ...interface{
 }
 
 func (l *slogGormLogger) Trace(_ context.Context, begin time.Time, fc func() (string, int64), err error) {
-	sql, rows := fc()
+	_, rows := fc()
 	elapsed := time.Since(begin)
 
 	if err != nil && err != gorm.ErrRecordNotFound {
-		l.logger.Error("Trace error",
+		l.logger.Error("database_query_failed",
 			"error", err,
-			"sql", sql,
 			"rows", rows,
 			"elapsed", elapsed,
 		)
