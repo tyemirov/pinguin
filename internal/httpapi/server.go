@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -29,6 +30,9 @@ const (
 	notificationLimitParam   = "limit"
 	notificationCursorParam  = "cursor"
 	sessionAdminRole         = "admin"
+	headerXForwardedFor      = "X-Forwarded-For"
+	headerXRealIP            = "X-Real-IP"
+	unknownSourceIP          = "unknown"
 )
 
 var (
@@ -151,8 +155,57 @@ func requestLogger(logger *slog.Logger) gin.HandlerFunc {
 			"path", contextGin.Request.URL.Path,
 			"status", contextGin.Writer.Status(),
 			"duration_ms", time.Since(started).Milliseconds(),
+			"source_ip", sourceIPForRequest(contextGin.Request),
+			"remote_addr", remoteAddressForRequest(contextGin.Request),
+			"user_agent", contextGin.Request.UserAgent(),
 		)
 	}
+}
+
+func sourceIPForRequest(request *http.Request) string {
+	forwardedIP := firstForwardedIP(request.Header.Get(headerXForwardedFor))
+	if forwardedIP != "" {
+		return forwardedIP
+	}
+	realIP := strings.TrimSpace(request.Header.Get(headerXRealIP))
+	if realIP != "" {
+		return realIP
+	}
+	return remoteHostForAddress(request.RemoteAddr)
+}
+
+func firstForwardedIP(forwardedFor string) string {
+	for _, forwardedPart := range strings.Split(forwardedFor, ",") {
+		candidate := strings.TrimSpace(forwardedPart)
+		if candidate != "" {
+			return candidate
+		}
+	}
+	return ""
+}
+
+func remoteAddressForRequest(request *http.Request) string {
+	return remoteAddressForValue(request.RemoteAddr)
+}
+
+func remoteHostForAddress(remoteAddress string) string {
+	normalizedAddress := remoteAddressForValue(remoteAddress)
+	if normalizedAddress == unknownSourceIP {
+		return unknownSourceIP
+	}
+	remoteHost, _, splitErr := net.SplitHostPort(normalizedAddress)
+	if splitErr != nil {
+		return normalizedAddress
+	}
+	return remoteHost
+}
+
+func remoteAddressForValue(remoteAddress string) string {
+	normalizedAddress := strings.TrimSpace(remoteAddress)
+	if normalizedAddress == "" {
+		return unknownSourceIP
+	}
+	return normalizedAddress
 }
 
 func buildCORS(allowedOrigins []string) gin.HandlerFunc {

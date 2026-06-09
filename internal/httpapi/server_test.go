@@ -1329,6 +1329,97 @@ func TestUnknownPathReturnsNotFound(t *testing.T) {
 	}
 }
 
+func TestRequestLoggerIncludesAttributionFields(t *testing.T) {
+	t.Helper()
+
+	var logBuffer bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuffer, &slog.HandlerOptions{}))
+	engine := gin.New()
+	engine.Use(requestLogger(logger))
+	engine.GET("/probe", func(contextGin *gin.Context) {
+		contextGin.Status(http.StatusNoContent)
+	})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/probe", nil)
+	request.RemoteAddr = "198.51.100.10:4231"
+	request.Header.Set("X-Forwarded-For", "203.0.113.9, 198.51.100.1")
+	request.Header.Set("User-Agent", "scanner/1.0")
+
+	engine.ServeHTTP(recorder, request)
+
+	output := logBuffer.String()
+	expectedFragments := []string{
+		"msg=http_request_completed",
+		"method=GET",
+		"path=/probe",
+		"status=204",
+		"source_ip=203.0.113.9",
+		"remote_addr=198.51.100.10:4231",
+		"user_agent=scanner/1.0",
+	}
+	for _, fragment := range expectedFragments {
+		if !strings.Contains(output, fragment) {
+			t.Fatalf("expected log output to contain %q, got %q", fragment, output)
+		}
+	}
+}
+
+func TestSourceIPForRequest(t *testing.T) {
+	t.Helper()
+
+	testCases := []struct {
+		name       string
+		remoteAddr string
+		headers    map[string]string
+		want       string
+	}{
+		{
+			name:       "forwarded for first address",
+			remoteAddr: "198.51.100.10:4231",
+			headers:    map[string]string{headerXForwardedFor: "203.0.113.9, 198.51.100.1"},
+			want:       "203.0.113.9",
+		},
+		{
+			name:       "real ip fallback",
+			remoteAddr: "198.51.100.10:4231",
+			headers: map[string]string{
+				headerXForwardedFor: " , ",
+				headerXRealIP:       "203.0.113.11",
+			},
+			want: "203.0.113.11",
+		},
+		{
+			name:       "remote host fallback",
+			remoteAddr: "198.51.100.10:4231",
+			want:       "198.51.100.10",
+		},
+		{
+			name:       "unsplit remote fallback",
+			remoteAddr: "198.51.100.10",
+			want:       "198.51.100.10",
+		},
+		{
+			name: "unknown fallback",
+			want: unknownSourceIP,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "/", nil)
+			request.RemoteAddr = testCase.remoteAddr
+			for headerName, headerValue := range testCase.headers {
+				request.Header.Set(headerName, headerValue)
+			}
+
+			if got := sourceIPForRequest(request); got != testCase.want {
+				t.Fatalf("expected source ip %q, got %q", testCase.want, got)
+			}
+		})
+	}
+}
+
 func TestBuildCORSDefaultDisablesCredentials(t *testing.T) {
 	t.Helper()
 
