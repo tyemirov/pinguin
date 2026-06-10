@@ -74,6 +74,30 @@
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 - Document the remaining edge mappings after gateway deployment: `25 -> tutosh:8025` and `465 -> tutosh:8465`.
 
+## [v0.4.19] - 2026-06-09
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Add `source_ip`, `remote_addr`, and `user_agent` fields to HTTP request logs, honoring forwarding headers only from configured trusted proxies.
+- Open SQLite database with Write-Ahead Logging (WAL) and a 10-second busy timeout to improve contention handling.
+- Sanitize GORM error logs to omit interpolated SQL values for improved security.
+- Introduce configuration support for trusted proxy IPs to securely handle forwarded client IP addresses.
+- Update documentation and environment variables to reflect new trusted proxy and allowed origin settings.
+
+### Bug Fixes 🐛
+- Fix branch refresh during release by using `gix sync` instead of `gix cd`.
+- Restrict trusted forwarded IPs to those from configured proxies only.
+
+### Testing 🧪
+- Add HTTP API regression tests covering request log attribution fields and source IP fallback behavior.
+- Add database tests for SQLite contention settings and sanitized GORM error logging.
+
+### Docs 📚
+- Update README and architecture docs to document new trusted proxy configuration and request logging behavior.
+- Clarify environment variable usage for allowed origins and trusted proxies.
+
 ## [v0.4.18] - 2026-05-16
 
 ### Features ✨
