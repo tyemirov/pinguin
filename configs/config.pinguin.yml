@@ -40,6 +40,10 @@ web:
     - ${HTTP_ALLOWED_ORIGIN1}
     - ${HTTP_ALLOWED_ORIGIN2}
     - ${HTTP_ALLOWED_ORIGIN3}
+  trustedProxies:
+    - ${HTTP_TRUSTED_PROXY1}
+    - ${HTTP_TRUSTED_PROXY2}
+    - ${HTTP_TRUSTED_PROXY3}
 
 smtpSubmission:
   enabled: ${SMTP_SUBMISSION_ENABLED}

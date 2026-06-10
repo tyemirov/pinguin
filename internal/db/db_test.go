@@ -1,12 +1,14 @@
 package db
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -67,6 +69,58 @@ func TestInitDBCreatesSchema(t *testing.T) {
 		if exists := database.Migrator().HasTable(table); !exists {
 			t.Fatalf("expected tenant table for %T", table)
 		}
+	}
+}
+
+func TestInitDBConfiguresSQLiteContentionSettings(t *testing.T) {
+	t.Helper()
+
+	databasePath := filepath.Join(t.TempDir(), "pinguin.db")
+	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
+
+	database, initError := InitDB(databasePath, logger)
+	if initError != nil {
+		t.Fatalf("init db error: %v", initError)
+	}
+
+	var journalMode string
+	sqlDB, sqlDBError := database.DB()
+	if sqlDBError != nil {
+		t.Fatalf("retrieve sql db error: %v", sqlDBError)
+	}
+	if queryError := sqlDB.QueryRow("PRAGMA journal_mode").Scan(&journalMode); queryError != nil {
+		t.Fatalf("query journal mode: %v", queryError)
+	}
+	if !strings.EqualFold(journalMode, sqliteJournalMode) {
+		t.Fatalf("expected journal mode %s, got %s", sqliteJournalMode, journalMode)
+	}
+
+	var busyTimeoutMilliseconds int
+	if queryError := sqlDB.QueryRow("PRAGMA busy_timeout").Scan(&busyTimeoutMilliseconds); queryError != nil {
+		t.Fatalf("query busy timeout: %v", queryError)
+	}
+	if busyTimeoutMilliseconds != sqliteBusyTimeoutMilliseconds {
+		t.Fatalf("expected busy timeout %d, got %d", sqliteBusyTimeoutMilliseconds, busyTimeoutMilliseconds)
+	}
+}
+
+func TestSQLiteDSNAppendsPragmas(t *testing.T) {
+	t.Helper()
+
+	plainDSN := sqliteDSN("pinguin.db")
+	if !strings.Contains(plainDSN, "pinguin.db?") {
+		t.Fatalf("expected query separator in %s", plainDSN)
+	}
+	if !strings.Contains(plainDSN, "busy_timeout(10000)") {
+		t.Fatalf("expected busy timeout pragma in %s", plainDSN)
+	}
+	if !strings.Contains(plainDSN, "journal_mode(WAL)") {
+		t.Fatalf("expected journal mode pragma in %s", plainDSN)
+	}
+
+	existingQueryDSN := sqliteDSN("file:pinguin.db?cache=shared")
+	if !strings.Contains(existingQueryDSN, "cache=shared&") {
+		t.Fatalf("expected existing query separator in %s", existingQueryDSN)
 	}
 }
 
@@ -155,4 +209,28 @@ func TestSlogGormLoggerImplementsMethods(t *testing.T) {
 	logger.Trace(context.Background(), time.Now(), func() (string, int64) {
 		return "select broken", 0
 	}, errors.New("query failed"))
+}
+
+func TestSlogGormLoggerOmitsInterpolatedSQLValues(t *testing.T) {
+	t.Helper()
+
+	var logBuffer bytes.Buffer
+	logger := &slogGormLogger{logger: slog.New(slog.NewTextHandler(&logBuffer, &slog.HandlerOptions{}))}
+	logger.Trace(context.Background(), time.Now(), func() (string, int64) {
+		return `SELECT * FROM identities WHERE username = "smtp_sensitive_username"`, 0
+	}, errors.New("query failed"))
+
+	output := logBuffer.String()
+	if strings.Contains(output, "smtp_sensitive_username") {
+		t.Fatalf("expected log output to omit SQL values, got %q", output)
+	}
+	if strings.Contains(output, "SELECT * FROM identities") {
+		t.Fatalf("expected log output to omit raw SQL, got %q", output)
+	}
+	if !strings.Contains(output, "query failed") {
+		t.Fatalf("expected log output to include error, got %q", output)
+	}
+	if !strings.Contains(output, "rows=0") {
+		t.Fatalf("expected log output to include row count, got %q", output)
+	}
 }

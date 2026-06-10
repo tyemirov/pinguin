@@ -1329,6 +1329,116 @@ func TestUnknownPathReturnsNotFound(t *testing.T) {
 	}
 }
 
+func TestRequestLoggerIncludesAttributionFields(t *testing.T) {
+	t.Helper()
+
+	var logBuffer bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuffer, &slog.HandlerOptions{}))
+	engine := gin.New()
+	if err := engine.SetTrustedProxies([]string{"198.51.100.10"}); err != nil {
+		t.Fatalf("set trusted proxies: %v", err)
+	}
+	engine.Use(requestLogger(logger))
+	engine.GET("/probe", func(contextGin *gin.Context) {
+		contextGin.Status(http.StatusNoContent)
+	})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/probe", nil)
+	request.RemoteAddr = "198.51.100.10:4231"
+	request.Header.Set("X-Forwarded-For", "203.0.113.9, 198.51.100.1")
+	request.Header.Set("User-Agent", "scanner/1.0")
+
+	engine.ServeHTTP(recorder, request)
+
+	output := logBuffer.String()
+	expectedFragments := []string{
+		"msg=http_request_completed",
+		"method=GET",
+		"path=/probe",
+		"status=204",
+		"source_ip=198.51.100.1",
+		"remote_addr=198.51.100.10:4231",
+		"user_agent=scanner/1.0",
+	}
+	for _, fragment := range expectedFragments {
+		if !strings.Contains(output, fragment) {
+			t.Fatalf("expected log output to contain %q, got %q", fragment, output)
+		}
+	}
+}
+
+func TestRequestLoggerIgnoresForwardedHeadersWithoutTrustedProxy(t *testing.T) {
+	t.Helper()
+
+	output := requestLogOutput(t, nil, "198.51.100.10:4231", map[string]string{
+		"X-Forwarded-For": "203.0.113.9",
+		"X-Real-IP":       "203.0.113.11",
+	})
+	if !strings.Contains(output, "source_ip=198.51.100.10") {
+		t.Fatalf("expected untrusted forwarded headers to be ignored, got %q", output)
+	}
+}
+
+func TestRequestLoggerUsesTrustedProxyClientIP(t *testing.T) {
+	t.Helper()
+
+	output := requestLogOutput(t, []string{"198.51.100.10"}, "198.51.100.10:4231", map[string]string{
+		"X-Forwarded-For": "203.0.113.9",
+	})
+	if !strings.Contains(output, "source_ip=203.0.113.9") {
+		t.Fatalf("expected trusted proxy client IP, got %q", output)
+	}
+}
+
+func TestRequestLoggerStopsForwardedChainAtTrustBoundary(t *testing.T) {
+	t.Helper()
+
+	output := requestLogOutput(t, []string{"198.51.100.10"}, "198.51.100.10:4231", map[string]string{
+		"X-Forwarded-For": "203.0.113.9, 198.51.100.1",
+	})
+	if !strings.Contains(output, "source_ip=198.51.100.1") {
+		t.Fatalf("expected trust-boundary client IP, got %q", output)
+	}
+}
+
+func TestSourceIPForContextFallsBackToUnknown(t *testing.T) {
+	t.Helper()
+
+	contextGin, _ := gin.CreateTestContext(httptest.NewRecorder())
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.RemoteAddr = " "
+	contextGin.Request = request
+	if got := sourceIPForContext(contextGin); got != unknownSourceIP {
+		t.Fatalf("expected unknown source IP, got %q", got)
+	}
+}
+
+func requestLogOutput(t *testing.T, trustedProxies []string, remoteAddr string, headers map[string]string) string {
+	t.Helper()
+
+	var logBuffer bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuffer, &slog.HandlerOptions{}))
+	engine := gin.New()
+	if err := engine.SetTrustedProxies(normalizeTrustedProxies(trustedProxies)); err != nil {
+		t.Fatalf("set trusted proxies: %v", err)
+	}
+	engine.Use(requestLogger(logger))
+	engine.GET("/probe", func(contextGin *gin.Context) {
+		contextGin.Status(http.StatusNoContent)
+	})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/probe", nil)
+	request.RemoteAddr = remoteAddr
+	for headerName, headerValue := range headers {
+		request.Header.Set(headerName, headerValue)
+	}
+
+	engine.ServeHTTP(recorder, request)
+	return logBuffer.String()
+}
+
 func TestBuildCORSDefaultDisablesCredentials(t *testing.T) {
 	t.Helper()
 
@@ -1522,6 +1632,7 @@ func TestNewServerValidation(t *testing.T) {
 		{name: "notification service", mutate: func(cfg *Config) { cfg.NotificationService = nil }},
 		{name: "tenant repository", mutate: func(cfg *Config) { cfg.TenantRepository = nil }},
 		{name: "logger", mutate: func(cfg *Config) { cfg.Logger = nil }},
+		{name: "trusted proxy", mutate: func(cfg *Config) { cfg.TrustedProxies = []string{"not-an-ip"} }},
 	}
 	for _, testCase := range testCases {
 		testCase := testCase

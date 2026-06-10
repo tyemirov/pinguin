@@ -28,8 +28,9 @@
   - Authenticated `/api/smtp-identities` list/create/view-credentials/rotate/delete handlers for exact SMTP submission sender credentials and dynamic inbound forwarding owners. Passwords are stored encrypted at rest under the server master encryption key; list responses remain secret-free, and the credentials endpoint returns the current password only to authorized admins.
 - Static assets do not come from the Gin stack anymore; ghttp serves `/web` while the Go HTTP server keeps `/api/**` and `/runtime-config` free of wildcard conflicts.
 - CORS defaults:
-  - When `HTTP_ALLOWED_ORIGINS` is empty, requests are treated as same-origin only (credentials disabled while `AllowAllOrigins=true`).
+  - When `web.allowedOrigins` is empty, requests are treated as same-origin only (credentials disabled while `AllowAllOrigins=true`).
   - When provided, Gin restricts origins to the explicit allowlist and enables credentials so browsers can send TAuth cookies.
+- HTTP request logs emit `source_ip`, `remote_addr`, and `user_agent`; `source_ip` uses forwarding headers only when the direct peer matches `web.trustedProxies`.
 
 ## Front-End Structure
 - `/web` hosts an Alpine.js-based bundle that follows `AGENTS.md` guidelines:

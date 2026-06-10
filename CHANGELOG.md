@@ -11,6 +11,8 @@
 - Add backend-backed search and infinite scroll for dashboard notification events, including cursor pagination and a single top-level refresh control.
 
 ### Bug Fixes
+- Include trusted-proxy-aware source IP, remote peer address, and user agent in HTTP request logs for scanner attribution.
+- Open SQLite with WAL and a 10s busy timeout, and stop GORM error logs from emitting interpolated SQL values during DB errors.
 - Prune dead sender-domain config cleanup, SMTP identity credential migration, the obsolete `failed` notification status path, and the old `dashboard.html` redirect so current runtime behavior has no compatibility shims.
 - Make SMTP sender domains fully API/DB-owned by rejecting unknown static sender-domain config, removing static config/env references, and surfacing sender-domain API validation errors in the SMTP relay UI.
 - Move the gateway-executed GitHub Pages deployment resource into `deploy/app.yml` so Pinguin owns the deployable frontend contract while gateway Ansible owns execution.
@@ -40,6 +42,8 @@
 - Align Pinguin SMTP setup with gateway high-port publishing so MX and SMTPS use `8025` and `8465` on the host.
 
 ### Testing
+- Add HTTP API regression coverage for request-log attribution fields and source-IP fallback behavior.
+- Add DB boundary coverage for SQLite contention PRAGMAs and sanitized GORM error logging.
 - Add production workflow contract coverage for the shared release/publish/deploy Git guard.
 - Add backend and browser coverage for sender-domain DNS setup, manual checks, and verified-domain SMTP identity creation.
 - Add backend and browser coverage for retrieving existing SMTP relay credentials and rotating them from inside the modal.

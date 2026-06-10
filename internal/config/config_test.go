@@ -53,6 +53,9 @@ web:
   allowedOrigins:
     - https://app.local
     - https://alt.local
+  trustedProxies:
+    - 198.51.100.10
+    - "  2001:db8::/32  "
 smtpSubmission:
   enabled: true
   hostname: smtp.one.test
@@ -119,6 +122,7 @@ smtpSubmission:
 		WebInterfaceEnabled: true,
 		HTTPListenAddr:      ":8080",
 		HTTPAllowedOrigins:  []string{"https://app.local", "https://alt.local"},
+		HTTPTrustedProxies:  []string{"198.51.100.10", "2001:db8::/32"},
 		SMTPSubmission: SMTPSubmissionConfig{
 			Enabled:           true,
 			Hostname:          "smtp.one.test",
@@ -189,7 +193,7 @@ web:
 	if cfg.WebInterfaceEnabled {
 		t.Fatalf("expected web interface to be disabled")
 	}
-	if cfg.TAuthCookieName != "" || cfg.HTTPAllowedOrigins != nil {
+	if cfg.TAuthCookieName != "" || cfg.HTTPAllowedOrigins != nil || cfg.HTTPTrustedProxies != nil {
 		t.Fatalf("expected web fields to be cleared when disabled")
 	}
 	if cfg.ConnectionTimeoutSec != 5 || cfg.OperationTimeoutSec != 10 {
