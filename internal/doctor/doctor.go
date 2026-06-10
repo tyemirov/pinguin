@@ -90,6 +90,7 @@ type pinguinWeb struct {
 	Enabled        *bool    `yaml:"enabled"`
 	ListenAddr     string   `yaml:"listenAddr"`
 	AllowedOrigins []string `yaml:"allowedOrigins"`
+	TrustedProxies []string `yaml:"trustedProxies"`
 }
 
 type pinguinTAuth struct {

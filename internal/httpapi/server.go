@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -30,8 +29,6 @@ const (
 	notificationLimitParam   = "limit"
 	notificationCursorParam  = "cursor"
 	sessionAdminRole         = "admin"
-	headerXForwardedFor      = "X-Forwarded-For"
-	headerXRealIP            = "X-Real-IP"
 	unknownSourceIP          = "unknown"
 )
 
@@ -49,6 +46,7 @@ type SessionValidator interface {
 type Config struct {
 	ListenAddr           string
 	AllowedOrigins       []string
+	TrustedProxies       []string
 	SessionValidator     SessionValidator
 	NotificationService  service.NotificationService
 	SMTPIdentityService  *smtpidentity.Service
@@ -85,6 +83,9 @@ func NewServer(cfg Config) (*Server, error) {
 
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
+	if err := engine.SetTrustedProxies(normalizeTrustedProxies(cfg.TrustedProxies)); err != nil {
+		return nil, fmt.Errorf("httpapi: trusted proxies: %w", err)
+	}
 	engine.Use(gin.Recovery())
 	engine.Use(requestLogger(cfg.Logger))
 	engine.Use(tenantMiddleware(cfg.TenantRepository))
@@ -155,49 +156,37 @@ func requestLogger(logger *slog.Logger) gin.HandlerFunc {
 			"path", contextGin.Request.URL.Path,
 			"status", contextGin.Writer.Status(),
 			"duration_ms", time.Since(started).Milliseconds(),
-			"source_ip", sourceIPForRequest(contextGin.Request),
+			"source_ip", sourceIPForContext(contextGin),
 			"remote_addr", remoteAddressForRequest(contextGin.Request),
 			"user_agent", contextGin.Request.UserAgent(),
 		)
 	}
 }
 
-func sourceIPForRequest(request *http.Request) string {
-	forwardedIP := firstForwardedIP(request.Header.Get(headerXForwardedFor))
-	if forwardedIP != "" {
-		return forwardedIP
-	}
-	realIP := strings.TrimSpace(request.Header.Get(headerXRealIP))
-	if realIP != "" {
-		return realIP
-	}
-	return remoteHostForAddress(request.RemoteAddr)
-}
-
-func firstForwardedIP(forwardedFor string) string {
-	for _, forwardedPart := range strings.Split(forwardedFor, ",") {
-		candidate := strings.TrimSpace(forwardedPart)
-		if candidate != "" {
-			return candidate
+func normalizeTrustedProxies(trustedProxies []string) []string {
+	normalizedTrustedProxies := make([]string, 0, len(trustedProxies))
+	for _, trustedProxy := range trustedProxies {
+		normalizedTrustedProxy := strings.TrimSpace(trustedProxy)
+		if normalizedTrustedProxy != "" {
+			normalizedTrustedProxies = append(normalizedTrustedProxies, normalizedTrustedProxy)
 		}
 	}
-	return ""
+	if len(normalizedTrustedProxies) == 0 {
+		return nil
+	}
+	return normalizedTrustedProxies
+}
+
+func sourceIPForContext(contextGin *gin.Context) string {
+	sourceIP := strings.TrimSpace(contextGin.ClientIP())
+	if sourceIP == "" {
+		return unknownSourceIP
+	}
+	return sourceIP
 }
 
 func remoteAddressForRequest(request *http.Request) string {
 	return remoteAddressForValue(request.RemoteAddr)
-}
-
-func remoteHostForAddress(remoteAddress string) string {
-	normalizedAddress := remoteAddressForValue(remoteAddress)
-	if normalizedAddress == unknownSourceIP {
-		return unknownSourceIP
-	}
-	remoteHost, _, splitErr := net.SplitHostPort(normalizedAddress)
-	if splitErr != nil {
-		return normalizedAddress
-	}
-	return remoteHost
 }
 
 func remoteAddressForValue(remoteAddress string) string {

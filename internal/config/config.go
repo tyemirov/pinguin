@@ -31,6 +31,7 @@ type Config struct {
 	WebInterfaceEnabled bool
 	HTTPListenAddr      string
 	HTTPAllowedOrigins  []string
+	HTTPTrustedProxies  []string
 	SMTPSubmission      SMTPSubmissionConfig
 	SMTPForwarding      SMTPForwardingConfig
 
@@ -119,6 +120,7 @@ type webSection struct {
 	Enabled        *bool    `yaml:"enabled"`
 	ListenAddr     string   `yaml:"listenAddr"`
 	AllowedOrigins []string `yaml:"allowedOrigins"`
+	TrustedProxies []string `yaml:"trustedProxies"`
 }
 
 type tauthSection struct {
@@ -264,6 +266,7 @@ func loadConfigFromPath(configPath string) (Config, error) {
 		WebInterfaceEnabled: webEnabled,
 		HTTPListenAddr:      strings.TrimSpace(fileCfg.Web.ListenAddr),
 		HTTPAllowedOrigins:  normalizeStrings(fileCfg.Web.AllowedOrigins),
+		HTTPTrustedProxies:  normalizeStrings(fileCfg.Web.TrustedProxies),
 		SMTPSubmission: SMTPSubmissionConfig{
 			Enabled:            fileCfg.SMTPSubmission.Enabled,
 			Hostname:           strings.TrimSpace(fileCfg.SMTPSubmission.Hostname),
@@ -312,6 +315,7 @@ func loadConfigFromPath(configPath string) (Config, error) {
 		}
 	} else {
 		configuration.HTTPAllowedOrigins = nil
+		configuration.HTTPTrustedProxies = nil
 		configuration.TAuthSigningKey = ""
 		configuration.TAuthCookieName = ""
 	}
