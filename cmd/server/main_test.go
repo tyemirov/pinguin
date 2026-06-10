@@ -509,6 +509,7 @@ func TestRunServerStartsWebAndSMTPSubmission(testHandle *testing.T) {
 	cfg.TenantConfigPath = "tenants.yml"
 	cfg.WebInterfaceEnabled = true
 	cfg.HTTPListenAddr = "127.0.0.1:8080"
+	cfg.HTTPTrustedProxies = []string{"127.0.0.1"}
 	cfg.TAuthSigningKey = "signing-key"
 	cfg.TAuthCookieName = "app_session"
 	cfg.SMTPSubmission = config.SMTPSubmissionConfig{
@@ -532,6 +533,9 @@ func TestRunServerStartsWebAndSMTPSubmission(testHandle *testing.T) {
 	waitForClosed(testHandle, state.httpServer.started)
 	if !state.bootstrapFileCalled || !state.tlsLoaded {
 		testHandle.Fatalf("expected file/bootstrap/tls setup, state=%+v", state)
+	}
+	if len(state.httpConfig.TrustedProxies) != 1 || state.httpConfig.TrustedProxies[0] != "127.0.0.1" {
+		testHandle.Fatalf("expected trusted proxy config to reach HTTP server, got %+v", state.httpConfig.TrustedProxies)
 	}
 	if !state.httpServer.shutdownCalled {
 		testHandle.Fatalf("expected HTTP shutdown")
@@ -1142,6 +1146,7 @@ type serverTestState struct {
 	grpcServed            bool
 	smtpConfig            smtpsubmission.Config
 	smtpForwardingConfig  smtpforwarding.Config
+	httpConfig            httpapi.Config
 	smtpStarter           *fakeSMTPStarter
 	smtpForwardingStarter *fakeSMTPForwardingStarter
 	httpServer            *fakeHTTPServer
@@ -1243,7 +1248,7 @@ func newServerTestDependencies(cfg config.Config) (*serverTestState, serverDepen
 			return fakeSessionValidator{}, nil
 		},
 		newHTTPServer: func(httpConfig httpapi.Config) (httpServerRunner, error) {
-			_ = httpConfig
+			state.httpConfig = httpConfig
 			return state.httpServer, nil
 		},
 		listen: func(string, string) (net.Listener, error) {

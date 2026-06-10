@@ -606,6 +606,7 @@ func runServer(args []string, dependencies serverDependencies) int {
 		httpServer, httpServerErr := dependencies.newHTTPServer(httpapi.Config{
 			ListenAddr:          configuration.HTTPListenAddr,
 			AllowedOrigins:      configuration.HTTPAllowedOrigins,
+			TrustedProxies:      configuration.HTTPTrustedProxies,
 			SessionValidator:    sessionValidator,
 			NotificationService: notificationSvc,
 			SMTPIdentityService: smtpIdentityService,

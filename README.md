@@ -147,8 +147,10 @@ Export the referenced environment variables before starting the server only when
   Maximum number of seconds to wait for a send attempt before treating it as errored. Set this to `30` seconds unless your provider requires longer operations.
 - **HTTP_LISTEN_ADDR:**  
   Address used by the Gin HTTP server that exposes runtime config and the JSON `/api/*` endpoints (local Compose uses `:8081`). The HTTP stack no longer serves static assets directly—use a separate host such as GitHub Pages at `https://pinguin.mprlab.com` (production) or ghttp (`http://localhost:8080`) for `/web`.
-- **HTTP_ALLOWED_ORIGINS:**  
-  Comma-separated list of origins allowed to call the JSON API when running cross-origin (leave empty to allow same-origin only). The docker-compose workflow serves the UI via ghttp on `http://localhost:8080`, and production uses `https://pinguin.mprlab.com`, so include the relevant UI origins here.
+- **HTTP_ALLOWED_ORIGIN1/2/3:**
+  Origins allowed to call the JSON API when running cross-origin (leave empty to allow same-origin only). The docker-compose workflow serves the UI via ghttp on `http://localhost:8080`, and production uses `https://pinguin.mprlab.com`, so include the relevant UI origins here.
+- **HTTP_TRUSTED_PROXY1/2/3:**
+  Reverse proxy IP addresses or CIDR ranges whose `X-Forwarded-For` / `X-Real-IP` headers may determine `source_ip` in HTTP request logs. Leave these empty for direct local access; deployments behind Caddy or another trusted proxy should set the proxy peer address or network so spoofed client-supplied forwarding headers are ignored.
 - **web.enabled:**
   Set to `false` in `config.yml` to skip booting the Gin/HTML stack entirely. When disabled, Pinguin runs the gRPC service only and skips browser HTTP configuration checks, which is useful for backends that never expose the browser workspace.
 - **MASTER_ENCRYPTION_KEY:**  
@@ -689,7 +691,7 @@ The gRPC server now ships with a sibling Gin HTTP server that:
   - `POST /api/notifications/:id/cancel` – cancels queued notifications so workers skip them.
   - `GET /healthz` – liveness probe (no auth required).
 
-All endpoints emit structured JSON errors (`401` for auth failures, `400` for invalid payloads, `404` when a notification does not exist, `409` when edits are requested for non-queued notifications). CORS is enabled for the origins listed via `HTTP_ALLOWED_ORIGINS`, and credentials are required so the browser sends the TAuth cookie.
+All endpoints emit structured JSON errors (`401` for auth failures, `400` for invalid payloads, `404` when a notification does not exist, `409` when edits are requested for non-queued notifications). CORS is enabled for the origins listed via `HTTP_ALLOWED_ORIGIN1/2/3`, and credentials are required so the browser sends the TAuth cookie. HTTP request logs include `source_ip`, `remote_addr`, and `user_agent`; `source_ip` only honors forwarding headers from `HTTP_TRUSTED_PROXY1/2/3`.
 
 ### Browser UI (beta)
 
