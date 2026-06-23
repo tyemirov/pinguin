@@ -1,0 +1,36 @@
+---
+mprlab_resources:
+  schema_version: 1
+  repo:
+    id: pinguin
+    directory: pinguin
+    dispatch_target: pinguin
+  resources:
+    - type: make_workflow
+      name: pinguin
+      targets:
+        release: release
+        publish: publish
+        deploy: deploy
+    - type: container_service
+      name: pinguin-api
+      image: ghcr.io/tyemirov/pinguin:latest
+      container_port: 8080
+      compose_project: mprlab-gateway
+    - type: caddy_route
+      name: pinguin-api
+      host: pinguin-api.mprlab.com
+      upstream: pinguin-api:8080
+      snippet: pinguin-api.caddy
+    - type: health_check
+      name: pinguin-api
+      path: /healthz
+      url: https://pinguin-api.mprlab.com/healthz
+    - type: github_pages
+      name: pinguin
+      method: make_target
+      target: pages-deploy
+      url: https://pinguin.mprlab.com/
+      url_variable: mprlab_pinguin_pages_url
+      source_marker_path: /pinguin-pages-build.json
+      source_marker_field: sourceCommit
