@@ -3,6 +3,7 @@ import path from 'path';
 
 const testServerUrl = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:4174';
 const devServerPath = path.join(process.cwd(), 'tests', 'support', 'devServer.js');
+const reuseExistingPlaywrightServer = process.env.PLAYWRIGHT_REUSE_EXISTING_SERVER === '1';
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -23,7 +24,7 @@ export default defineConfig({
   webServer: {
     command: `node ${JSON.stringify(devServerPath)}`,
     url: testServerUrl,
-    reuseExistingServer: true,
+    reuseExistingServer: reuseExistingPlaywrightServer,
     stdout: 'pipe',
     stderr: 'pipe',
   },
