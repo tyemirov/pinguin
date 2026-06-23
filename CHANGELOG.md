@@ -11,6 +11,7 @@
 - Add backend-backed search and infinite scroll for dashboard notification events, including cursor pagination and a single top-level refresh control.
 
 ### Bug Fixes
+- Make Playwright own its frontend dev server by default so release tests fail fast on an occupied port instead of reusing stale assets from another process.
 - Include trusted-proxy-aware source IP, remote peer address, and user agent in HTTP request logs for scanner attribution.
 - Open SQLite with WAL and a 10s busy timeout, and stop GORM error logs from emitting interpolated SQL values during DB errors.
 - Prune dead sender-domain config cleanup, SMTP identity credential migration, the obsolete `failed` notification status path, and the old `dashboard.html` redirect so current runtime behavior has no compatibility shims.
@@ -42,6 +43,7 @@
 - Align Pinguin SMTP setup with gateway high-port publishing so MX and SMTPS use `8025` and `8465` on the host.
 
 ### Testing
+- Add Playwright configuration contract coverage for frontend dev server ownership.
 - Add HTTP API regression coverage for request-log attribution fields and source-IP fallback behavior.
 - Add DB boundary coverage for SQLite contention PRAGMAs and sanitized GORM error logging.
 - Add production workflow contract coverage for the shared release/publish/deploy Git guard.
