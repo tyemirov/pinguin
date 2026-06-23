@@ -76,6 +76,23 @@
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 - Document the remaining edge mappings after gateway deployment: `25 -> tutosh:8025` and `465 -> tutosh:8465`.
 
+## [v0.4.20] - 2026-06-23
+
+### Features ✨
+- Add Ansible resource definitions for pinguin deployment.
+
+### Improvements ⚙️
+- Make Playwright server reuse configurable via environment variable.
+
+### Bug Fixes 🐛
+- Make Playwright own its frontend dev server by default to prevent tests from reusing stale assets and failing silently.
+
+### Testing 🧪
+- Add contract test coverage ensuring Playwright owns its dev server by default.
+
+### Docs 📚
+- Add PG-377 frontend test bugfix to issues list.
+
 ## [v0.4.19] - 2026-06-09
 
 ### Features ✨
