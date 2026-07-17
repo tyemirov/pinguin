@@ -1,0 +1,50 @@
+---
+mprlab_resources:
+  schema_version: 1
+  repo:
+    id: pinguin
+    directory: pinguin
+    dispatch_target: pinguin
+  resources:
+    - type: make_workflow
+      name: pinguin
+      targets:
+        release: release
+        publish: publish
+        deploy: deploy
+    - type: tauth_tenant
+      name: pinguin-authentication
+      tenant:
+        id: pinguin
+        display_name: Pinguin
+        tenant_origins:
+          - https://pinguin.mprlab.com
+        google_web_client_id: "${TAUTH_GOOGLE_WEB_CLIENT_ID_PINGUIN}"
+        jwt_signing_key: "${TAUTH_JWT_SIGNING_KEY_PINGUIN}"
+        cookie_domain: .mprlab.com
+        session_cookie_name: app_session_pinguin
+        refresh_cookie_name: app_refresh_pinguin
+        session_ttl: "${TAUTH_SESSION_TTL}"
+        refresh_ttl: "${TAUTH_REFRESH_TTL}"
+        nonce_ttl: "${TAUTH_NONCE_TTL}"
+        allow_insecure_http: "${TAUTH_ALLOW_INSECURE_HTTP}"
+    - type: container_service
+      name: pinguin-api
+      image: ghcr.io/tyemirov/pinguin:latest
+      container_port: 8080
+      compose_project: mprlab-gateway
+    - type: caddy_route
+      name: pinguin-api
+      host: pinguin-api.mprlab.com
+      upstream: pinguin-api:8080
+      snippet: pinguin-api.caddy
+    - type: health_check
+      name: pinguin-api
+      path: /healthz
+      url: https://pinguin-api.mprlab.com/healthz
+    - type: github_pages
+      name: pinguin
+      target: pages-deploy
+      url: https://pinguin.mprlab.com/
+      url_variable: mprlab_pinguin_pages_url
+      source_marker_path: /.mprlab-release.json
