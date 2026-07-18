@@ -29,7 +29,7 @@ func TestGitHubActionsWorkflowsAreDisabled(t *testing.T) {
 	}
 }
 
-func TestMakePublishAndDeploySplitDockerAndLegacyPages(t *testing.T) {
+func TestMakeLifecyclePreparesPublishesAndDeploysDistinctArtifacts(t *testing.T) {
 	t.Helper()
 
 	makefile := string(readRepoFile(t, "Makefile"))
@@ -37,16 +37,18 @@ func TestMakePublishAndDeploySplitDockerAndLegacyPages(t *testing.T) {
 		"DOCKER_PLATFORMS ?= linux/amd64,linux/arm64",
 		"DOCKER_BUILD_CONTEXT ?= .",
 		"PUBLISH_PLATFORMS ?= $(DOCKER_PLATFORMS)",
-		"PUBLISH_BRANCH ?= master",
-		"PUBLISH_REMOTE ?= origin",
-		"PAGES_PUBLISH_SOURCE_BRANCH ?= master",
+		"RELEASE_ARTIFACT_TARGETS ?= release-artifacts container-artifacts pages-artifact",
+		"RELEASE_TOOL_DIR := $(abspath $(CURDIR)/scripts/release)",
 		"PAGES_PUBLISH_BRANCH ?= gh-pages",
-		"DOCKER_BUILD_CONTEXT=\"$(DOCKER_BUILD_CONTEXT)\"",
-		"./scripts/publish.sh $(PUBLISH_ARGS)",
+		"release: ## Prepare a local repository release without publishing or deploying",
+		"prepare_container_artifact.sh",
+		"prepare_pages_artifact.sh",
+		"publish: publish-release",
+		"publish_container_artifacts.sh",
+		"pages-deploy:",
+		"deploy_pages_artifact.sh",
 		"./scripts/deploy.sh $(DEPLOY_ARGS)",
 		"./scripts/build_pages_artifact.sh",
-		"./scripts/publish_pages_branch.sh",
-		"./scripts/deploy_pages.sh",
 	}
 	for _, requiredSnippet := range requiredSnippets {
 		if !strings.Contains(makefile, requiredSnippet) {
@@ -56,6 +58,10 @@ func TestMakePublishAndDeploySplitDockerAndLegacyPages(t *testing.T) {
 	forbiddenSnippets := []string{
 		"DOCKER_CONTEXT ?= .",
 		"DOCKER_CONTEXT=\"$(DOCKER_CONTEXT)\"",
+		"./scripts/publish.sh",
+		"./scripts/publish_pages_branch.sh",
+		"./scripts/deploy_pages.sh",
+		"agentSkills/gitrelease",
 	}
 	for _, forbiddenSnippet := range forbiddenSnippets {
 		if strings.Contains(makefile, forbiddenSnippet) {
@@ -64,39 +70,34 @@ func TestMakePublishAndDeploySplitDockerAndLegacyPages(t *testing.T) {
 	}
 }
 
-func TestPublishScriptBuildsDockerOnly(t *testing.T) {
+func TestPublishConsumesPreparedArtifactsWithoutBuilding(t *testing.T) {
 	t.Helper()
 
-	publishScript := string(readRepoFile(t, "scripts", "publish.sh"))
-	requiredSnippets := []string{
-		"source \"${repo_root}/scripts/production_git_guard.sh\"",
-		"verify_production_git_state \"publish\" \"${PUBLISH_BRANCH}\" \"${PUBLISH_REMOTE}\"",
-		"DOCKER_CONTEXT_DIR=\"${DOCKER_BUILD_CONTEXT:-.}\"",
-		"PLATFORMS=\"${PUBLISH_PLATFORMS:-linux/amd64,linux/arm64}\"",
-		"timeout -k 350s -s SIGKILL 350s make ci",
-		"git tag --points-at HEAD --list 'v*'",
-		"--context|--build-context)",
-		"--platform \"${PLATFORMS}\"",
-		"tag_args=(--tag \"${IMAGE}:${TAG}\")",
-		"--push",
+	makefile := string(readRepoFile(t, "Makefile"))
+	publishReleaseScript := string(readRepoFile(t, "scripts", "publish-release.sh"))
+	requiredMakeSnippets := []string{
+		"publish: publish-release",
+		"publish_container_artifacts.sh",
 	}
-	for _, requiredSnippet := range requiredSnippets {
-		if !strings.Contains(publishScript, requiredSnippet) {
-			t.Fatalf("publish script missing contract snippet %q", requiredSnippet)
+	for _, requiredSnippet := range requiredMakeSnippets {
+		if !strings.Contains(makefile, requiredSnippet) {
+			t.Fatalf("Makefile missing prepared publish contract snippet %q", requiredSnippet)
 		}
+	}
+	if !strings.Contains(publishReleaseScript, "publish_release.sh") {
+		t.Fatalf("publish-release wrapper must invoke the repository-owned prepared release publisher")
 	}
 	forbiddenSnippets := []string{
-		"\"build_type\":\"legacy\"",
-		"./scripts/publish_pages_branch.sh",
-		"Published Pages",
+		"docker build",
+		"buildx build",
+		"make ci",
+		"pages-deploy",
+		"deploy_pages_artifact.sh",
 	}
 	for _, forbiddenSnippet := range forbiddenSnippets {
-		if strings.Contains(publishScript, forbiddenSnippet) {
-			t.Fatalf("publish script still owns Pages contract snippet %q", forbiddenSnippet)
+		if strings.Contains(makefile, "publish: publish-release\n\t"+forbiddenSnippet) || strings.Contains(publishReleaseScript, forbiddenSnippet) {
+			t.Fatalf("publish path must not contain %q", forbiddenSnippet)
 		}
-	}
-	if strings.Contains(publishScript, "DOCKER_CONTEXT:-") {
-		t.Fatalf("publish script must not treat Docker CLI DOCKER_CONTEXT as a build context")
 	}
 }
 
@@ -122,22 +123,44 @@ func TestProductionGitGuardRequiresMasterRemoteAndNoOpenPRs(t *testing.T) {
 	}
 }
 
-func TestReleaseScriptUsesProductionGitGuard(t *testing.T) {
+func TestReleaseScriptUsesStrictlyLocalPreparationPipeline(t *testing.T) {
 	t.Helper()
 
 	releaseScript := string(readRepoFile(t, "scripts", "release.sh"))
 	requiredSnippets := []string{
-		"if [[ -v RELEASE_BRANCH ]] && [[ -n \"${RELEASE_BRANCH}\" ]]; then",
-		"RELEASE_BRANCH=\"master\"",
-		"if [[ -v RELEASE_REMOTE ]] && [[ -n \"${RELEASE_REMOTE}\" ]]; then",
-		"RELEASE_REMOTE=\"origin\"",
-		"source \"${repo_root}/scripts/production_git_guard.sh\"",
-		"verify_production_git_state \"release\" \"${RELEASE_BRANCH}\" \"${RELEASE_REMOTE}\"",
-		"release default branch must be ${RELEASE_BRANCH}",
+		"exec \"${repo_root}/scripts/release/prepare_release.sh\" \"$@\"",
+	}
+	if strings.Contains(releaseScript, "agentSkills/gitrelease") {
+		t.Fatalf("release script must not load mutable sibling release tooling")
+	}
+	publishScript := string(readRepoFile(t, "scripts", "publish-release.sh"))
+	if !strings.Contains(publishScript, "exec \"${repo_root}/scripts/release/publish_release.sh\" \"$@\"") {
+		t.Fatalf("publish wrapper must invoke the repository-owned prepared release publisher")
+	}
+	if strings.Contains(publishScript, "agentSkills/gitrelease") {
+		t.Fatalf("publish wrapper must not load mutable sibling release tooling")
+	}
+	for _, releaseScriptName := range []string{
+		"prepare_release.sh",
+		"publish_release.sh",
+		"release_helper.py",
+		"prepare_pages_artifact.sh",
+		"deploy_pages_artifact.sh",
+		"prepare_container_artifact.sh",
+		"publish_container_artifacts.sh",
+	} {
+		if _, statErr := os.Stat(repoPath("scripts", "release", releaseScriptName)); statErr != nil {
+			t.Fatalf("repository-owned release script missing: %s: %v", releaseScriptName, statErr)
+		}
 	}
 	for _, requiredSnippet := range requiredSnippets {
 		if !strings.Contains(releaseScript, requiredSnippet) {
-			t.Fatalf("release script missing production git guard snippet %q", requiredSnippet)
+			t.Fatalf("release script missing local preparation snippet %q", requiredSnippet)
+		}
+	}
+	for _, forbiddenSnippet := range []string{"git push", "gh release", "verify_production_git_state", "production_git_guard.sh"} {
+		if strings.Contains(releaseScript, forbiddenSnippet) {
+			t.Fatalf("release script must not contain remote operation %q", forbiddenSnippet)
 		}
 	}
 }
@@ -163,108 +186,77 @@ func TestProductionDockerfilePublishesDoctorPreflightCommand(t *testing.T) {
 	}
 }
 
-func TestDeployScriptDeploysBackendThenLegacyPages(t *testing.T) {
+func TestDeployScriptConsumesPublishedBackendAndPagesArtifacts(t *testing.T) {
 	t.Helper()
 
 	deployScript := string(readRepoFile(t, "scripts", "deploy.sh"))
-	requiredSnippets := []string{
-		"SKIP_CI=\"false\"",
+	for _, requiredSnippet := range []string{
+		"Deploys the published Pinguin backend through mprlab-gateway",
+		"SKIP_IMAGE_VERIFY=\"false\"",
 		"SKIP_BACKEND=\"false\"",
 		"SKIP_PAGES=\"false\"",
 		"SKIP_PAGES_VERIFY=\"false\"",
 		"source \"${repo_root}/scripts/production_git_guard.sh\"",
 		"verify_production_git_state \"deploy\" \"${PUBLISH_BRANCH}\" \"${PUBLISH_REMOTE}\"",
-		"GitHub Pages is deployed through gateway Ansible",
-		"verify_gateway_smtp_port_contract",
-		"PINGUIN_SMTP_HOST_PORT=8465",
-		"PINGUIN_SMTP_FORWARDING_HOST_PORT=8025",
-		"${PINGUIN_SMTP_HOST_PORT}:${PINGUIN_SMTP_PUBLIC_PORT}",
-		"${PINGUIN_SMTP_FORWARDING_HOST_PORT}:${PINGUIN_SMTP_FORWARDING_PUBLIC_PORT}",
-		"mprlab_verify_pinguin_smtp_port: 8465",
-		"mprlab_verify_pinguin_mx_port: 8025",
-		"gateway_deploy_target=\"deploy-pinguin\"",
-		"gateway_deploy_target=\"deploy-pinguin-backend\"",
-		"gateway_pages_verify_enabled=\"false\"",
-		"MPRLAB_APP_MANIFEST=\"${repo_root}/deploy/app.yml\"",
-		"MPRLAB_GATEWAY_PAGES_VERIFY_ENABLED=\"${gateway_pages_verify_enabled}\"",
-		"MPRLAB_PINGUIN_PAGES_URL=\"${PAGES_URL}\"",
-		"make -C \"${GATEWAY_DIR}\" MPRLAB_APP_MANIFEST=\"${repo_root}/deploy/app.yml\" MPRLAB_GATEWAY_PAGES_VERIFY_ENABLED=\"${gateway_pages_verify_enabled}\" MPRLAB_PINGUIN_PAGES_URL=\"${PAGES_URL}\" \"${gateway_deploy_target}\"",
-		"edge 25 -> tutosh:8025 and edge 465 -> tutosh:8465",
+		"no v* release tag points at HEAD; pass --tag or run make publish first",
 		"Verifying ${IMAGE_REPOSITORY}:latest matches ${TAG}",
-	}
-	for _, requiredSnippet := range requiredSnippets {
+		"verify_gateway_smtp_port_contract",
+		"deploy-pinguin-backend",
+		"Activating the published Pages artifact for ${TAG}",
+		"PAGES_VERSION=\"${TAG}\"",
+		"make --no-print-directory pages-deploy",
+		"edge 25 -> tutosh:8025 and edge 465 -> tutosh:8465",
+	} {
 		if !strings.Contains(deployScript, requiredSnippet) {
-			t.Fatalf("deploy script missing contract snippet %q", requiredSnippet)
+			t.Fatalf("deploy script missing published-artifact contract snippet %q", requiredSnippet)
 		}
 	}
 	for _, forbiddenSnippet := range []string{
+		"SKIP_CI",
+		"make ci",
+		"docker build ",
+		"docker push ",
+		"publish_container_artifacts",
 		"./scripts/publish_pages_branch.sh",
-		"trigger_legacy_pages_deploy",
-		"gh api --method POST \"repos/${PAGES_REPOSITORY}/pages/builds\"",
-		"\"build_type\":\"legacy\"",
-		"\"path\":\"/\"",
-		"curl --fail --silent --show-error --location --max-time 30 \"${PAGES_URL}\"",
-		"pinguin-pages-build.json?source=",
-		"verify_live_pages_source_commit",
-		"sourceCommit",
-		"expected_commit",
+		"./scripts/deploy_pages.sh",
+		"MPRLAB_APP_MANIFEST",
 	} {
 		if strings.Contains(deployScript, forbiddenSnippet) {
-			t.Fatalf("deploy script still owns Ansible-managed Pages snippet %q", forbiddenSnippet)
-		}
-	}
-	if strings.Contains(deployScript, "PAGES_PUBLISH_FORCE") {
-		t.Fatalf("deploy script must not force empty Pages publish commits")
-	}
-
-	pagesDeployScript := string(readRepoFile(t, "scripts", "deploy_pages.sh"))
-	for _, requiredSnippet := range []string{
-		"./scripts/publish_pages_branch.sh",
-		"gh api --method POST \"repos/${PAGES_REPOSITORY}/pages/builds\"",
-		"\"build_type\":\"legacy\"",
-		"\"path\":\"/\"",
-		"curl --fail --silent --show-error --location --max-time 30 \"${PAGES_URL}\"",
-		"pinguin-pages-build.json?source=",
-		"verify_live_pages_source_commit",
-		"sourceCommit",
-		"PAGES_VERIFY_SKIP",
-	} {
-		if !strings.Contains(pagesDeployScript, requiredSnippet) {
-			t.Fatalf("Pages deploy script missing contract snippet %q", requiredSnippet)
+			t.Fatalf("deploy script must not build or publish through %q", forbiddenSnippet)
 		}
 	}
 
 	readme := string(readRepoFile(t, "README.md"))
 	for _, requiredSnippet := range []string{
-		"Production deployment is intentionally parameterless",
-		"make deploy",
-		"defaults to the sibling `mprlab-gateway` checkout",
-		"deploy/app.yml",
-		"That app manifest owns the GitHub Pages resource",
+		"`make release` prepares",
+		"`make publish` publishes",
+		"`make deploy` activates",
 		"clean local `master` branch that exactly matches `origin/master`",
 		"zero open pull requests",
 		"After `make deploy`, configure the edge gateway to forward `25 -> tutosh:8025` and `465 -> tutosh:8465`",
-		"only for non-production targets",
 	} {
 		if !strings.Contains(readme, requiredSnippet) {
-			t.Fatalf("README missing plain deploy contract snippet %q", requiredSnippet)
+			t.Fatalf("README missing lifecycle contract snippet %q", requiredSnippet)
 		}
 	}
 
-	appManifest := string(readRepoFile(t, "deploy", "app.yml"))
+	resourceManifest := string(readRepoFile(t, ".mprlab", "deploy", "resources.yml"))
 	for _, requiredSnippet := range []string{
-		"app_name: pinguin",
-		"gateway_target: pinguin",
-		"resources:",
-		"type: github_pages_make_target",
+		"directory: pinguin",
+		"dispatch_target: pinguin",
+		"type: container_service",
+		"image: ghcr.io/tyemirov/pinguin:latest",
+		"type: github_pages",
 		"target: pages-deploy",
 		"url: https://pinguin.mprlab.com/",
-		"url_variable: mprlab_pinguin_pages_url",
-		"source_marker_path: /pinguin-pages-build.json",
+		"source_marker_path: /.mprlab-release.json",
 	} {
-		if !strings.Contains(appManifest, requiredSnippet) {
-			t.Fatalf("deploy/app.yml missing Pages resource snippet %q", requiredSnippet)
+		if !strings.Contains(resourceManifest, requiredSnippet) {
+			t.Fatalf(".mprlab/deploy/resources.yml missing lifecycle resource snippet %q", requiredSnippet)
 		}
+	}
+	if strings.Contains(resourceManifest, "url_variable:") {
+		t.Fatalf(".mprlab/deploy/resources.yml must not contain the retired Pages url_variable field")
 	}
 }
 

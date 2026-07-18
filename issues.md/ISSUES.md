@@ -157,6 +157,23 @@ make: *** [test-frontend] Error 1
 - [x] [PG-373] Dead compatibility paths remained after dynamic SMTP sender domains landed: startup still injected a legacy sender-domain cleanup hook, config/doctor still parsed a special legacy `senderDomains` marker, notification listing still carried the obsolete `failed` status alias, and Pages still shipped the old `dashboard.html` redirect. Resolved by deleting those code paths, making YAML decoding strict, removing the obsolete gRPC `FAILED` enum, dropping the redirect artifact, and validating the current `queued|sent|errored|cancelled|unknown` status contract.
 - [x] [PG-374] SMTP identity startup still ran a credential migration for rows created before password ciphertext storage. Resolved by deleting the runtime migration hook, removing its dependency injection and tests, and relying only on the current credential storage contract.
 
+- [x] [PG-378] Make release and Pages behavior repository-owned.
+  Goal:
+  Make Pinguin own one immutable release, publication, and deployment lifecycle plus the declarative resources consumed by the gateway aggregator.
+
+  Requirements:
+  - Vendor the canonical current lifecycle under `scripts/release/`; release, publish, container, and Pages commands must not load mutable tooling from sibling repositories.
+  - Keep `make release`, `make publish`, and `make deploy` as distinct preparation, publication, and activation stages with no compatibility scripts or legacy Pages publishing path.
+  - Move the deployment declaration to `.mprlab/deploy/resources.yml`, keep concrete runtime values in ignored `.mprlab/deploy/.env`, and track only the app-owned config and placeholder environment example.
+  - Preserve distinct source/release commit roles and `.nojekyll` in the immutable Pages artifact, and reject the retired `url_variable` resource field.
+
+  Validation:
+  - Run the black-box Pages lifecycle contract and focused Go publication contract.
+  - Run the complete `make ci` gate and validate the committed manifest through the gateway resource loader.
+
+  Resolution:
+  Vendored the proven current release bundle under `scripts/release/`, routed the repository wrappers and Make targets through that immutable local implementation, and deleted the obsolete combined publisher and legacy Pages scripts. `make release` now prepares binaries, container archives, and the Pages archive; `make publish` publishes those exact prepared refs and container artifacts; `make deploy` verifies the published image, dispatches the backend-only gateway target, and activates the published Pages archive. The app-owned `.mprlab/deploy/resources.yml` declares the Pinguin TAuth tenant, container, route, health check, and Pages resource; tracked config and placeholder environment files define the runtime contract while concrete values remain in ignored `.mprlab/deploy/.env`. The Pages contract preserves `.nojekyll`, distinguishes source and release commits, and now explicitly rejects the retired `url_variable` resource field. Focused Pages, publication, formatting, and shell-syntax checks passed, and `make ci` passed static analysis, integration coverage, 100.0% aggregate Go statement coverage, and 35 Playwright scenarios. No release, publish, or deploy command was executed.
+
 ## Maintenance (400–499)
 
 - [x] [PS-404] Add `pinguin-doctor` command for configuration validation. Validates Pinguin configurations with comprehensive checks for server requirements (database, auth, encryption), web interface settings, and tenant requirements (domains, identity, admins). Supports multiple config files with cross-config validation (`--cross-validate`), environment variable expansion (`--expand-env`), and JSON output for CI/CD (`--json`). Pinguin is now the authoritative source for Pinguin configuration correctness.

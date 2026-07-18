@@ -40,7 +40,7 @@ Git and GitHub conventions for this repository. Use these rules whenever you cre
 - PR descriptions should reference the issue ID, summarize the change, and include PLAN.md content if required by process docs.
 - Keep PRs scoped to a single issue branch. If multiple issues are in flight, each must have its own branch and PR.
 - Continuous Integration (CI) is local for this repository. Run `make ci` before review, merge, or release work.
-- Releases and deployment artifacts originate from `make publish`, which publishes the GHCR Docker image and the legacy `gh-pages` branch-root Pages artifact from `master`.
+- `make release` prepares local binaries, container archives, and the Pages archive without remote writes. `make publish` publishes those prepared artifacts without deployment. `make deploy` activates the published backend and `gh-pages` content.
 
 ## File Tracking & Ignore Rules
 
