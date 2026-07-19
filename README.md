@@ -427,24 +427,29 @@ Open `http://localhost:8080` in your browser for the landing page, Event log, an
 
 The Pinguin Docker image declares `/web` as a separate volume for the UI bundle; the compose workflow mounts the `pinguin-web` volume (bound to `./web`) at `/web` for you.
 
-### Publish Docker, then deploy backend and Pages
+### Release, publish, then deploy
 
-GitHub Actions are disabled for Pinguin. Release, publish, and deploy are explicit local production operations from a clean local `master` branch that exactly matches `origin/master` with zero open pull requests. These commands print the branch and commit they verified before doing production work; any other branch, dirty worktree, local/remote mismatch, or open PR is a hard failure.
+GitHub Actions are disabled for Pinguin. `make release` prepares the changelog commit, local tag, cross-platform binaries, container archives, and static Pages archive under `.git/mprlab-release`; it does not fetch, push, call GitHub, or deploy. `make publish` publishes those exact prepared Git refs, GitHub Release assets, and container archives without rebuilding them. `make deploy` activates the already-published backend and Pages artifacts without building or publishing missing artifacts.
 
-Use the publish target to run validation, then build and push the `linux/amd64,linux/arm64` Docker image manifest to GHCR:
+The complete lifecycle implementation is versioned under `scripts/release/`;
+release, publication, container, and Pages commands never load mutable tooling
+from a sibling checkout.
+
+Prepare and publish the release in order:
 
 ```bash
 docker login ghcr.io
+make release
 make publish
 ```
 
-Use the deploy target after `make publish` to deploy the backend through `mprlab-gateway`, publish the current `web/` assets to the legacy `gh-pages` branch root, trigger a GitHub Pages build, and verify the live Pages source marker matches the deployed commit. Production deployment is intentionally parameterless; the operator command is:
+Publication and deployment require a clean local `master` branch that exactly matches `origin/master` with zero open pull requests. Deploy verifies that `:latest` matches the release tag, deploys the backend through `mprlab-gateway`, activates the published `pages.tar.gz` on `gh-pages`, and verifies `/.mprlab-release.json`. The operator command is:
 
 ```bash
 make deploy
 ```
 
-`make publish` defaults to `ghcr.io/tyemirov/pinguin:latest` and `linux/amd64,linux/arm64`. `make deploy` defaults to the sibling `mprlab-gateway` checkout, the `tyemirov/pinguin` Pages repository, and the `gh-pages` branch. The deploy script verifies the production Git state, then verifies that the gateway checkout publishes Caddy's SMTP listeners on high host ports `8025` and `8465` before it runs `make -C ../mprlab-gateway deploy-pinguin` with this repo's `deploy/app.yml`. That app manifest owns the GitHub Pages resource that invokes Pinguin's `pages-deploy` target and verifies `pinguin-pages-build.json`, while gateway Ansible owns execution. After `make deploy`, configure the edge gateway to forward `25 -> tutosh:8025` and `465 -> tutosh:8465`; no Pinguin app port mapping is required. Override `DOCKER_IMAGE`, `DOCKER_TAG`, `PUBLISH_PLATFORMS`, `PAGES_REPOSITORY`, `PAGES_PUBLISH_REMOTE`, or `PAGES_PUBLISH_BRANCH` only for non-production targets. `gh` must be authenticated with repository and Pages access so deploy can verify open PRs and update/verify the legacy Pages source.
+`make publish` defaults to `ghcr.io/tyemirov/pinguin` and the `linux/amd64,linux/arm64` archives prepared by release. `make deploy` defaults to the sibling `mprlab-gateway` checkout, `origin`, and `gh-pages`. The canonical resource contract is `.mprlab/deploy/resources.yml`; gateway Ansible invokes the backend-only gateway target, while this repository's `pages-deploy` target activates the published Pages asset. After `make deploy`, configure the edge gateway to forward `25 -> tutosh:8025` and `465 -> tutosh:8465`; no Pinguin app port mapping is required.
 
 1. Copy the sample environment files and update the placeholders. **Use the same signing key in both files** so TAuth and Pinguin agree on JWT validation.
 

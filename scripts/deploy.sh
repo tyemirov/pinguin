@@ -6,15 +6,14 @@ usage() {
 Usage:
   scripts/deploy.sh [options]
 
-Deploys the Pinguin backend through mprlab-gateway, then publishes legacy
-gh-pages through the gateway Ansible app resource. Deployment is allowed only
-from clean local master matching origin/master with zero open PRs.
+Deploys the published Pinguin backend through mprlab-gateway, then activates
+the published Pages artifact. Deployment is allowed only from clean local
+master matching origin/master with zero open PRs.
 
 Options:
   --gateway-dir <path>       Gateway checkout. Default: $GATEWAY_DIR or sibling ../mprlab-gateway
   --image <value>            Backend image repository. Default: $DOCKER_IMAGE or ghcr.io/tyemirov/pinguin
   --tag <value>              Release tag to verify. Default: v* tag pointing at HEAD
-  --skip-ci                  Skip local make ci deployment gate
   --skip-image-verify        Skip release tag/latest image digest verification
   --skip-backend             Skip gateway backend deployment
   --skip-pages               Skip GitHub Pages branch publication
@@ -44,7 +43,6 @@ PAGES_URL="$(env_or_default PAGES_URL https://pinguin.mprlab.com/)"
 PUBLISH_BRANCH="$(env_or_default PAGES_PUBLISH_SOURCE_BRANCH master)"
 PUBLISH_REMOTE="$(env_or_default PAGES_PUBLISH_REMOTE origin)"
 TAG="$(env_or_default DEPLOY_TAG "")"
-SKIP_CI="false"
 SKIP_IMAGE_VERIFY="false"
 SKIP_BACKEND="false"
 SKIP_PAGES="false"
@@ -71,10 +69,6 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || { echo "error: --tag requires a value" >&2; exit 1; }
       TAG="$2"
       shift 2
-      ;;
-    --skip-ci)
-      SKIP_CI="true"
-      shift
       ;;
     --skip-image-verify)
       SKIP_IMAGE_VERIFY="true"
@@ -118,23 +112,12 @@ if [[ "${SKIP_BACKEND}" != "true" || "${SKIP_PAGES}" != "true" ]]; then
   verify_production_git_state "deploy" "${PUBLISH_BRANCH}" "${PUBLISH_REMOTE}"
 fi
 
-if [[ "${SKIP_BACKEND}" == "true" && "${SKIP_PAGES}" != "true" ]]; then
-  echo "error: GitHub Pages is deployed through gateway Ansible; use --skip-backend only with --skip-pages" >&2
-  exit 1
-fi
-
 resolve_gateway_dir() {
-  local candidate
   if [[ -n "${GATEWAY_DIR}" ]]; then
     printf "%s\n" "${GATEWAY_DIR}"
     return
   fi
-  for candidate in "${repo_root}/../mprlab-gateway" "../mprlab-gateway"; do
-    if [[ -d "${candidate}" ]]; then
-      printf "%s\n" "${candidate}"
-      return
-    fi
-  done
+  printf "%s\n" "${repo_root}/../mprlab-gateway"
 }
 
 GATEWAY_DIR="$(resolve_gateway_dir)"
@@ -166,11 +149,8 @@ verify_gateway_smtp_port_contract() {
 if [[ -z "${TAG}" ]]; then
   TAG="$(git tag --points-at HEAD --list 'v*' --sort=-version:refname | head -n 1)"
 fi
-[[ -n "${TAG}" ]] || { echo "error: no v* release tag points at HEAD; pass --tag or deploy from a release commit" >&2; exit 1; }
-
-if [[ "${SKIP_CI}" != "true" && ( "${SKIP_BACKEND}" != "true" || "${SKIP_PAGES}" != "true" ) ]]; then
-  echo "==> [deploy] Running make ci before deployment"
-  timeout -k 1200s -s SIGKILL 1200s make ci
+if [[ "${SKIP_BACKEND}" != "true" || "${SKIP_PAGES}" != "true" ]]; then
+  [[ -n "${TAG}" ]] || { echo "error: no v* release tag points at HEAD; pass --tag or run make publish first" >&2; exit 1; }
 fi
 
 if [[ "${SKIP_IMAGE_VERIFY}" != "true" && "${SKIP_BACKEND}" != "true" ]]; then
@@ -189,17 +169,16 @@ fi
 
 if [[ "${SKIP_BACKEND}" != "true" ]]; then
   verify_gateway_smtp_port_contract
-  gateway_deploy_target="deploy-pinguin"
-  if [[ "${SKIP_PAGES}" == "true" ]]; then
-    gateway_deploy_target="deploy-pinguin-backend"
-  fi
-  gateway_pages_verify_enabled="true"
-  if [[ "${SKIP_PAGES_VERIFY}" == "true" ]]; then
-    gateway_pages_verify_enabled="false"
-  fi
   echo "==> [deploy] Deploying Pinguin backend through mprlab-gateway"
-  timeout --foreground -k 1200s -s SIGKILL 1200s make -C "${GATEWAY_DIR}" MPRLAB_APP_MANIFEST="${repo_root}/deploy/app.yml" MPRLAB_GATEWAY_PAGES_VERIFY_ENABLED="${gateway_pages_verify_enabled}" MPRLAB_PINGUIN_PAGES_URL="${PAGES_URL}" "${gateway_deploy_target}"
+  timeout --foreground -k 1200s -s SIGKILL 1200s make -C "${GATEWAY_DIR}" deploy-pinguin-backend
   echo "==> [deploy] Gateway SMTP host ports are ready; remaining operator mapping is edge 25 -> tutosh:8025 and edge 465 -> tutosh:8465"
+fi
+
+if [[ "${SKIP_PAGES}" != "true" ]]; then
+  pages_args=()
+  [[ "${SKIP_PAGES_VERIFY}" == "true" ]] && pages_args+=(--skip-verify)
+  echo "==> [deploy] Activating the published Pages artifact for ${TAG}"
+  PAGES_URL="${PAGES_URL}" PAGES_VERSION="${TAG}" PAGES_DEPLOY_ARGS="${pages_args[*]}" make --no-print-directory pages-deploy
 fi
 
 echo "Pinguin deploy complete"

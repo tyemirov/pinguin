@@ -1,0 +1,130 @@
+server:
+  databasePath: ${DATABASE_PATH}
+  grpcAuthToken: ${GRPC_AUTH_TOKEN}
+  logLevel: ${LOG_LEVEL}
+  maxRetries: ${MAX_RETRIES}
+  retryIntervalSec: ${RETRY_INTERVAL_SEC}
+  masterEncryptionKey: ${MASTER_ENCRYPTION_KEY}
+  connectionTimeoutSec: ${CONNECTION_TIMEOUT_SEC}
+  operationTimeoutSec: ${OPERATION_TIMEOUT_SEC}
+  tauth:
+    signingKey: ${TAUTH_SIGNING_KEY}
+    cookieName: ${TAUTH_COOKIE_NAME}
+
+tenants:
+  - id: ${PINGUIN_TENANT_ID_PS}
+    displayName: ${PINGUIN_PS_DISPLAY_NAME}
+    supportEmail: ${PINGUIN_PS_SUPPORT_EMAIL}
+    enabled: ${PINGUIN_PS_ENABLED}
+    domains:
+      - ${PINGUIN_PS_DOMAIN_PRIMARY}
+      - ${PINGUIN_PS_DOMAIN_SECONDARY}
+    admins:
+      - ${PINGUIN_PS_ADMIN_EMAIL_1}
+      - ${PINGUIN_PS_ADMIN_EMAIL_2}
+    emailProfile:
+      host: ${PINGUIN_PS_SMTP_HOST}
+      port: ${PINGUIN_PS_SMTP_PORT}
+      username: ${PINGUIN_PS_SMTP_USERNAME}
+      password: ${PINGUIN_PS_SMTP_PASSWORD}
+      fromAddress: ${PINGUIN_PS_FROM_EMAIL}
+    smsProfile:
+      accountSid: ${PINGUIN_PS_TWILIO_ACCOUNT_SID}
+      authToken: ${PINGUIN_PS_TWILIO_AUTH_TOKEN}
+      fromNumber: ${PINGUIN_PS_TWILIO_FROM_NUMBER}
+  - id: ${PINGUIN_TENANT_ID_LA}
+    displayName: ${PINGUIN_LA_DISPLAY_NAME}
+    supportEmail: ${PINGUIN_LA_SUPPORT_EMAIL}
+    enabled: ${PINGUIN_LA_ENABLED}
+    domains:
+      - ${PINGUIN_LA_DOMAIN_PRIMARY}
+    admins:
+      - ${PINGUIN_LA_ADMIN_EMAIL_1}
+      - ${PINGUIN_LA_ADMIN_EMAIL_2}
+    emailProfile:
+      host: ${PINGUIN_LA_SMTP_HOST}
+      port: ${PINGUIN_LA_SMTP_PORT}
+      username: ${PINGUIN_LA_SMTP_USERNAME}
+      password: ${PINGUIN_LA_SMTP_PASSWORD}
+      fromAddress: ${PINGUIN_LA_FROM_EMAIL}
+    smsProfile:
+      accountSid: ${PINGUIN_LA_TWILIO_ACCOUNT_SID}
+      authToken: ${PINGUIN_LA_TWILIO_AUTH_TOKEN}
+      fromNumber: ${PINGUIN_LA_TWILIO_FROM_NUMBER}
+  - id: ${PINGUIN_TENANT_ID_NAMESIGNAL}
+    displayName: ${PINGUIN_NAMESIGNAL_DISPLAY_NAME}
+    supportEmail: ${PINGUIN_NAMESIGNAL_SUPPORT_EMAIL}
+    enabled: ${PINGUIN_NAMESIGNAL_ENABLED}
+    domains:
+      - ${PINGUIN_NAMESIGNAL_DOMAIN_PRIMARY}
+    admins:
+      - ${PINGUIN_NAMESIGNAL_ADMIN_EMAIL_1}
+      - ${PINGUIN_NAMESIGNAL_ADMIN_EMAIL_2}
+    emailProfile:
+      host: ${PINGUIN_NAMESIGNAL_SMTP_HOST}
+      port: ${PINGUIN_NAMESIGNAL_SMTP_PORT}
+      username: ${PINGUIN_NAMESIGNAL_SMTP_USERNAME}
+      password: ${PINGUIN_NAMESIGNAL_SMTP_PASSWORD}
+      fromAddress: ${PINGUIN_NAMESIGNAL_FROM_EMAIL}
+    smsProfile:
+      accountSid: ${PINGUIN_NAMESIGNAL_TWILIO_ACCOUNT_SID}
+      authToken: ${PINGUIN_NAMESIGNAL_TWILIO_AUTH_TOKEN}
+      fromNumber: ${PINGUIN_NAMESIGNAL_TWILIO_FROM_NUMBER}
+  - id: ${PINGUIN_TENANT_ID_SUMMERCAN}
+    displayName: ${PINGUIN_SUMMERCAN_DISPLAY_NAME}
+    supportEmail: ${PINGUIN_SUMMERCAN_SUPPORT_EMAIL}
+    enabled: ${PINGUIN_SUMMERCAN_ENABLED}
+    domains:
+      - ${PINGUIN_SUMMERCAN_DOMAIN_PRIMARY}
+    admins:
+      - ${PINGUIN_SUMMERCAN_ADMIN_EMAIL_1}
+      - ${PINGUIN_SUMMERCAN_ADMIN_EMAIL_2}
+    emailProfile:
+      host: ${PINGUIN_SUMMERCAN_SMTP_HOST}
+      port: ${PINGUIN_SUMMERCAN_SMTP_PORT}
+      username: ${PINGUIN_SUMMERCAN_SMTP_USERNAME}
+      password: ${PINGUIN_SUMMERCAN_SMTP_PASSWORD}
+      fromAddress: ${PINGUIN_SUMMERCAN_FROM_EMAIL}
+    smsProfile:
+      accountSid: ${PINGUIN_SUMMERCAN_TWILIO_ACCOUNT_SID}
+      authToken: ${PINGUIN_SUMMERCAN_TWILIO_AUTH_TOKEN}
+      fromNumber: ${PINGUIN_SUMMERCAN_TWILIO_FROM_NUMBER}
+
+web:
+  enabled: true
+  listenAddr: ${HTTP_LISTEN_ADDR}
+  allowedOrigins:
+    - ${HTTP_ALLOWED_ORIGIN1}
+    - ${HTTP_ALLOWED_ORIGIN2}
+    - ${HTTP_ALLOWED_ORIGIN3}
+
+smtpSubmission:
+  enabled: true
+  hostname: ${SMTP_SUBMISSION_HOSTNAME}
+  listenAddr: ${SMTP_SUBMISSION_LISTEN_ADDR}
+  tlsListenAddr:
+  tlsCertPath:
+  tlsKeyPath:
+  publicPort: ${SMTP_SUBMISSION_PUBLIC_PORT}
+  publicSecurityMode: ${SMTP_SUBMISSION_PUBLIC_SECURITY_MODE}
+  deliveryMode: ${SMTP_SUBMISSION_DELIVERY_MODE}
+  maxMessageBytes: ${SMTP_SUBMISSION_MAX_MESSAGE_BYTES}
+  maxRecipients: ${SMTP_SUBMISSION_MAX_RECIPIENTS}
+  allowInsecureAuth: ${SMTP_SUBMISSION_ALLOW_INSECURE_AUTH}
+  relay:
+    host: ${SMTP_SUBMISSION_RELAY_HOST}
+    port: ${SMTP_SUBMISSION_RELAY_PORT}
+    username: ${SMTP_SUBMISSION_RELAY_USERNAME}
+    password: ${SMTP_SUBMISSION_RELAY_PASSWORD}
+
+smtpForwarding:
+  enabled: ${SMTP_FORWARDING_ENABLED}
+  hostname: ${SMTP_FORWARDING_HOSTNAME}
+  listenAddr: ${SMTP_FORWARDING_LISTEN_ADDR}
+  maxMessageBytes: ${SMTP_FORWARDING_MAX_MESSAGE_BYTES}
+  maxRecipients: ${SMTP_FORWARDING_MAX_RECIPIENTS}
+  relay:
+    host: ${SMTP_FORWARDING_RELAY_HOST}
+    port: ${SMTP_FORWARDING_RELAY_PORT}
+    username: ${SMTP_FORWARDING_RELAY_USERNAME}
+    password: ${SMTP_FORWARDING_RELAY_PASSWORD}

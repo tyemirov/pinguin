@@ -30,9 +30,22 @@ mprlab_resources:
         allow_insecure_http: "${TAUTH_ALLOW_INSECURE_HTTP}"
     - type: container_service
       name: pinguin-api
+      host_group: gateway
       image: ghcr.io/tyemirov/pinguin:latest
-      container_port: 8080
-      compose_project: mprlab-gateway
+      ports:
+        - container_port: 8080
+        - container_port: 50051
+          host_port: 50051
+          host_port_variable: PINGUIN_GRPC_HOST_PORT
+      compose_file: docker-compose.yml
+      compose_project: mprlab-nginx-gateway
+      runtime_assets:
+        - path: .mprlab/deploy/.env
+          example_path: .mprlab/deploy/runtime.env.example
+          destination: configs/.env.pinguin
+          mode: "0600"
+        - path: .mprlab/deploy/config.yml
+          destination: configs/config.pinguin.yml
     - type: caddy_route
       name: pinguin-api
       host: pinguin-api.mprlab.com
@@ -46,5 +59,4 @@ mprlab_resources:
       name: pinguin
       target: pages-deploy
       url: https://pinguin.mprlab.com/
-      url_variable: mprlab_pinguin_pages_url
       source_marker_path: /.mprlab-release.json
