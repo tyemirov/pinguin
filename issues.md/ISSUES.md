@@ -16,6 +16,7 @@ Read @AGENTS.md, @ARCHITECTURE.md, @README.md, @issues.md/POLICY.md, @issues.md/
 
 ## Improvements (202–299)
 
+- [x] [PG-209] Declare Pinguin's TAuth tenant requirements in the app-owned deployment manifest. Resolved with the canonical app-owned `tauth_tenant` declaration, a gateway-assembled 13-tenant fleet accepted by the generic TAuth doctor with zero errors, and passing `make ci`.
 - [x] [PG-355] Add a horizontal dashboard menu using mpr-ui constructs with entries for the SMTP relay and notification event log. Resolved with `mpr-header` horizontal links for Event log and SMTP relay, renamed dashboard surfaces, README updates, Playwright coverage, and passing `make test-frontend` plus `make ci`.
 - [x] [PG-361] Keep Pinguin out of shared-shell authentication scaffolding. Resolved by deleting the Pinguin-owned auth profile cache, dropping auth-provider metadata from `/runtime-config` and `server.tauth`, consuming only `mpr-ui` auth events/snapshots/header state for UI routing, moving runtime URL setup out of the old TAuth-named script, updating docs/config samples, and passing `make ci`.
 - [x] [PG-362] Align Pinguin SMTP setup with the gateway high-port publishing contract. Resolved by switching local SMTP Compose ports to `8025:25` and `8465:465`, normalizing shared-address MX docs/config examples to `mx.pinguin.mprlab.com`, and adding a deploy preflight that rejects mprlab-gateway checkouts missing the `8025/8465` Caddy host-port contract before running `deploy TARGET=pinguin`.
