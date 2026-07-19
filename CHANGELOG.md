@@ -34,6 +34,7 @@
 - Publish `pinguin-doctor` in the production image and make the server the default command so gateway Compose preflight can run the doctor binary.
 
 ### Improvements
+- Declare Pinguin's stable TAuth tenant requirements in the app-owned deployment manifest for gateway assembly.
 - Replace the old landing page with a focused Pinguin sign-in screen and notification queue preview.
 - Add a dashboard horizontal menu using `mpr-ui` header links for Event log and SMTP relay.
 - Split the authenticated browser workspace into dedicated `event-log.html` and `smtp-relay.html` pages, removing the combined dashboard header copy.
