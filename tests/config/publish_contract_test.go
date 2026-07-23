@@ -200,7 +200,6 @@ func TestDeployScriptConsumesPublishedBackendAndPagesArtifacts(t *testing.T) {
 		"verify_production_git_state \"deploy\" \"${PUBLISH_BRANCH}\" \"${PUBLISH_REMOTE}\"",
 		"no v* release tag points at HEAD; pass --tag or run make publish first",
 		"Verifying ${IMAGE_REPOSITORY}:latest matches ${TAG}",
-		"verify_gateway_smtp_port_contract",
 		"deploy-pinguin-backend",
 		"Activating the published Pages artifact for ${TAG}",
 		"PAGES_VERSION=\"${TAG}\"",
@@ -220,9 +219,13 @@ func TestDeployScriptConsumesPublishedBackendAndPagesArtifacts(t *testing.T) {
 		"./scripts/publish_pages_branch.sh",
 		"./scripts/deploy_pages.sh",
 		"MPRLAB_APP_MANIFEST",
+		"require_gateway_contract_snippet",
+		"verify_gateway_smtp_port_contract",
+		"mprlab_verify_pinguin_smtp_port",
+		"mprlab_verify_pinguin_mx_port",
 	} {
 		if strings.Contains(deployScript, forbiddenSnippet) {
-			t.Fatalf("deploy script must not build or publish through %q", forbiddenSnippet)
+			t.Fatalf("deploy script must not contain retired or non-activating contract %q", forbiddenSnippet)
 		}
 	}
 
@@ -257,6 +260,91 @@ func TestDeployScriptConsumesPublishedBackendAndPagesArtifacts(t *testing.T) {
 	}
 	if strings.Contains(resourceManifest, "url_variable:") {
 		t.Fatalf(".mprlab/deploy/resources.yml must not contain the retired Pages url_variable field")
+	}
+}
+
+func TestDeployDelegatesGatewayValidationToBackendTarget(t *testing.T) {
+	t.Helper()
+
+	temporaryDirectory := t.TempDir()
+	binaryDirectory := filepath.Join(temporaryDirectory, "bin")
+	if mkdirErr := os.Mkdir(binaryDirectory, 0o755); mkdirErr != nil {
+		t.Fatalf("create fake binary directory: %v", mkdirErr)
+	}
+
+	gatewayDirectory := filepath.Join(temporaryDirectory, "mprlab-gateway")
+	if mkdirErr := os.Mkdir(gatewayDirectory, 0o755); mkdirErr != nil {
+		t.Fatalf("create gateway directory: %v", mkdirErr)
+	}
+
+	writeTestExecutable(t, filepath.Join(binaryDirectory, "git"), `#!/usr/bin/env bash
+set -euo pipefail
+case "$*" in
+  "rev-parse --show-toplevel")
+    printf '%s\n' "${TEST_REPO_ROOT}"
+    ;;
+  "branch --show-current")
+    printf '%s\n' "master"
+    ;;
+  "status --porcelain"|"fetch --prune origin +refs/heads/master:refs/remotes/origin/master")
+    ;;
+  "rev-parse HEAD"|"rev-parse refs/remotes/origin/master")
+    printf '%s\n' "1111111111111111111111111111111111111111"
+    ;;
+  *)
+    printf 'unexpected git invocation: %s\n' "$*" >&2
+    exit 1
+    ;;
+esac
+`)
+	writeTestExecutable(t, filepath.Join(binaryDirectory, "gh"), `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "0"
+`)
+
+	makeInvocationPath := filepath.Join(temporaryDirectory, "make-invocation")
+	writeTestExecutable(t, filepath.Join(binaryDirectory, "make"), `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" > "${TEST_MAKE_INVOCATION}"
+`)
+
+	repositoryRoot, absolutePathErr := filepath.Abs(repoPath())
+	if absolutePathErr != nil {
+		t.Fatalf("resolve repository root: %v", absolutePathErr)
+	}
+	command := exec.Command(
+		"bash",
+		filepath.Join(repositoryRoot, "scripts", "deploy.sh"),
+		"--gateway-dir", gatewayDirectory,
+		"--tag", "v0.4.22",
+		"--skip-image-verify",
+		"--skip-pages",
+	)
+	command.Dir = repositoryRoot
+	command.Env = []string{
+		"PATH=" + binaryDirectory + ":" + os.Getenv("PATH"),
+		"TEST_MAKE_INVOCATION=" + makeInvocationPath,
+		"TEST_REPO_ROOT=" + repositoryRoot,
+	}
+	output, runErr := command.CombinedOutput()
+	if runErr != nil {
+		t.Fatalf("deploy command failed before gateway target dispatch: %v\n%s", runErr, string(output))
+	}
+
+	makeInvocation, readErr := os.ReadFile(makeInvocationPath)
+	if readErr != nil {
+		t.Fatalf("read gateway make invocation: %v", readErr)
+	}
+	expectedInvocation := "-C " + gatewayDirectory + " deploy-pinguin-backend\n"
+	if string(makeInvocation) != expectedInvocation {
+		t.Fatalf("gateway make invocation = %q, want %q", string(makeInvocation), expectedInvocation)
+	}
+}
+
+func writeTestExecutable(t *testing.T, path string, contents string) {
+	t.Helper()
+	if writeErr := os.WriteFile(path, []byte(contents), 0o755); writeErr != nil {
+		t.Fatalf("write test executable %s: %v", path, writeErr)
 	}
 }
 
