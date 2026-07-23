@@ -10,6 +10,17 @@ source_short="${PAGES_SOURCE_SHORT:-}"
 [[ -f "${source_dir}/event-log.html" ]] || { echo "error: ${source_dir}/event-log.html is required" >&2; exit 1; }
 [[ -f "${source_dir}/smtp-relay.html" ]] || { echo "error: ${source_dir}/smtp-relay.html is required" >&2; exit 1; }
 [[ -f "${source_dir}/CNAME" ]] || { echo "error: ${source_dir}/CNAME is required" >&2; exit 1; }
+[[ -f "${source_dir}/js/google-analytics.js" ]] || { echo "error: ${source_dir}/js/google-analytics.js is required" >&2; exit 1; }
+grep -F -q 'G-MRV1W0ZVW8' "${source_dir}/js/google-analytics.js" || {
+  echo "error: ${source_dir}/js/google-analytics.js is missing the Pinguin GA4 measurement ID" >&2
+  exit 1
+}
+for page in index.html event-log.html smtp-relay.html; do
+  grep -F -q '<script defer src="/js/google-analytics.js"></script>' "${source_dir}/${page}" || {
+    echo "error: ${source_dir}/${page} is missing the Google Analytics loader" >&2
+    exit 1
+  }
+done
 
 if [[ -z "${source_commit}" ]]; then
   source_commit="$(git rev-parse --verify HEAD 2>/dev/null || printf "unknown")"
