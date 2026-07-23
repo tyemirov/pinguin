@@ -81,6 +81,11 @@
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 - Document the remaining edge mappings after gateway deployment: `25 -> tutosh:8025` and `465 -> tutosh:8465`.
 
+## [v0.4.22] - 2026-07-23
+
+- Merge pull request #173 from tyemirov/tyemirov/bugfix/PG-381-gateway-preflight-contract
+- Fix PG-381 gateway preflight ownership
+
 ## [v0.4.21] - 2026-07-23
 
 - Merge pull request #172 from tyemirov/tyemirov/bugfix/PG-380-mpr-ui-session-contract
