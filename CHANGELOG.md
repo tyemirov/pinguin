@@ -80,6 +80,21 @@
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 - Document the remaining edge mappings after gateway deployment: `25 -> tutosh:8025` and `465 -> tutosh:8465`.
 
+## [v0.4.21] - 2026-07-23
+
+- Merge pull request #172 from tyemirov/tyemirov/bugfix/PG-380-mpr-ui-session-contract
+- test: detect retired authButton key even when value is null in mprUIEnvironment
+- fix(auth): align browser config with shared-shell contract and remove authButton
+- docs(issues): add detailed recurring maintenance runbooks and validation
+- docs: add forward-only contract discipline to AGENTS.md
+- Merge pull request #171 from tyemirov/improvement/PG-379-ga4-reporting
+- Add PG-379 Pinguin GA4 reporting
+- Merge pull request #170 from tyemirov/bugfix/PG-378-repository-owned-release
+- Merge origin/master into PG-378 release branch
+- Merge pull request #169 from tyemirov/improvement/PG-209-declare-tauth-tenant
+- Fix PG-378 repository-owned release lifecycle
+- improvement(PG-209): declare app-owned TAuth tenant
+
 ## [v0.4.20] - 2026-06-23
 
 ### Features ✨
