@@ -455,6 +455,15 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (url.pathname === '/auth/session' && req.method === 'GET') {
+    if (!hasAuthCookie(req)) {
+      sendJson(res, 204, null);
+      return;
+    }
+    sendJson(res, 200, AUTH_PROFILE);
+    return;
+  }
+
   if (url.pathname === '/me' && req.method === 'GET') {
     if (!hasAuthCookie(req)) {
       sendJson(res, 401, { error: 'session_required' });

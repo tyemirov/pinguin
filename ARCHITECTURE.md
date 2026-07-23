@@ -12,7 +12,7 @@
 ## Authentication & Session Flow
 - The browser UI never talks directly to Pinguin for authentication. Instead, the `<mpr-header>` component (from `mpr-ui`) coordinates provider-specific sign-in and TAuth:
   1. `<mpr-header data-config-url="/config-ui.yaml">` declares the shared shell contract in `index.html`, `event-log.html`, and `smtp-relay.html`.
-  2. `mpr-ui-config.js` reads `web/config-ui.yaml`, selects the entry for the current page origin, applies shared-shell auth attributes to the header, and loads the `mpr-ui@latest` bundle from the bundle marker.
+  2. `mpr-ui-config.js` reads `web/config-ui.yaml`, selects the entry for the current page origin, applies shared-shell auth attributes including the `/auth/session` restoration path to the header, and loads the `mpr-ui@latest` bundle from the bundle marker. Login-button presentation remains component-owned rather than runtime YAML.
   3. `web/js/bootstrap.js` still fetches `/runtime-config` (from `pinguin-api.mprlab.com` when served from `.mprlab.com`) for the Pinguin API URL and tenant display metadata used by the app surface.
   4. `web/js/app.js` listens for `mpr-ui:auth:*` events and reads `MPRUI.resolveAuthProfileSnapshot` to sync profile state, drive redirects, and guard the authenticated pages.
   5. Successful sign-in yields an HttpOnly `app_session` cookie issued by TAuth; Pinguin validates that cookie on every `/api` request.

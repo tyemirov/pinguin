@@ -9,11 +9,7 @@ environments:
       loginPath: /auth/google
       logoutPath: /auth/logout
       noncePath: /auth/nonce
-    authButton:
-      text: continue_with
-      size: large
-      theme: outline
-      shape: pill
+      sessionPath: /auth/session
   - description: Local Docker
     origins:
       - http://localhost:8080
@@ -24,11 +20,7 @@ environments:
       loginPath: /auth/google
       logoutPath: /auth/logout
       noncePath: /auth/nonce
-    authButton:
-      text: continue_with
-      size: large
-      theme: outline
-      shape: pill
+      sessionPath: /auth/session
   - description: Playwright
     origins:
       - http://127.0.0.1:4174
@@ -39,11 +31,7 @@ environments:
       loginPath: /auth/google
       logoutPath: /auth/logout
       noncePath: /auth/nonce
-    authButton:
-      text: continue_with
-      size: large
-      theme: outline
-      shape: pill
+      sessionPath: /auth/session
   - description: Playwright localhost
     origins:
       - http://localhost:4174
@@ -54,8 +42,4 @@ environments:
       loginPath: /auth/google
       logoutPath: /auth/logout
       noncePath: /auth/nonce
-    authButton:
-      text: continue_with
-      size: large
-      theme: outline
-      shape: pill
+      sessionPath: /auth/session
