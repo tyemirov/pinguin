@@ -13,9 +13,14 @@ type mprUIConfigDocument struct {
 }
 
 type mprUIEnvironment struct {
-	Description string         `yaml:"description"`
-	Auth        map[string]any `yaml:"auth"`
-	AuthButton  *yaml.Node     `yaml:"authButton"`
+	Description      string               `yaml:"description"`
+	Auth             map[string]any       `yaml:"auth"`
+	AdditionalFields map[string]yaml.Node `yaml:",inline"`
+}
+
+func hasRetiredAuthButton(environment mprUIEnvironment) bool {
+	_, authButtonExists := environment.AdditionalFields["authButton"]
+	return authButtonExists
 }
 
 func TestMPRUIConfigUsesCurrentSessionContract(t *testing.T) {
@@ -34,7 +39,7 @@ func TestMPRUIConfigUsesCurrentSessionContract(t *testing.T) {
 		if environmentLabel == "" {
 			environmentLabel = "environment"
 		}
-		if environment.AuthButton != nil {
+		if hasRetiredAuthButton(environment) {
 			t.Fatalf("%s at index %d declares retired authButton config", environmentLabel, environmentIndex)
 		}
 		sessionPath, sessionPathExists := environment.Auth["sessionPath"].(string)
@@ -47,5 +52,15 @@ func TestMPRUIConfigUsesCurrentSessionContract(t *testing.T) {
 				environment.Auth["sessionPath"],
 			)
 		}
+	}
+}
+
+func TestMPRUIEnvironmentDetectsNullAuthButton(t *testing.T) {
+	var environment mprUIEnvironment
+	if unmarshalErr := yaml.Unmarshal([]byte("authButton: null\n"), &environment); unmarshalErr != nil {
+		t.Fatalf("failed to parse null authButton fixture: %v", unmarshalErr)
+	}
+	if !hasRetiredAuthButton(environment) {
+		t.Fatal("retired authButton key must be detected even when its value is null")
 	}
 }
