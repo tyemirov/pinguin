@@ -11,6 +11,7 @@
 - Add backend-backed search and infinite scroll for dashboard notification events, including cursor pagination and a single top-level refresh control.
 
 ### Bug Fixes
+- Stop `make deploy` from inspecting retired mprlab-gateway SMTP inventory keys and delegate gateway preflight, deployment, and verification to `deploy-pinguin-backend`.
 - Align browser authentication with the current `mpr-ui@latest` config contract by removing rejected `authButton` YAML and declaring TAuth `/auth/session` restoration.
 - Make Playwright own its frontend dev server by default so release tests fail fast on an occupied port instead of reusing stale assets from another process.
 - Include trusted-proxy-aware source IP, remote peer address, and user agent in HTTP request logs for scanner attribution.
@@ -66,7 +67,7 @@
 - Update profile-menu browser coverage to assert the shared `mpr-user` header contract instead of the removed local settings menu.
 - Restore Go statement coverage to 100.0% across all covered packages.
 - Add a `make ci` coverage gate that fails unless total Go statement coverage remains at 100.0%.
-- Add deployment contract coverage for the sibling gateway SMTP host-port configuration.
+- Add black-box deployment coverage proving Pinguin dispatches the public gateway backend target without inspecting gateway-owned configuration files.
 
 ### Docs
 - Document `/auth/session` as the shared-shell restoration path and keep login-button presentation component-owned.
