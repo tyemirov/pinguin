@@ -59,13 +59,21 @@ test.describe('Landing page auth flow', () => {
       'tauth-url',
       'http://127.0.0.1:4174',
     );
+    await expect(page.locator('mpr-header').first()).toHaveAttribute(
+      'tauth-session-path',
+      '/auth/session',
+    );
   });
 
-  test('deduplicates unauthenticated shared-header profile checks', async ({ page }) => {
+  test('keeps fresh anonymous startup on the current session boundary', async ({ page }) => {
+    let sessionRequestCount = 0;
     let profileRequestCount = 0;
     let refreshRequestCount = 0;
     page.on('request', (request) => {
       const requestUrl = new URL(request.url());
+      if (request.method() === 'GET' && requestUrl.pathname === '/auth/session') {
+        sessionRequestCount += 1;
+      }
       if (request.method() === 'GET' && requestUrl.pathname === '/me') {
         profileRequestCount += 1;
       }
@@ -77,8 +85,9 @@ test.describe('Landing page auth flow', () => {
     await page.goto('/index.html');
     await expectSharedHeaderSignInButton(page);
     await page.waitForTimeout(500);
-    expect(profileRequestCount).toBeLessThanOrEqual(1);
-    expect(refreshRequestCount).toBeLessThanOrEqual(1);
+    expect(sessionRequestCount).toBeLessThanOrEqual(1);
+    expect(profileRequestCount).toBe(0);
+    expect(refreshRequestCount).toBe(0);
   });
 
   test('keeps the Pinguin header brand when tenant metadata is present', async ({ page }) => {

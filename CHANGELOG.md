@@ -11,6 +11,7 @@
 - Add backend-backed search and infinite scroll for dashboard notification events, including cursor pagination and a single top-level refresh control.
 
 ### Bug Fixes
+- Align browser authentication with the current `mpr-ui@latest` config contract by removing rejected `authButton` YAML and declaring TAuth `/auth/session` restoration.
 - Make Playwright own its frontend dev server by default so release tests fail fast on an occupied port instead of reusing stale assets from another process.
 - Include trusted-proxy-aware source IP, remote peer address, and user agent in HTTP request logs for scanner attribution.
 - Open SQLite with WAL and a 10s busy timeout, and stop GORM error logs from emitting interpolated SQL values during DB errors.
@@ -44,6 +45,7 @@
 - Align Pinguin SMTP setup with gateway high-port publishing so MX and SMTPS use `8025` and `8465` on the host.
 
 ### Testing
+- Add config and browser contract coverage for the current shared-shell `sessionPath` boundary and the absence of retired `authButton` YAML.
 - Add Playwright configuration contract coverage for frontend dev server ownership.
 - Add HTTP API regression coverage for request-log attribution fields and source-IP fallback behavior.
 - Add DB boundary coverage for SQLite contention PRAGMAs and sanitized GORM error logging.
@@ -67,6 +69,7 @@
 - Add deployment contract coverage for the sibling gateway SMTP host-port configuration.
 
 ### Docs
+- Document `/auth/session` as the shared-shell restoration path and keep login-button presentation component-owned.
 - Document the production Git-state requirements for release, publish, and deploy commands.
 - Document that Pinguin does not support backward compatibility, legacy schemas, legacy data, or fallback code paths.
 - Update SMTP relay docs to describe reusable credential viewing instead of one-time password display.
