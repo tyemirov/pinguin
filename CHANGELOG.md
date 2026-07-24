@@ -83,6 +83,11 @@
 - Document dashboard tenant authorization roles and non-admin domain scoping.
 - Document the remaining edge mappings after gateway deployment: `25 -> tutosh:8025` and `465 -> tutosh:8465`.
 
+## [v0.4.24] - 2026-07-24
+
+- Merge pull request #175 from tyemirov/tyemirov/bugfix/PG-383-idempotent-release
+- fix(release): make repeated `make release` idempotent at prepared tag
+
 ## [v0.4.23] - 2026-07-23
 
 - Merge pull request #174 from tyemirov/tyemirov/bugfix/PG-382-grpc-readiness-event
