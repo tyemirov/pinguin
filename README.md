@@ -429,7 +429,7 @@ The Pinguin Docker image declares `/web` as a separate volume for the UI bundle;
 
 ### Release, publish, then deploy
 
-GitHub Actions are disabled for Pinguin. `make release` prepares the changelog commit, local tag, cross-platform binaries, container archives, and static Pages archive under `.git/mprlab-release`; it does not fetch, push, call GitHub, or deploy. `make publish` publishes those exact prepared Git refs, GitHub Release assets, and container archives without rebuilding them. `make deploy` activates the already-published backend and Pages artifacts without building or publishing missing artifacts.
+GitHub Actions are disabled for Pinguin. `make release` prepares the changelog commit, local tag, cross-platform binaries, container archives, and static Pages archive under `.git/mprlab-release`; it does not fetch, push, call GitHub, or deploy. Re-running it at that release tag verifies and preserves the prepared artifact, then succeeds without creating another version. `make publish` publishes those exact prepared Git refs, GitHub Release assets, and container archives without rebuilding them. `make deploy` activates the already-published backend and Pages artifacts without building or publishing missing artifacts.
 
 The complete lifecycle implementation is versioned under `scripts/release/`;
 release, publication, container, and Pages commands never load mutable tooling

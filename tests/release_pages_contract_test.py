@@ -161,6 +161,51 @@ class PagesReleaseContractTest(unittest.TestCase):
                 self.assertNotEqual(rejected.returncode, 0)
                 self.assertIn(f"source {source_commit}", rejected.stderr)
 
+    def test_release_preparation_is_idempotent_at_current_tag(self) -> None:
+        environment = os.environ.copy()
+        environment["RELEASE_HELPER"] = str(RELEASE_HELPER)
+        environment["RELEASE_ARTIFACT_TARGETS"] = "pages-artifact"
+
+        self.command(str(PREPARE_RELEASE), "--version", RELEASE_VERSION, cwd=self.repo, env=environment)
+        release_commit = self.command("git", "rev-parse", "HEAD", cwd=self.repo).stdout.strip()
+        artifact_directory = pathlib.Path(
+            self.command("git", "rev-parse", "--git-path", "mprlab-release", cwd=self.repo).stdout.strip()
+        )
+        if not artifact_directory.is_absolute():
+            artifact_directory = self.repo / artifact_directory
+        prepared_files = {
+            path.relative_to(artifact_directory): path.read_bytes()
+            for path in artifact_directory.rglob("*")
+            if path.is_file()
+        }
+
+        repeated = self.command(
+            str(PREPARE_RELEASE),
+            cwd=self.repo,
+            env=environment,
+            check=False,
+        )
+
+        self.assertEqual(repeated.returncode, 0, repeated.stdout + repeated.stderr)
+        self.assertIn(f"Release {RELEASE_VERSION} is already prepared", repeated.stdout)
+        self.assertEqual(
+            self.command("git", "rev-parse", "HEAD", cwd=self.repo).stdout.strip(),
+            release_commit,
+        )
+        self.assertEqual(
+            self.command("git", "tag", "--points-at", "HEAD", cwd=self.repo).stdout.splitlines(),
+            [RELEASE_VERSION],
+        )
+        self.assertEqual(
+            {
+                path.relative_to(artifact_directory): path.read_bytes()
+                for path in artifact_directory.rglob("*")
+                if path.is_file()
+            },
+            prepared_files,
+        )
+        self.assertEqual(self.command("git", "status", "--short", cwd=self.repo).stdout, "")
+
 
 if __name__ == "__main__":
     unittest.main()
