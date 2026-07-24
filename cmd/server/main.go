@@ -410,6 +410,8 @@ type serverDependencies struct {
 	exit                      func(int)
 }
 
+const grpcReadinessEvent = "pinguin.grpc.ready"
+
 func main() {
 	runServerAndExit(os.Args[1:], productionServerDependencies())
 }
@@ -635,7 +637,7 @@ func runServer(args []string, dependencies serverDependencies) int {
 		mainLogger.Error("Failed to listen on :50051", "error", listenErr)
 		return 1
 	}
-	mainLogger.Info("gRPC server listening on :50051")
+	mainLogger.Info("service_ready", "event", grpcReadinessEvent)
 
 	if serveErr := dependencies.serveGRPC(listener, notificationSvc, tenantRepo, mainLogger, configuration.GRPCAuthToken); serveErr != nil {
 		mainLogger.Error("gRPC server crashed", "error", serveErr)

@@ -449,7 +449,7 @@ Publication and deployment require a clean local `master` branch that exactly ma
 make deploy
 ```
 
-`make publish` defaults to `ghcr.io/tyemirov/pinguin` and the `linux/amd64,linux/arm64` archives prepared by release. `make deploy` defaults to the sibling `mprlab-gateway` checkout, `origin`, and `gh-pages`. The canonical resource contract is `.mprlab/deploy/resources.yml`; gateway Ansible invokes the backend-only gateway target, while this repository's `pages-deploy` target activates the published Pages asset. After `make deploy`, configure the edge gateway to forward `25 -> tutosh:8025` and `465 -> tutosh:8465`; no Pinguin app port mapping is required.
+`make publish` defaults to `ghcr.io/tyemirov/pinguin` and the `linux/amd64,linux/arm64` archives prepared by release. `make deploy` defaults to the sibling `mprlab-gateway` checkout, `origin`, and `gh-pages`. The canonical resource contract is `.mprlab/deploy/resources.yml`; gateway Ansible invokes the backend-only gateway target, while this repository's `pages-deploy` target activates the published Pages asset. The container resource declares `pinguin.grpc.ready`, which the server emits only after successfully binding the gRPC listener so deployment follows the runtime transition instead of a startup-duration estimate. After `make deploy`, configure the edge gateway to forward `25 -> tutosh:8025` and `465 -> tutosh:8465`; no Pinguin app port mapping is required.
 
 1. Copy the sample environment files and update the placeholders. **Use the same signing key in both files** so TAuth and Pinguin agree on JWT validation.
 
