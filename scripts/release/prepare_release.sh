@@ -179,8 +179,9 @@ print(effective_scheme)
 
 preflight_json="$(mktemp)"
 notes_file="$(mktemp)"
+prepared_artifact_json="$(mktemp)"
 cleanup() {
-  rm -f "${preflight_json}" "${notes_file}"
+  rm -f "${preflight_json}" "${notes_file}" "${prepared_artifact_json}"
 }
 trap cleanup EXIT
 
@@ -204,6 +205,39 @@ selection="$(select_release "${preflight_json}")"
 next_version="$(sed -n '1p' <<<"${selection}")"
 boundary_tag="$(sed -n '2p' <<<"${selection}")"
 effective_scheme="$(sed -n '3p' <<<"${selection}")"
+
+reuse_current_release="false"
+if [[ -n "${boundary_tag}" ]]; then
+  boundary_commit="$(git rev-parse --verify "${boundary_tag}^{commit}")"
+  if [[ "${boundary_commit}" == "${source_commit}" ]]; then
+    if [[ -n "${version}" && "${version}" == "${boundary_tag}" ]]; then
+      reuse_current_release="true"
+    elif [[ -z "${version}" && "${bump}" == "patch" ]]; then
+      reuse_current_release="true"
+    fi
+  fi
+fi
+
+if [[ "${reuse_current_release}" == "true" ]]; then
+  if ! "${helper}" verify-release-artifact >"${prepared_artifact_json}"; then
+    cat "${prepared_artifact_json}"
+    echo "error: ${boundary_tag} points at HEAD but its prepared release artifact is unavailable" >&2
+    exit 1
+  fi
+  prepared_version="$(json_value "${prepared_artifact_json}" "manifest.version")"
+  prepared_source_commit="$(json_value "${prepared_artifact_json}" "manifest.source_commit")"
+  prepared_release_commit="$(json_value "${prepared_artifact_json}" "manifest.release_commit")"
+  prepared_default_branch="$(json_value "${prepared_artifact_json}" "manifest.default_branch")"
+  expected_source_commit="$(git rev-parse --verify "${source_commit}^")"
+  release_changed_files="$(git diff-tree --no-commit-id --name-only -r "${source_commit}")"
+  [[ "${prepared_version}" == "${boundary_tag}" ]] || { echo "error: prepared release version ${prepared_version} does not match ${boundary_tag}" >&2; exit 1; }
+  [[ "${prepared_source_commit}" == "${expected_source_commit}" ]] || { echo "error: prepared release source does not match ${boundary_tag} parent" >&2; exit 1; }
+  [[ "${prepared_release_commit}" == "${source_commit}" ]] || { echo "error: prepared release commit does not match HEAD" >&2; exit 1; }
+  [[ "${prepared_default_branch}" == "${default_branch}" ]] || { echo "error: prepared release default branch does not match ${default_branch}" >&2; exit 1; }
+  [[ "${release_changed_files}" == "CHANGELOG.md" ]] || { echo "error: ${boundary_tag} release commit must contain only CHANGELOG.md" >&2; exit 1; }
+  echo "Release ${boundary_tag} is already prepared at ${source_commit}; no changes are required."
+  exit 0
+fi
 
 if [[ "${dry_run}" == "true" ]]; then
   echo "release_dry_run=true"

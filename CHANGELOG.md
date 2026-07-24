@@ -11,6 +11,7 @@
 - Add backend-backed search and infinite scroll for dashboard notification events, including cursor pagination and a single top-level refresh control.
 
 ### Bug Fixes
+- Make repeated `make release` calls at the current prepared tag succeed without selecting another version or replacing the prepared artifact.
 - Publish the app-owned `pinguin.grpc.ready` event only after the gRPC listener binds so gateway deployment can consume the runtime transition instead of inferring readiness from elapsed time.
 - Stop `make deploy` from inspecting retired mprlab-gateway SMTP inventory keys and delegate gateway preflight, deployment, and verification to `deploy-pinguin-backend`.
 - Align browser authentication with the current `mpr-ui@latest` config contract by removing rejected `authButton` YAML and declaring TAuth `/auth/session` restoration.
