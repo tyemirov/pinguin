@@ -39,6 +39,7 @@ mprlab_resources:
           host_port_variable: PINGUIN_GRPC_HOST_PORT
       compose_file: docker-compose.yml
       compose_project: mprlab-nginx-gateway
+      readiness_event: pinguin.grpc.ready
       runtime_assets:
         - path: .mprlab/deploy/.env
           example_path: .mprlab/deploy/runtime.env.example

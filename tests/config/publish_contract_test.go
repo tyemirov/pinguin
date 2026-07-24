@@ -249,6 +249,7 @@ func TestDeployScriptConsumesPublishedBackendAndPagesArtifacts(t *testing.T) {
 		"dispatch_target: pinguin",
 		"type: container_service",
 		"image: ghcr.io/tyemirov/pinguin:latest",
+		"readiness_event: pinguin.grpc.ready",
 		"type: github_pages",
 		"target: pages-deploy",
 		"url: https://pinguin.mprlab.com/",

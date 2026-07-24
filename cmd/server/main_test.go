@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -499,6 +500,56 @@ func TestRunServerSuccessWithInlineTenants(testHandle *testing.T) {
 	}
 	if !state.grpcServed {
 		testHandle.Fatalf("expected grpc server to be served")
+	}
+}
+
+func TestRunServerPublishesGRPCReadyEventAfterListenerBind(testHandle *testing.T) {
+	testHandle.Helper()
+	cfg := serverTestConfig()
+	state, dependencies := newServerTestDependencies(cfg)
+	var logOutput bytes.Buffer
+	dependencies.newLogger = func(string) *slog.Logger {
+		return slog.New(slog.NewTextHandler(&logOutput, &slog.HandlerOptions{}))
+	}
+	dependencies.listen = func(string, string) (net.Listener, error) {
+		if strings.Contains(logOutput.String(), "event=pinguin.grpc.ready") {
+			testHandle.Fatal("gRPC readiness event was published before the listener bound")
+		}
+		return fakeListener{}, nil
+	}
+	dependencies.serveGRPC = func(net.Listener, service.NotificationService, *tenant.Repository, *slog.Logger, string) error {
+		if !strings.Contains(logOutput.String(), "event=pinguin.grpc.ready") {
+			testHandle.Fatalf("gRPC readiness event was not published after listener bind:\n%s", logOutput.String())
+		}
+		state.grpcServed = true
+		return nil
+	}
+
+	if exitCode := runServer(nil, dependencies); exitCode != 0 {
+		testHandle.Fatalf("expected success exit code, got %d", exitCode)
+	}
+	if !state.grpcServed {
+		testHandle.Fatal("expected gRPC server to be served")
+	}
+}
+
+func TestRunServerDoesNotPublishGRPCReadyEventWhenListenerBindFails(testHandle *testing.T) {
+	testHandle.Helper()
+	cfg := serverTestConfig()
+	_, dependencies := newServerTestDependencies(cfg)
+	var logOutput bytes.Buffer
+	dependencies.newLogger = func(string) *slog.Logger {
+		return slog.New(slog.NewTextHandler(&logOutput, &slog.HandlerOptions{}))
+	}
+	dependencies.listen = func(string, string) (net.Listener, error) {
+		return nil, errors.New("bind failed")
+	}
+
+	if exitCode := runServer(nil, dependencies); exitCode != 1 {
+		testHandle.Fatalf("expected failure exit code, got %d", exitCode)
+	}
+	if strings.Contains(logOutput.String(), "event=pinguin.grpc.ready") {
+		testHandle.Fatalf("gRPC readiness event was published after listener bind failed:\n%s", logOutput.String())
 	}
 }
 
