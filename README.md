@@ -451,11 +451,11 @@ make deploy
 
 `make publish` defaults to `ghcr.io/tyemirov/pinguin` and the `linux/amd64,linux/arm64` archives prepared by release. `make deploy` defaults to the sibling `mprlab-gateway` checkout, `origin`, and `gh-pages`. The canonical resource contract is `.mprlab/deploy/resources.yml`; gateway Ansible invokes the backend-only gateway target, while this repository's `pages-deploy` target activates the published Pages asset. The container resource declares `pinguin.grpc.ready`, which the server emits only after successfully binding the gRPC listener so deployment follows the runtime transition instead of a startup-duration estimate. After `make deploy`, configure the edge gateway to forward `25 -> tutosh:8025` and `465 -> tutosh:8465`; no Pinguin app port mapping is required.
 
-1. Copy the sample environment files and update the placeholders. **Use the same signing key in both files** so TAuth and Pinguin agree on JWT validation.
+1. Create private environment files explicitly. Use the tracked examples only to review variable names; their values are intentionally unusable, so never copy or source them. **Use the same signing key in both private files** so TAuth and Pinguin agree on JWT validation.
 
    ```bash
-   cp configs/.env.pinguin.example configs/.env.pinguin
-   cp configs/.env.tauth.example configs/.env.tauth
+   install -m 0600 /dev/null configs/.env.pinguin
+   install -m 0600 /dev/null configs/.env.tauth
    ${EDITOR:-vi} configs/.env.pinguin configs/.env.tauth
    ```
 
@@ -494,12 +494,14 @@ docker volume inspect pinguin-data
 
 ### Docker quickstart (full stack)
 
-1. Copy the sample env files (one command per file so you can edit secrets immediately):
+1. Create the private env files explicitly:
 
    ```bash
-   timeout -k 5s -s SIGKILL 5s cp configs/.env.pinguin.example configs/.env.pinguin
-   timeout -k 5s -s SIGKILL 5s cp configs/.env.tauth.example configs/.env.tauth
+   install -m 0600 /dev/null configs/.env.pinguin
+   install -m 0600 /dev/null configs/.env.tauth
    ```
+
+   Consult the tracked examples for variable names only; never copy, source, or use their intentionally goofy values.
 
 2. Edit `configs/.env.pinguin` (SMTP/Twilio + shared signing key) and `configs/.env.tauth` (shared-shell auth settings + the same signing key + `TAUTH_TENANT_ORIGIN_PINGUIN=http://localhost:8080`).
 3. Start the orchestration with the `dev` profile (which builds Pinguin locally):
