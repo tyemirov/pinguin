@@ -181,6 +181,32 @@ make: *** [test-frontend] Error 1
 - [x] [PG-382] Pinguin does not publish a machine-readable event when its gRPC listener becomes ready, forcing the gateway to infer readiness from elapsed time and repeated port probes. Resolved by emitting the canonical `pinguin.grpc.ready` structured event only after a successful gRPC listener bind, declaring it in the app-owned container resource, documenting the deployment handoff, and covering both successful and failed binds. `make test`, `make format`, `make lint`, and `make ci` pass with 100.0% Go statement coverage and all 35 browser scenarios.
 - [x] [PG-383] Re-running `make release` at an already prepared release tag incorrectly selected the next patch version, overwrote the prepared artifact staging area, and failed because there were no commits after the current tag. Resolved by recognizing the current release tag before CI or artifact initialization, verifying the complete prepared-release contract, and returning success without changing Git history or artifact bytes. The black-box release regression, `make ci`, 100.0% Go statement coverage, all 35 browser scenarios, and the gateway's production-free Pinguin deployment preflight pass.
 
+- [x] [PG-384] Migrate Pinguin to the selected-manifest schema-v3 lifecycle.
+  Goal:
+  Make the complete Pinguin release, publication, and deployment graph consumable by the exact sibling `mprlab-gateway` without app-owned production lifecycle code.
+
+  Requirements:
+  - Keep `.mprlab/deploy/resources.yml` as the sole tracked production file and `.mprlab/deploy/.env` as the ignored mode-`0600` private input.
+  - Declare the server binary, container image, retained data, service placement, typed environment, HTTP/gRPC/SMTP capabilities, HTTPS and Layer 4 listeners, public health check, Pages site, and TAuth tenant in schema v3.
+  - Delegate only zero-argument `make release`, `make publish`, and `make deploy` to the exact sibling gateway; preserve local `make up` and `make down`.
+  - Delete the superseded app-owned release, publication, deployment, and Pages activation implementation.
+
+  Validation:
+  - Run the repository deployment contract and complete `make ci` gate.
+  - Prove selected-manifest isolation with the sibling gateway without releasing, publishing, contacting production, or deploying.
+
+  Resolved 2026-08-03: replaced the schema-v1 dispatcher with the complete
+  schema-v3 resource graph; moved production config outside the deploy surface;
+  projected the ignored mode-`0600` private input through typed bindings; kept
+  the retained legacy data volume and bounded `pinguin-api` service retirement;
+  delegated the three production lifecycle commands to the exact sibling
+  gateway; and deleted the superseded release, publication, deployment, and
+  Pages activation implementation. The repository contract and full `make ci`
+  gate passed with 100.0% aggregate Go statement coverage and all 35 browser
+  scenarios. Gateway commit `251e3c0` accepted a clean committed snapshot as an
+  isolated deploy plan without release, publication, production contact, or
+  deployment.
+
 ## Maintenance
 
 ### Recurring
