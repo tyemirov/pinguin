@@ -1,63 +1,575 @@
 ---
 mprlab_resources:
-  schema_version: 1
-  repo:
-    id: pinguin
-    directory: pinguin
-    dispatch_target: pinguin
+  schema_version: 3
+  owner: pinguin
   resources:
-    - type: make_workflow
-      name: pinguin
-      targets:
-        release: release
-        publish: publish
-        deploy: deploy
-    - type: tauth_tenant
-      name: pinguin-authentication
+    - kind: private_values
+      id: private
+      bindings:
+        connection-timeout-sec: CONNECTION_TIMEOUT_SEC
+        database-path: DATABASE_PATH
+        grpc-auth-token: GRPC_AUTH_TOKEN
+        http-allowed-origin1: HTTP_ALLOWED_ORIGIN1
+        http-allowed-origin2: HTTP_ALLOWED_ORIGIN2
+        http-allowed-origin3: HTTP_ALLOWED_ORIGIN3
+        http-listen-addr: HTTP_LISTEN_ADDR
+        log-level: LOG_LEVEL
+        master-encryption-key: MASTER_ENCRYPTION_KEY
+        max-retries: MAX_RETRIES
+        operation-timeout-sec: OPERATION_TIMEOUT_SEC
+        pinguin-la-admin-email-1: PINGUIN_LA_ADMIN_EMAIL_1
+        pinguin-la-admin-email-2: PINGUIN_LA_ADMIN_EMAIL_2
+        pinguin-la-display-name: PINGUIN_LA_DISPLAY_NAME
+        pinguin-la-domain-primary: PINGUIN_LA_DOMAIN_PRIMARY
+        pinguin-la-enabled: PINGUIN_LA_ENABLED
+        pinguin-la-from-email: PINGUIN_LA_FROM_EMAIL
+        pinguin-la-smtp-host: PINGUIN_LA_SMTP_HOST
+        pinguin-la-smtp-password: PINGUIN_LA_SMTP_PASSWORD
+        pinguin-la-smtp-port: PINGUIN_LA_SMTP_PORT
+        pinguin-la-smtp-username: PINGUIN_LA_SMTP_USERNAME
+        pinguin-la-support-email: PINGUIN_LA_SUPPORT_EMAIL
+        pinguin-la-twilio-account-sid: PINGUIN_LA_TWILIO_ACCOUNT_SID
+        pinguin-la-twilio-auth-token: PINGUIN_LA_TWILIO_AUTH_TOKEN
+        pinguin-la-twilio-from-number: PINGUIN_LA_TWILIO_FROM_NUMBER
+        pinguin-namesignal-admin-email-1: PINGUIN_NAMESIGNAL_ADMIN_EMAIL_1
+        pinguin-namesignal-admin-email-2: PINGUIN_NAMESIGNAL_ADMIN_EMAIL_2
+        pinguin-namesignal-display-name: PINGUIN_NAMESIGNAL_DISPLAY_NAME
+        pinguin-namesignal-domain-primary: PINGUIN_NAMESIGNAL_DOMAIN_PRIMARY
+        pinguin-namesignal-enabled: PINGUIN_NAMESIGNAL_ENABLED
+        pinguin-namesignal-from-email: PINGUIN_NAMESIGNAL_FROM_EMAIL
+        pinguin-namesignal-smtp-host: PINGUIN_NAMESIGNAL_SMTP_HOST
+        pinguin-namesignal-smtp-password: PINGUIN_NAMESIGNAL_SMTP_PASSWORD
+        pinguin-namesignal-smtp-port: PINGUIN_NAMESIGNAL_SMTP_PORT
+        pinguin-namesignal-smtp-username: PINGUIN_NAMESIGNAL_SMTP_USERNAME
+        pinguin-namesignal-support-email: PINGUIN_NAMESIGNAL_SUPPORT_EMAIL
+        pinguin-namesignal-twilio-account-sid: PINGUIN_NAMESIGNAL_TWILIO_ACCOUNT_SID
+        pinguin-namesignal-twilio-auth-token: PINGUIN_NAMESIGNAL_TWILIO_AUTH_TOKEN
+        pinguin-namesignal-twilio-from-number: PINGUIN_NAMESIGNAL_TWILIO_FROM_NUMBER
+        pinguin-ps-admin-email-1: PINGUIN_PS_ADMIN_EMAIL_1
+        pinguin-ps-admin-email-2: PINGUIN_PS_ADMIN_EMAIL_2
+        pinguin-ps-display-name: PINGUIN_PS_DISPLAY_NAME
+        pinguin-ps-domain-primary: PINGUIN_PS_DOMAIN_PRIMARY
+        pinguin-ps-domain-secondary: PINGUIN_PS_DOMAIN_SECONDARY
+        pinguin-ps-enabled: PINGUIN_PS_ENABLED
+        pinguin-ps-from-email: PINGUIN_PS_FROM_EMAIL
+        pinguin-ps-smtp-host: PINGUIN_PS_SMTP_HOST
+        pinguin-ps-smtp-password: PINGUIN_PS_SMTP_PASSWORD
+        pinguin-ps-smtp-port: PINGUIN_PS_SMTP_PORT
+        pinguin-ps-smtp-username: PINGUIN_PS_SMTP_USERNAME
+        pinguin-ps-support-email: PINGUIN_PS_SUPPORT_EMAIL
+        pinguin-ps-twilio-account-sid: PINGUIN_PS_TWILIO_ACCOUNT_SID
+        pinguin-ps-twilio-auth-token: PINGUIN_PS_TWILIO_AUTH_TOKEN
+        pinguin-ps-twilio-from-number: PINGUIN_PS_TWILIO_FROM_NUMBER
+        pinguin-summercan-admin-email-1: PINGUIN_SUMMERCAN_ADMIN_EMAIL_1
+        pinguin-summercan-display-name: PINGUIN_SUMMERCAN_DISPLAY_NAME
+        pinguin-summercan-domain-primary: PINGUIN_SUMMERCAN_DOMAIN_PRIMARY
+        pinguin-summercan-enabled: PINGUIN_SUMMERCAN_ENABLED
+        pinguin-summercan-from-email: PINGUIN_SUMMERCAN_FROM_EMAIL
+        pinguin-summercan-smtp-host: PINGUIN_SUMMERCAN_SMTP_HOST
+        pinguin-summercan-smtp-password: PINGUIN_SUMMERCAN_SMTP_PASSWORD
+        pinguin-summercan-smtp-port: PINGUIN_SUMMERCAN_SMTP_PORT
+        pinguin-summercan-smtp-username: PINGUIN_SUMMERCAN_SMTP_USERNAME
+        pinguin-summercan-support-email: PINGUIN_SUMMERCAN_SUPPORT_EMAIL
+        pinguin-summercan-twilio-account-sid: PINGUIN_SUMMERCAN_TWILIO_ACCOUNT_SID
+        pinguin-summercan-twilio-auth-token: PINGUIN_SUMMERCAN_TWILIO_AUTH_TOKEN
+        pinguin-summercan-twilio-from-number: PINGUIN_SUMMERCAN_TWILIO_FROM_NUMBER
+        pinguin-tenant-id-la: PINGUIN_TENANT_ID_LA
+        pinguin-tenant-id-namesignal: PINGUIN_TENANT_ID_NAMESIGNAL
+        pinguin-tenant-id-ps: PINGUIN_TENANT_ID_PS
+        pinguin-tenant-id-summercan: PINGUIN_TENANT_ID_SUMMERCAN
+        retry-interval-sec: RETRY_INTERVAL_SEC
+        smtp-forwarding-enabled: SMTP_FORWARDING_ENABLED
+        smtp-forwarding-hostname: SMTP_FORWARDING_HOSTNAME
+        smtp-forwarding-listen-addr: SMTP_FORWARDING_LISTEN_ADDR
+        smtp-forwarding-max-message-bytes: SMTP_FORWARDING_MAX_MESSAGE_BYTES
+        smtp-forwarding-max-recipients: SMTP_FORWARDING_MAX_RECIPIENTS
+        smtp-forwarding-relay-host: SMTP_FORWARDING_RELAY_HOST
+        smtp-forwarding-relay-password: SMTP_FORWARDING_RELAY_PASSWORD
+        smtp-forwarding-relay-port: SMTP_FORWARDING_RELAY_PORT
+        smtp-forwarding-relay-username: SMTP_FORWARDING_RELAY_USERNAME
+        smtp-submission-allow-insecure-auth: SMTP_SUBMISSION_ALLOW_INSECURE_AUTH
+        smtp-submission-delivery-mode: SMTP_SUBMISSION_DELIVERY_MODE
+        smtp-submission-hostname: SMTP_SUBMISSION_HOSTNAME
+        smtp-submission-listen-addr: SMTP_SUBMISSION_LISTEN_ADDR
+        smtp-submission-max-message-bytes: SMTP_SUBMISSION_MAX_MESSAGE_BYTES
+        smtp-submission-max-recipients: SMTP_SUBMISSION_MAX_RECIPIENTS
+        smtp-submission-public-port: SMTP_SUBMISSION_PUBLIC_PORT
+        smtp-submission-public-security-mode: SMTP_SUBMISSION_PUBLIC_SECURITY_MODE
+        smtp-submission-relay-host: SMTP_SUBMISSION_RELAY_HOST
+        smtp-submission-relay-password: SMTP_SUBMISSION_RELAY_PASSWORD
+        smtp-submission-relay-port: SMTP_SUBMISSION_RELAY_PORT
+        smtp-submission-relay-username: SMTP_SUBMISSION_RELAY_USERNAME
+        tauth-cookie-name: TAUTH_COOKIE_NAME
+        tauth-google-web-client-id: TAUTH_TENANT_GOOGLE_WEB_CLIENT_ID_PINGUIN
+        tauth-signing-key: TAUTH_SIGNING_KEY
+    - kind: compose_project
+      id: runtime
+      retired_services:
+        - project: mprlab-nginx-gateway
+          service: pinguin-api
+      images:
+        - id: pinguin-image
+          repository: ghcr.io/tyemirov/pinguin
+          visibility: public
+          build:
+            context: .
+            dockerfile: Dockerfile
+            platforms:
+              - linux/amd64
+              - linux/arm64
+      services:
+        - id: pinguin-api
+          image: pinguin-image
+          placement:
+            group: gateway
+            cardinality: one
+          environment:
+            CONNECTION_TIMEOUT_SEC:
+              resource: private
+              output: connection-timeout-sec
+            DATABASE_PATH:
+              resource: private
+              output: database-path
+            GRPC_AUTH_TOKEN:
+              resource: private
+              output: grpc-auth-token
+            HTTP_ALLOWED_ORIGIN1:
+              resource: private
+              output: http-allowed-origin1
+            HTTP_ALLOWED_ORIGIN2:
+              resource: private
+              output: http-allowed-origin2
+            HTTP_ALLOWED_ORIGIN3:
+              resource: private
+              output: http-allowed-origin3
+            HTTP_LISTEN_ADDR:
+              resource: private
+              output: http-listen-addr
+            LOG_LEVEL:
+              resource: private
+              output: log-level
+            MASTER_ENCRYPTION_KEY:
+              resource: private
+              output: master-encryption-key
+            MAX_RETRIES:
+              resource: private
+              output: max-retries
+            OPERATION_TIMEOUT_SEC:
+              resource: private
+              output: operation-timeout-sec
+            PINGUIN_LA_ADMIN_EMAIL_1:
+              resource: private
+              output: pinguin-la-admin-email-1
+            PINGUIN_LA_ADMIN_EMAIL_2:
+              resource: private
+              output: pinguin-la-admin-email-2
+            PINGUIN_LA_DISPLAY_NAME:
+              resource: private
+              output: pinguin-la-display-name
+            PINGUIN_LA_DOMAIN_PRIMARY:
+              resource: private
+              output: pinguin-la-domain-primary
+            PINGUIN_LA_ENABLED:
+              resource: private
+              output: pinguin-la-enabled
+            PINGUIN_LA_FROM_EMAIL:
+              resource: private
+              output: pinguin-la-from-email
+            PINGUIN_LA_SMTP_HOST:
+              resource: private
+              output: pinguin-la-smtp-host
+            PINGUIN_LA_SMTP_PASSWORD:
+              resource: private
+              output: pinguin-la-smtp-password
+            PINGUIN_LA_SMTP_PORT:
+              resource: private
+              output: pinguin-la-smtp-port
+            PINGUIN_LA_SMTP_USERNAME:
+              resource: private
+              output: pinguin-la-smtp-username
+            PINGUIN_LA_SUPPORT_EMAIL:
+              resource: private
+              output: pinguin-la-support-email
+            PINGUIN_LA_TWILIO_ACCOUNT_SID:
+              resource: private
+              output: pinguin-la-twilio-account-sid
+            PINGUIN_LA_TWILIO_AUTH_TOKEN:
+              resource: private
+              output: pinguin-la-twilio-auth-token
+            PINGUIN_LA_TWILIO_FROM_NUMBER:
+              resource: private
+              output: pinguin-la-twilio-from-number
+            PINGUIN_NAMESIGNAL_ADMIN_EMAIL_1:
+              resource: private
+              output: pinguin-namesignal-admin-email-1
+            PINGUIN_NAMESIGNAL_ADMIN_EMAIL_2:
+              resource: private
+              output: pinguin-namesignal-admin-email-2
+            PINGUIN_NAMESIGNAL_DISPLAY_NAME:
+              resource: private
+              output: pinguin-namesignal-display-name
+            PINGUIN_NAMESIGNAL_DOMAIN_PRIMARY:
+              resource: private
+              output: pinguin-namesignal-domain-primary
+            PINGUIN_NAMESIGNAL_ENABLED:
+              resource: private
+              output: pinguin-namesignal-enabled
+            PINGUIN_NAMESIGNAL_FROM_EMAIL:
+              resource: private
+              output: pinguin-namesignal-from-email
+            PINGUIN_NAMESIGNAL_SMTP_HOST:
+              resource: private
+              output: pinguin-namesignal-smtp-host
+            PINGUIN_NAMESIGNAL_SMTP_PASSWORD:
+              resource: private
+              output: pinguin-namesignal-smtp-password
+            PINGUIN_NAMESIGNAL_SMTP_PORT:
+              resource: private
+              output: pinguin-namesignal-smtp-port
+            PINGUIN_NAMESIGNAL_SMTP_USERNAME:
+              resource: private
+              output: pinguin-namesignal-smtp-username
+            PINGUIN_NAMESIGNAL_SUPPORT_EMAIL:
+              resource: private
+              output: pinguin-namesignal-support-email
+            PINGUIN_NAMESIGNAL_TWILIO_ACCOUNT_SID:
+              resource: private
+              output: pinguin-namesignal-twilio-account-sid
+            PINGUIN_NAMESIGNAL_TWILIO_AUTH_TOKEN:
+              resource: private
+              output: pinguin-namesignal-twilio-auth-token
+            PINGUIN_NAMESIGNAL_TWILIO_FROM_NUMBER:
+              resource: private
+              output: pinguin-namesignal-twilio-from-number
+            PINGUIN_PS_ADMIN_EMAIL_1:
+              resource: private
+              output: pinguin-ps-admin-email-1
+            PINGUIN_PS_ADMIN_EMAIL_2:
+              resource: private
+              output: pinguin-ps-admin-email-2
+            PINGUIN_PS_DISPLAY_NAME:
+              resource: private
+              output: pinguin-ps-display-name
+            PINGUIN_PS_DOMAIN_PRIMARY:
+              resource: private
+              output: pinguin-ps-domain-primary
+            PINGUIN_PS_DOMAIN_SECONDARY:
+              resource: private
+              output: pinguin-ps-domain-secondary
+            PINGUIN_PS_ENABLED:
+              resource: private
+              output: pinguin-ps-enabled
+            PINGUIN_PS_FROM_EMAIL:
+              resource: private
+              output: pinguin-ps-from-email
+            PINGUIN_PS_SMTP_HOST:
+              resource: private
+              output: pinguin-ps-smtp-host
+            PINGUIN_PS_SMTP_PASSWORD:
+              resource: private
+              output: pinguin-ps-smtp-password
+            PINGUIN_PS_SMTP_PORT:
+              resource: private
+              output: pinguin-ps-smtp-port
+            PINGUIN_PS_SMTP_USERNAME:
+              resource: private
+              output: pinguin-ps-smtp-username
+            PINGUIN_PS_SUPPORT_EMAIL:
+              resource: private
+              output: pinguin-ps-support-email
+            PINGUIN_PS_TWILIO_ACCOUNT_SID:
+              resource: private
+              output: pinguin-ps-twilio-account-sid
+            PINGUIN_PS_TWILIO_AUTH_TOKEN:
+              resource: private
+              output: pinguin-ps-twilio-auth-token
+            PINGUIN_PS_TWILIO_FROM_NUMBER:
+              resource: private
+              output: pinguin-ps-twilio-from-number
+            PINGUIN_SUMMERCAN_ADMIN_EMAIL_1:
+              resource: private
+              output: pinguin-summercan-admin-email-1
+            PINGUIN_SUMMERCAN_DISPLAY_NAME:
+              resource: private
+              output: pinguin-summercan-display-name
+            PINGUIN_SUMMERCAN_DOMAIN_PRIMARY:
+              resource: private
+              output: pinguin-summercan-domain-primary
+            PINGUIN_SUMMERCAN_ENABLED:
+              resource: private
+              output: pinguin-summercan-enabled
+            PINGUIN_SUMMERCAN_FROM_EMAIL:
+              resource: private
+              output: pinguin-summercan-from-email
+            PINGUIN_SUMMERCAN_SMTP_HOST:
+              resource: private
+              output: pinguin-summercan-smtp-host
+            PINGUIN_SUMMERCAN_SMTP_PASSWORD:
+              resource: private
+              output: pinguin-summercan-smtp-password
+            PINGUIN_SUMMERCAN_SMTP_PORT:
+              resource: private
+              output: pinguin-summercan-smtp-port
+            PINGUIN_SUMMERCAN_SMTP_USERNAME:
+              resource: private
+              output: pinguin-summercan-smtp-username
+            PINGUIN_SUMMERCAN_SUPPORT_EMAIL:
+              resource: private
+              output: pinguin-summercan-support-email
+            PINGUIN_SUMMERCAN_TWILIO_ACCOUNT_SID:
+              resource: private
+              output: pinguin-summercan-twilio-account-sid
+            PINGUIN_SUMMERCAN_TWILIO_AUTH_TOKEN:
+              resource: private
+              output: pinguin-summercan-twilio-auth-token
+            PINGUIN_SUMMERCAN_TWILIO_FROM_NUMBER:
+              resource: private
+              output: pinguin-summercan-twilio-from-number
+            PINGUIN_TENANT_ID_LA:
+              resource: private
+              output: pinguin-tenant-id-la
+            PINGUIN_TENANT_ID_NAMESIGNAL:
+              resource: private
+              output: pinguin-tenant-id-namesignal
+            PINGUIN_TENANT_ID_PS:
+              resource: private
+              output: pinguin-tenant-id-ps
+            PINGUIN_TENANT_ID_SUMMERCAN:
+              resource: private
+              output: pinguin-tenant-id-summercan
+            RETRY_INTERVAL_SEC:
+              resource: private
+              output: retry-interval-sec
+            SMTP_FORWARDING_ENABLED:
+              resource: private
+              output: smtp-forwarding-enabled
+            SMTP_FORWARDING_HOSTNAME:
+              resource: private
+              output: smtp-forwarding-hostname
+            SMTP_FORWARDING_LISTEN_ADDR:
+              resource: private
+              output: smtp-forwarding-listen-addr
+            SMTP_FORWARDING_MAX_MESSAGE_BYTES:
+              resource: private
+              output: smtp-forwarding-max-message-bytes
+            SMTP_FORWARDING_MAX_RECIPIENTS:
+              resource: private
+              output: smtp-forwarding-max-recipients
+            SMTP_FORWARDING_RELAY_HOST:
+              resource: private
+              output: smtp-forwarding-relay-host
+            SMTP_FORWARDING_RELAY_PASSWORD:
+              resource: private
+              output: smtp-forwarding-relay-password
+            SMTP_FORWARDING_RELAY_PORT:
+              resource: private
+              output: smtp-forwarding-relay-port
+            SMTP_FORWARDING_RELAY_USERNAME:
+              resource: private
+              output: smtp-forwarding-relay-username
+            SMTP_SUBMISSION_ALLOW_INSECURE_AUTH:
+              resource: private
+              output: smtp-submission-allow-insecure-auth
+            SMTP_SUBMISSION_DELIVERY_MODE:
+              resource: private
+              output: smtp-submission-delivery-mode
+            SMTP_SUBMISSION_HOSTNAME:
+              resource: private
+              output: smtp-submission-hostname
+            SMTP_SUBMISSION_LISTEN_ADDR:
+              resource: private
+              output: smtp-submission-listen-addr
+            SMTP_SUBMISSION_MAX_MESSAGE_BYTES:
+              resource: private
+              output: smtp-submission-max-message-bytes
+            SMTP_SUBMISSION_MAX_RECIPIENTS:
+              resource: private
+              output: smtp-submission-max-recipients
+            SMTP_SUBMISSION_PUBLIC_PORT:
+              resource: private
+              output: smtp-submission-public-port
+            SMTP_SUBMISSION_PUBLIC_SECURITY_MODE:
+              resource: private
+              output: smtp-submission-public-security-mode
+            SMTP_SUBMISSION_RELAY_HOST:
+              resource: private
+              output: smtp-submission-relay-host
+            SMTP_SUBMISSION_RELAY_PASSWORD:
+              resource: private
+              output: smtp-submission-relay-password
+            SMTP_SUBMISSION_RELAY_PORT:
+              resource: private
+              output: smtp-submission-relay-port
+            SMTP_SUBMISSION_RELAY_USERNAME:
+              resource: private
+              output: smtp-submission-relay-username
+            TAUTH_COOKIE_NAME:
+              resource: private
+              output: tauth-cookie-name
+            TAUTH_SIGNING_KEY:
+              resource: private
+              output: tauth-signing-key
+          assets:
+            - source: configs/config.production.yml
+              target: /config/config.yml
+              mode: "0444"
+          mounts:
+            - volume: data
+              target: /app/data
+              read_only: false
+          ports:
+            - container_port: 25
+            - container_port: 465
+            - container_port: 8080
+            - container_port: 50051
+          readiness:
+            protocol: http
+            port: 8080
+            path: /healthz
+            expected_status: 200
+      volumes:
+        - id: data
+          name: mprlab-nginx-gateway_pinguin-data
+          retention: retain
+    - kind: runtime_capability
+      id: http
+      name: pinguin.http
+      version: 1
+      project: runtime
+      service: pinguin-api
+      endpoint:
+        scope: same_host
+        scheme: http
+        alias: pinguin-api
+        port: 8080
+      health:
+        protocol: http
+        path: /healthz
+        expected_status: 200
+    - kind: runtime_capability
+      id: grpc
+      name: pinguin.grpc
+      version: 1
+      project: runtime
+      service: pinguin-api
+      endpoint:
+        scope: same_host
+        scheme: grpc
+        alias: pinguin-grpc
+        port: 50051
+      health:
+        protocol: tcp
+    - kind: runtime_capability
+      id: smtp-submission
+      name: pinguin.smtp-submission
+      version: 1
+      project: runtime
+      service: pinguin-api
+      endpoint:
+        scope: same_host
+        scheme: smtp
+        alias: pinguin-smtp-submission
+        port: 465
+      health:
+        protocol: smtp
+    - kind: runtime_capability
+      id: smtp-forwarding
+      name: pinguin.smtp-forwarding
+      version: 1
+      project: runtime
+      service: pinguin-api
+      endpoint:
+        scope: same_host
+        scheme: smtp
+        alias: pinguin-smtp-forwarding
+        port: 25
+      health:
+        protocol: smtp
+    - kind: caddy_route
+      id: public-api
+      hostname: pinguin-api.mprlab.com
+      listener: https
+      handlers:
+        - id: default
+          path_prefix: /
+          upstream: pinguin.http
+          transport:
+            protocol: http
+            dial_timeout_seconds: 10
+            response_header_timeout_seconds: 60
+            read_timeout_seconds: 60
+      tls:
+        mode: automatic
+      access:
+        rate_limit:
+          events: 300
+          window_seconds: 10
+    - kind: caddy_listener
+      id: public-smtp-submission
+      port: 465
+      transport: tcp
+      hostname: pinguin-api.mprlab.com
+      upstream: pinguin.smtp-submission
+      tls:
+        mode: automatic
+      caddy:
+        capability: caddy.layer4.tls
+        version: 1
+    - kind: caddy_listener
+      id: public-smtp-forwarding
+      port: 25
+      transport: tcp
+      hostname: mx.pinguin.mprlab.com
+      upstream: pinguin.smtp-forwarding
+      tls:
+        mode: disabled
+      caddy:
+        capability: caddy.layer4.tcp
+        version: 1
+    - kind: health_check
+      id: public-health
+      protocol: http
+      url: https://pinguin-api.mprlab.com/healthz
+      expected_status: 200
+    - kind: github_pages
+      id: website
+      repository: tyemirov/pinguin
+      branch: gh-pages
+      domain: pinguin.mprlab.com
+      url: https://pinguin.mprlab.com/
+      source:
+        kind: directory
+        path: web
+      verification:
+        path: /.mprlab-release.json
+    - kind: github_release_binary
+      id: server
+      repository: tyemirov/pinguin
+      build:
+        system: go
+        package: ./cmd/server
+        binary: pinguin
+        platforms:
+          - linux/amd64
+          - linux/arm64
+          - darwin/amd64
+          - darwin/arm64
+    - kind: tauth_tenant
+      id: authentication
+      capability: tauth.tenants
+      version: 1
       tenant:
         id: pinguin
         display_name: Pinguin
-        tenant_origins:
+        origins:
           - https://pinguin.mprlab.com
-        google_web_client_id: "${TAUTH_GOOGLE_WEB_CLIENT_ID_PINGUIN}"
-        jwt_signing_key: "${TAUTH_JWT_SIGNING_KEY_PINGUIN}"
-        cookie_domain: .mprlab.com
-        session_cookie_name: app_session_pinguin
-        refresh_cookie_name: app_refresh_pinguin
-        session_ttl: "${TAUTH_SESSION_TTL}"
-        refresh_ttl: "${TAUTH_REFRESH_TTL}"
-        nonce_ttl: "${TAUTH_NONCE_TTL}"
-        allow_insecure_http: "${TAUTH_ALLOW_INSECURE_HTTP}"
-    - type: container_service
-      name: pinguin-api
-      host_group: gateway
-      image: ghcr.io/tyemirov/pinguin:latest
-      ports:
-        - container_port: 8080
-        - container_port: 50051
-          host_port: 50051
-          host_port_variable: PINGUIN_GRPC_HOST_PORT
-      compose_file: docker-compose.yml
-      compose_project: mprlab-nginx-gateway
-      readiness_event: pinguin.grpc.ready
-      runtime_assets:
-        - path: .mprlab/deploy/.env
-          example_path: .mprlab/deploy/runtime.env.example
-          destination: configs/.env.pinguin
-          mode: "0600"
-        - path: .mprlab/deploy/config.yml
-          destination: configs/config.pinguin.yml
-    - type: caddy_route
-      name: pinguin-api
-      host: pinguin-api.mprlab.com
-      upstream: pinguin-api:8080
-      snippet: pinguin-api.caddy
-    - type: health_check
-      name: pinguin-api
-      path: /healthz
-      url: https://pinguin-api.mprlab.com/healthz
-    - type: github_pages
-      name: pinguin
-      target: pages-deploy
-      url: https://pinguin.mprlab.com/
-      source_marker_path: /.mprlab-release.json
+        google_web_client_id:
+          resource: private
+          output: tauth-google-web-client-id
+        jwt_signing_key:
+          resource: private
+          output: tauth-signing-key
+        cookie:
+          domain: .mprlab.com
+          session_name: app_session_pinguin
+          refresh_name: app_refresh_pinguin

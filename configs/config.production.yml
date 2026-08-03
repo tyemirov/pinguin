@@ -78,7 +78,6 @@ tenants:
       - ${PINGUIN_SUMMERCAN_DOMAIN_PRIMARY}
     admins:
       - ${PINGUIN_SUMMERCAN_ADMIN_EMAIL_1}
-      - ${PINGUIN_SUMMERCAN_ADMIN_EMAIL_2}
     emailProfile:
       host: ${PINGUIN_SUMMERCAN_SMTP_HOST}
       port: ${PINGUIN_SUMMERCAN_SMTP_PORT}

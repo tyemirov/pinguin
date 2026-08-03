@@ -37,7 +37,7 @@
   - `index.html` (landing page), `event-log.html`, and `smtp-relay.html` import `mpr-ui` CSS via CDN, load `/config-ui.yaml` through `mpr-ui-config.js`, initialize Pinguin runtime URLs through `/js/runtime-config.js`, and bootstrap via `/js/app.js`.
 - `/js/bootstrap.js` centralizes runtime config resolution and lazy loading of the main app module.
   - Alpine factories live under `/js/ui/` and `/js/core/`. Notifications table logic dispatches DOM-scoped events for toast updates and API refreshes.
-- GitHub Pages publishes `/web` through legacy branch-root publishing: gateway Ansible owns a Pinguin `pages_resources` entry that invokes `make pages-deploy`, which stages the static assets, writes a `pinguin-pages-build.json` source-commit marker, pushes the artifact to the `gh-pages` branch root, and triggers a GitHub Pages build. The Ansible resource then verifies the live marker against the deployed commit. `web/CNAME` maps the site to `pinguin.mprlab.com`, and `web/.nojekyll` keeps GitHub Pages from running Jekyll over the static bundle.
+- The schema-v3 `github_pages` resource publishes `/web` to the `gh-pages` branch through the sibling gateway, which records and verifies `/.mprlab-release.json` against the sealed source. `web/CNAME` maps the site to `pinguin.mprlab.com`, and `web/.nojekyll` keeps GitHub Pages from running Jekyll over the static bundle.
 - `<mpr-header>` renders the shared sign-in control inside its own shadow tree. Playwright tests assert that the header shows exactly one visible shared sign-in button and that Pinguin runtime config contains no auth-provider metadata (`tests/e2e/landing.spec.ts`, `tests/e2e/utils.ts::expectSharedHeaderSignInButton`).
 
 ## Testing Strategy
@@ -51,8 +51,8 @@
 
 ## Configuration Files
 - `configs/.env.pinguin.example`: defines the environment variables referenced by `configs/config.pinguin.yml` (database path, master encryption key, tenant bootstrap values, shared TAuth signing key, optional Twilio credentials).
-- `smtpSubmission` controls optional SMTP submission listeners, user-owned sender-domain DNS verification, public Gmail-facing SMTP settings, and the selected delivery mode. Sender domains live in SQLite through the SMTP relay API instead of YAML. Production runs behind gateway-owned Caddy Layer 4 SMTPS termination by advertising edge `465` / `ssl` while the edge gateway forwards to `tutosh:8465`, Docker publishes that host port to Caddy `:465`, and Pinguin listens privately on plaintext SMTP inside the Docker network.
-- `smtpForwarding` controls the optional MX-facing forwarding listener and outbound relay used to deliver copies. Dynamic shared addresses and forwarding owners live in SQLite as part of active SMTP identities and use the same verified sender-domain gate as outbound SMTP relay identities. Its public MX target is `mx.pinguin.mprlab.com`; the edge gateway forwards public `25` to `tutosh:8025`, Docker publishes that host port to Caddy `:25`, and customer onboarding should prefer a dedicated subdomain such as `help.customer.com` because MX records are domain-wide.
+- `smtpSubmission` controls optional SMTP submission listeners, user-owned sender-domain DNS verification, public Gmail-facing SMTP settings, and the selected delivery mode. Sender domains live in SQLite through the SMTP relay API instead of YAML. The schema-v3 manifest declares public `pinguin-api.mprlab.com:465`; gateway-owned Caddy terminates TLS and forwards plaintext SMTP to the private `pinguin.smtp-submission` capability.
+- `smtpForwarding` controls the optional MX-facing forwarding listener and outbound relay used to deliver copies. Dynamic shared addresses and forwarding owners live in SQLite as part of active SMTP identities and use the same verified sender-domain gate as outbound SMTP relay identities. The schema-v3 manifest declares public `mx.pinguin.mprlab.com:25` and forwards raw SMTP to the private `pinguin.smtp-forwarding` capability; customer onboarding should prefer a dedicated subdomain such as `help.customer.com` because MX records are domain-wide.
 - Caddy's shared HTTP `rate_limit` snippet applies to the HTTPS API route, not to the Layer 4 SMTPS route. The SMTP submission server owns protocol-aware throttling: command/data deadlines, global and backend-visible per-remote-host session caps, SMTP AUTH failure windows keyed by credential username, and accepted-message windows keyed by SMTP identity.
 - `configs/.env.tauth.example`: holds shared auth provider settings, signing key, cookie domain, and CORS allowlist for the colocated TAuth service.
 - Front-end auth details for `mpr-ui` live in `web/config-ui.yaml`; Pinguin runtime metadata still comes from `/runtime-config` and does not include auth provider fields.
@@ -62,7 +62,7 @@
   - `pinguin`: Go server with `/web` bind-mounted for local iteration.
   - `tauth`: official `ghcr.io/tyemirov/tauth` image configured via `.env.tauth`.
   - `ghttp`: lightweight HTTP server serving `/web` on host port 8080.
-- Local SMTP testing mirrors the gateway high-port shape: `localhost:8025` maps to container `:25`, `localhost:1587` maps to container `:587`, and `localhost:8465` maps to container `:465`.
+- Local SMTP testing maps `localhost:8025` to container `:25`, `localhost:1587` to container `:587`, and `localhost:8465` to container `:465` without changing the production listener contract.
 - Ensure `.env.pinguin` and `.env.tauth` reuse the **same** signing key so cookie verification succeeds.
 - Workflow:
   1. Create private env files explicitly, using the example files only as variable-name documentation, then populate secrets.
