@@ -11,24 +11,17 @@
 - Add backend-backed search and infinite scroll for dashboard notification events, including cursor pagination and a single top-level refresh control.
 
 ### Bug Fixes
-- Make repeated `make release` calls at the current prepared tag succeed without selecting another version or replacing the prepared artifact.
-- Publish the app-owned `pinguin.grpc.ready` event only after the gRPC listener binds so gateway deployment can consume the runtime transition instead of inferring readiness from elapsed time.
-- Stop `make deploy` from inspecting retired mprlab-gateway SMTP inventory keys and delegate gateway preflight, deployment, and verification to `deploy-pinguin-backend`.
 - Align browser authentication with the current `mpr-ui@latest` config contract by removing rejected `authButton` YAML and declaring TAuth `/auth/session` restoration.
 - Make Playwright own its frontend dev server by default so release tests fail fast on an occupied port instead of reusing stale assets from another process.
 - Include trusted-proxy-aware source IP, remote peer address, and user agent in HTTP request logs for scanner attribution.
 - Open SQLite with WAL and a 10s busy timeout, and stop GORM error logs from emitting interpolated SQL values during DB errors.
 - Prune dead sender-domain config cleanup, SMTP identity credential migration, the obsolete `failed` notification status path, and the old `dashboard.html` redirect so current runtime behavior has no compatibility shims.
 - Make SMTP sender domains fully API/DB-owned by rejecting unknown static sender-domain config, removing static config/env references, and surfacing sender-domain API validation errors in the SMTP relay UI.
-- Move the gateway-executed GitHub Pages deployment resource into `deploy/app.yml` so Pinguin owns the deployable frontend contract while gateway Ansible owns execution.
-- Align production workflow contract tests and docs with the current release branch defaults and `deploy-pinguin-backend` gateway target.
-- Require `make release`, `make publish`, and `make deploy` to run only from clean local `master` matching `origin/master` with zero open PRs, and print the verified branch/commit before production work starts.
 - Accept SMTP forwarding `MAIL FROM:<>` null reverse-path traffic so DSNs and auto-generated loop-safe messages can reach configured shared-address routes.
 - Replace the generated placeholder logo with the canonical Pinguin turquoise envelope mark.
 - Enforce tenant authorization before honoring `tenant_id` on notification list, reschedule, and cancel endpoints.
 - Require the TAuth `admin` role before listing, creating, rotating, or deleting global SMTP identities.
 - Honor configured tenant admin emails for dashboard tenant access and global SMTP identity management.
-- Restore the deploy script's gateway handoff to the generic `deploy TARGET=pinguin` dispatcher before legacy Pages publication.
 - Remove stale tenant bootstrap records so deleted tenants no longer leave active admin access behind.
 - Keep the landing and dashboard header branded as `[logo] Pinguin` even when runtime tenant metadata belongs to a notification consumer, and serve the Pinguin favicon from `/favicon.svg`.
 - Restore production login rendering by moving the frontend onto the `mpr-ui` `/config-ui.yaml` orchestration contract and removing the direct `tauth.js` loader.
@@ -38,6 +31,7 @@
 - Publish `pinguin-doctor` in the production image and make the server the default command so gateway Compose preflight can run the doctor binary.
 
 ### Improvements
+- Migrate the sole production manifest to schema v3 with typed private values, service placement, retained data, HTTP/gRPC/SMTP capabilities, Caddy routes and listeners, Pages, the server binary, and the Pinguin TAuth tenant; delegate the three production lifecycle commands to the exact sibling gateway.
 - Declare Pinguin's stable TAuth tenant requirements in the app-owned deployment manifest for gateway assembly.
 - Replace the old landing page with a focused Pinguin sign-in screen and notification queue preview.
 - Add a dashboard horizontal menu using `mpr-ui` header links for Event log and SMTP relay.
@@ -45,7 +39,6 @@
 - Rename the SMTP identity dashboard surface to SMTP relay while keeping exact sender identity management in that view.
 - Add `make up` and `make down` wrappers for the local Docker Compose orchestration.
 - Add split `configs/.env.pinguin.example` and `configs/.env.tauth.example` files for the current Compose topology.
-- Align Pinguin SMTP setup with gateway high-port publishing so MX and SMTPS use `8025` and `8465` on the host.
 
 ### Testing
 - Add config and browser contract coverage for the current shared-shell `sessionPath` boundary and the absence of retired `authButton` YAML.
@@ -69,7 +62,6 @@
 - Update profile-menu browser coverage to assert the shared `mpr-user` header contract instead of the removed local settings menu.
 - Restore Go statement coverage to 100.0% across all covered packages.
 - Add a `make ci` coverage gate that fails unless total Go statement coverage remains at 100.0%.
-- Add black-box deployment coverage proving Pinguin dispatches the public gateway backend target without inspecting gateway-owned configuration files.
 
 ### Docs
 - Document `/auth/session` as the shared-shell restoration path and keep login-button presentation component-owned.
@@ -81,7 +73,7 @@
 - Update the dashboard docs to describe the authenticated event log and SMTP relay surfaces.
 - Update README and architecture notes to describe the split Event log and SMTP relay page destinations.
 - Document dashboard tenant authorization roles and non-admin domain scoping.
-- Document the remaining edge mappings after gateway deployment: `25 -> tutosh:8025` and `465 -> tutosh:8465`.
+- Document the schema-v3 gateway-owned SMTPS and MX listeners and their private runtime capabilities.
 
 ## [v0.4.24] - 2026-07-24
 
