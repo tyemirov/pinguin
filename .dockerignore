@@ -1,0 +1,6 @@
+.git
+.mprlab/deploy/.env
+.pages-dist
+bin
+coverage.out
+node_modules
