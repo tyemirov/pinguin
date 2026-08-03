@@ -65,6 +65,6 @@
 - Local SMTP testing mirrors the gateway high-port shape: `localhost:8025` maps to container `:25`, `localhost:1587` maps to container `:587`, and `localhost:8465` maps to container `:465`.
 - Ensure `.env.pinguin` and `.env.tauth` reuse the **same** signing key so cookie verification succeeds.
 - Workflow:
-  1. Copy the example env files and populate secrets.
+  1. Create private env files explicitly, using the example files only as variable-name documentation, then populate secrets.
   2. `make up`.
   3. Visit `http://localhost:8080` for the landing page; the UI talks to `http://localhost:8081/api`, and TAuth runs on `http://localhost:8082`.
