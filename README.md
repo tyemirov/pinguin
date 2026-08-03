@@ -306,7 +306,7 @@ smtpSubmission:
 
 Sender domains are not configured in YAML. Authenticated users add a sender domain in the SMTP relay page, publish the DNS records Pinguin shows, and click **Check DNS**. Pinguin marks the domain verified only when the ownership TXT, SPF authorization, and DMARC records match the displayed specification. Users can create SMTP relay identities only for their own verified domains. In `deliveryMode: direct`, Pinguin accepts the authenticated submission and delivers the raw message to each recipient domain's MX hosts using the authenticated identity as the envelope sender. DKIM signing, bounce processing, and mailbox hosting remain outside Pinguin.
 
-The Marco Polo gateway deployment accepts public SMTPS on edge port `465`, forwards it to `tutosh:8465`, publishes that high host port to Caddy's container `:465`, and proxies the decrypted SMTP session to Pinguin's private `listenAddr` on the Docker network. That is why production direct-relay config leaves `tlsListenAddr`, `tlsCertPath`, and `tlsKeyPath` empty and sets `allowInsecureAuth: true`; do not publish the private Pinguin SMTP listener directly to the internet.
+The schema-v3 gateway deployment accepts public SMTPS on `pinguin-api.mprlab.com:465`, terminates TLS in Caddy, and proxies the decrypted SMTP session to Pinguin's private SMTP capability on the shared runtime network. That is why production direct-relay config leaves `tlsListenAddr`, `tlsCertPath`, and `tlsKeyPath` empty and sets `allowInsecureAuth: true`; do not publish the private Pinguin SMTP listener directly to the internet.
 
 The public SMTPS listener does not inherit the shared HTTP Caddy request limiter because it is routed through Caddy Layer 4. Pinguin applies SMTP-aware controls in the submission server instead: idle command/data deadlines use `server.operationTimeoutSec`, concurrent sessions are capped globally and per backend-visible remote host, repeated SMTP AUTH failures are throttled by credential username, and accepted messages are rate-limited per SMTP identity. Built-in defaults allow 200 concurrent SMTP sessions globally, 20 per backend-visible remote host, 5 AUTH failures per credential username per 10 minutes, and 60 accepted messages per SMTP identity per hour.
 
@@ -402,7 +402,7 @@ Domain setup verification:
    ```
 3. Send an external SMTP test to `support@help.example.com` and confirm every configured forwarding owner receives a copy.
 
-The Marco Polo gateway accepts public MX traffic on edge port `25`, forwards it to `tutosh:8025`, publishes that high host port to Caddy's container `:25`, and proxies the raw SMTP session to Pinguin's private forwarding listener.
+The schema-v3 gateway accepts public MX traffic on `mx.pinguin.mprlab.com:25` and proxies the raw SMTP session through Caddy to Pinguin's private forwarding capability on the shared runtime network.
 
 If forwarding through `smtpForwarding.relay` fails before Pinguin accepts `DATA`, Pinguin returns a temporary `451` SMTP response so the sender's mail server can retry. Pinguin does not provide IMAP, POP3, search, read/unread state, or retention for forwarded mail.
 
@@ -429,11 +429,9 @@ The Pinguin Docker image declares `/web` as a separate volume for the UI bundle;
 
 ### Release, publish, then deploy
 
-GitHub Actions are disabled for Pinguin. `make release` prepares the changelog commit, local tag, cross-platform binaries, container archives, and static Pages archive under `.git/mprlab-release`; it does not fetch, push, call GitHub, or deploy. Re-running it at that release tag verifies and preserves the prepared artifact, then succeeds without creating another version. `make publish` publishes those exact prepared Git refs, GitHub Release assets, and container archives without rebuilding them. `make deploy` activates the already-published backend and Pages artifacts without building or publishing missing artifacts.
+GitHub Actions are disabled for Pinguin. The schema-v3 manifest at `.mprlab/deploy/resources.yml` is the sole production declaration. It describes the cross-platform server binary, multi-platform container image, retained data, HTTP/gRPC/SMTP capabilities, HTTPS and Layer 4 listeners, public health check, GitHub Pages site, and TAuth tenant. `configs/config.production.yml` is the tracked production config template; its exact private values come from the ignored mode-`0600` `.mprlab/deploy/.env`, which is excluded from the Docker build context.
 
-The complete lifecycle implementation is versioned under `scripts/release/`;
-release, publication, container, and Pages commands never load mutable tooling
-from a sibling checkout.
+The zero-argument `make release`, `make publish`, and `make deploy` commands delegate to the exact sibling `../mprlab-gateway`. The gateway validates and seals the selected manifest, publishes only the declared artifacts, and converges only Pinguin's declared runtime resources. This repository keeps `make up` and `make down` for local Compose development.
 
 Prepare and publish the release in order:
 
@@ -443,13 +441,13 @@ make release
 make publish
 ```
 
-Publication and deployment require a clean local `master` branch that exactly matches `origin/master` with zero open pull requests. Deploy verifies that `:latest` matches the release tag, deploys the backend through `mprlab-gateway`, activates the published `pages.tar.gz` on `gh-pages`, and verifies `/.mprlab-release.json`. The operator command is:
+The gateway requires clean, committed application and gateway checkouts at their exact remote revisions. Release prepares the declared binary, image, and Pages artifacts; publish publishes that sealed release; deploy converges the retained service, routes, SMTP listeners, TAuth tenant, Pages branch, and public health checks. The operator command is:
 
 ```bash
 make deploy
 ```
 
-`make publish` defaults to `ghcr.io/tyemirov/pinguin` and the `linux/amd64,linux/arm64` archives prepared by release. `make deploy` defaults to the sibling `mprlab-gateway` checkout, `origin`, and `gh-pages`. The canonical resource contract is `.mprlab/deploy/resources.yml`; gateway Ansible invokes the backend-only gateway target, while this repository's `pages-deploy` target activates the published Pages asset. The container resource declares `pinguin.grpc.ready`, which the server emits only after successfully binding the gRPC listener so deployment follows the runtime transition instead of a startup-duration estimate. After `make deploy`, configure the edge gateway to forward `25 -> tutosh:8025` and `465 -> tutosh:8465`; no Pinguin app port mapping is required.
+Pinguin declares public SMTPS on `pinguin-api.mprlab.com:465` with gateway TLS termination and public MX delivery on `mx.pinguin.mprlab.com:25`. The sibling gateway owns the physical listener bindings, shared runtime network, Caddy reconciliation, publication receipts, and deployment receipts; Pinguin does not own high host-port forwarding or a separate Pages activation command.
 
 1. Create private environment files explicitly. Use the tracked examples only to review variable names; their values are intentionally unusable, so never copy or source them. **Use the same signing key in both private files** so TAuth and Pinguin agree on JWT validation.
 
