@@ -37,7 +37,7 @@
   - `index.html` (landing page), `event-log.html`, and `smtp-relay.html` import `mpr-ui` CSS via CDN, load `/config-ui.yaml` through `mpr-ui-config.js`, initialize Pinguin runtime URLs through `/js/runtime-config.js`, and bootstrap via `/js/app.js`.
 - `/js/bootstrap.js` centralizes runtime config resolution and lazy loading of the main app module.
   - Alpine factories live under `/js/ui/` and `/js/core/`. Notifications table logic dispatches DOM-scoped events for toast updates and API refreshes.
-- The schema-v3 `github_pages` resource publishes `/web` to the `gh-pages` branch through the sibling gateway, which records and verifies `/.mprlab-release.json` against the sealed source. `web/CNAME` maps the site to `pinguin.mprlab.com`, and `web/.nojekyll` keeps GitHub Pages from running Jekyll over the static bundle.
+- The schema-v3 `github_pages` resource publishes `/web` to the `gh-pages` branch through the sibling gateway, which generates `CNAME` from the declared domain and records and verifies `/.mprlab-release.json` against the sealed source. `web/.nojekyll` keeps GitHub Pages from running Jekyll over the static bundle.
 - `<mpr-header>` renders the shared sign-in control inside its own shadow tree. Playwright tests assert that the header shows exactly one visible shared sign-in button and that Pinguin runtime config contains no auth-provider metadata (`tests/e2e/landing.spec.ts`, `tests/e2e/utils.ts::expectSharedHeaderSignInButton`).
 
 ## Testing Strategy
