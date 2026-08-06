@@ -419,7 +419,7 @@ mprlab_resources:
               read_only: false
           ports:
             - container_port: 25
-            - container_port: 465
+            - container_port: 587
             - container_port: 8080
             - container_port: 50051
           readiness:
@@ -469,7 +469,7 @@ mprlab_resources:
         scope: same_host
         scheme: smtp
         alias: pinguin-smtp-submission
-        port: 465
+        port: 587
       health:
         protocol: smtp
     - kind: runtime_capability

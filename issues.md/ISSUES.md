@@ -422,3 +422,5 @@ make: *** [test-frontend] Error 1
 
 ## Planning
 *do not work on these, not ready*
+
+- [ ] [PG-386] Keep public SMTPS on port 465 while routing Caddy to Pinguin's canonical private plaintext SMTP submission listener on port 587; prove the public TLS SMTP dialogue with real mail software on the disposable deployment host.

@@ -121,6 +121,34 @@ func TestRepositoryOwnsCompleteSchemaV3Deployment(t *testing.T) {
 	if !slices.Equal(actualEnvironment, requiredEnvironment) {
 		t.Fatalf("service environment does not exactly cover production config: %#v", actualEnvironment)
 	}
+
+	servicePorts := deploymentList(t, service, "ports")
+	actualContainerPorts := make([]int, 0, len(servicePorts))
+	for _, servicePort := range servicePorts {
+		actualContainerPorts = append(
+			actualContainerPorts,
+			deploymentInt(t, servicePort.(map[string]any), "container_port"),
+		)
+	}
+	slices.Sort(actualContainerPorts)
+	expectedContainerPorts := []int{25, 587, 8080, 50051}
+	slices.Sort(expectedContainerPorts)
+	if !slices.Equal(actualContainerPorts, expectedContainerPorts) {
+		t.Fatalf("unexpected production container ports: %#v", actualContainerPorts)
+	}
+
+	privateSMTPSubmission := deploymentMap(
+		t,
+		resources["runtime_capability/smtp-submission"],
+		"endpoint",
+	)
+	if deploymentInt(t, privateSMTPSubmission, "port") != 587 {
+		t.Fatalf("private SMTP submission must use Pinguin listener 587: %#v", privateSMTPSubmission)
+	}
+	publicSMTPSubmission := resources["caddy_listener/public-smtp-submission"]
+	if deploymentInt(t, publicSMTPSubmission, "port") != 465 {
+		t.Fatalf("public SMTPS submission must remain on port 465: %#v", publicSMTPSubmission)
+	}
 }
 
 func TestProductionLifecycleDelegatesOnlyToSiblingGateway(t *testing.T) {
@@ -222,6 +250,15 @@ func deploymentString(t *testing.T, document map[string]any, key string) string 
 	value, available := document[key].(string)
 	if !available || value == "" {
 		t.Fatalf("deployment field %s is not a non-empty string: %#v", key, document[key])
+	}
+	return value
+}
+
+func deploymentInt(t *testing.T, document map[string]any, key string) int {
+	t.Helper()
+	value, available := document[key].(int)
+	if !available || value <= 0 {
+		t.Fatalf("deployment field %s is not a positive integer: %#v", key, document[key])
 	}
 	return value
 }
