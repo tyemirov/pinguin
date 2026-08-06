@@ -50,6 +50,7 @@ Read @AGENTS.md, @ARCHITECTURE.md, @README.md, @issues.md/POLICY.md, @issues.md/
 
 ## BugFixes (308–399)
 
+- [x] [PG-385] `make release` rejected the schema-v3 Pages artifact because `web/CNAME` remained source-owned after the lifecycle became authoritative for Pages metadata. Resolved by deleting the obsolete source file and its stale source-presence assertion so the release lifecycle is the sole writer of `CNAME` and `.mprlab-release.json`; `make ci` passes.
 - [x] [PG-377] Release frontend tests could silently reuse an unrelated process already listening on the Playwright port, causing the authenticated-page guest redirect test to run against stale assets and fail at `/event-log.html`. Resolved by making Playwright own its dev server by default, leaving server reuse behind an explicit `PLAYWRIGHT_REUSE_EXISTING_SERVER=1` opt-in, and adding config contract coverage.
 - [x] [PG-376] HTTP request logs do not include source IP or user agent, making scanner attribution and blocking weak during public API probing. Resolved by adding trusted-proxy-aware `source_ip`, `remote_addr`, and `user_agent` to the current `slog` HTTP request log, covering forwarded-header trust boundaries and direct-remote fallback behavior, and passing `make test`, `make lint`, and `make ci`.
 - [x] [PG-375] SMTP-side SQLite contention can surface `SQLITE_BUSY` during identity lookups under pressure, and the GORM error logger emits interpolated SQL values that can expose credential-like SMTP usernames in logs. Resolved by opening SQLite with driver-level WAL and 10s busy-timeout PRAGMAs, removing raw SQL from GORM error logs, adding DB boundary regression coverage, and passing `make test`, `make lint`, and `make ci`.
@@ -421,3 +422,5 @@ make: *** [test-frontend] Error 1
 
 ## Planning
 *do not work on these, not ready*
+
+- [ ] [PG-386] Keep public SMTPS on port 465 while routing Caddy to Pinguin's canonical private plaintext SMTP submission listener on port 587; prove the public TLS SMTP dialogue with real mail software on the disposable deployment host.

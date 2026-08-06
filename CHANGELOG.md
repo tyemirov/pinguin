@@ -11,6 +11,8 @@
 - Add backend-backed search and infinite scroll for dashboard notification events, including cursor pagination and a single top-level refresh control.
 
 ### Bug Fixes
+- Route gateway-terminated public SMTPS on port 465 to Pinguin's canonical private plaintext SMTP submission listener on port 587.
+- Delete the obsolete source-owned Pages `CNAME` so the schema-v3 lifecycle remains the sole authority for generated Pages metadata.
 - Align browser authentication with the current `mpr-ui@latest` config contract by removing rejected `authButton` YAML and declaring TAuth `/auth/session` restoration.
 - Make Playwright own its frontend dev server by default so release tests fail fast on an occupied port instead of reusing stale assets from another process.
 - Include trusted-proxy-aware source IP, remote peer address, and user agent in HTTP request logs for scanner attribution.
