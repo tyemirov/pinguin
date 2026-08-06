@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-mpr-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>Pinguin Notification Service</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.css"
+    />
+    <link rel="stylesheet" href="/assets/css/base.css" />
+    <script defer src="/js/google-analytics.js"></script>
+    <script defer src="/js/runtime-config.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui-config.js"></script>
+    <script
+      id="mpr-ui-bundle"
+      type="application/json"
+      data-mpr-ui-bundle-src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js"
+    ></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+      <script defer src="https://loopaware.mprlab.com/pixel.js?site_id=e8f235c8-ddf2-46b7-ae42-022885fe8a44"></script>
+  </head>
+  <body data-page="landing" class="theme-light" x-data="appShell()">
+    <mpr-header
+      id="pinguin-header"
+      data-config-url="/config-ui.yaml"
+      brand-label="Pinguin"
+      brand-href="/"
+      nav-links='[{ "label": "Docs", "href": "https://github.com/tyemirov/pinguin" }]'
+    >
+      <a slot="brand" class="pinguin-brand" href="/" aria-label="Pinguin home">
+        <img class="pinguin-brand__mark" src="/favicon.svg" alt="" aria-hidden="true" />
+        <span>Pinguin</span>
+      </a>
+    </mpr-header>
+    <main class="landing-page">
+      <section class="landing-shell" x-data="landingAuthPanel()" x-init="init()">
+        <div class="landing-copy">
+          <p class="eyebrow" x-text="STRINGS.landing.eyebrow"></p>
+          <h1 x-text="STRINGS.landing.headline"></h1>
+          <p class="landing-summary" x-text="STRINGS.landing.subheadline"></p>
+          <p class="landing-status" x-text="notice"></p>
+        </div>
+        <aside class="landing-preview" aria-label="Notification workspace preview">
+          <div class="preview-toolbar">
+            <span>Queue</span>
+            <strong>Live</strong>
+          </div>
+          <ol class="preview-list">
+            <li>
+              <span class="preview-status" data-variant="queued">Queued</span>
+              <span>Welcome email</span>
+              <time>09:30</time>
+            </li>
+            <li>
+              <span class="preview-status" data-variant="sent">Sent</span>
+              <span>SMS reminder</span>
+              <time>10:15</time>
+            </li>
+            <li>
+              <span class="preview-status" data-variant="errored">Retrying</span>
+              <span>Invoice notice</span>
+              <time>11:00</time>
+            </li>
+          </ol>
+        </aside>
+      </section>
+    </main>
+    <script type="module" src="/js/bootstrap.js"></script>
+    <mpr-footer
+      id="pinguin-footer"
+      prefix-text="Pinguin Notification Service"
+      privacy-link-label="Privacy &amp; Terms"
+      privacy-modal-content="
+        <h1>Privacy Policy — Pinguin</h1>
+        <p>Pinguin stores the notification drafts you create, recipient details, and delivery metadata solely to run the scheduling workspace.</p>
+        <p>Authentication happens through the shared sign-in shell; Pinguin receives HttpOnly session cookies and never stores your password.</p>
+        <p>We do not sell or share notification content with third parties, and you may remove queued items from the workspace at any time.</p>
+      "
+      links-collection='{"style":"drop-up","text":"Explore","links":[{ "label": "Repository", "url": "https://github.com/tyemirov/pinguin" },{ "label": "mpr-ui docs", "url": "https://github.com/MarcoPoloResearchLab/mpr-ui" }]}'
+      theme-switcher="toggle"
+      theme-config='{"attribute":"data-theme","targets":["body"],"modes":[{"value":"light","attributeValue":"light","classList":["theme-light"]},{"value":"dark","attributeValue":"dark","classList":["theme-dark"]}]}'
+    ></mpr-footer>
+  </body>
+</html>
