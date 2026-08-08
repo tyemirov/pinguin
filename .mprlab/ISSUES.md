@@ -25,7 +25,6 @@ Entries record newly discovered requests or changes.
   - Re-read `ISSUES.md` after edits and confirm every issue is under the right section with a unique section-aware ID.
   - Confirm recurring entries remain open and keep the `R` suffix.
   - Confirm no active, blocked, recurring, or planning work was archived.
-  - [ ] [M002R] (P2) Polish open issues.
 
 
 ## Features
