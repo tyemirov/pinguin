@@ -1,10 +1,14 @@
-# Issues
+# Issue archive
 
-In this file the entries (issues) record newly discovered requests or changes, with their outcomes. No instructive content lives here. Read @NOTES.md for the process to follow when fixing issues.
+Resolved historical entries preserved from the pre-onboarding tracker.
 
-Read @AGENTS.md, @ARCHITECTURE.md, @README.md, @issues.md/POLICY.md, @issues.md/PLANNING.md, @issues.md/NOTES.md, and @issues.md/ISSUES.md, following the internal links. Start working on open issues, prioritizing bug fixes. Work autonomously and stack up PRs.
+The active backlog now lives in `.mprlab/ISSUES.md`. Legacy open, planning, and recurring entries were reconciled on 2026-08-09 during backlog hygiene: stale resolved history stays here and still-active work moved to `.mprlab/ISSUES.md`. Legacy external IDs are preserved here verbatim for traceability; canonical active IDs live only in `.mprlab/ISSUES.md`.
 
-## Features  (102–199)
+## BugFixes
+
+- [x] [PG-333] Post-login UI loop persisted after successful auth while the legacy frontend still loaded `tauth.js` directly and redirected through `dashboard.html`. Filed under Improvements in the pre-onboarding tracker; later auth-shell fixes (`PG-334`, `PG-337`, `PG-338`, and `PG-373`) removed the affected path, so this history is now resolved and archived.
+
+## Features
 
 - [x] [PG-107] Let any authenticated Pinguin user add a sender domain, receive exact DNS setup records, manually check DNS, and create/use SMTP relay identities only after that domain verifies. Resolved with owner-scoped sender domains, generated TXT/SPF/DMARC setup instructions, a manual DNS check API/UI action, verified-domain gates for identity creation plus SMTP auth/forwarding, dynamic public sender domains without TAuth changes, docs/config updates, and passing `make ci`.
 - [x] [PG-365] Allow admins to open an existing SMTP relay identity password in the Gmail SMTP settings modal and rotate the credentials from inside that modal. Resolved with encrypted-at-rest SMTP identity passwords, a protected credentials retrieval endpoint, a View password modal flow, in-modal rotation, docs updates, and passing `make test`, `make lint`, and `make ci`.
@@ -14,7 +18,7 @@ Read @AGENTS.md, @ARCHITECTURE.md, @README.md, @issues.md/POLICY.md, @issues.md/
 - [x] [PG-102] Add authenticated SMTP submission for Gmail Send-As: tenant-scoped exact sender identities, STARTTLS SMTP AUTH, raw upstream relay, dashboard identity management, docs, and tests. Resolved with SMTP submission listeners, exact sender credentials, upstream raw relay, dashboard/API management, deployment docs, and passing `make ci`.
 - [x] [PG-103] Decouple authenticated SMTP submission from notification tenants. Resolved by moving sender domains and SMTP identities out of tenant scope, adding `smtpSubmission.relay`, routing accepted raw messages through that independent upstream profile, updating docs/config/UI mappings, and passing `make test`, `make lint`, and `make ci`.
 
-## Improvements (202–299)
+## Improvements
 
 - [x] [PG-379] Emit Pinguin page views to its dedicated GA4 property. Resolved with a first-party loader for `G-MRV1W0ZVW8` on every public HTML entry point, Pages artifact validation for the exact measurement ID and script references, passing backend/release/coverage and focused publication/runtime checks; the repository-wide browser baseline remains blocked because its fresh-checkout Playwright server does not become reachable.
 - [x] [PG-209] Declare Pinguin's TAuth tenant requirements in the app-owned deployment manifest. Resolved with the canonical app-owned `tauth_tenant` declaration, a gateway-assembled 13-tenant fleet accepted by the generic TAuth doctor with zero errors, and passing `make ci`.
@@ -112,38 +116,6 @@ make: *** [test-frontend] Error 1
 - [x] [PG-334] Production `pinguin.mprlab.com` no longer renders the login button and the landing CTA does nothing after the latest deployment. Live HTML loads `/js/tauth-helper.js`, which requests `https://tauth-api.mprlab.com/tauth.js`; that helper route is not available on the production TAuth API host, so the `mpr-ui` bundle never loads and `<mpr-header>` never upgrades. Resolved by moving the frontend to `/config-ui.yaml` + `mpr-ui-config.js` + `mpr-ui@latest` bundle orchestration, removing direct `tauth.js` loading, and adding browser coverage for the shared-shell contract plus landing CTA login path; `make test`, `make lint`, and `make ci` pass.
 - [x] [PG-337] Local Docker login emits repeated TAuth 401 checks, duplicate Google initialization, and Google Identity 403 errors when opened on a non-authorized local origin. Resolved by making `http://localhost:8080` the Compose UI origin, moving the Pinguin API to `http://localhost:8081`, moving TAuth to `http://localhost:8082`, aligning `web/config-ui.yaml` with the Google client authorized for localhost 8080, keeping only one landing auth surface, and adding current split env examples.
 - [x] [PG-338] Authenticated pages rendered two account controls after login: the shared `mpr-header` user menu and Pinguin's old slotted `mpr-settings` avatar menu. Resolved by removing the app-owned account chip, relying on the shared `mpr-user` menu rendered by `mpr-header`, deleting local profile-menu CSS/JS, and updating browser coverage to assert the supported `mpr-ui` user-menu surface.
-- [ ] [PG-333] Post-login UI loop persists: app oscillates between landing and dashboard even though TAuth `/me` returns 200 and Pinguin `/api/notifications` returns 200. Observed in dev stack after PG-332 + follow-up (PR #115), with latest `mpr-ui` and `tauth.js` integration in place. Impact: user cannot stay on dashboard after sign-in; app repeatedly redirects.
-
-  Environment and context:
-  - docker-compose `dev` profile (ghttp on `:4173`, pinguin on `:8080`, tauth on `:8081`).
-  - `.env.pinguin` uses `TAUTH_BASE_URL=http://localhost:8081`, `TAUTH_TENANT_ID=pinguin`, `TAUTH_COOKIE_NAME=app_session_pinguin`, `HTTP_ALLOWED_ORIGIN1=http://localhost:4173`.
-  - `.env.tauth` uses `TAUTH_TENANT_ID_PINGUIN=pinguin`, `TAUTH_TENANT_ORIGIN_PINGUIN=http://localhost:4173`, `TAUTH_ENABLE_TENANT_HEADER_OVERRIDE=true`, `TAUTH_ENABLE_CORS=true`.
-  - UI loads `tauth.js` then `mpr-ui.js`, runtime config applied via `web/js/tauth-config-apply.js`, session bridge in `web/js/app.js`.
-
-  Observed behavior:
-  - Login completes; Google button visible and interactive.
-  - Requests to TAuth `/me` return 200 repeatedly; `/auth/nonce` also 200.
-  - Pinguin `/api/notifications` returns 200, but UI redirects between `/index.html` and `/dashboard.html` in a loop.
-  - Loop persists after PG-332 and PG-332 follow-up (auth-ready gating + auth-state cache).
-
-  Logs captured during loop:
-  ```
-  tauth        | {"level":"info","ts":1767482798.9392948,"caller":"server/main.go:364","msg":"http","method":"GET","path":"/me","status":200,"ip":"172.217.78.95","elapsed":0.000146538}
-  pinguin-dev  | time=2026-01-03T23:26:38.942Z level=INFO msg=http_request_completed method=GET path=/api/notifications status=200 duration_ms=0
-  pinguin-dev  | time=2026-01-03T23:26:40.561Z level=INFO msg=http_request_completed method=GET path=/runtime-config status=200 duration_ms=0
-  tauth        | {"level":"info","ts":1767482800.6470726,"caller":"server/main.go:364","msg":"http","method":"GET","path":"/me","status":200,"ip":"172.217.78.95","elapsed":0.000096896}
-  tauth        | {"level":"info","ts":1767482800.6690543,"caller":"server/main.go:364","msg":"http","method":"POST","path":"/auth/nonce","status":200,"ip":"172.217.78.95","elapsed":0.009870132}
-  tauth        | {"level":"info","ts":1767482800.747536,"caller":"server/main.go:364","msg":"http","method":"GET","path":"/me","status":200,"ip":"172.217.78.95","elapsed":0.00018573}
-  pinguin-dev  | time=2026-01-03T23:26:42.457Z level=INFO msg=http_request_completed method=GET path=/runtime-config status=200 duration_ms=0
-  tauth        | {"level":"info","ts":1767482802.6402583,"caller":"server/main.go:364","msg":"http","method":"GET","path":"/me","status":200,"ip":"172.217.78.95","elapsed":0.000128605}
-  tauth        | {"level":"info","ts":1767482802.6599674,"caller":"server/main.go:364","msg":"http","method":"POST","path":"/auth/nonce","status":200,"ip":"172.217.78.95","elapsed":0.004950285}
-  pinguin-dev  | time=2026-01-03T23:26:42.680Z level=INFO msg=http_request_completed method=GET path=/api/notifications status=200 duration_ms=0
-  tauth        | {"level":"info","ts":1767482802.6906724,"caller":"server/main.go:364","msg":"http","method":"GET","path":"/me","status":200,"ip":"172.217.78.95","elapsed":0.00022068}
-  pinguin-dev  | time=2026-01-03T23:26:44.361Z level=INFO msg=http_request_completed method=GET path=/runtime-config status=200 duration_ms=0
-  tauth        | {"level":"info","ts":1767482804.4472177,"caller":"server/main.go:364","msg":"http","method":"GET","path":"/me","status":200,"ip":"172.217.78.95","elapsed":0.000106704}
-  tauth        | {"level":"info","ts":1767482804.4681065,"caller":"server/main.go:364","msg":"http","method":"POST","path":"/auth/nonce","status":200,"ip":"172.217.78.95","elapsed":0.008144772}
-  tauth        | {"level":"info","ts":1767482804.4876297,"caller":"server/main.go:364","msg":"http","method":"GET","path":"/me","status":200,"ip":"172.217.78.95","elapsed":0.000222615}
-  ```
 
 - [x] [PG-342] Enforce tenant authorization before honoring `tenant_id` query parameters on notification HTTP endpoints. Resolved with TAuth-role-based admin access, email-domain tenant scoping for regular users, filtered tenant listing, and passing `make test`, `make lint`, and `make ci`.
 - [x] [PG-344] Enforce admin-only authorization on global SMTP identity HTTP routes. Resolved by requiring the TAuth `admin` role before list/create/rotate/delete service access and adding backend coverage that non-admin sessions return 403 before touching identity storage; `make ci` passes.
@@ -210,176 +182,6 @@ make: *** [test-frontend] Error 1
 
 ## Maintenance
 
-### Recurring
-
-- [ ] [M400R] (P2) Backlog hygiene and archive
-  Goal:
-  Keep the issue tracker reliable, readable, and focused on active work while preserving resolved history in the appropriate archive.
-
-  Requirements:
-  - Cadence: run weekly during active development and before each release cut.
-  - Validate section names, identifier prefixes, recurrence suffixes, priority markers, dependencies, and duplicate IDs against the current `issues-md-format.md`.
-  - Reconcile stale statuses, duplicate issues, broken references, obsolete instructions, and entries filed under the wrong section.
-  - Move completed non-recurring history to the repository issue archive or durable documentation when the active tracker becomes noisy.
-  - Keep active, blocked, planning, and recurring entries visible in `ISSUES.md`.
-
-  Deliverables:
-  - Normalized `ISSUES.md` structure and statuses.
-  - Updated issue archive or docs when completed entries are removed from the active tracker.
-  - A short `Last run:` note summarizing the cleanup and any follow-up issues filed.
-
-  Validation:
-  - Re-read `ISSUES.md` after edits and confirm every issue is under the right section with a unique section-aware ID.
-  - Confirm recurring entries remain open and keep the `R` suffix.
-  - Confirm no active, blocked, recurring, or planning work was archived.
-
-- [ ] [M401R] (P2) Polish open issues
-  Goal:
-  Keep unresolved work executable by making each open issue concrete, ordered, and testable.
-
-  Requirements:
-  - Cadence: run weekly during active development and before handing a repo to automated execution.
-  - Review every unresolved non-recurring issue for missing context, dependencies, repro steps, acceptance criteria, and validation expectations.
-  - Make priorities concrete and ensure each open issue has actionable deliverables.
-  - Merge duplicate open issues or add explicit dependency links when separate entries must remain.
-  - Do not close or implement issues as part of this polish pass unless that work is separately requested.
-
-  Deliverables:
-  - Open issues with enough detail for a person or agent to execute without rediscovery.
-  - New or updated dependency markers where ordering matters.
-  - A short `Last run:` note listing the number of issues polished and any blockers found.
-
-  Validation:
-  - Sample the open entries after the pass and confirm each has clear next actions and validation expectations.
-  - Confirm no recurring runbook was marked complete.
-  - Confirm duplicates were merged or explicitly cross-referenced.
-
-- [ ] [M402R] (P2) Architecture and policy review
-  Goal:
-  Catch architecture, policy, and workflow drift before it becomes hidden maintenance debt.
-
-  Requirements:
-  - Cadence: run monthly, before large refactors, and after major framework or runtime changes.
-  - Review the codebase, docs, and workflow against `AGENTS.md`, `POLICY.md`, stack guides, and the current architecture notes.
-  - Look for drift from forward-only contracts, edge-validation boundaries, smart-constructor usage, testing policy, and module ownership.
-  - Record findings as new Maintenance issues with concrete scope, priority, and validation.
-  - Close the pass with a no-action note only when the review finds no actionable drift.
-
-  Deliverables:
-  - New Maintenance issues for each actionable architecture or policy drift finding.
-  - Updated notes on areas reviewed and areas intentionally left unchanged.
-  - A short `Last run:` note with the review scope and outcome.
-
-  Validation:
-  - Confirm every finding is represented as an issue with owner-readable context and validation criteria.
-  - Confirm no implementation changes were mixed into the review runbook unless separately requested.
-  - Confirm all recurring runbooks remain open.
-
-- [ ] [M403R] (P1) Dependency and security audit
-  Goal:
-  Keep third-party dependencies, runtime versions, and security-sensitive configuration within the current supported contract.
-
-  Requirements:
-  - Cadence: run weekly for active apps and before each release cut.
-  - Inspect package managers, lockfiles, language toolchains, container bases, and generated clients for known vulnerabilities or stale direct dependencies.
-  - Review auth, secret, CORS, CSP, SQL, network, and permission-sensitive configuration for drift from the current contract.
-  - Prefer current supported dependencies; do not add compatibility shims for obsolete dependency behavior.
-  - File separate Maintenance or BugFix issues for each actionable vulnerability, unsupported runtime, or security-contract gap.
-
-  Deliverables:
-  - Documented audit commands or data sources used for the pass.
-  - Updated issues for each actionable dependency or security finding.
-  - A short `Last run:` note with clean result or follow-up issue IDs.
-
-  Validation:
-  - Rerun the repository-native audit, lint, or dependency checks used for the pass.
-  - Confirm every finding is either filed, fixed under a separate issue, or explicitly marked not applicable with evidence.
-  - Confirm no secrets or private payloads were written into the tracker.
-
-- [ ] [M404R] (P1) CI, release, and artifact health
-  Goal:
-  Keep the repository's validation, release, publication, and generated artifact surfaces trustworthy.
-
-  Requirements:
-  - Cadence: run before every release, publish, or deploy, and weekly for critical services.
-  - Verify repository-native CI, lint, format, coverage, release, publish, Docker image, Pages, and artifact workflows still match the documented contract.
-  - Check generated artifacts, release tags, published images, and Pages outputs for source-to-public drift.
-  - File concrete follow-up issues for failing gates, stale artifacts, missing release prerequisites, or undocumented workflow changes.
-  - Do not perform production deployment from this runbook unless the operator explicitly requests that deployment.
-
-  Deliverables:
-  - Recorded gate status and artifact surfaces inspected.
-  - Follow-up issues for each reproducible CI, release, publish, or artifact drift problem.
-  - A short `Last run:` note with commands run and any skipped surfaces.
-
-  Validation:
-  - Use repository-native `make` targets or documented release helpers for checks.
-  - Confirm release and deployment ownership boundaries remain separate.
-  - Confirm public or published artifacts match the intended source revision when that surface is inspected.
-
-- [ ] [M405R] (P1) Code contract and static hygiene
-  Goal:
-  Keep source contracts explicit, current, and statically guarded against policy drift.
-
-  Requirements:
-  - Cadence: run monthly and before large refactors.
-  - Scan for dead code, unused exports, duplicated literals, silent fallbacks, legacy aliases, compatibility reads, and zero-but-invalid domain states.
-  - Check static analysis, coverage, schema, and contract guards that are supposed to prevent drift.
-  - File focused Maintenance issues for each concrete violation instead of broad cleanup placeholders.
-  - Keep the current canonical contract only; do not preserve obsolete behavior unless a product requirement explicitly says so.
-
-  Deliverables:
-  - Issue entries for each actionable static hygiene or contract violation.
-  - Notes on static tools, searches, and contract guards used during the pass.
-  - A short `Last run:` note with clean result or follow-up issue IDs.
-
-  Validation:
-  - Rerun the relevant static checks, contract tests, or repository searches used to identify drift.
-  - Confirm every finding has a narrow follow-up issue and does not duplicate existing backlog work.
-  - Confirm no implementation changes were mixed into the audit unless separately requested.
-
-- [ ] [M406R] (P1) Production drift and health
-  Goal:
-  Detect when production, public, or scheduled runtime state has drifted from the intended repository contract.
-
-  Requirements:
-  - Cadence: run weekly for deployed services and after each publish or deploy.
-  - Compare current source, runtime configuration, published images, public routes, scheduled jobs, and health checks for drift.
-  - Inspect real operator-facing surfaces rather than assuming merged source is deployed.
-  - File follow-up issues for stale images, stale Pages output, missing routes, failed monitors, invalid production config, or undocumented runtime differences.
-  - Stop before production deploy or destructive operator actions unless the operator explicitly requests them.
-
-  Deliverables:
-  - Recorded source revision, public artifact, route, image, or health surfaces inspected.
-  - Follow-up issues for each source-to-runtime drift finding.
-  - A short `Last run:` note with evidence links or commands used.
-
-  Validation:
-  - Verify inspected production or public surfaces directly where access is available.
-  - Confirm any deploy-required finding is filed with the exact publish/deploy boundary and owner.
-  - Confirm no production state was changed by the audit unless explicitly requested.
-
-- [ ] [M407R] (P2) Documentation and runbook hygiene
-  Goal:
-  Keep durable documentation and runbooks aligned with the current behavior users and operators actually rely on.
-
-  Requirements:
-  - Cadence: run before release cuts and after merge bursts that change user-facing or operator-facing behavior.
-  - Review README, ARCHITECTURE, PRD, CHANGELOG, docs, runbooks, setup guides, and local workflow notes for stale behavior or missing new contracts.
-  - Update docs when closed issues changed durable behavior, public APIs, operator workflows, release semantics, or deployment expectations.
-  - Remove or rewrite stale instructions instead of preserving obsolete alternatives.
-  - File separate issues for documentation gaps that require product or implementation decisions.
-
-  Deliverables:
-  - Updated documentation or filed follow-up issues for each gap.
-  - A short `Last run:` note listing docs inspected and changes made.
-  - Cross-references from archived issue history to durable docs when useful.
-
-  Validation:
-  - Check links, command names, paths, and public contract descriptions touched by the pass.
-  - Confirm docs describe the current canonical path only.
-  - Confirm issue archive and active tracker references remain consistent.
-
 - [x] [PS-404] Add `pinguin-doctor` command for configuration validation. Validates Pinguin configurations with comprehensive checks for server requirements (database, auth, encryption), web interface settings, and tenant requirements (domains, identity, admins). Supports multiple config files with cross-config validation (`--cross-validate`), environment variable expansion (`--expand-env`), and JSON output for CI/CD (`--json`). Pinguin is now the authoritative source for Pinguin configuration correctness.
 - [x] [PS-400] Replace the placeholders with real values. generate the new keys when needed. Look up in .emv files under tools/{tauth} or in ../loopaware or .env to find the actual production values. Verified configs/.env.pinguin + configs/.env.tauth already contain production values from tools/TAuth/.env and `.env`.
 - [x] [PS-401] Declare `/web` as a dedicated Docker volume for the UI bundle and document the mount expectations; `make ci` passes.
@@ -419,8 +221,3 @@ make: *** [test-frontend] Error 1
 
   Every placeholder above maps into the YAML configs and, via internal/config/config.go plus cmd/server/main.go, drives the runtime behavior of both Pinguin and TAuth. Replace them with production secrets,
   domains, and credentials before deploying.
-
-## Planning
-*do not work on these, not ready*
-
-- [ ] [PG-386] Keep public SMTPS on port 465 while routing Caddy to Pinguin's canonical private plaintext SMTP submission listener on port 587; prove the public TLS SMTP dialogue with real mail software on the disposable deployment host.
