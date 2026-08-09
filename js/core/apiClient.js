@@ -1,0 +1,281 @@
+// @ts-check
+import { RUNTIME_CONFIG } from '../constants.js';
+
+/** @typedef {import('../types.d.js').NotificationItem} NotificationItem */
+/** @typedef {import('../types.d.js').NotificationListOptions} NotificationListOptions */
+/** @typedef {import('../types.d.js').TenantOption} TenantOption */
+/** @typedef {import('../types.d.js').SMTPIdentity} SMTPIdentity */
+/** @typedef {import('../types.d.js').SMTPCredentials} SMTPCredentials */
+/** @typedef {import('../types.d.js').SMTPSenderDomain} SMTPSenderDomain */
+
+function getFetcher() {
+  if (typeof window !== 'undefined' && typeof window.apiFetch === 'function') {
+    return window.apiFetch;
+  }
+  return (input, init = {}) => fetch(input, { credentials: 'include', ...init });
+}
+
+function toJson(response) {
+  return response
+    .clone()
+    .json()
+    .catch(() => null);
+}
+
+function mapNotification(raw) {
+  if (!raw) {
+    return null;
+  }
+  return {
+    id: raw.notification_id,
+    tenantId: raw.tenant_id,
+    type: raw.notification_type,
+    recipient: raw.recipient,
+    subject: raw.subject,
+    message: raw.message,
+    status: raw.status,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
+    scheduledFor: raw.scheduled_for || raw.scheduled_time || null,
+    retryCount: raw.retry_count ?? 0,
+  };
+}
+
+function mapTenant(raw) {
+  if (!raw) {
+    return null;
+  }
+  const id = typeof raw.id === 'string' ? raw.id.trim() : '';
+  if (!id) {
+    return null;
+  }
+  const displayName =
+    typeof raw.displayName === 'string' && raw.displayName.trim()
+      ? raw.displayName.trim()
+      : id;
+  return { id, displayName };
+}
+
+function mapSMTPIdentity(raw) {
+  if (!raw) {
+    return null;
+  }
+  return {
+    id: raw.id,
+    emailAddress: raw.email_address,
+    username: raw.username,
+    forwardTo: Array.isArray(raw.forward_to) ? raw.forward_to.filter((value) => typeof value === 'string') : [],
+    status: raw.status,
+    lastUsedAt: raw.last_used_at || null,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
+  };
+}
+
+function mapSMTPCredentials(raw) {
+  const identity = mapSMTPIdentity(raw?.identity);
+  if (!identity) {
+    return null;
+  }
+  return {
+    identity,
+    smtpSettings: {
+      host: raw?.smtp_settings?.host || '',
+      port: Number(raw?.smtp_settings?.port || 0),
+      securityMode: raw?.smtp_settings?.security_mode || '',
+    },
+    username: raw?.username || '',
+    password: raw?.password || '',
+  };
+}
+
+function mapSMTPSenderDomain(raw) {
+  if (!raw) {
+    return null;
+  }
+  const id = Number(raw.id || 0);
+  if (!Number.isInteger(id) || id <= 0) {
+    return null;
+  }
+  const dnsRecords = Array.isArray(raw.dns_records)
+    ? raw.dns_records
+        .map((record) => ({
+          type: String(record?.type || ''),
+          host: String(record?.host || ''),
+          value: String(record?.value || ''),
+          purpose: String(record?.purpose || ''),
+        }))
+        .filter((record) => record.type && record.host && record.value)
+    : [];
+  const dnsChecks = Array.isArray(raw.dns_checks)
+    ? raw.dns_checks
+        .map((check) => ({
+          type: String(check?.type || ''),
+          host: String(check?.host || ''),
+          expected: String(check?.expected || ''),
+          passed: Boolean(check?.passed),
+          message: String(check?.message || ''),
+        }))
+        .filter((check) => check.type && check.host)
+    : [];
+  return {
+    id,
+    domain: String(raw.domain || ''),
+    status: String(raw.status || 'pending'),
+    dnsRecords,
+    dnsChecks,
+    lastCheckedAt: raw.last_checked_at || null,
+    createdAt: raw.created_at || '',
+    updatedAt: raw.updated_at || '',
+  };
+}
+
+function buildTenantQuery(tenantId) {
+  if (!tenantId || typeof tenantId !== 'string') {
+    return '';
+  }
+  const normalized = tenantId.trim();
+  if (!normalized) {
+    return '';
+  }
+  return `?tenant_id=${encodeURIComponent(normalized)}`;
+}
+
+export function createApiClient(baseUrl = RUNTIME_CONFIG.apiBaseUrl) {
+  const normalizedBase = baseUrl.replace(/\/$/, '') || '/api';
+
+  async function request(path, init = {}) {
+    const url = `${normalizedBase}${path}`;
+    const mergedInit = { ...init };
+    mergedInit.headers = {
+      'Content-Type': 'application/json',
+      ...(init.headers || {}),
+    };
+    const fetcher = getFetcher();
+    const response = await fetcher(url, mergedInit);
+    const payload = await toJson(response);
+    if (!response.ok) {
+      const error = new Error(payload?.error || `request_failed_${response.status}`);
+      error.name = 'ApiError';
+      // @ts-expect-error augment error object for downstream logic
+      error.statusCode = response.status;
+      throw error;
+    }
+    return payload;
+  }
+
+  return {
+    async listTenants() {
+      const payload = await request('/tenants', { method: 'GET', headers: {} });
+      const tenants = Array.isArray(payload?.tenants) ? payload.tenants : [];
+      return /** @type {TenantOption[]} */ (tenants.map(mapTenant).filter(Boolean));
+    },
+    async listNotifications(statuses = [], tenantId = '', options = /** @type {NotificationListOptions} */ ({})) {
+      const query = new URLSearchParams();
+      const normalizedTenantId = typeof tenantId === 'string' ? tenantId.trim() : '';
+      if (normalizedTenantId) {
+        query.set('tenant_id', normalizedTenantId);
+      }
+      statuses.filter(Boolean).forEach((status) => {
+        query.append('status', String(status));
+      });
+      const normalizedSearch = typeof options.query === 'string' ? options.query.trim() : '';
+      if (normalizedSearch) {
+        query.set('q', normalizedSearch);
+      }
+      const normalizedCursor = typeof options.cursor === 'string' ? options.cursor.trim() : '';
+      if (normalizedCursor) {
+        query.set('cursor', normalizedCursor);
+      }
+      const limit = Number(options.limit || 0);
+      if (Number.isInteger(limit) && limit > 0) {
+        query.set('limit', String(limit));
+      }
+      const suffix = query.toString() ? `?${query.toString()}` : '';
+      const payload = await request(`/notifications${suffix}`, { method: 'GET', headers: {} });
+      const items = Array.isArray(payload?.notifications) ? payload.notifications : [];
+      return {
+        notifications: /** @type {NotificationItem[]} */ (items.map(mapNotification).filter(Boolean)),
+        nextCursor: typeof payload?.next_cursor === 'string' ? payload.next_cursor : '',
+      };
+    },
+    async rescheduleNotification(notificationId, scheduledIsoString, tenantId) {
+      const payload = await request(
+        `/notifications/${encodeURIComponent(notificationId)}/schedule${buildTenantQuery(tenantId)}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ scheduled_time: scheduledIsoString }),
+        },
+      );
+      return mapNotification(payload);
+    },
+    async cancelNotification(notificationId, tenantId) {
+      const payload = await request(
+        `/notifications/${encodeURIComponent(notificationId)}/cancel${buildTenantQuery(tenantId)}`,
+        {
+          method: 'POST',
+        },
+      );
+      return mapNotification(payload);
+    },
+    async listSMTPIdentities() {
+      const payload = await request('/smtp-identities', { method: 'GET', headers: {} });
+      const identities = Array.isArray(payload?.identities) ? payload.identities : [];
+      return /** @type {SMTPIdentity[]} */ (
+        identities.map(mapSMTPIdentity).filter(Boolean)
+      );
+    },
+    async listSMTPDomains() {
+      const payload = await request('/smtp-domains', { method: 'GET', headers: {} });
+      const domains = Array.isArray(payload?.domains) ? payload.domains : [];
+      return /** @type {SMTPSenderDomain[]} */ (
+        domains.map(mapSMTPSenderDomain).filter(Boolean)
+      );
+    },
+    async createSMTPDomain(domain) {
+      const payload = await request('/smtp-domains', {
+        method: 'POST',
+        body: JSON.stringify({ domain }),
+      });
+      return /** @type {SMTPSenderDomain | null} */ (mapSMTPSenderDomain(payload));
+    },
+    async checkSMTPDomainDNS(domainId) {
+      const payload = await request(`/smtp-domains/${encodeURIComponent(domainId)}/check-dns`, {
+        method: 'POST',
+      });
+      return /** @type {SMTPSenderDomain | null} */ (mapSMTPSenderDomain(payload));
+    },
+    async createSMTPIdentity(emailAddress, forwardTo) {
+      const payload = await request('/smtp-identities', {
+        method: 'POST',
+        body: JSON.stringify({ email_address: emailAddress, forward_to: forwardTo }),
+      });
+      return /** @type {SMTPCredentials | null} */ (mapSMTPCredentials(payload));
+    },
+    async updateSMTPIdentityForwarding(identityId, forwardTo) {
+      const payload = await request(`/smtp-identities/${encodeURIComponent(identityId)}/forwarding`, {
+        method: 'PATCH',
+        body: JSON.stringify({ forward_to: forwardTo }),
+      });
+      return /** @type {SMTPIdentity | null} */ (mapSMTPIdentity(payload));
+    },
+    async getSMTPIdentityCredentials(identityId) {
+      const payload = await request(`/smtp-identities/${encodeURIComponent(identityId)}/credentials`, {
+        method: 'GET',
+        headers: {},
+      });
+      return /** @type {SMTPCredentials | null} */ (mapSMTPCredentials(payload));
+    },
+    async rotateSMTPIdentity(identityId) {
+      const payload = await request(`/smtp-identities/${encodeURIComponent(identityId)}/rotate`, {
+        method: 'POST',
+      });
+      return /** @type {SMTPCredentials | null} */ (mapSMTPCredentials(payload));
+    },
+    async deleteSMTPIdentity(identityId) {
+      await request(`/smtp-identities/${encodeURIComponent(identityId)}`, {
+        method: 'DELETE',
+      });
+    },
+  };
+}
