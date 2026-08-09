@@ -68,3 +68,14 @@ Stack-specific instructions now live in dedicated files. Apply the relevant guid
 - Backend (Go): `issues.md/AGENTS.GO.md`
 - Docker and containerization: `issues.md/AGENTS.DOCKER.md`
 - Git and version control workflow: `issues.md/AGENTS.GIT.md`
+
+<!-- BEGIN ISSUES.MD MANAGED ONBOARDING -->
+## ISSUES.md repository workflow
+
+ISSUES.md manages this repository through the current application contract.
+
+- Use `.mprlab/ISSUES.md` as the repository issue tracker.
+- Follow `.mprlab/issues-md-format.md` for issue syntax and identifiers.
+- Use `.mprlab/runtime.yml` as the repository execution contract.
+- Keep these required documents current through the ISSUES.md onboarding pull request.
+<!-- END ISSUES.MD MANAGED ONBOARDING -->
