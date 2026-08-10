@@ -280,7 +280,7 @@ TWILIO_AUTH_TOKEN=yyyyyyyyyyyyyy
 TWILIO_FROM_NUMBER=+12015550123
 ```
 
-For a deeper walkthrough of the SMTP delivery pipeline, see [`docs/smtp_delivery_plan.md`](docs/smtp_delivery_plan.md). A multi-tenant expansion roadmap now lives in [`docs/multitenancy-plan.md`](docs/multitenancy-plan.md) and outlines the schema, API, and operational work required to host multiple clients from different domains.
+For a deeper walkthrough of the SMTP delivery pipeline, see [`docs/smtp_delivery_plan.md`](docs/smtp_delivery_plan.md). The [managed tenant configuration plan](docs/multitenancy-plan.md) defines the proposed ownership, API, credential, data conversion, and validation contracts.
 
 ### Authenticated SMTP submission for Gmail Send-As
 
