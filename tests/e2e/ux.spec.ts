@@ -7,6 +7,16 @@ const VIEWPORTS = [
   { name: 'desktop', width: 1440, height: 1000 },
 ];
 
+const PLATFORM_SERVICES = [
+  { label: 'LLM Proxy', href: 'https://llm-proxy.mprlab.com/' },
+  { label: 'TAuth', href: 'https://tauth.mprlab.com/' },
+  { label: 'Ledger', href: 'https://github.com/tyemirov/ledger' },
+  { label: 'ISSUES.md', href: 'https://issues.mprlab.com/' },
+  { label: 'Dictator', href: 'https://github.com/tyemirov/dictator' },
+  { label: 'Pinguin', href: 'https://pinguin.mprlab.com/' },
+  { label: 'LoopAware', href: 'https://loopaware.mprlab.com/' },
+];
+
 async function expectNoHorizontalOverflow(page: Page) {
   await expect
     .poll(() =>
@@ -124,6 +134,34 @@ test.describe('Compact MPR UX', () => {
     expect(brandBox).not.toBeNull();
     expect(linkBox).not.toBeNull();
     expect(linkBox!.x).toBeGreaterThan(brandBox!.x + brandBox!.width);
+  });
+
+  test('opens the seven-service MPR Platform catalog from every footer', async ({ page }) => {
+    const pages = [
+      { path: '/index.html', authenticated: false },
+      { path: '/event-log.html', authenticated: true },
+      { path: '/smtp-relay.html', authenticated: true },
+    ];
+
+    for (const pageContract of pages) {
+      await configureRuntime(page, { authenticated: pageContract.authenticated });
+      await page.goto(pageContract.path);
+
+      const footer = page.locator('mpr-footer');
+      const toggle = footer.getByRole('button', {
+        name: 'Built By Marco Polo Research Lab',
+        exact: true,
+      });
+      await expect(toggle).toBeVisible();
+      await toggle.click();
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+      const serviceLinks = footer.locator('[data-mpr-footer="menu-link"]');
+      await expect(serviceLinks).toHaveText(PLATFORM_SERVICES.map((service) => service.label));
+      for (const [index, service] of PLATFORM_SERVICES.entries()) {
+        await expect(serviceLinks.nth(index)).toHaveAttribute('href', service.href);
+      }
+    }
   });
 
   test('renders dense notification records with actions only for queued work', async ({ page, request }) => {

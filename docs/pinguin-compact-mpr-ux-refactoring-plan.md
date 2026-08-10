@@ -300,6 +300,8 @@ Keep the shared-header workspace navigation on one compact row when space is ava
 
 Use an accessible compact menu when the header cannot contain all controls.
 
+Use the shared footer drop-up to expose the seven MPR Platform services under the **Built By Marco Polo Research Lab** label.
+
 Keep the footer clear of content, dialogs, actions, and keyboard focus.
 
 ## Interaction And Accessibility Contract
@@ -412,6 +414,7 @@ Delete the superseded table-only and all-domains-expanded paths.
 - The landing page has one shared-shell sign-in control.
 - The landing page has no gradient hero or oversized marketing heading.
 - The shared-header workspace navigation identifies the current protected page.
+- The shared footer opens the seven-service MPR Platform catalog.
 - The document has no horizontal overflow at each validation width.
 - The fixed footer does not cover content or controls.
 - Every notification keeps all required data and applicable actions available.
