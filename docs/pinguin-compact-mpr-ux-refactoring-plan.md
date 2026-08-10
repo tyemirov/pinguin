@@ -2,11 +2,11 @@
 
 ## Status
 
-This document is the durable plan for the Pinguin user interface refactor.
+This document is the completed durable plan for the Pinguin user interface refactor.
 
-This document does not authorize implementation, publication, release, or deployment.
+Implementation was authorized and completed on 2026-08-10. Publication, release, and deployment remain separate operator actions.
 
-The current `PLAN.md` remains the implementation ledger for its active change.
+`.mprlab/ISSUES.md` records active work. This document records the durable completed contract.
 
 ## Objective
 
@@ -185,15 +185,14 @@ Use one shell for all Pinguin pages.
 The shell contains these elements:
 
 1. A compact shared header.
-2. A thin Pinguin workspace navigation row.
-3. A centered work surface.
-4. A compact shared footer.
+2. A centered work surface.
+3. A compact shared footer.
 
-Keep the brand and authentication control in the shared header.
+Keep the brand, workspace navigation, and authentication control in the shared header.
 
 Keep Docs as a secondary destination.
 
-Move Event log and SMTP relay to the Pinguin workspace navigation row.
+Place Event log and SMTP relay in the shared `mpr-ui` header navigation slot.
 
 Use a maximum width of `960px` for the landing page and Event log.
 
@@ -243,7 +242,9 @@ Show Reschedule and Cancel only for queued notifications.
 
 Use application dialogs instead of browser confirmation prompts.
 
-Restore focus to the action control after each dialog closes.
+Submit each destructive confirmation once while its request is pending.
+
+Restore focus to the action control after each dialog closes. When the action removes that control, move focus to the stable semantic list.
 
 Show loading, empty, error, and final-page messages inside the bordered list.
 
@@ -275,7 +276,11 @@ Send the current `email_address` and `forward_to` payload to the API.
 
 Show existing identities as dense rows.
 
+Label username, forwarding owners, and last-used values with compact semantic metadata.
+
 Place forwarding edits in the selected identity row.
+
+Keep identity-creation and forwarding-edit draft state independent.
 
 Keep credential rotation in the credential dialog.
 
@@ -297,9 +302,11 @@ Keep all primary content and actions available without horizontal page movement.
 
 Permit an internal code-value area to wrap within its record.
 
-Keep the workspace navigation on one compact row when space is available.
+Keep the shared-header workspace navigation on one compact row when space is available.
 
 Use an accessible compact menu when the header cannot contain all controls.
+
+Use the shared footer drop-up to expose the seven MPR Platform services under the **Built By Marco Polo Research Lab** label.
 
 Keep the footer clear of content, dialogs, actions, and keyboard focus.
 
@@ -312,6 +319,7 @@ Keep the footer clear of content, dialogs, actions, and keyboard focus.
 - Trap focus inside each modal dialog.
 - Close each modal dialog with Escape.
 - Restore focus after each modal dialog closes.
+- Disable a destructive confirmation while its request is pending.
 - Keep reduced-motion behavior for nonessential animation.
 - Use one clear next action in each empty state.
 - Keep error messages near the related work surface.
@@ -357,6 +365,7 @@ Delete the superseded table-only and all-domains-expanded paths.
 - Add document-width checks for all validation widths.
 - Add fixed-footer overlap checks.
 - Add focused visual snapshots for Pinguin-owned content.
+- Use one cross-platform snapshot path with a fixed locale and timezone.
 - Keep shared remote components outside the visual snapshot boundary.
 
 ### 2. Add The MPR Foundation
@@ -364,7 +373,7 @@ Delete the superseded table-only and all-domains-expanded paths.
 - Add the MPR token file.
 - Add shared compact primitives.
 - Set the initial theme to dark.
-- Add the workspace navigation row.
+- Add workspace navigation to the shared `mpr-ui` header.
 - Correct header and footer responsive behavior.
 
 ### 3. Refactor The Landing Page
@@ -412,7 +421,8 @@ Delete the superseded table-only and all-domains-expanded paths.
 - All three pages use the defined MPR density and shape contract.
 - The landing page has one shared-shell sign-in control.
 - The landing page has no gradient hero or oversized marketing heading.
-- The workspace navigation identifies the current protected page.
+- The shared-header workspace navigation identifies the current protected page.
+- The shared footer opens the seven-service MPR Platform catalog.
 - The document has no horizontal overflow at each validation width.
 - The fixed footer does not cover content or controls.
 - Every notification keeps all required data and applicable actions available.
@@ -422,10 +432,13 @@ Delete the superseded table-only and all-domains-expanded paths.
 - Identity creation uses verified domain choices.
 - Identity creation sends the current API payload.
 - Credential copy, rotation, forwarding edit, and deletion keep current behavior.
+- Identity creation never clears an active forwarding draft.
+- Destructive confirmations send one request and restore focus to a stable list when their trigger is removed.
+- SMTP identity metadata values have visible semantic labels.
 - Each dialog supports keyboard access and focus restoration.
 - Each status has text and a semantic color.
 - Reduced-motion preferences remove nonessential motion.
-- Playwright validates behavior and Pinguin-owned visual output.
+- Playwright validates behavior and canonical Pinguin-owned visual output on Darwin and Linux.
 - The final `make ci` command passes.
 
 ## Expected Files
@@ -452,6 +465,6 @@ The implementation will add the CSS and JavaScript modules that this document sp
 
 ## Authorization Boundary
 
-This plan is ready for review.
+The user explicitly authorized implementation on 2026-08-10.
 
-Implementation requires a separate and explicit user request.
+The compact MPR interface, canonical module split, responsive acceptance coverage, accessibility dialogs, and visual baselines are complete. Publication, release, and deployment remain outside this implementation.

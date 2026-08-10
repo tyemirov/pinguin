@@ -52,33 +52,45 @@ test.describe('Authenticated pages', () => {
     await configureRuntime(page, { authenticated: true });
     await page.goto('/event-log.html');
     await expectPinguinHeaderBrand(page);
-    await expect(page.getByTestId('notifications-table')).toBeVisible();
+    await expect(page.getByTestId('notifications-list')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Refresh' })).toHaveCount(1);
   });
 
   test('renders event log and SMTP relay as separate authenticated pages', async ({ page }) => {
     await configureRuntime(page, { authenticated: true });
     await page.goto('/event-log.html');
-    const horizontalMenu = page.locator('mpr-header [data-mpr-header="horizontal-links"]');
-    await expect(horizontalMenu).toBeVisible();
-    const menuLinks = horizontalMenu.locator('a');
+    const workspaceNavigation = page
+      .locator('mpr-header')
+      .getByRole('navigation', { name: 'Primary navigation' });
+    await expect(workspaceNavigation).toBeVisible();
+    const menuLinks = workspaceNavigation.locator('.workspace-navigation__link');
     await expect(menuLinks).toHaveText(['Event log', 'SMTP relay']);
     await expect(menuLinks.nth(0)).toHaveAttribute('href', '/event-log.html');
     await expect(menuLinks.nth(1)).toHaveAttribute('href', '/smtp-relay.html');
     await expect(page.getByRole('heading', { name: 'Event log' })).toBeVisible();
-    await expect(page.getByTestId('notifications-table')).toBeVisible();
-    await expect(page.getByTestId('smtp-identities')).toHaveCount(0);
+    await expect(menuLinks.nth(0)).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByTestId('notifications-list')).toBeVisible();
+    await expect(page.locator('[data-page-surface="smtp-workspace"]')).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Pinguin dashboard' })).toHaveCount(0);
     await expect(
       page.getByText('Monitor notification delivery events and manage SMTP relay access from one shared shell.'),
     ).toHaveCount(0);
 
     await page.goto('/smtp-relay.html');
-    const smtpMenu = page.locator('mpr-header [data-mpr-header="horizontal-links"]');
-    await expect(smtpMenu.locator('a')).toHaveText(['Event log', 'SMTP relay']);
+    const smtpMenu = page
+      .locator('mpr-header')
+      .getByRole('navigation', { name: 'Primary navigation' });
+    await expect(smtpMenu.locator('.workspace-navigation__link')).toHaveText([
+      'Event log',
+      'SMTP relay',
+    ]);
+    await expect(smtpMenu.locator('.workspace-navigation__link').nth(1)).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
     await expect(page.getByRole('heading', { name: 'SMTP relay' })).toBeVisible();
-    await expect(page.getByTestId('smtp-identities')).toBeVisible();
-    await expect(page.getByTestId('notifications-table')).toHaveCount(0);
+    await expect(page.locator('[data-page-surface="smtp-workspace"]')).toBeVisible();
+    await expect(page.getByTestId('notifications-list')).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Pinguin dashboard' })).toHaveCount(0);
     await expect(
       page.getByText('Monitor notification delivery events and manage SMTP relay access from one shared shell.'),
@@ -144,11 +156,11 @@ test.describe('Authenticated pages', () => {
     await configureRuntime(page, { authenticated: true });
     await page.goto('/event-log.html');
     await expect(page.getByTestId('notification-row')).toHaveCount(2);
-    const filterSelect = page.locator('label:has-text("Filter by status") select');
-    await filterSelect.selectOption('queued');
+    const statusFilter = page.getByRole('group', { name: 'Filter by status' });
+    await statusFilter.getByRole('button', { name: 'Queued' }).click();
     await expect(page.getByTestId('notification-row')).toHaveCount(1);
     await expect(page.locator('.status-badge')).toHaveAttribute('data-variant', 'queued');
-    await filterSelect.selectOption('cancelled');
+    await statusFilter.getByRole('button', { name: 'Cancelled' }).click();
     await expect(page.getByTestId('notification-row')).toHaveCount(1);
     await expect(page.locator('.status-badge')).toHaveAttribute('data-variant', 'cancelled');
   });
@@ -189,8 +201,8 @@ test.describe('Authenticated pages', () => {
 
     await page.getByLabel('Search').fill('rare launch phrase');
     await expect(page.getByTestId('notification-row')).toHaveCount(1);
-    await expect(page.getByTestId('notifications-table')).toContainText('Visible body match');
-    await expect(page.getByTestId('notifications-table')).not.toContainText('Other message');
+    await expect(page.getByTestId('notifications-list')).toContainText('Visible body match');
+    await expect(page.getByTestId('notifications-list')).not.toContainText('Other message');
 
     await page.getByLabel('Search').fill('');
     await expect(page.getByTestId('notification-row')).toHaveCount(2);
@@ -217,7 +229,7 @@ test.describe('Authenticated pages', () => {
 
     await page.getByTestId('notification-scroll-sentinel').scrollIntoViewIfNeeded();
     await expect(page.getByTestId('notification-row')).toHaveCount(60);
-    await expect(page.getByTestId('notifications-table')).toContainText('Scroll notification 59');
+    await expect(page.getByTestId('notifications-list')).toContainText('Scroll notification 59');
   });
 
   test('switches notification views between tenants', async ({ page, request }) => {
@@ -262,13 +274,13 @@ test.describe('Authenticated pages', () => {
     });
     await page.goto('/event-log.html');
     await expect(page.getByTestId('notification-row')).toHaveCount(1);
-    await expect(page.getByTestId('notifications-table')).toContainText('Alpha event');
-    await expect(page.getByTestId('notifications-table')).not.toContainText('Bravo event');
+    await expect(page.getByTestId('notifications-list')).toContainText('Alpha event');
+    await expect(page.getByTestId('notifications-list')).not.toContainText('Bravo event');
 
     await page.getByLabel('Tenant').selectOption('tenant-bravo');
     await expect(page.getByTestId('notification-row')).toHaveCount(1);
-    await expect(page.getByTestId('notifications-table')).toContainText('Bravo event');
-    await expect(page.getByTestId('notifications-table')).not.toContainText('Alpha event');
+    await expect(page.getByTestId('notifications-list')).toContainText('Bravo event');
+    await expect(page.getByTestId('notifications-list')).not.toContainText('Alpha event');
   });
 
   test('uses the tenant list for the initial admin event log view', async ({ page, request }) => {
@@ -315,16 +327,16 @@ test.describe('Authenticated pages', () => {
 
     await expect(page.getByLabel('Tenant')).toHaveValue('loopaware');
     await expect(page.getByTestId('notification-row')).toHaveCount(1);
-    await expect(page.getByTestId('notifications-table')).toContainText('Loopaware event');
-    await expect(page.getByTestId('notifications-table')).not.toContainText('Poodle Scanner event');
+    await expect(page.getByTestId('notifications-list')).toContainText('Loopaware event');
+    await expect(page.getByTestId('notifications-list')).not.toContainText('Poodle Scanner event');
   });
 
-  test('renders notification table and allows cancel', async ({ page }) => {
+  test('renders notification list and allows cancel', async ({ page }) => {
     await configureRuntime(page, { authenticated: true });
     await page.goto('/event-log.html');
     await expect(page.getByTestId('notification-row')).toHaveCount(1);
-    page.once('dialog', (dialog) => dialog.accept());
-    await page.getByRole('button', { name: 'Cancel' }).click();
+    await page.getByTestId('notification-row').getByRole('button', { name: 'Cancel', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Cancel notification' }).getByRole('button', { name: 'Cancel notification' }).click();
     await expectToast(page, 'Notification cancelled');
   });
 
@@ -381,22 +393,15 @@ test.describe('Authenticated pages', () => {
     await page.goto('/event-log.html');
     await page.getByRole('button', { name: 'Reschedule' }).click();
     const input = page.getByLabel('Delivery time');
-    const pad = (value: number) => String(value).padStart(2, '0');
-    const expected = (() => {
-      const date = new Date(scheduledFor);
-      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(
-        date.getMinutes(),
-      )}`;
-    })();
-    await expect(input).toHaveValue(expected);
+    await expect(input).toHaveValue('2030-01-01T19:04');
   });
 
   test('shows toast when cancel fails', async ({ page, request }) => {
     await resetNotifications(request, { failCancel: true });
     await configureRuntime(page, { authenticated: true });
     await page.goto('/event-log.html');
-    page.once('dialog', (dialog) => dialog.accept());
-    await page.getByRole('button', { name: 'Cancel' }).click();
+    await page.getByTestId('notification-row').getByRole('button', { name: 'Cancel', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Cancel notification' }).getByRole('button', { name: 'Cancel notification' }).click();
     await expectToast(page, 'Unable to cancel notification.');
   });
 
@@ -404,7 +409,7 @@ test.describe('Authenticated pages', () => {
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
     await configureRuntime(page, { authenticated: true });
     await page.goto('/smtp-relay.html');
-    const panel = page.getByTestId('smtp-identities');
+    const panel = page.locator('[data-page-surface="smtp-workspace"]');
     await expect(panel.getByRole('heading', { name: 'SMTP relay' })).toBeVisible();
     await expect(panel.getByText('Add a sender domain before creating SMTP credentials.')).toBeVisible();
     await panel.getByLabel('Sending domain').fill('example.com');
@@ -412,12 +417,15 @@ test.describe('Authenticated pages', () => {
     const domainCard = panel.getByTestId('smtp-domain-card');
     await expect(domainCard).toContainText('_pinguin-challenge.example.com');
     await expect(domainCard).toContainText('v=spf1 a:smtp.pinguin.test ~all');
-    await panel.getByLabel('Sender address').fill('alice@example.com');
-    await panel.getByLabel('Forward copies to').fill('owner@example.com\nmaria@example.com');
-    await expect(panel.getByRole('button', { name: 'Create' })).toBeDisabled();
+    await expect(panel.getByRole('button', { name: 'Create identity' })).toBeDisabled();
     await domainCard.getByRole('button', { name: 'Check DNS' }).click();
     await expect(domainCard.getByText('Verified').first()).toBeVisible();
-    await panel.getByRole('button', { name: 'Create' }).click();
+    await panel.getByRole('button', { name: 'Create identity' }).click();
+    const identityDialog = panel.getByRole('dialog', { name: 'Create SMTP identity' });
+    await identityDialog.getByLabel('Local part').fill('alice');
+    await identityDialog.getByLabel('Sender domain').selectOption('example.com');
+    await identityDialog.getByLabel('Forward copies to').fill('owner@example.com\nmaria@example.com');
+    await identityDialog.getByRole('button', { name: 'Create identity' }).click();
     await expect(panel.getByTestId('smtp-identity-row')).toHaveCount(1);
     await expect(panel.getByText('alice@example.com')).toBeVisible();
     await expect(panel.getByText('owner@example.com, maria@example.com')).toBeVisible();
@@ -469,7 +477,7 @@ test.describe('Authenticated pages', () => {
     });
     await configureRuntime(page, { authenticated: true });
     await page.goto('/smtp-relay.html');
-    const panel = page.getByTestId('smtp-identities');
+    const panel = page.locator('[data-page-surface="smtp-workspace"]');
     const domainCards = panel.getByTestId('smtp-domain-card');
     await expect(domainCards).toHaveCount(2);
     const alphaDomain = domainCards.filter({ hasText: 'alpha.example' });
@@ -489,7 +497,7 @@ test.describe('Authenticated pages', () => {
     });
     await configureRuntime(page, { authenticated: true });
     await page.goto('/smtp-relay.html');
-    const panel = page.getByTestId('smtp-identities');
+    const panel = page.locator('[data-page-surface="smtp-workspace"]');
 
     await panel.getByLabel('Sending domain').fill('example.com');
     await panel.getByRole('button', { name: 'Add domain' }).click();
@@ -516,7 +524,7 @@ test.describe('Authenticated pages', () => {
     });
     await configureRuntime(page, { authenticated: true });
     await page.goto('/smtp-relay.html');
-    const panel = page.getByTestId('smtp-identities');
+    const panel = page.locator('[data-page-surface="smtp-workspace"]');
     const identityRow = panel.getByTestId('smtp-identity-row');
     await expect(identityRow).toHaveCount(1);
     await expect(identityRow.getByRole('button', { name: 'View password' })).toHaveCount(0);
@@ -556,11 +564,13 @@ test.describe('Authenticated pages', () => {
     });
     await configureRuntime(page, { authenticated: true });
     await page.goto('/smtp-relay.html');
-    const panel = page.getByTestId('smtp-identities');
+    const panel = page.locator('[data-page-surface="smtp-workspace"]');
     await expect(panel.getByText('owner@example.com')).toBeVisible();
     await panel.getByRole('button', { name: 'Edit forwarding owners' }).click();
-    await expect(panel.getByLabel('Sender address')).toHaveValue('support@example.com');
-    await panel.getByLabel('Forward copies to').fill('owner@example.com\nmaria@example.com');
+    await panel
+      .getByTestId('smtp-identity-row')
+      .getByLabel('Forward copies to')
+      .fill('owner@example.com\nmaria@example.com');
     await panel.getByRole('button', { name: 'Save changes' }).click();
     await expect(panel.getByText('owner@example.com, maria@example.com')).toBeVisible();
     await expectToast(page, 'Forwarding owners updated');
@@ -583,10 +593,10 @@ test.describe('Authenticated pages', () => {
     });
     await configureRuntime(page, { authenticated: true });
     await page.goto('/smtp-relay.html');
-    const panel = page.getByTestId('smtp-identities');
+    const panel = page.locator('[data-page-surface="smtp-workspace"]');
     await expect(panel.getByTestId('smtp-identity-row')).toHaveCount(1);
-    page.once('dialog', (dialog) => dialog.accept());
     await panel.getByRole('button', { name: 'Delete' }).click();
+    await panel.getByRole('dialog', { name: 'Delete SMTP identity' }).getByRole('button', { name: 'Delete identity' }).click();
     await expect(panel.getByTestId('smtp-identity-row')).toHaveCount(0);
     await expectToast(page, 'SMTP identity deleted');
   });
@@ -595,7 +605,7 @@ test.describe('Authenticated pages', () => {
     await resetNotifications(request, { failSMTPList: true });
     await configureRuntime(page, { authenticated: true });
     await page.goto('/smtp-relay.html');
-    const panel = page.getByTestId('smtp-identities');
+    const panel = page.locator('[data-page-surface="smtp-workspace"]');
     await expect(panel.locator('.notice[data-variant="error"]')).toHaveText('Unable to load SMTP identities.');
     await expectToast(page, 'Unable to load SMTP identities.');
   });

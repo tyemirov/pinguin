@@ -12,7 +12,7 @@ LONG_TIMEOUT := timeout -k 350s -s SIGKILL 350s
 COVERAGE_PROFILE ?= coverage.out
 COVERAGE_REQUIRED_TOTAL ?= 100.0%
 
-.PHONY: format check-format lint test test-unit test-integration test-fast test-slow test-coverage test-frontend build up down ci release publish deploy
+.PHONY: format check-format lint test test-unit test-integration test-fast test-slow test-coverage test-frontend test-frontend-update build up down ci release publish deploy
 
 format:
 	$(SHORT_TIMEOUT) gofmt -w $(GO_SOURCES)
@@ -63,6 +63,9 @@ test-coverage:
 
 test-frontend:
 	CI=1 $(LONG_TIMEOUT) npm test
+
+test-frontend-update:
+	CI=1 $(LONG_TIMEOUT) npm test -- --update-snapshots
 
 build:
 	mkdir -p bin

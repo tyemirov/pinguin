@@ -474,7 +474,7 @@ export async function triggerSharedAuthCredentialAndWaitForEventLog(page: Page) 
     throw new Error('Shared auth stub unavailable or failed to trigger');
   }
   await waitForEventLog;
-  await expect(page.getByTestId('notifications-table')).toBeVisible();
+  await expect(page.getByTestId('notifications-list')).toBeVisible();
 }
 
 export async function loginAndVisitEventLog(page: Page) {

@@ -18,7 +18,7 @@ test.describe('Landing page auth flow', () => {
 
   test('shows a focused sign-in page and login button', async ({ page }) => {
     await page.goto('/index.html');
-    await expect(page.getByRole('heading', { name: /notification delivery/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Pinguin notification workspace' })).toBeVisible();
     await expectPinguinHeaderBrand(page);
     await expectSharedHeaderSignInButton(page);
     await expect(page.getByLabel('Notification workspace preview')).toBeVisible();
@@ -27,7 +27,7 @@ test.describe('Landing page auth flow', () => {
   test('completes shared mpr-ui handshake and redirects to event log', async ({ page }) => {
     await page.goto('/index.html');
     await completeHeaderLogin(page);
-    await expect(page.getByTestId('notifications-table')).toBeVisible();
+    await expect(page.getByTestId('notifications-list')).toBeVisible();
   });
 
   test('starts login from the landing page header login button', async ({ page }) => {
@@ -174,7 +174,7 @@ test.describe('Landing page auth flow', () => {
       expect(storedTheme).toBe(scenario.expected);
 
       await completeHeaderLogin(page);
-      await expect(page.getByTestId('notifications-table')).toBeVisible();
+      await expect(page.getByTestId('notifications-list')).toBeVisible();
       await page.waitForFunction((expected) => {
         const activeTheme =
           document.body.getAttribute('data-theme') ||

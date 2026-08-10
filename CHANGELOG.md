@@ -11,6 +11,7 @@
 - Add backend-backed search and infinite scroll for dashboard notification events, including cursor pagination and a single top-level refresh control.
 
 ### Bug Fixes
+- Preserve independent SMTP identity creation and forwarding drafts, submit destructive confirmations once, restore focus to stable lists after removed actions, and label identity metadata values.
 - Route gateway-terminated public SMTPS on port 465 to Pinguin's canonical private plaintext SMTP submission listener on port 587.
 - Delete the obsolete source-owned Pages `CNAME` so the schema-v3 lifecycle remains the sole authority for generated Pages metadata.
 - Align browser authentication with the current `mpr-ui@latest` config contract by removing rejected `authButton` YAML and declaring TAuth `/auth/session` restoration.
@@ -33,6 +34,9 @@
 - Publish `pinguin-doctor` in the production image and make the server the default command so gateway Compose preflight can run the doctor binary.
 
 ### Improvements
+- Replace the light, table-led browser interface with the compact dark-first MPR shell, shared-header workspace navigation, responsive notification records, one-at-a-time sender-domain DNS panels, dense SMTP identity rows, and application dialogs with focus restoration.
+- Replace the generic footer Explore menu with a Built By Marco Polo Research Lab drop-up linking the seven MPR Platform services.
+- Split front-end presentation ownership across MPR tokens, shared primitives, page-scoped styles, the session bridge, the notification list, sender domains, SMTP identities, and the credential dialog; delete the superseded table and native-confirmation paths.
 - Migrate the sole production manifest to schema v3 with typed private values, service placement, retained data, HTTP/gRPC/SMTP capabilities, Caddy routes and listeners, Pages, the server binary, and the Pinguin TAuth tenant; delegate the three production lifecycle commands to the exact sibling gateway.
 - Declare Pinguin's stable TAuth tenant requirements in the app-owned deployment manifest for gateway assembly.
 - Replace the old landing page with a focused Pinguin sign-in screen and notification queue preview.
@@ -43,6 +47,8 @@
 - Add split `configs/.env.pinguin.example` and `configs/.env.tauth.example` files for the current Compose topology.
 
 ### Testing
+- Make visual snapshots portable across Darwin and Linux with one canonical path, a fixed locale and timezone, and bounded anti-aliasing tolerance; add browser regressions for draft preservation, destructive-action re-entry, focus fallback, and identity metadata semantics.
+- Add Playwright acceptance at 390px, 768px, and 1440px for document width, footer clearance, semantic notification records, dialog focus restoration, DNS disclosure/copy behavior, verified-domain identity construction, and Pinguin-owned visual snapshots.
 - Add config and browser contract coverage for the current shared-shell `sessionPath` boundary and the absence of retired `authButton` YAML.
 - Add Playwright configuration contract coverage for frontend dev server ownership.
 - Add HTTP API regression coverage for request-log attribution fields and source-IP fallback behavior.
@@ -66,6 +72,7 @@
 - Add a `make ci` coverage gate that fails unless total Go statement coverage remains at 100.0%.
 
 ### Docs
+- Document the compact MPR shell, responsive record and DNS workflows, front-end module ownership, and the visual snapshot refresh target.
 - Document `/auth/session` as the shared-shell restoration path and keep login-button presentation component-owned.
 - Document the production Git-state requirements for release, publish, and deploy commands.
 - Document that Pinguin does not support backward compatibility, legacy schemas, legacy data, or fallback code paths.

@@ -280,7 +280,7 @@ TWILIO_AUTH_TOKEN=yyyyyyyyyyyyyy
 TWILIO_FROM_NUMBER=+12015550123
 ```
 
-For a deeper walkthrough of the SMTP delivery pipeline, see [`docs/smtp_delivery_plan.md`](docs/smtp_delivery_plan.md). A multi-tenant expansion roadmap now lives in [`docs/multitenancy-plan.md`](docs/multitenancy-plan.md) and outlines the schema, API, and operational work required to host multiple clients from different domains.
+For a deeper walkthrough of the SMTP delivery pipeline, see [`docs/smtp_delivery_plan.md`](docs/smtp_delivery_plan.md). The [managed tenant configuration plan](docs/multitenancy-plan.md) defines the proposed ownership, API, credential, data conversion, and validation contracts.
 
 ### Authenticated SMTP submission for Gmail Send-As
 
@@ -701,8 +701,13 @@ All endpoints emit structured JSON errors (`401` for auth failures, `400` for in
 ### Browser UI (beta)
 
 - Static assets live under `/web` and are served by GitHub Pages at `https://pinguin.mprlab.com` in production, with ghttp on `http://localhost:8080` for local development (the Go HTTP server keeps `/api`/`/runtime-config` on `http://localhost:8081` in this arrangement). `index.html` provides the sign-in landing experience, `event-log.html` renders notification delivery events, and `smtp-relay.html` renders SMTP relay identity management.
-- The UI follows AGENTS.md: Alpine components per section, mpr-ui header/footer, DOM-scoped events (`notifications:*`) for toasts + table refreshes, and all strings centralized in `js/constants.js`.
+- The UI uses the compact MPR visual language by default: dark charcoal surfaces, dense controls, semantic status chips, a narrow centered work surface, and a light-theme mapping with the same density and interaction roles.
+- The shared header owns brand, Event log and SMTP relay navigation, Docs, authentication, profile, and theme controls. The active workspace destination uses `aria-current="page"` inside the `mpr-ui` primary navigation region.
+- The shared footer opens a **Built By Marco Polo Research Lab** drop-up catalog for the seven MPR Platform services: LLM Proxy, TAuth, Ledger, ISSUES.md, Dictator, Pinguin, and LoopAware.
+- Event log renders responsive semantic notification records, compact search/status controls, a loaded count, and single-flight application dialogs for queued actions. SMTP relay keeps sender domains collapsed, expands one DNS setup at a time, combines each DNS requirement with its check result, labels every identity metadata value, and keeps creation and forwarding-edit drafts independent.
+- The UI follows AGENTS.md: Alpine components per section, mpr-ui header/footer, DOM-scoped events (`notifications:*`) for toasts and refreshes, and all strings centralized in `js/constants.js`.
 - `js/app.js` bootstraps Alpine, registers the UI components, and reacts to `mpr-ui:auth:*` events plus the shared `MPRUI.resolveAuthProfileSnapshot` verifier to sync profile state and guard routes. The header handles auth through `/config-ui.yaml` plus `mpr-ui-config.js`, and components talk to `/api/notifications` via the shared `apiClient`.
+- `js/core/sessionBridge.js` owns the authentication bridge. `js/ui/notificationsList.js` owns Event log behavior; `smtpDomains.js`, `smtpIdentities.js`, and `smtpCredentialsDialog.js` own the SMTP workflows.
 - Cross-tab authentication state is owned by the shared shell; Pinguin consumes only the resulting `mpr-ui` events and profile snapshot.
 - Handy for local testing: start the Compose stack so ghttp (`http://localhost:8080`) serves the `/web` bundle while the Go server handles `/api`/`/runtime-config` on `http://localhost:8081`, then visit the ghttp host to exercise the landing, Event log, and SMTP relay flows without needing an external client.
 
@@ -715,11 +720,13 @@ npm install
 npx playwright install --with-deps
 ```
 
-Then execute the browser smoke tests (landing auth CTA, Event log cancel/reschedule flows, and SMTP relay flows) with:
+Then execute the browser suite (landing auth, responsive layout, Event log actions, SMTP relay flows, accessibility focus, and visual snapshots) with:
 
 ```bash
 npm test
 ```
+
+Visual baselines use one host-independent path with the `en-US` locale and `America/Los_Angeles` timezone. When an intentional visual change is accepted, refresh the Pinguin-owned snapshot baselines with `make test-frontend-update`, then run `make test-frontend` normally.
 
 The Playwright harness spins up a lightweight local server that mocks the `/api/notifications` + TAuth endpoints so the UI can be exercised without external services.
 

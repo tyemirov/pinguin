@@ -1,37 +1,43 @@
 // @ts-check
 import { dispatchToast } from '../core/events.js';
+import { createSMTPCredentialsDialog } from './smtpCredentialsDialog.js';
+import { createSMTPDomains } from './smtpDomains.js';
 
 /** @typedef {import('../types.d.js').SMTPIdentity} SMTPIdentity */
-/** @typedef {import('../types.d.js').SMTPCredentials} SMTPCredentials */
-/** @typedef {import('../types.d.js').SMTPSenderDomain} SMTPSenderDomain */
 
 /**
+ * Creates the canonical SMTP relay workspace.
+ *
  * @param {{
  *   apiClient: ReturnType<typeof import('../core/apiClient.js').createApiClient>,
  *   strings: typeof import('../constants.js').STRINGS.smtpIdentities,
  *   actions: typeof import('../constants.js').STRINGS.actions,
  * }} options
  */
-export function createSMTPIdentities(options) {
+export function createSMTPWorkspace(options) {
   const { apiClient, strings, actions } = options;
   const authStore = () => window.Alpine.store('auth');
+  const domainState = createSMTPDomains({ apiClient, strings, authStore });
+  const credentialsDialogState = createSMTPCredentialsDialog({ strings });
 
   return {
     strings,
     actions,
+    ...domainState,
+    ...credentialsDialogState,
     identities: /** @type {SMTPIdentity[]} */ ([]),
-    domains: /** @type {SMTPSenderDomain[]} */ ([]),
-    credentials: /** @type {SMTPCredentials | null} */ (null),
-    credentialNotice: /** @type {{ variant: string, message: string } | null} */ (null),
     editingIdentityId: '',
-    domainName: '',
-    emailAddress: '',
-    forwardToText: '',
+    identityLocalPart: '',
+    selectedIdentityDomain: '',
+    identityForwardToText: '',
+    editingForwardToText: '',
     isLoading: false,
-    isLoadingDomains: false,
     isSubmitting: false,
-    checkingDomainId: 0,
     errorMessage: '',
+    identityDialogTrigger: /** @type {HTMLElement | null} */ (null),
+    forwardingEditTrigger: /** @type {HTMLElement | null} */ (null),
+    pendingDeleteIdentity: /** @type {SMTPIdentity | null} */ (null),
+    deleteDialogTrigger: /** @type {HTMLElement | null} */ (null),
     init() {
       this.refreshIfAuthenticated();
       this.$watch(
@@ -57,21 +63,6 @@ export function createSMTPIdentities(options) {
     async loadWorkspace() {
       await Promise.all([this.loadDomains(), this.loadIdentities()]);
     },
-    async loadDomains() {
-      if (!authStore().isAuthenticated) {
-        return;
-      }
-      this.isLoadingDomains = true;
-      this.errorMessage = '';
-      try {
-        this.domains = await apiClient.listSMTPDomains();
-      } catch (error) {
-        this.errorMessage = this.strings.domainLoadError;
-        dispatchToast({ variant: 'error', message: this.errorMessage });
-      } finally {
-        this.isLoadingDomains = false;
-      }
-    },
     async loadIdentities() {
       if (!authStore().isAuthenticated) {
         return;
@@ -81,126 +72,97 @@ export function createSMTPIdentities(options) {
       try {
         this.identities = await apiClient.listSMTPIdentities();
       } catch (error) {
-        this.errorMessage = this.strings.loadError;
+        this.errorMessage = strings.loadError;
         dispatchToast({ variant: 'error', message: this.errorMessage });
       } finally {
         this.isLoading = false;
       }
     },
-    async createDomain(event) {
-      event?.preventDefault();
-      const domainName = this.domainName.trim();
-      if (!domainName) {
-        this.errorMessage = this.strings.domainCreateError;
-        dispatchToast({ variant: 'error', message: this.errorMessage });
-        return;
-      }
-      this.isSubmitting = true;
+    openIdentityDialog(event) {
+      this.identityDialogTrigger =
+        event?.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+      this.identityLocalPart = '';
+      this.selectedIdentityDomain = this.verifiedDomains()[0]?.domain || '';
+      this.identityForwardToText = '';
       this.errorMessage = '';
-      try {
-        const domain = await apiClient.createSMTPDomain(domainName);
-        if (!domain) {
-          throw new Error('missing_domain');
-        }
-        this.upsertDomain(domain);
-        this.domainName = '';
-        dispatchToast({ variant: 'success', message: this.strings.domainCreateSuccess });
-      } catch (error) {
-        this.errorMessage = this.domainCreateErrorMessage(error);
-        dispatchToast({ variant: 'error', message: this.errorMessage });
-      } finally {
-        this.isSubmitting = false;
+      const dialog = this.$refs.identityDialog;
+      if (dialog && typeof dialog.showModal === 'function') {
+        dialog.showModal();
       }
     },
-    domainCreateErrorMessage(error) {
-      if (error instanceof Error) {
-        if (error.message === 'sender domain is already registered') {
-          return this.strings.domainCreateExistsError;
-        }
-        if (error.message === 'sender domain is invalid') {
-          return this.strings.domainCreateInvalidError;
-        }
-      }
-      return this.strings.domainCreateError;
-    },
-    async checkDomain(domain) {
-      this.checkingDomainId = domain.id;
-      this.errorMessage = '';
-      try {
-        const checkedDomain = await apiClient.checkSMTPDomainDNS(domain.id);
-        if (!checkedDomain) {
-          throw new Error('missing_domain');
-        }
-        this.upsertDomain(checkedDomain);
-        dispatchToast({ variant: 'success', message: this.strings.domainCheckSuccess });
-      } catch (error) {
-        this.errorMessage = this.strings.domainCheckError;
-        dispatchToast({ variant: 'error', message: this.errorMessage });
-      } finally {
-        this.checkingDomainId = 0;
+    closeIdentityDialog() {
+      const dialog = this.$refs.identityDialog;
+      if (dialog && typeof dialog.close === 'function') {
+        dialog.close();
       }
     },
-    upsertDomain(domain) {
-      const index = this.domains.findIndex((candidate) => candidate.id === domain.id);
-      if (index === -1) {
-        this.domains = [...this.domains, domain].sort((left, right) => left.domain.localeCompare(right.domain));
-        return;
-      }
-      this.domains = this.domains.map((candidate) => (candidate.id === domain.id ? domain : candidate));
+    handleIdentityDialogClosed() {
+      const trigger = this.identityDialogTrigger;
+      this.identityDialogTrigger = null;
+      this.identityLocalPart = '';
+      this.selectedIdentityDomain = '';
+      this.identityForwardToText = '';
+      this.$nextTick(() => {
+        if (trigger && trigger.isConnected) {
+          trigger.focus();
+        }
+      });
     },
     async createIdentity(event) {
       event?.preventDefault();
-      if (this.editingIdentityId) {
-        await this.updateForwarding();
-        return;
-      }
-      const emailAddress = this.emailAddress.trim();
-      const forwardTo = this.parseForwardRecipients();
-      if (!emailAddress || forwardTo.length === 0) {
-        this.errorMessage = this.strings.createError;
-        dispatchToast({ variant: 'error', message: this.errorMessage });
-        return;
-      }
-      if (!this.isSenderDomainVerified()) {
-        this.errorMessage = this.strings.domainRequiredNotice;
+      const localPart = this.identityLocalPart.trim();
+      const senderDomain = this.selectedIdentityDomain.trim();
+      const forwardTo = this.parseForwardRecipients(this.identityForwardToText);
+      const verifiedDomain = this.verifiedDomains().some(
+        (domain) => domain.domain === senderDomain,
+      );
+      if (!localPart || localPart.includes('@') || !verifiedDomain || forwardTo.length === 0) {
+        this.errorMessage = strings.createError;
         dispatchToast({ variant: 'error', message: this.errorMessage });
         return;
       }
       this.isSubmitting = true;
       this.errorMessage = '';
       try {
+        const emailAddress = `${localPart}@${senderDomain}`;
         const credentials = await apiClient.createSMTPIdentity(emailAddress, forwardTo);
         if (!credentials) {
           throw new Error('missing_credentials');
         }
         this.credentials = credentials;
-        this.emailAddress = '';
-        this.forwardToText = '';
         await this.loadIdentities();
-        this.setCredentialNotice('success', this.strings.createSuccess);
-        this.openCredentialsDialog();
+        this.setCredentialNotice('success', strings.createSuccess);
+        this.closeIdentityDialog();
+        this.$nextTick(() => this.openCredentialsDialog());
       } catch (error) {
-        this.errorMessage = this.strings.createError;
+        this.errorMessage = strings.createError;
         dispatchToast({ variant: 'error', message: this.errorMessage });
       } finally {
         this.isSubmitting = false;
       }
     },
-    editForwarding(identity) {
+    editForwarding(event, identity) {
+      this.forwardingEditTrigger =
+        event?.currentTarget instanceof HTMLElement ? event.currentTarget : null;
       this.editingIdentityId = identity.id;
-      this.emailAddress = identity.emailAddress;
-      this.forwardToText = (identity.forwardTo || []).join('\n');
+      this.editingForwardToText = (identity.forwardTo || []).join('\n');
       this.errorMessage = '';
     },
     cancelForwardingEdit() {
+      const trigger = this.forwardingEditTrigger;
+      this.forwardingEditTrigger = null;
       this.editingIdentityId = '';
-      this.emailAddress = '';
-      this.forwardToText = '';
+      this.editingForwardToText = '';
+      this.$nextTick(() => {
+        if (trigger && trigger.isConnected) {
+          trigger.focus();
+        }
+      });
     },
     async updateForwarding() {
-      const forwardTo = this.parseForwardRecipients();
+      const forwardTo = this.parseForwardRecipients(this.editingForwardToText);
       if (forwardTo.length === 0) {
-        this.errorMessage = this.strings.updateForwardingError;
+        this.errorMessage = strings.updateForwardingError;
         dispatchToast({ variant: 'error', message: this.errorMessage });
         return;
       }
@@ -210,15 +172,15 @@ export function createSMTPIdentities(options) {
         await apiClient.updateSMTPIdentityForwarding(this.editingIdentityId, forwardTo);
         this.cancelForwardingEdit();
         await this.loadIdentities();
-        dispatchToast({ variant: 'success', message: this.strings.updateForwardingSuccess });
+        dispatchToast({ variant: 'success', message: strings.updateForwardingSuccess });
       } catch (error) {
-        this.errorMessage = this.strings.updateForwardingError;
+        this.errorMessage = strings.updateForwardingError;
         dispatchToast({ variant: 'error', message: this.errorMessage });
       } finally {
         this.isSubmitting = false;
       }
     },
-    async viewCredentials(identity) {
+    async viewCredentials(event, identity) {
       this.isSubmitting = true;
       this.errorMessage = '';
       try {
@@ -227,19 +189,16 @@ export function createSMTPIdentities(options) {
           throw new Error('missing_credentials');
         }
         this.credentials = credentials;
-        this.setCredentialNotice('success', this.strings.credentialsLoadSuccess);
-        this.openCredentialsDialog();
+        this.setCredentialNotice('success', strings.credentialsLoadSuccess);
+        this.openCredentialsDialog(event?.currentTarget || null);
       } catch (error) {
-        this.errorMessage = this.strings.credentialsLoadError;
+        this.errorMessage = strings.credentialsLoadError;
         dispatchToast({ variant: 'error', message: this.errorMessage });
       } finally {
         this.isSubmitting = false;
       }
     },
-    async rotateIdentity(identity, shouldConfirm = false) {
-      if (shouldConfirm && !window.confirm(this.strings.rotateConfirm)) {
-        return;
-      }
+    async rotateIdentity(identity) {
       this.isSubmitting = true;
       this.errorMessage = '';
       try {
@@ -249,10 +208,9 @@ export function createSMTPIdentities(options) {
         }
         this.credentials = credentials;
         await this.loadIdentities();
-        this.setCredentialNotice('success', this.strings.rotateSuccess);
-        this.openCredentialsDialog();
+        this.setCredentialNotice('success', strings.rotateSuccess);
       } catch (error) {
-        this.errorMessage = this.strings.rotateError;
+        this.errorMessage = strings.rotateError;
         dispatchToast({ variant: 'error', message: this.errorMessage });
       } finally {
         this.isSubmitting = false;
@@ -260,11 +218,41 @@ export function createSMTPIdentities(options) {
     },
     async rotateCurrentCredentials() {
       if (this.credentials) {
-        await this.rotateIdentity(this.credentials.identity, false);
+        await this.rotateIdentity(this.credentials.identity);
       }
     },
-    async deleteIdentity(identity) {
-      if (!window.confirm(this.strings.deleteConfirm)) {
+    openDeleteDialog(event, identity) {
+      this.pendingDeleteIdentity = identity;
+      this.deleteDialogTrigger =
+        event?.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+      const dialog = this.$refs.deleteDialog;
+      if (dialog && typeof dialog.showModal === 'function') {
+        dialog.showModal();
+      }
+    },
+    closeDeleteDialog() {
+      const dialog = this.$refs.deleteDialog;
+      if (dialog && typeof dialog.close === 'function') {
+        dialog.close();
+      }
+    },
+    handleDeleteDialogClosed() {
+      const trigger = this.deleteDialogTrigger;
+      this.pendingDeleteIdentity = null;
+      this.deleteDialogTrigger = null;
+      this.$nextTick(() => {
+        const focusTarget = trigger && trigger.isConnected ? trigger : this.$refs.identityList;
+        if (focusTarget instanceof HTMLElement) {
+          focusTarget.focus();
+        }
+      });
+    },
+    async confirmDeleteIdentity() {
+      if (this.isSubmitting) {
+        return;
+      }
+      const identity = this.pendingDeleteIdentity;
+      if (!identity) {
         return;
       }
       this.isSubmitting = true;
@@ -272,91 +260,32 @@ export function createSMTPIdentities(options) {
       try {
         await apiClient.deleteSMTPIdentity(identity.id);
         await this.loadIdentities();
-        dispatchToast({ variant: 'success', message: this.strings.deleteSuccess });
+        dispatchToast({ variant: 'success', message: strings.deleteSuccess });
+        this.closeDeleteDialog();
       } catch (error) {
-        this.errorMessage = this.strings.deleteError;
+        this.errorMessage = strings.deleteError;
         dispatchToast({ variant: 'error', message: this.errorMessage });
       } finally {
         this.isSubmitting = false;
       }
     },
-    parseForwardRecipients() {
-      return this.forwardToText
+    /** @param {string} forwardToText */
+    parseForwardRecipients(forwardToText) {
+      return forwardToText
         .split(/[\n,;]/)
         .map((value) => value.trim())
         .filter(Boolean);
     },
-    senderDomainFromEmail() {
-      const normalizedEmail = this.emailAddress.trim().toLowerCase();
-      const atIndex = normalizedEmail.lastIndexOf('@');
-      if (atIndex === -1) {
-        return '';
-      }
-      return normalizedEmail.slice(atIndex + 1).trim();
-    },
-    senderDomainRecord() {
-      const domainName = this.senderDomainFromEmail();
-      if (!domainName) {
-        return null;
-      }
-      return this.domains.find((domain) => domain.domain === domainName) || null;
-    },
-    isSenderDomainVerified() {
-      if (this.editingIdentityId) {
-        return true;
-      }
-      const domain = this.senderDomainRecord();
-      return Boolean(domain && domain.status === 'verified');
-    },
-    senderDomainNotice() {
-      if (this.editingIdentityId || !this.emailAddress.trim()) {
-        return '';
-      }
-      return this.isSenderDomainVerified() ? '' : this.strings.domainRequiredNotice;
-    },
     credentialsRecordLabel(identity) {
-      return `${this.strings.openCredentialsLabel} ${identity.emailAddress}`;
-    },
-    domainStatusLabel(domain) {
-      return domain.status === 'verified' ? this.strings.domainVerifiedLabel : this.strings.domainPendingLabel;
-    },
-    checkStatusLabel(check) {
-      return check.passed ? this.strings.domainVerifiedLabel : this.strings.domainPendingLabel;
-    },
-    async copyCredentialValue(value, successMessage) {
-      try {
-        if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
-          throw new Error('clipboard_unavailable');
-        }
-        await navigator.clipboard.writeText(String(value ?? ''));
-        this.setCredentialNotice('success', successMessage);
-      } catch (error) {
-        this.setCredentialNotice('error', this.strings.copyError);
-      }
-    },
-    setCredentialNotice(variant, message) {
-      this.credentialNotice = { variant, message };
-    },
-    openCredentialsDialog() {
-      const dialog = this.$refs.credentialsDialog;
-      if (dialog && typeof dialog.showModal === 'function') {
-        dialog.showModal();
-      }
-    },
-    closeCredentialsDialog() {
-      const dialog = this.$refs.credentialsDialog;
-      if (dialog && typeof dialog.close === 'function') {
-        dialog.close();
-      }
-      this.credentialNotice = null;
+      return `${strings.openCredentialsLabel} ${identity.emailAddress}`;
     },
     formatTimestamp(isoString) {
       if (!isoString) {
-        return this.strings.neverUsed;
+        return strings.neverUsed;
       }
       const date = new Date(isoString);
       if (Number.isNaN(date.getTime())) {
-        return this.strings.neverUsed;
+        return strings.neverUsed;
       }
       return date.toLocaleString();
     },
