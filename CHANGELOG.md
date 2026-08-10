@@ -33,7 +33,7 @@
 - Publish `pinguin-doctor` in the production image and make the server the default command so gateway Compose preflight can run the doctor binary.
 
 ### Improvements
-- Replace the light, table-led browser interface with the compact dark-first MPR shell, responsive notification records, one-at-a-time sender-domain DNS panels, dense SMTP identity rows, and application dialogs with focus restoration.
+- Replace the light, table-led browser interface with the compact dark-first MPR shell, shared-header workspace navigation, responsive notification records, one-at-a-time sender-domain DNS panels, dense SMTP identity rows, and application dialogs with focus restoration.
 - Split front-end presentation ownership across MPR tokens, shared primitives, page-scoped styles, the session bridge, the notification list, sender domains, SMTP identities, and the credential dialog; delete the superseded table and native-confirmation paths.
 - Migrate the sole production manifest to schema v3 with typed private values, service placement, retained data, HTTP/gRPC/SMTP capabilities, Caddy routes and listeners, Pages, the server binary, and the Pinguin TAuth tenant; delegate the three production lifecycle commands to the exact sibling gateway.
 - Declare Pinguin's stable TAuth tenant requirements in the app-owned deployment manifest for gateway assembly.

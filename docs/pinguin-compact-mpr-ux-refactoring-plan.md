@@ -185,15 +185,14 @@ Use one shell for all Pinguin pages.
 The shell contains these elements:
 
 1. A compact shared header.
-2. A thin Pinguin workspace navigation row.
-3. A centered work surface.
-4. A compact shared footer.
+2. A centered work surface.
+3. A compact shared footer.
 
-Keep the brand and authentication control in the shared header.
+Keep the brand, workspace navigation, and authentication control in the shared header.
 
 Keep Docs as a secondary destination.
 
-Move Event log and SMTP relay to the Pinguin workspace navigation row.
+Place Event log and SMTP relay in the shared `mpr-ui` header navigation slot.
 
 Use a maximum width of `960px` for the landing page and Event log.
 
@@ -297,7 +296,7 @@ Keep all primary content and actions available without horizontal page movement.
 
 Permit an internal code-value area to wrap within its record.
 
-Keep the workspace navigation on one compact row when space is available.
+Keep the shared-header workspace navigation on one compact row when space is available.
 
 Use an accessible compact menu when the header cannot contain all controls.
 
@@ -364,7 +363,7 @@ Delete the superseded table-only and all-domains-expanded paths.
 - Add the MPR token file.
 - Add shared compact primitives.
 - Set the initial theme to dark.
-- Add the workspace navigation row.
+- Add workspace navigation to the shared `mpr-ui` header.
 - Correct header and footer responsive behavior.
 
 ### 3. Refactor The Landing Page
@@ -412,7 +411,7 @@ Delete the superseded table-only and all-domains-expanded paths.
 - All three pages use the defined MPR density and shape contract.
 - The landing page has one shared-shell sign-in control.
 - The landing page has no gradient hero or oversized marketing heading.
-- The workspace navigation identifies the current protected page.
+- The shared-header workspace navigation identifies the current protected page.
 - The document has no horizontal overflow at each validation width.
 - The fixed footer does not cover content or controls.
 - Every notification keeps all required data and applicable actions available.

@@ -47,13 +47,16 @@ async function expectCompactMPRTheme(page: Page) {
 }
 
 async function expectWorkspaceNavigation(page: Page, currentLabel: string) {
-  const navigation = page.getByRole('navigation', { name: 'Pinguin workspace' });
+  const header = page.locator('mpr-header');
+  const navigation = header.getByRole('navigation', { name: 'Primary navigation' });
+  const workspaceLinks = navigation.locator('.workspace-navigation__link');
   await expect(navigation).toBeVisible();
-  await expect(navigation.getByRole('link')).toHaveText(['Event log', 'SMTP relay']);
-  await expect(navigation.getByRole('link', { name: currentLabel })).toHaveAttribute(
+  await expect(workspaceLinks).toHaveText(['Event log', 'SMTP relay']);
+  await expect(workspaceLinks.filter({ hasText: currentLabel })).toHaveAttribute(
     'aria-current',
     'page',
   );
+  await expect(page.locator('workspace-navigation')).toHaveCount(0);
 }
 
 async function expectFocusRestored(trigger: Locator) {
@@ -101,6 +104,26 @@ test.describe('Compact MPR UX', () => {
     await page.goto('/smtp-relay.html');
     await expectCompactMPRTheme(page);
     await expectWorkspaceNavigation(page, 'SMTP relay');
+  });
+
+  test('places the workspace menu to the right of the Pinguin identity', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await configureRuntime(page, { authenticated: true });
+    await page.goto('/event-log.html');
+
+    const brand = page.locator('mpr-header .pinguin-brand');
+    const firstWorkspaceLink = page
+      .locator('mpr-header [data-mpr-header="nav"] .workspace-navigation__link')
+      .first();
+    await expect(brand).toBeVisible();
+    await expect(firstWorkspaceLink).toBeVisible();
+    const [brandBox, linkBox] = await Promise.all([
+      brand.boundingBox(),
+      firstWorkspaceLink.boundingBox(),
+    ]);
+    expect(brandBox).not.toBeNull();
+    expect(linkBox).not.toBeNull();
+    expect(linkBox!.x).toBeGreaterThan(brandBox!.x + brandBox!.width);
   });
 
   test('renders dense notification records with actions only for queued work', async ({ page, request }) => {

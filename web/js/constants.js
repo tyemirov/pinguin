@@ -39,7 +39,6 @@ export const RUNTIME_CONFIG = Object.freeze({
 export const STRINGS = Object.freeze({
   appName: "Pinguin Notification Service",
   navigation: {
-    label: "Pinguin workspace",
     eventLog: "Event log",
     smtpRelay: "SMTP relay",
   },

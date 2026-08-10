@@ -36,9 +36,7 @@
         <img class="pinguin-brand__mark" src="/favicon.svg" alt="" aria-hidden="true" />
         <span>Pinguin</span>
       </a>
-    </mpr-header>
-    <workspace-navigation>
-      <nav class="workspace-navigation__inner" :aria-label="STRINGS.navigation.label">
+      <span slot="nav-left" class="workspace-navigation__menu">
         <a
           class="workspace-navigation__link"
           :href="RUNTIME_CONFIG.eventLogUrl"
@@ -50,8 +48,8 @@
           :href="RUNTIME_CONFIG.smtpRelayUrl"
           x-text="STRINGS.navigation.smtpRelay"
         ></a>
-      </nav>
-    </workspace-navigation>
+      </span>
+    </mpr-header>
     <main class="page-main">
       <section
         id="event-log"

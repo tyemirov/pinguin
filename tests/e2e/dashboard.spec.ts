@@ -59,9 +59,11 @@ test.describe('Authenticated pages', () => {
   test('renders event log and SMTP relay as separate authenticated pages', async ({ page }) => {
     await configureRuntime(page, { authenticated: true });
     await page.goto('/event-log.html');
-    const workspaceNavigation = page.getByRole('navigation', { name: 'Pinguin workspace' });
+    const workspaceNavigation = page
+      .locator('mpr-header')
+      .getByRole('navigation', { name: 'Primary navigation' });
     await expect(workspaceNavigation).toBeVisible();
-    const menuLinks = workspaceNavigation.locator('a');
+    const menuLinks = workspaceNavigation.locator('.workspace-navigation__link');
     await expect(menuLinks).toHaveText(['Event log', 'SMTP relay']);
     await expect(menuLinks.nth(0)).toHaveAttribute('href', '/event-log.html');
     await expect(menuLinks.nth(1)).toHaveAttribute('href', '/smtp-relay.html');
@@ -75,9 +77,17 @@ test.describe('Authenticated pages', () => {
     ).toHaveCount(0);
 
     await page.goto('/smtp-relay.html');
-    const smtpMenu = page.getByRole('navigation', { name: 'Pinguin workspace' });
-    await expect(smtpMenu.locator('a')).toHaveText(['Event log', 'SMTP relay']);
-    await expect(smtpMenu.locator('a').nth(1)).toHaveAttribute('aria-current', 'page');
+    const smtpMenu = page
+      .locator('mpr-header')
+      .getByRole('navigation', { name: 'Primary navigation' });
+    await expect(smtpMenu.locator('.workspace-navigation__link')).toHaveText([
+      'Event log',
+      'SMTP relay',
+    ]);
+    await expect(smtpMenu.locator('.workspace-navigation__link').nth(1)).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
     await expect(page.getByRole('heading', { name: 'SMTP relay' })).toBeVisible();
     await expect(page.locator('[data-page-surface="smtp-workspace"]')).toBeVisible();
     await expect(page.getByTestId('notifications-list')).toHaveCount(0);
