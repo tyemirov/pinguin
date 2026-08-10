@@ -6,7 +6,7 @@ This document is the completed durable plan for the Pinguin user interface refac
 
 Implementation was authorized and completed on 2026-08-10. Publication, release, and deployment remain separate operator actions.
 
-The current `PLAN.md` remains the implementation ledger for its active change.
+`.mprlab/ISSUES.md` records active work. This document records the durable completed contract.
 
 ## Objective
 
