@@ -208,9 +208,15 @@
           <template x-if="!isLoading && identities.length === 0">
             <p class="empty-state" x-text="strings.emptyState"></p>
           </template>
-          <div class="identity-list">
+          <div
+            class="identity-list"
+            role="list"
+            tabindex="-1"
+            x-ref="identityList"
+            :aria-label="strings.identitiesTitle"
+          >
             <template x-for="identity in identities" :key="identity.id">
-              <article class="identity-row" data-testid="smtp-identity-row">
+              <article class="identity-row" role="listitem" data-testid="smtp-identity-row">
                 <div class="identity-row__summary">
                   <button
                     class="identity-record-button"
@@ -221,9 +227,20 @@
                   >
                     <span x-text="identity.emailAddress"></span>
                   </button>
-                  <span class="identity-row__value" x-text="identity.username"></span>
-                  <span class="identity-row__value" x-text="identity.forwardTo.join(', ')"></span>
-                  <span class="identity-row__value" x-text="formatTimestamp(identity.lastUsedAt)"></span>
+                  <dl class="identity-row__metadata">
+                    <div class="identity-row__metadata-item">
+                      <dt class="metadata-label" x-text="strings.usernameLabel"></dt>
+                      <dd class="identity-row__value" x-text="identity.username"></dd>
+                    </div>
+                    <div class="identity-row__metadata-item">
+                      <dt class="metadata-label" x-text="strings.forwardToDisplayLabel"></dt>
+                      <dd class="identity-row__value" x-text="identity.forwardTo.join(', ')"></dd>
+                    </div>
+                    <div class="identity-row__metadata-item">
+                      <dt class="metadata-label" x-text="strings.lastUsedLabel"></dt>
+                      <dd class="identity-row__value" x-text="formatTimestamp(identity.lastUsedAt)"></dd>
+                    </div>
+                  </dl>
                   <div class="identity-row__actions">
                     <button
                       class="button"
@@ -249,7 +266,7 @@
                 >
                   <label>
                     <span x-text="strings.forwardToLabel"></span>
-                    <textarea x-model="forwardToText" :placeholder="strings.forwardToPlaceholder" rows="2" required></textarea>
+                    <textarea x-model="editingForwardToText" :placeholder="strings.forwardToPlaceholder" rows="2" required></textarea>
                   </label>
                   <button class="button primary" type="submit" x-text="actions.saveChanges"></button>
                   <button class="button" type="button" x-on:click="cancelForwardingEdit()" x-text="strings.cancelEditLabel"></button>
@@ -284,7 +301,7 @@
             </label>
             <label class="identity-create-form__full">
               <span x-text="strings.forwardToLabel"></span>
-              <textarea x-model="forwardToText" :placeholder="strings.forwardToPlaceholder" rows="3" required></textarea>
+              <textarea x-model="identityForwardToText" :placeholder="strings.forwardToPlaceholder" rows="3" required></textarea>
             </label>
             <footer class="dialog__actions identity-create-form__full">
               <button class="button" type="button" x-on:click="closeIdentityDialog()" x-text="actions.close"></button>
@@ -412,7 +429,12 @@
             </header>
             <footer class="dialog__actions">
               <button class="button" type="button" x-on:click="closeDeleteDialog()" x-text="strings.deleteKeepLabel"></button>
-              <button class="button danger" type="submit" x-text="strings.deleteActionLabel"></button>
+              <button
+                class="button danger"
+                type="submit"
+                :disabled="isSubmitting"
+                x-text="strings.deleteActionLabel"
+              ></button>
             </footer>
           </form>
         </dialog>

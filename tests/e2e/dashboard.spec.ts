@@ -393,14 +393,7 @@ test.describe('Authenticated pages', () => {
     await page.goto('/event-log.html');
     await page.getByRole('button', { name: 'Reschedule' }).click();
     const input = page.getByLabel('Delivery time');
-    const pad = (value: number) => String(value).padStart(2, '0');
-    const expected = (() => {
-      const date = new Date(scheduledFor);
-      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(
-        date.getMinutes(),
-      )}`;
-    })();
-    await expect(input).toHaveValue(expected);
+    await expect(input).toHaveValue('2030-01-01T19:04');
   });
 
   test('shows toast when cancel fails', async ({ page, request }) => {

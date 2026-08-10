@@ -10,15 +10,21 @@ export default defineConfig({
   timeout: 60 * 1000,
   expect: {
     timeout: 5 * 1000,
+    toHaveScreenshot: {
+      maxDiffPixelRatio: 0.05,
+    },
   },
   fullyParallel: false,
   globalSetup: './tests/e2e/global-setup.js',
   reporter: [['list']],
   workers: 1,
+  snapshotPathTemplate: '{testDir}/{testFilePath}-snapshots/{arg}{ext}',
   use: {
     baseURL: testServerUrl,
     headless: true,
     actionTimeout: 5 * 1000,
+    locale: 'en-US',
+    timezoneId: 'America/Los_Angeles',
     trace: 'on-first-retry',
   },
   webServer: {

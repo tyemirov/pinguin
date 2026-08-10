@@ -242,7 +242,9 @@ Show Reschedule and Cancel only for queued notifications.
 
 Use application dialogs instead of browser confirmation prompts.
 
-Restore focus to the action control after each dialog closes.
+Submit each destructive confirmation once while its request is pending.
+
+Restore focus to the action control after each dialog closes. When the action removes that control, move focus to the stable semantic list.
 
 Show loading, empty, error, and final-page messages inside the bordered list.
 
@@ -274,7 +276,11 @@ Send the current `email_address` and `forward_to` payload to the API.
 
 Show existing identities as dense rows.
 
+Label username, forwarding owners, and last-used values with compact semantic metadata.
+
 Place forwarding edits in the selected identity row.
+
+Keep identity-creation and forwarding-edit draft state independent.
 
 Keep credential rotation in the credential dialog.
 
@@ -313,6 +319,7 @@ Keep the footer clear of content, dialogs, actions, and keyboard focus.
 - Trap focus inside each modal dialog.
 - Close each modal dialog with Escape.
 - Restore focus after each modal dialog closes.
+- Disable a destructive confirmation while its request is pending.
 - Keep reduced-motion behavior for nonessential animation.
 - Use one clear next action in each empty state.
 - Keep error messages near the related work surface.
@@ -358,6 +365,7 @@ Delete the superseded table-only and all-domains-expanded paths.
 - Add document-width checks for all validation widths.
 - Add fixed-footer overlap checks.
 - Add focused visual snapshots for Pinguin-owned content.
+- Use one cross-platform snapshot path with a fixed locale and timezone.
 - Keep shared remote components outside the visual snapshot boundary.
 
 ### 2. Add The MPR Foundation
@@ -424,10 +432,13 @@ Delete the superseded table-only and all-domains-expanded paths.
 - Identity creation uses verified domain choices.
 - Identity creation sends the current API payload.
 - Credential copy, rotation, forwarding edit, and deletion keep current behavior.
+- Identity creation never clears an active forwarding draft.
+- Destructive confirmations send one request and restore focus to a stable list when their trigger is removed.
+- SMTP identity metadata values have visible semantic labels.
 - Each dialog supports keyboard access and focus restoration.
 - Each status has text and a semantic color.
 - Reduced-motion preferences remove nonessential motion.
-- Playwright validates behavior and Pinguin-owned visual output.
+- Playwright validates behavior and canonical Pinguin-owned visual output on Darwin and Linux.
 - The final `make ci` command passes.
 
 ## Expected Files

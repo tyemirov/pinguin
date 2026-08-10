@@ -704,7 +704,7 @@ All endpoints emit structured JSON errors (`401` for auth failures, `400` for in
 - The UI uses the compact MPR visual language by default: dark charcoal surfaces, dense controls, semantic status chips, a narrow centered work surface, and a light-theme mapping with the same density and interaction roles.
 - The shared header owns brand, Event log and SMTP relay navigation, Docs, authentication, profile, and theme controls. The active workspace destination uses `aria-current="page"` inside the `mpr-ui` primary navigation region.
 - The shared footer opens a **Built By Marco Polo Research Lab** drop-up catalog for the seven MPR Platform services: LLM Proxy, TAuth, Ledger, ISSUES.md, Dictator, Pinguin, and LoopAware.
-- Event log renders responsive semantic notification records, compact search/status controls, a loaded count, and application dialogs for queued actions. SMTP relay keeps sender domains collapsed, expands one DNS setup at a time, combines each DNS requirement with its check result, and creates identities from a local part plus a verified domain.
+- Event log renders responsive semantic notification records, compact search/status controls, a loaded count, and single-flight application dialogs for queued actions. SMTP relay keeps sender domains collapsed, expands one DNS setup at a time, combines each DNS requirement with its check result, labels every identity metadata value, and keeps creation and forwarding-edit drafts independent.
 - The UI follows AGENTS.md: Alpine components per section, mpr-ui header/footer, DOM-scoped events (`notifications:*`) for toasts and refreshes, and all strings centralized in `js/constants.js`.
 - `js/app.js` bootstraps Alpine, registers the UI components, and reacts to `mpr-ui:auth:*` events plus the shared `MPRUI.resolveAuthProfileSnapshot` verifier to sync profile state and guard routes. The header handles auth through `/config-ui.yaml` plus `mpr-ui-config.js`, and components talk to `/api/notifications` via the shared `apiClient`.
 - `js/core/sessionBridge.js` owns the authentication bridge. `js/ui/notificationsList.js` owns Event log behavior; `smtpDomains.js`, `smtpIdentities.js`, and `smtpCredentialsDialog.js` own the SMTP workflows.
@@ -726,7 +726,7 @@ Then execute the browser suite (landing auth, responsive layout, Event log actio
 npm test
 ```
 
-When an intentional visual change is accepted, refresh the Pinguin-owned snapshot baselines with `make test-frontend-update`, then run `make test-frontend` normally.
+Visual baselines use one host-independent path with the `en-US` locale and `America/Los_Angeles` timezone. When an intentional visual change is accepted, refresh the Pinguin-owned snapshot baselines with `make test-frontend-update`, then run `make test-frontend` normally.
 
 The Playwright harness spins up a lightweight local server that mocks the `/api/notifications` + TAuth endpoints so the UI can be exercised without external services.
 

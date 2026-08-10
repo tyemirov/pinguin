@@ -58,6 +58,7 @@ export function createNotificationsList(options) {
     isLoading: false,
     isLoadingMore: false,
     isLoadingTenants: false,
+    isCancelling: false,
     hasLoadedNotifications: false,
     hasUserScrolled: false,
     errorMessage: '',
@@ -280,8 +281,9 @@ export function createNotificationsList(options) {
       this.dialogTrigger = null;
       this.pendingCancelNotification = null;
       this.$nextTick(() => {
-        if (trigger && trigger.isConnected) {
-          trigger.focus();
+        const focusTarget = trigger && trigger.isConnected ? trigger : this.$refs.notificationsList;
+        if (focusTarget instanceof HTMLElement) {
+          focusTarget.focus();
         }
       });
     },
@@ -310,14 +312,14 @@ export function createNotificationsList(options) {
       }
     },
     async confirmCancelNotification() {
-      if (!authStore().isAuthenticated) {
+      if (!authStore().isAuthenticated || this.isCancelling) {
         return;
       }
       const notification = this.pendingCancelNotification;
       if (!notification) {
         return;
       }
-      this.isLoading = true;
+      this.isCancelling = true;
       try {
         if (!notification.tenantId) {
           throw new Error('missing_tenant_id');
@@ -331,7 +333,7 @@ export function createNotificationsList(options) {
         this.errorMessage = this.strings.cancelError;
         dispatchToast({ variant: 'error', message: this.errorMessage });
       } finally {
-        this.isLoading = false;
+        this.isCancelling = false;
       }
     },
     $cleanup() {

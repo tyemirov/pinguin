@@ -41,7 +41,7 @@
   - `assets/css/tokens.css` defines the dark-first MPR roles. `base.css` owns the shared compact shell and controls; `landing.css`, `event-log.css`, and `smtp-relay.css` own page layout.
   - Protected pages place Event log and SMTP relay in the shared `<mpr-header>` `nav-left` slot, keep `aria-current="page"` on the active destination, and use the same header for product identity, Docs, authentication, and profile controls.
   - Every page configures the shared `<mpr-footer>` with one seven-service MPR Platform drop-up. Public browser products use their canonical `mprlab.com` origins; service-only Ledger and Dictator use their repository pages.
-  - Event log and SMTP relay use semantic bordered records rather than minimum-width tables. Sender domains are collapsed by default and only one DNS setup panel can be expanded.
+  - Event log and SMTP relay use semantic bordered records rather than minimum-width tables. Sender domains are collapsed by default, only one DNS setup panel can be expanded, identity metadata uses labeled definition lists, and creation drafts remain separate from inline forwarding drafts.
 - The schema-v3 `github_pages` resource publishes `/web` to the `gh-pages` branch through the sibling gateway, which generates `CNAME` from the declared domain and records and verifies `/.mprlab-release.json` against the sealed source. `web/.nojekyll` keeps GitHub Pages from running Jekyll over the static bundle.
 - `<mpr-header>` renders the shared sign-in control inside its own shadow tree. Playwright tests assert that the header shows exactly one visible shared sign-in button and that Pinguin runtime config contains no auth-provider metadata (`tests/e2e/landing.spec.ts`, `tests/e2e/utils.ts::expectSharedHeaderSignInButton`).
 
@@ -53,7 +53,8 @@
   - Dashboard guards (unauthenticated redirect, shared-shell logout).
   - Notification list, filtering, reschedule, cancel flows, and associated toasts.
   - `390px`, `768px`, and `1440px` document-width and footer-clearance acceptance.
-  - Application-dialog focus restoration, sender-domain disclosure, DNS copy feedback, verified-domain identity construction, and Pinguin-owned visual snapshots.
+  - Single-flight destructive dialogs with stable-list focus fallback, sender-domain disclosure, DNS copy feedback, verified-domain identity construction, and Pinguin-owned visual snapshots.
+  - One platform-independent snapshot path with a fixed `en-US` locale, `America/Los_Angeles` timezone, and bounded host anti-aliasing tolerance.
 - Go unit/integration tests cover configuration loading, HTTP handlers, domain scheduling logic, and the SQLite-backed scheduler worker (`go test ./...` gate).
 
 ## Configuration Files

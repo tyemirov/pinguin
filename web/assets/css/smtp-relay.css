@@ -186,7 +186,7 @@
 }
 
 .identity-row__summary {
-  grid-template-columns: minmax(11rem, 1.2fr) minmax(8rem, 0.8fr) minmax(12rem, 1.2fr) auto auto;
+  grid-template-columns: minmax(11rem, 1.2fr) minmax(0, 2.8fr) auto;
 }
 
 .identity-record-button {
@@ -205,12 +205,27 @@
 }
 
 .identity-row__value {
+  margin: 0;
   min-width: 0;
   overflow: hidden;
   color: var(--text-support);
   font-size: var(--font-size-meta);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.identity-row__metadata {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.8fr) minmax(12rem, 1.2fr) minmax(7rem, 0.8fr);
+  gap: var(--gap-sm);
+  min-width: 0;
+  margin: 0;
+}
+
+.identity-row__metadata-item {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
 }
 
 .identity-row__actions {
@@ -264,16 +279,16 @@
   }
 
   .identity-row__summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .identity-row__summary > :nth-child(3),
-  .identity-row__summary > :nth-child(4) {
+  .identity-row__metadata {
+    grid-column: 1;
     grid-row: 2;
   }
 
   .identity-row__actions {
-    grid-column: 3;
+    grid-column: 2;
     grid-row: 1 / span 2;
   }
 }
@@ -282,6 +297,7 @@
   .domain-form,
   .domain-item__summary,
   .identity-row__summary,
+  .identity-row__metadata,
   .identity-edit-form,
   .credentials-grid,
   .identity-create-form,
@@ -315,8 +331,7 @@
     grid-column: auto;
   }
 
-  .identity-row__summary > :nth-child(3),
-  .identity-row__summary > :nth-child(4),
+  .identity-row__metadata,
   .identity-row__actions {
     grid-column: auto;
     grid-row: auto;

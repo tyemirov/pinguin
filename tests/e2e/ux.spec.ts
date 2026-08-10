@@ -346,6 +346,18 @@ test.describe('Compact MPR UX', () => {
 
     await resetNotifications(request, {
       smtpDomains: [{ domain: 'example.com', status: 'verified' }],
+      smtpIdentities: [
+        {
+          id: 'smtp-visual',
+          email_address: 'alerts@example.com',
+          username: 'smtp_visual',
+          forward_to: ['operator@example.com'],
+          status: 'active',
+          last_used_at: fixedTimestamp,
+          created_at: fixedTimestamp,
+          updated_at: fixedTimestamp,
+        },
+      ],
     });
     await page.goto('/smtp-relay.html');
     await expect(page.getByTestId('page-work-surface')).toHaveScreenshot('compact-smtp-relay.png', {

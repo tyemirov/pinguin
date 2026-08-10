@@ -117,7 +117,12 @@
         <template x-if="errorMessage">
           <p class="notice" data-variant="error" x-text="errorMessage"></p>
         </template>
-        <notification-list role="list" data-testid="notifications-list">
+        <notification-list
+          role="list"
+          tabindex="-1"
+          x-ref="notificationsList"
+          data-testid="notifications-list"
+        >
           <template x-if="isLoading">
             <p class="empty-state notification-list-state" x-text="strings.loadingState"></p>
           </template>
@@ -216,7 +221,12 @@
             </header>
             <footer class="dialog__actions">
               <button class="button" type="button" x-on:click="closeCancelDialog()" x-text="strings.cancelKeepLabel"></button>
-              <button class="button danger" type="submit" x-text="strings.cancelActionLabel"></button>
+              <button
+                class="button danger"
+                type="submit"
+                :disabled="isCancelling"
+                x-text="strings.cancelActionLabel"
+              ></button>
             </footer>
           </form>
         </dialog>

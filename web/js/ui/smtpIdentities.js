@@ -29,7 +29,8 @@ export function createSMTPWorkspace(options) {
     editingIdentityId: '',
     identityLocalPart: '',
     selectedIdentityDomain: '',
-    forwardToText: '',
+    identityForwardToText: '',
+    editingForwardToText: '',
     isLoading: false,
     isSubmitting: false,
     errorMessage: '',
@@ -82,7 +83,7 @@ export function createSMTPWorkspace(options) {
         event?.currentTarget instanceof HTMLElement ? event.currentTarget : null;
       this.identityLocalPart = '';
       this.selectedIdentityDomain = this.verifiedDomains()[0]?.domain || '';
-      this.forwardToText = '';
+      this.identityForwardToText = '';
       this.errorMessage = '';
       const dialog = this.$refs.identityDialog;
       if (dialog && typeof dialog.showModal === 'function') {
@@ -100,7 +101,7 @@ export function createSMTPWorkspace(options) {
       this.identityDialogTrigger = null;
       this.identityLocalPart = '';
       this.selectedIdentityDomain = '';
-      this.forwardToText = '';
+      this.identityForwardToText = '';
       this.$nextTick(() => {
         if (trigger && trigger.isConnected) {
           trigger.focus();
@@ -111,7 +112,7 @@ export function createSMTPWorkspace(options) {
       event?.preventDefault();
       const localPart = this.identityLocalPart.trim();
       const senderDomain = this.selectedIdentityDomain.trim();
-      const forwardTo = this.parseForwardRecipients();
+      const forwardTo = this.parseForwardRecipients(this.identityForwardToText);
       const verifiedDomain = this.verifiedDomains().some(
         (domain) => domain.domain === senderDomain,
       );
@@ -144,14 +145,14 @@ export function createSMTPWorkspace(options) {
       this.forwardingEditTrigger =
         event?.currentTarget instanceof HTMLElement ? event.currentTarget : null;
       this.editingIdentityId = identity.id;
-      this.forwardToText = (identity.forwardTo || []).join('\n');
+      this.editingForwardToText = (identity.forwardTo || []).join('\n');
       this.errorMessage = '';
     },
     cancelForwardingEdit() {
       const trigger = this.forwardingEditTrigger;
       this.forwardingEditTrigger = null;
       this.editingIdentityId = '';
-      this.forwardToText = '';
+      this.editingForwardToText = '';
       this.$nextTick(() => {
         if (trigger && trigger.isConnected) {
           trigger.focus();
@@ -159,7 +160,7 @@ export function createSMTPWorkspace(options) {
       });
     },
     async updateForwarding() {
-      const forwardTo = this.parseForwardRecipients();
+      const forwardTo = this.parseForwardRecipients(this.editingForwardToText);
       if (forwardTo.length === 0) {
         this.errorMessage = strings.updateForwardingError;
         dispatchToast({ variant: 'error', message: this.errorMessage });
@@ -240,12 +241,16 @@ export function createSMTPWorkspace(options) {
       this.pendingDeleteIdentity = null;
       this.deleteDialogTrigger = null;
       this.$nextTick(() => {
-        if (trigger && trigger.isConnected) {
-          trigger.focus();
+        const focusTarget = trigger && trigger.isConnected ? trigger : this.$refs.identityList;
+        if (focusTarget instanceof HTMLElement) {
+          focusTarget.focus();
         }
       });
     },
     async confirmDeleteIdentity() {
+      if (this.isSubmitting) {
+        return;
+      }
       const identity = this.pendingDeleteIdentity;
       if (!identity) {
         return;
@@ -264,8 +269,9 @@ export function createSMTPWorkspace(options) {
         this.isSubmitting = false;
       }
     },
-    parseForwardRecipients() {
-      return this.forwardToText
+    /** @param {string} forwardToText */
+    parseForwardRecipients(forwardToText) {
+      return forwardToText
         .split(/[\n,;]/)
         .map((value) => value.trim())
         .filter(Boolean);
