@@ -2,9 +2,9 @@
 
 ## Status
 
-This document is the durable plan for the Pinguin user interface refactor.
+This document is the completed durable plan for the Pinguin user interface refactor.
 
-This document does not authorize implementation, publication, release, or deployment.
+Implementation was authorized and completed on 2026-08-10. Publication, release, and deployment remain separate operator actions.
 
 The current `PLAN.md` remains the implementation ledger for its active change.
 
@@ -452,6 +452,6 @@ The implementation will add the CSS and JavaScript modules that this document sp
 
 ## Authorization Boundary
 
-This plan is ready for review.
+The user explicitly authorized implementation on 2026-08-10.
 
-Implementation requires a separate and explicit user request.
+The compact MPR interface, canonical module split, responsive acceptance coverage, accessibility dialogs, and visual baselines are complete. Publication, release, and deployment remain outside this implementation.

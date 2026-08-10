@@ -424,4 +424,4 @@ make: *** [test-frontend] Error 1
 *do not work on these, not ready*
 
 - [ ] [PG-386] Keep public SMTPS on port 465 while routing Caddy to Pinguin's canonical private plaintext SMTP submission listener on port 587; prove the public TLS SMTP dialogue with real mail software on the disposable deployment host.
-- [ ] [PG-387] Review the [compact MPR UX refactoring plan](../docs/pinguin-compact-mpr-ux-refactoring-plan.md). This planning issue does not authorize implementation.
+- [x] [PG-387] Reviewed and implemented the [compact MPR UX refactoring plan](../docs/pinguin-compact-mpr-ux-refactoring-plan.md): dark-first shared shell, responsive notification records, single-panel DNS setup, verified-domain identity creation, accessible application dialogs, and visual acceptance coverage are complete.

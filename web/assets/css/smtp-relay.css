@@ -1,0 +1,324 @@
+.smtp-workspace {
+  overflow: hidden;
+}
+
+.workspace-section + .workspace-section {
+  border-top: 1px solid var(--border-color);
+}
+
+.workspace-section__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--gap-md);
+  padding: var(--gap-md);
+  background: var(--surface-panel);
+}
+
+.workspace-section__header h2,
+.workspace-section__header p {
+  margin: 0;
+}
+
+.workspace-section__header h2 {
+  font-size: var(--font-size-title);
+}
+
+.workspace-section__header p {
+  margin-top: var(--gap-2xs);
+  color: var(--text-muted);
+  font-size: var(--font-size-meta);
+}
+
+.domain-form {
+  display: grid;
+  grid-template-columns: minmax(11rem, 16rem) auto;
+  gap: var(--gap-sm);
+  align-items: end;
+}
+
+.domain-list,
+.identity-list {
+  display: grid;
+}
+
+.domain-item,
+.identity-row {
+  min-width: 0;
+  border-top: 1px solid var(--border-color);
+  background: var(--surface-raised);
+}
+
+.domain-item__summary,
+.identity-row__summary {
+  display: grid;
+  gap: var(--gap-md);
+  align-items: center;
+  min-width: 0;
+  padding: 0.6rem var(--gap-md);
+}
+
+.domain-item__summary {
+  grid-template-columns: minmax(10rem, 1fr) auto auto auto;
+}
+
+.domain-item__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  min-width: 0;
+}
+
+.domain-item__identity strong {
+  overflow: hidden;
+  font-size: var(--font-size-title);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.domain-item__checked {
+  color: var(--text-muted);
+  font-size: var(--font-size-meta);
+  white-space: nowrap;
+}
+
+.domain-item__details {
+  display: grid;
+  gap: var(--gap-sm);
+  padding: var(--gap-md);
+  border-top: 1px solid var(--border-color);
+  background: var(--surface);
+}
+
+.dns-record-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+  gap: var(--gap-sm);
+  min-width: 0;
+  padding: var(--gap-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+}
+
+.dns-record-row__header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-sm);
+}
+
+.dns-record-row__purpose {
+  color: var(--text-support);
+  font-size: var(--font-size-ui);
+  font-weight: 650;
+}
+
+.dns-value {
+  display: grid;
+  gap: var(--gap-2xs);
+  min-width: 0;
+}
+
+.dns-value__content,
+.copy-field {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.dns-value code,
+.credential-plain-text {
+  display: block;
+  min-width: 0;
+  padding: 0.45rem 2.7rem 0.45rem 0.55rem;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-control);
+  background: var(--surface-panel);
+  color: var(--text-support);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-meta);
+  line-height: 1.45;
+}
+
+.dns-record-row__result {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-meta);
+}
+
+.copy-field input {
+  padding-right: 2.7rem;
+  font-family: var(--font-family-mono);
+}
+
+.copy-field__button {
+  position: absolute;
+  top: 50%;
+  right: 0.28rem;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.copy-field__button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.copy-field__button svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.identity-row__summary {
+  grid-template-columns: minmax(11rem, 1.2fr) minmax(8rem, 0.8fr) minmax(12rem, 1.2fr) auto auto;
+}
+
+.identity-record-button {
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: var(--text-color);
+  font-size: var(--font-size-title);
+  font-weight: 650;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.identity-row__value {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-support);
+  font-size: var(--font-size-meta);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.identity-row__actions {
+  display: flex;
+  gap: var(--gap-xs);
+}
+
+.identity-edit-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: var(--gap-sm);
+  align-items: end;
+  padding: var(--gap-md);
+  border-top: 1px solid var(--border-color);
+  background: var(--surface-panel);
+}
+
+.credentials-grid,
+.identity-create-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--gap-sm);
+}
+
+.credentials-grid__full,
+.identity-create-form__full {
+  grid-column: 1 / -1;
+}
+
+.credential-notice {
+  min-height: 2.3rem;
+}
+
+.credentials-field {
+  display: grid;
+  gap: var(--gap-2xs);
+}
+
+.credential-plain-text {
+  min-height: 2rem;
+}
+
+@media (max-width: 900px) {
+  .workspace-section__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .domain-form {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .identity-row__summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  }
+
+  .identity-row__summary > :nth-child(3),
+  .identity-row__summary > :nth-child(4) {
+    grid-row: 2;
+  }
+
+  .identity-row__actions {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+  }
+}
+
+@media (max-width: 620px) {
+  .domain-form,
+  .domain-item__summary,
+  .identity-row__summary,
+  .identity-edit-form,
+  .credentials-grid,
+  .identity-create-form,
+  .dns-record-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .domain-item__summary {
+    gap: var(--gap-sm);
+  }
+
+  .domain-item__identity,
+  .dns-record-row__header,
+  .identity-row__actions {
+    grid-column: auto;
+  }
+
+  .domain-item__summary > .button,
+  .identity-row__actions > .button {
+    flex: 1;
+  }
+
+  .domain-item__checked {
+    white-space: normal;
+  }
+
+  .dns-record-row__header,
+  .dns-record-row__result,
+  .credentials-grid__full,
+  .identity-create-form__full {
+    grid-column: auto;
+  }
+
+  .identity-row__summary > :nth-child(3),
+  .identity-row__summary > :nth-child(4),
+  .identity-row__actions {
+    grid-column: auto;
+    grid-row: auto;
+  }
+}

@@ -34,9 +34,13 @@
 
 ## Front-End Structure
 - `/web` hosts an Alpine.js-based bundle that follows `AGENTS.md` guidelines:
-  - `index.html` (landing page), `event-log.html`, and `smtp-relay.html` import `mpr-ui` CSS via CDN, load `/config-ui.yaml` through `mpr-ui-config.js`, initialize Pinguin runtime URLs through `/js/runtime-config.js`, and bootstrap via `/js/app.js`.
+  - `index.html` (landing page), `event-log.html`, and `smtp-relay.html` import `mpr-ui` CSS via CDN, load the compact MPR token/base stylesheet pair plus one page stylesheet, load `/config-ui.yaml` through `mpr-ui-config.js`, initialize Pinguin runtime URLs through `/js/runtime-config.js`, and bootstrap via `/js/app.js`.
 - `/js/bootstrap.js` centralizes runtime config resolution and lazy loading of the main app module.
-  - Alpine factories live under `/js/ui/` and `/js/core/`. Notifications table logic dispatches DOM-scoped events for toast updates and API refreshes.
+  - `js/app.js` is the composition root. `js/core/sessionBridge.js` owns the shared-shell session boundary, and `js/core/apiClient.js` owns Pinguin REST access.
+  - `js/ui/notificationsList.js` owns the responsive notification records and application dialogs. SMTP behavior is split across `smtpDomains.js`, `smtpIdentities.js`, and `smtpCredentialsDialog.js`.
+  - `assets/css/tokens.css` defines the dark-first MPR roles. `base.css` owns the shared compact shell and controls; `landing.css`, `event-log.css`, and `smtp-relay.css` own page layout.
+  - Protected pages use a Pinguin workspace navigation row with `aria-current="page"`; the shared header keeps only product identity, Docs, authentication, and profile controls.
+  - Event log and SMTP relay use semantic bordered records rather than minimum-width tables. Sender domains are collapsed by default and only one DNS setup panel can be expanded.
 - The schema-v3 `github_pages` resource publishes `/web` to the `gh-pages` branch through the sibling gateway, which generates `CNAME` from the declared domain and records and verifies `/.mprlab-release.json` against the sealed source. `web/.nojekyll` keeps GitHub Pages from running Jekyll over the static bundle.
 - `<mpr-header>` renders the shared sign-in control inside its own shadow tree. Playwright tests assert that the header shows exactly one visible shared sign-in button and that Pinguin runtime config contains no auth-provider metadata (`tests/e2e/landing.spec.ts`, `tests/e2e/utils.ts::expectSharedHeaderSignInButton`).
 
@@ -47,6 +51,8 @@
   - Header contract coverage through `web/config-ui.yaml` and `mpr-ui-config.js`.
   - Dashboard guards (unauthenticated redirect, shared-shell logout).
   - Notification list, filtering, reschedule, cancel flows, and associated toasts.
+  - `390px`, `768px`, and `1440px` document-width and footer-clearance acceptance.
+  - Application-dialog focus restoration, sender-domain disclosure, DNS copy feedback, verified-domain identity construction, and Pinguin-owned visual snapshots.
 - Go unit/integration tests cover configuration loading, HTTP handlers, domain scheduling logic, and the SQLite-backed scheduler worker (`go test ./...` gate).
 
 ## Configuration Files

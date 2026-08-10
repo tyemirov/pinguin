@@ -42,7 +42,7 @@ const inputFormatter = {
  *   actions: typeof import('../constants.js').STRINGS.actions,
  * }} options
  */
-export function createNotificationsTable(options) {
+export function createNotificationsList(options) {
   const { apiClient, strings, actions } = options;
   const authStore = () => window.Alpine.store('auth');
 
@@ -61,7 +61,8 @@ export function createNotificationsTable(options) {
     hasLoadedNotifications: false,
     hasUserScrolled: false,
     errorMessage: '',
-    scheduleDialogVisible: false,
+    pendingCancelNotification: /** @type {NotificationItem | null} */ (null),
+    dialogTrigger: /** @type {HTMLElement | null} */ (null),
     scheduleForm: {
       id: '',
       tenantId: '',
@@ -199,6 +200,13 @@ export function createNotificationsTable(options) {
     async changeTenant() {
       await this.loadNotifications();
     },
+    async selectStatusFilter(status) {
+      this.statusFilter = status;
+      await this.loadNotifications();
+    },
+    loadedCountLabel() {
+      return `${this.notifications.length} ${this.strings.loadedLabel}`;
+    },
     changeSearch() {
       if (this.searchDebounceTimer) {
         clearTimeout(this.searchDebounceTimer);
@@ -236,22 +244,46 @@ export function createNotificationsTable(options) {
       }
       return date.toLocaleString();
     },
-    openScheduleDialog(notification) {
+    openScheduleDialog(event, notification) {
+      this.dialogTrigger = event?.currentTarget instanceof HTMLElement ? event.currentTarget : null;
       this.scheduleForm.id = notification.id;
       this.scheduleForm.tenantId = notification.tenantId || '';
       this.scheduleForm.scheduledTime = inputFormatter.toControlValue(notification.scheduledFor);
-      this.scheduleDialogVisible = true;
       const dialog = this.$refs.scheduleDialog;
       if (dialog && typeof dialog.showModal === 'function') {
         dialog.showModal();
       }
     },
     closeScheduleDialog() {
-      this.scheduleDialogVisible = false;
       const dialog = this.$refs.scheduleDialog;
       if (dialog && typeof dialog.close === 'function') {
         dialog.close();
       }
+    },
+    openCancelDialog(event, notification) {
+      this.dialogTrigger = event?.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+      this.pendingCancelNotification = notification;
+      const dialog = this.$refs.cancelDialog;
+      if (dialog && typeof dialog.showModal === 'function') {
+        dialog.showModal();
+      }
+    },
+    closeCancelDialog() {
+      const dialog = this.$refs.cancelDialog;
+      if (dialog && typeof dialog.close === 'function') {
+        dialog.close();
+      }
+      this.pendingCancelNotification = null;
+    },
+    handleDialogClosed() {
+      const trigger = this.dialogTrigger;
+      this.dialogTrigger = null;
+      this.pendingCancelNotification = null;
+      this.$nextTick(() => {
+        if (trigger && trigger.isConnected) {
+          trigger.focus();
+        }
+      });
     },
     async submitSchedule(event) {
       event?.preventDefault();
@@ -277,11 +309,12 @@ export function createNotificationsTable(options) {
         dispatchToast({ variant: 'error', message: this.errorMessage });
       }
     },
-    async cancelNotification(notification) {
+    async confirmCancelNotification() {
       if (!authStore().isAuthenticated) {
         return;
       }
-      if (!window.confirm(this.strings.cancelConfirm)) {
+      const notification = this.pendingCancelNotification;
+      if (!notification) {
         return;
       }
       this.isLoading = true;
@@ -293,6 +326,7 @@ export function createNotificationsTable(options) {
         await apiClient.cancelNotification(notification.id, targetTenantId);
         await this.loadNotifications();
         dispatchToast({ variant: 'success', message: this.strings.cancelSuccess });
+        this.closeCancelDialog();
       } catch (error) {
         this.errorMessage = this.strings.cancelError;
         dispatchToast({ variant: 'error', message: this.errorMessage });

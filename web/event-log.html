@@ -1,5 +1,5 @@
-<!DOCTYPE html>
-<html lang="en" data-theme="light" data-mpr-theme="light">
+<!doctype html>
+<html lang="en" data-theme="dark" data-mpr-theme="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -9,7 +9,9 @@
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.css"
     />
+    <link rel="stylesheet" href="/assets/css/tokens.css" />
     <link rel="stylesheet" href="/assets/css/base.css" />
+    <link rel="stylesheet" href="/assets/css/event-log.css" />
     <script defer src="/js/google-analytics.js"></script>
     <script defer src="/js/runtime-config.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
@@ -20,54 +22,52 @@
       data-mpr-ui-bundle-src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js"
     ></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-      <script defer src="https://loopaware.mprlab.com/pixel.js?site_id=e8f235c8-ddf2-46b7-ae42-022885fe8a44"></script>
+    <script defer src="https://loopaware.mprlab.com/pixel.js?site_id=e8f235c8-ddf2-46b7-ae42-022885fe8a44"></script>
   </head>
-  <body
-    data-page="event-log"
-    x-data="appShell()"
-    class="theme-light"
-  >
+  <body data-page="event-log" class="theme-dark" data-theme="dark" x-data="appShell()">
     <mpr-header
       id="pinguin-event-log-header"
       data-config-url="/config-ui.yaml"
       brand-label="Pinguin"
       brand-href="/"
       nav-links='[{ "label": "Docs", "href": "https://github.com/tyemirov/pinguin" }]'
-      horizontal-links='{
-        "alignment": "right",
-        "links": [
-          { "label": "Event log", "href": "/event-log.html" },
-          { "label": "SMTP relay", "href": "/smtp-relay.html" }
-        ]
-      }'
     >
       <a slot="brand" class="pinguin-brand" href="/" aria-label="Pinguin home">
         <img class="pinguin-brand__mark" src="/favicon.svg" alt="" aria-hidden="true" />
         <span>Pinguin</span>
       </a>
     </mpr-header>
-    <main class="anchor-section">
+    <workspace-navigation>
+      <nav class="workspace-navigation__inner" :aria-label="STRINGS.navigation.label">
+        <a
+          class="workspace-navigation__link"
+          :href="RUNTIME_CONFIG.eventLogUrl"
+          aria-current="page"
+          x-text="STRINGS.navigation.eventLog"
+        ></a>
+        <a
+          class="workspace-navigation__link"
+          :href="RUNTIME_CONFIG.smtpRelayUrl"
+          x-text="STRINGS.navigation.smtpRelay"
+        ></a>
+      </nav>
+    </workspace-navigation>
+    <main class="page-main">
       <section
         id="event-log"
-        class="panel"
+        class="page-work-surface panel event-log-panel"
         aria-labelledby="event-log-title"
-        x-data="notificationsTable()"
-        data-testid="notifications-table"
+        x-data="notificationsList()"
+        data-testid="page-work-surface"
       >
         <header class="panel-header">
           <div>
             <h1 id="event-log-title" class="section-title" x-text="strings.title"></h1>
             <p class="text-muted" x-text="strings.subtitle"></p>
           </div>
-          <button
-            class="button secondary"
-            type="button"
-            x-on:click="loadNotifications()"
-            x-text="actions.refresh"
-          ></button>
         </header>
-        <div class="filters" style="margin-bottom: 1rem">
-          <label style="flex: 1; min-width: 220px">
+        <section class="event-log-toolbar" aria-label="Event log controls">
+          <label>
             <span x-text="strings.tenantLabel"></span>
             <select
               x-model="selectedTenantId"
@@ -79,7 +79,7 @@
               </template>
             </select>
           </label>
-          <label style="flex: 1; min-width: 200px">
+          <label>
             <span x-text="strings.searchLabel"></span>
             <input
               type="search"
@@ -88,17 +88,30 @@
               autocomplete="off"
             />
           </label>
-          <label style="flex: 1; min-width: 200px">
-            <span>Filter by status</span>
-            <select x-model="statusFilter" x-on:change="loadNotifications()">
+          <fieldset class="status-filter">
+            <legend x-text="strings.statusFilterLabel"></legend>
+            <div class="status-filter__options">
               <template x-for="option in STATUS_OPTIONS" :key="option.value">
-                <option :value="option.value" x-text="option.label"></option>
+                <button
+                  class="filter-chip"
+                  type="button"
+                  :aria-pressed="String(statusFilter === option.value)"
+                  x-on:click="selectStatusFilter(option.value)"
+                  x-text="option.label"
+                ></button>
               </template>
-            </select>
-          </label>
-        </div>
+            </div>
+          </fieldset>
+          <span class="loaded-count" data-testid="loaded-count" x-text="loadedCountLabel()"></span>
+          <button
+            class="button"
+            type="button"
+            x-on:click="loadNotifications()"
+            x-text="actions.refresh"
+          ></button>
+        </section>
         <p
-          class="text-muted"
+          class="notification-page-status"
           x-cloak
           x-show="isLoadingTenants"
           x-text="strings.tenantLoading"
@@ -106,139 +119,112 @@
         <template x-if="errorMessage">
           <p class="notice" data-variant="error" x-text="errorMessage"></p>
         </template>
-        <div class="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>Notification</th>
-                <th>Tenant</th>
-                <th>Status</th>
-                <th>Recipient</th>
-                <th>Scheduled for</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <template x-if="isLoading">
-                <tr>
-                  <td colspan="6" class="empty-state">
-                    Loading notifications…
-                  </td>
-                </tr>
+        <notification-list role="list" data-testid="notifications-list">
+          <template x-if="isLoading">
+            <p class="empty-state notification-list-state" x-text="strings.loadingState"></p>
+          </template>
+          <template x-if="!isLoading && notifications.length === 0">
+            <p class="empty-state notification-list-state" x-text="strings.emptyState"></p>
+          </template>
+          <template x-for="item in notifications" :key="item.id">
+            <article class="notification-record" role="listitem" data-testid="notification-row">
+              <div class="notification-record__primary">
+                <h2 x-text="item.subject || strings.untitledLabel"></h2>
+                <p class="notification-record__recipient" x-text="item.recipient"></p>
+                <p class="notification-record__created">
+                  <span x-text="strings.createdLabel"></span>
+                  <time x-text="formatTimestamp(item.createdAt)"></time>
+                </p>
+              </div>
+              <div class="notification-record__metadata">
+                <span class="notification-record__metadata-item">
+                  <span class="metadata-label" x-text="strings.tenantMetadataLabel"></span>
+                  <span x-text="item.tenantId || '—'"></span>
+                </span>
+                <span class="status-badge" :data-variant="item.status" x-text="formatStatus(item.status)"></span>
+                <span class="notification-record__metadata-item">
+                  <span class="metadata-label" x-text="strings.scheduledLabel"></span>
+                  <span x-text="formatTimestamp(item.scheduledFor)"></span>
+                </span>
+              </div>
+              <template x-if="item.status === 'queued'">
+                <div class="notification-record__actions">
+                  <button
+                    class="button"
+                    type="button"
+                    x-on:click="openScheduleDialog($event, item)"
+                    x-text="actions.reschedule"
+                  ></button>
+                  <button
+                    class="button danger"
+                    type="button"
+                    x-on:click="openCancelDialog($event, item)"
+                    x-text="actions.cancel"
+                  ></button>
+                </div>
               </template>
-              <template x-if="!isLoading && notifications.length === 0">
-                <tr>
-                  <td
-                    colspan="6"
-                    class="empty-state"
-                    x-text="strings.emptyState"
-                  ></td>
-                </tr>
-              </template>
-              <template x-for="item in notifications" :key="item.id">
-                <tr data-testid="notification-row">
-                  <td>
-                    <strong
-                      x-text="item.subject || 'Untitled notification'"
-                    ></strong>
-                    <p class="text-muted">
-                      Created
-                      <span x-text="formatTimestamp(item.createdAt)"></span>
-                    </p>
-                  </td>
-                  <td x-text="item.tenantId || '—'"></td>
-                  <td>
-                    <span
-                      class="status-badge"
-                      :data-variant="item.status"
-                      x-text="formatStatus(item.status)"
-                    ></span>
-                  </td>
-                  <td>
-                    <span x-text="item.recipient"></span>
-                  </td>
-                  <td x-text="formatTimestamp(item.scheduledFor)"></td>
-                  <td style="min-width: 220px">
-                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap">
-                      <button
-                        class="button secondary"
-                        type="button"
-                        x-on:click="openScheduleDialog(item)"
-                        :disabled="item.status !== 'queued'"
-                        x-text="actions.reschedule"
-                      ></button>
-                      <button
-                        class="button danger"
-                        type="button"
-                        x-on:click="cancelNotification(item)"
-                        :disabled="item.status !== 'queued'"
-                        x-text="actions.cancel"
-                      ></button>
-                    </div>
-                  </td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
-        </div>
+            </article>
+          </template>
+        </notification-list>
         <div
-          class="table-scroll-sentinel"
+          class="notification-scroll-sentinel"
           x-ref="scrollSentinel"
           data-testid="notification-scroll-sentinel"
           aria-hidden="true"
         ></div>
         <p
-          class="text-muted table-page-status"
+          class="notification-page-status"
           x-cloak
           x-show="isLoadingMore"
           x-text="strings.loadingMore"
         ></p>
         <p
-          class="text-muted table-page-status"
+          class="notification-page-status"
           x-cloak
           x-show="hasLoadedNotifications && notifications.length > 0 && !nextCursor && !isLoadingMore"
           x-text="strings.endOfResults"
         ></p>
-        <dialog class="dialog" x-ref="scheduleDialog">
+        <dialog
+          class="dialog"
+          x-ref="scheduleDialog"
+          aria-labelledby="schedule-dialog-title"
+          x-on:close="handleDialogClosed()"
+        >
           <form class="dialog__body" x-on:submit.prevent="submitSchedule">
-            <div>
-              <h3 x-text="strings.scheduleDialogTitle"></h3>
-              <p
-                class="text-muted"
-                x-text="strings.scheduleDialogDescription"
-              ></p>
-            </div>
+            <header class="dialog__header">
+              <h2 id="schedule-dialog-title" x-text="strings.scheduleDialogTitle"></h2>
+              <p x-text="strings.scheduleDialogDescription"></p>
+            </header>
             <label>
-              <span>Delivery time</span>
-              <input
-                type="datetime-local"
-                x-model="scheduleForm.scheduledTime"
-                required
-              />
+              <span x-text="strings.deliveryTimeLabel"></span>
+              <input type="datetime-local" x-model="scheduleForm.scheduledTime" required />
             </label>
-            <div style="display: flex; gap: 0.75rem; justify-content: flex-end">
-              <button
-                class="button secondary"
-                type="button"
-                x-on:click="closeScheduleDialog()"
-                x-text="actions.close"
-              ></button>
-              <button
-                class="button primary"
-                type="submit"
-                x-text="actions.saveChanges"
-              ></button>
-            </div>
+            <footer class="dialog__actions">
+              <button class="button" type="button" x-on:click="closeScheduleDialog()" x-text="actions.close"></button>
+              <button class="button primary" type="submit" x-text="actions.saveChanges"></button>
+            </footer>
+          </form>
+        </dialog>
+        <dialog
+          class="dialog"
+          x-ref="cancelDialog"
+          aria-labelledby="cancel-dialog-title"
+          x-on:close="handleDialogClosed()"
+        >
+          <form class="dialog__body" x-on:submit.prevent="confirmCancelNotification">
+            <header class="dialog__header">
+              <h2 id="cancel-dialog-title" x-text="strings.cancelDialogTitle"></h2>
+              <p x-text="strings.cancelDialogDescription"></p>
+            </header>
+            <footer class="dialog__actions">
+              <button class="button" type="button" x-on:click="closeCancelDialog()" x-text="strings.cancelKeepLabel"></button>
+              <button class="button danger" type="submit" x-text="strings.cancelActionLabel"></button>
+            </footer>
           </form>
         </dialog>
       </section>
     </main>
-    <div
-      class="toast-center"
-      x-data="toastCenter()"
-      x-init="init()"
-      aria-live="polite"
-    >
+    <div class="toast-center" x-data="toastCenter()" x-init="init()" aria-live="polite">
       <template x-for="toast in toasts" :key="toast.id">
         <button
           type="button"

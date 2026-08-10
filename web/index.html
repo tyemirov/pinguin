@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="light" data-mpr-theme="light">
+<html lang="en" data-theme="dark" data-mpr-theme="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -9,7 +9,9 @@
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.css"
     />
+    <link rel="stylesheet" href="/assets/css/tokens.css" />
     <link rel="stylesheet" href="/assets/css/base.css" />
+    <link rel="stylesheet" href="/assets/css/landing.css" />
     <script defer src="/js/google-analytics.js"></script>
     <script defer src="/js/runtime-config.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
@@ -20,9 +22,9 @@
       data-mpr-ui-bundle-src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js"
     ></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-      <script defer src="https://loopaware.mprlab.com/pixel.js?site_id=e8f235c8-ddf2-46b7-ae42-022885fe8a44"></script>
+    <script defer src="https://loopaware.mprlab.com/pixel.js?site_id=e8f235c8-ddf2-46b7-ae42-022885fe8a44"></script>
   </head>
-  <body data-page="landing" class="theme-light" x-data="appShell()">
+  <body data-page="landing" class="theme-dark" data-theme="dark" x-data="appShell()">
     <mpr-header
       id="pinguin-header"
       data-config-url="/config-ui.yaml"
@@ -35,35 +37,36 @@
         <span>Pinguin</span>
       </a>
     </mpr-header>
-    <main class="landing-page">
-      <section class="landing-shell" x-data="landingAuthPanel()" x-init="init()">
-        <div class="landing-copy">
+    <main class="page-main landing-page">
+      <section
+        class="page-work-surface landing-shell"
+        data-testid="page-work-surface"
+        x-data="landingAuthPanel()"
+        x-init="init()"
+      >
+        <header class="landing-copy">
           <p class="eyebrow" x-text="STRINGS.landing.eyebrow"></p>
           <h1 x-text="STRINGS.landing.headline"></h1>
           <p class="landing-summary" x-text="STRINGS.landing.subheadline"></p>
-          <p class="landing-status" x-text="notice"></p>
-        </div>
-        <aside class="landing-preview" aria-label="Notification workspace preview">
-          <div class="preview-toolbar">
-            <span>Queue</span>
-            <strong>Live</strong>
-          </div>
+          <p class="landing-status" role="status" aria-live="polite" x-text="notice"></p>
+        </header>
+        <aside
+          class="landing-preview"
+          data-testid="notification-preview"
+          :aria-label="STRINGS.landing.previewLabel"
+        >
+          <header class="preview-toolbar">
+            <span x-text="STRINGS.landing.previewTitle"></span>
+            <strong x-text="STRINGS.landing.previewState"></strong>
+          </header>
           <ol class="preview-list">
-            <li>
-              <span class="preview-status" data-variant="queued">Queued</span>
-              <span>Welcome email</span>
-              <time>09:30</time>
-            </li>
-            <li>
-              <span class="preview-status" data-variant="sent">Sent</span>
-              <span>SMS reminder</span>
-              <time>10:15</time>
-            </li>
-            <li>
-              <span class="preview-status" data-variant="errored">Retrying</span>
-              <span>Invoice notice</span>
-              <time>11:00</time>
-            </li>
+            <template x-for="item in STRINGS.landing.previewItems" :key="item.subject">
+              <li>
+                <span class="status-badge" :data-variant="item.variant" x-text="item.status"></span>
+                <span x-text="item.subject"></span>
+                <time x-text="item.time"></time>
+              </li>
+            </template>
           </ol>
         </aside>
       </section>

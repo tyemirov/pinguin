@@ -701,8 +701,12 @@ All endpoints emit structured JSON errors (`401` for auth failures, `400` for in
 ### Browser UI (beta)
 
 - Static assets live under `/web` and are served by GitHub Pages at `https://pinguin.mprlab.com` in production, with ghttp on `http://localhost:8080` for local development (the Go HTTP server keeps `/api`/`/runtime-config` on `http://localhost:8081` in this arrangement). `index.html` provides the sign-in landing experience, `event-log.html` renders notification delivery events, and `smtp-relay.html` renders SMTP relay identity management.
-- The UI follows AGENTS.md: Alpine components per section, mpr-ui header/footer, DOM-scoped events (`notifications:*`) for toasts + table refreshes, and all strings centralized in `js/constants.js`.
+- The UI uses the compact MPR visual language by default: dark charcoal surfaces, dense controls, semantic status chips, a narrow centered work surface, and a light-theme mapping with the same density and interaction roles.
+- The shared header owns brand, Docs, authentication, profile, and theme controls. A separate Pinguin workspace row marks Event log or SMTP relay with `aria-current="page"`.
+- Event log renders responsive semantic notification records, compact search/status controls, a loaded count, and application dialogs for queued actions. SMTP relay keeps sender domains collapsed, expands one DNS setup at a time, combines each DNS requirement with its check result, and creates identities from a local part plus a verified domain.
+- The UI follows AGENTS.md: Alpine components per section, mpr-ui header/footer, DOM-scoped events (`notifications:*`) for toasts and refreshes, and all strings centralized in `js/constants.js`.
 - `js/app.js` bootstraps Alpine, registers the UI components, and reacts to `mpr-ui:auth:*` events plus the shared `MPRUI.resolveAuthProfileSnapshot` verifier to sync profile state and guard routes. The header handles auth through `/config-ui.yaml` plus `mpr-ui-config.js`, and components talk to `/api/notifications` via the shared `apiClient`.
+- `js/core/sessionBridge.js` owns the authentication bridge. `js/ui/notificationsList.js` owns Event log behavior; `smtpDomains.js`, `smtpIdentities.js`, and `smtpCredentialsDialog.js` own the SMTP workflows.
 - Cross-tab authentication state is owned by the shared shell; Pinguin consumes only the resulting `mpr-ui` events and profile snapshot.
 - Handy for local testing: start the Compose stack so ghttp (`http://localhost:8080`) serves the `/web` bundle while the Go server handles `/api`/`/runtime-config` on `http://localhost:8081`, then visit the ghttp host to exercise the landing, Event log, and SMTP relay flows without needing an external client.
 
@@ -715,11 +719,13 @@ npm install
 npx playwright install --with-deps
 ```
 
-Then execute the browser smoke tests (landing auth CTA, Event log cancel/reschedule flows, and SMTP relay flows) with:
+Then execute the browser suite (landing auth, responsive layout, Event log actions, SMTP relay flows, accessibility focus, and visual snapshots) with:
 
 ```bash
 npm test
 ```
+
+When an intentional visual change is accepted, refresh the Pinguin-owned snapshot baselines with `make test-frontend-update`, then run `make test-frontend` normally.
 
 The Playwright harness spins up a lightweight local server that mocks the `/api/notifications` + TAuth endpoints so the UI can be exercised without external services.
 
