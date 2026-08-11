@@ -141,13 +141,13 @@ func TestRepositoryRejectsAddressOutsideSenderDomains(t *testing.T) {
 
 func TestRepositoryVerifiedSenderDomainScopeControlsIdentityUse(t *testing.T) {
 	repository, _ := newIdentityRepository(t)
-	scope := AccessScope{OwnerEmail: "member@example.com"}
-	otherScope := AccessScope{OwnerEmail: "other@example.com"}
+	scope := AccessScope{TenantID: "member@example.com"}
+	otherScope := AccessScope{TenantID: "other@example.com"}
 	domain, domainErr := repository.CreateSenderDomainForScope(context.Background(), scope, "Customer.Example")
 	if domainErr != nil {
 		t.Fatalf("create sender domain: %v", domainErr)
 	}
-	if domain.Status != SenderDomainStatusPending || domain.OwnerEmail != "member@example.com" {
+	if domain.Status != SenderDomainStatusPending || domain.TenantID != "member@example.com" {
 		t.Fatalf("unexpected pending sender domain: %+v", domain)
 	}
 
@@ -196,10 +196,10 @@ func TestRepositoryVerifiedSenderDomainScopeControlsIdentityUse(t *testing.T) {
 
 func TestRepositoryRejectsSenderDomainClaimedByAnotherOwner(t *testing.T) {
 	repository, _ := newIdentityRepository(t)
-	if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, "customer.example"); domainErr != nil {
+	if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{TenantID: "member@example.com"}, "customer.example"); domainErr != nil {
 		t.Fatalf("create sender domain: %v", domainErr)
 	}
-	if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "other@example.com"}, "customer.example"); !errors.Is(domainErr, ErrSenderDomainExists) {
+	if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{TenantID: "other@example.com"}, "customer.example"); !errors.Is(domainErr, ErrSenderDomainExists) {
 		t.Fatalf("expected sender domain ownership conflict, got %v", domainErr)
 	}
 }
@@ -207,10 +207,10 @@ func TestRepositoryRejectsSenderDomainClaimedByAnotherOwner(t *testing.T) {
 func TestRepositorySenderDomainSetupErrorPaths(t *testing.T) {
 	t.Run("idempotent owner create fills missing token", func(t *testing.T) {
 		repository, database := newIdentityRepository(t)
-		if err := database.Create(&SenderDomain{OwnerEmail: "member@example.com", Domain: "customer.example", Status: SenderDomainStatusPending}).Error; err != nil {
+		if err := database.Create(&SenderDomain{TenantID: "member@example.com", Domain: "customer.example", Status: SenderDomainStatusPending}).Error; err != nil {
 			t.Fatalf("seed sender domain: %v", err)
 		}
-		domain, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, "customer.example")
+		domain, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{TenantID: "member@example.com"}, "customer.example")
 		if domainErr != nil {
 			t.Fatalf("idempotent domain create: %v", domainErr)
 		}
@@ -218,28 +218,28 @@ func TestRepositorySenderDomainSetupErrorPaths(t *testing.T) {
 			t.Fatalf("expected missing token to be filled")
 		}
 	})
-	t.Run("admin can read existing owner domain", func(t *testing.T) {
+	t.Run("other tenant cannot claim existing domain", func(t *testing.T) {
 		repository, _ := newIdentityRepository(t)
-		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, "customer.example"); domainErr != nil {
+		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{TenantID: "member@example.com"}, "customer.example"); domainErr != nil {
 			t.Fatalf("create sender domain: %v", domainErr)
 		}
-		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "admin@example.com", Admin: true}, "customer.example"); domainErr != nil {
-			t.Fatalf("admin read sender domain: %v", domainErr)
+		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{TenantID: "admin@example.com"}, "customer.example"); !errors.Is(domainErr, ErrSenderDomainExists) {
+			t.Fatalf("expected ownership conflict, got %v", domainErr)
 		}
 	})
 	t.Run("invalid domain", func(t *testing.T) {
 		repository, _ := newIdentityRepository(t)
-		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, "bad domain"); !errors.Is(domainErr, ErrInvalidSenderDomain) {
+		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{TenantID: "member@example.com"}, "bad domain"); !errors.Is(domainErr, ErrInvalidSenderDomain) {
 			t.Fatalf("expected invalid domain, got %v", domainErr)
 		}
-		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, " "); !errors.Is(domainErr, ErrInvalidSenderDomain) {
+		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{TenantID: "member@example.com"}, " "); !errors.Is(domainErr, ErrInvalidSenderDomain) {
 			t.Fatalf("expected blank domain, got %v", domainErr)
 		}
 	})
 	t.Run("random token failure", func(t *testing.T) {
 		repository, _ := newIdentityRepository(t)
 		repository.random = identityFailingReader{err: io.ErrUnexpectedEOF}
-		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, "customer.example"); !errors.Is(domainErr, io.ErrUnexpectedEOF) {
+		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{TenantID: "member@example.com"}, "customer.example"); !errors.Is(domainErr, io.ErrUnexpectedEOF) {
 			t.Fatalf("expected token failure, got %v", domainErr)
 		}
 	})
@@ -248,64 +248,85 @@ func TestRepositorySenderDomainSetupErrorPaths(t *testing.T) {
 		if dropErr := database.Migrator().DropTable(&SenderDomain{}); dropErr != nil {
 			t.Fatalf("drop sender domains: %v", dropErr)
 		}
-		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, "customer.example"); domainErr == nil || !strings.Contains(domainErr.Error(), "lookup") {
+		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{TenantID: "member@example.com"}, "customer.example"); domainErr == nil || !strings.Contains(domainErr.Error(), "lookup") {
 			t.Fatalf("expected lookup storage failure, got %v", domainErr)
 		}
 	})
 	t.Run("create save failure", func(t *testing.T) {
 		repository, database := newIdentityRepository(t)
 		registerSenderDomainCreateError(t, database)
-		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, "customer.example"); domainErr == nil || !strings.Contains(domainErr.Error(), "create") {
+		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{TenantID: "member@example.com"}, "customer.example"); domainErr == nil || !strings.Contains(domainErr.Error(), "create") {
 			t.Fatalf("expected create storage failure, got %v", domainErr)
 		}
 	})
+	for _, testCase := range []struct {
+		name          string
+		claimedTenant string
+		expectedError error
+	}{
+		{name: "concurrent same tenant claim", claimedTenant: "member@example.com"},
+		{name: "concurrent other tenant claim", claimedTenant: "other@example.com", expectedError: ErrSenderDomainExists},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			repository, database := newIdentityRepository(t)
+			repository.db = database.Session(&gorm.Session{SkipDefaultTransaction: true})
+			registerSenderDomainConcurrentClaim(t, database, testCase.claimedTenant)
+			domain, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{TenantID: "member@example.com"}, "customer.example")
+			if !errors.Is(domainErr, testCase.expectedError) {
+				t.Fatalf("concurrent claim error = %v", domainErr)
+			}
+			if testCase.expectedError == nil && (domain.TenantID != "member@example.com" || domain.VerificationToken == "") {
+				t.Fatalf("concurrent claim result = %+v", domain)
+			}
+		})
+	}
 	t.Run("missing token save failure", func(t *testing.T) {
 		repository, database := newIdentityRepository(t)
-		if err := database.Create(&SenderDomain{OwnerEmail: "member@example.com", Domain: "customer.example", Status: SenderDomainStatusPending}).Error; err != nil {
+		if err := database.Create(&SenderDomain{TenantID: "member@example.com", Domain: "customer.example", Status: SenderDomainStatusPending}).Error; err != nil {
 			t.Fatalf("seed sender domain: %v", err)
 		}
 		registerSenderDomainUpdateError(t, database)
-		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, "customer.example"); domainErr == nil || !strings.Contains(domainErr.Error(), "token") {
+		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{TenantID: "member@example.com"}, "customer.example"); domainErr == nil || !strings.Contains(domainErr.Error(), "token") {
 			t.Fatalf("expected token storage failure, got %v", domainErr)
 		}
 	})
 	t.Run("missing token random failure", func(t *testing.T) {
 		repository, database := newIdentityRepository(t)
-		if err := database.Create(&SenderDomain{OwnerEmail: "member@example.com", Domain: "customer.example", Status: SenderDomainStatusPending}).Error; err != nil {
+		if err := database.Create(&SenderDomain{TenantID: "member@example.com", Domain: "customer.example", Status: SenderDomainStatusPending}).Error; err != nil {
 			t.Fatalf("seed sender domain: %v", err)
 		}
 		repository.random = identityFailingReader{err: io.ErrUnexpectedEOF}
-		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, "customer.example"); !errors.Is(domainErr, io.ErrUnexpectedEOF) {
+		if _, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{TenantID: "member@example.com"}, "customer.example"); !errors.Is(domainErr, io.ErrUnexpectedEOF) {
 			t.Fatalf("expected missing token random failure, got %v", domainErr)
 		}
 	})
 	t.Run("list and lookup storage failures", func(t *testing.T) {
 		repository, database := newIdentityRepository(t)
 		closeIdentityDatabase(t, database)
-		if _, listErr := repository.ListSenderDomainsForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}); listErr == nil {
+		if _, listErr := repository.ListSenderDomainsForScope(context.Background(), AccessScope{TenantID: "member@example.com"}); listErr == nil {
 			t.Fatalf("expected list storage failure")
 		}
-		if _, lookupErr := repository.RequireSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, 1); lookupErr == nil {
+		if _, lookupErr := repository.RequireSenderDomainForScope(context.Background(), AccessScope{TenantID: "member@example.com"}, 1); lookupErr == nil {
 			t.Fatalf("expected lookup storage failure")
 		}
 	})
 	t.Run("not found and update fetch failure", func(t *testing.T) {
 		repository, _ := newIdentityRepository(t)
-		if _, lookupErr := repository.RequireSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, 404); !errors.Is(lookupErr, ErrSenderDomainNotFound) {
+		if _, lookupErr := repository.RequireSenderDomainForScope(context.Background(), AccessScope{TenantID: "member@example.com"}, 404); !errors.Is(lookupErr, ErrSenderDomainNotFound) {
 			t.Fatalf("expected missing sender domain, got %v", lookupErr)
 		}
-		if _, updateErr := repository.UpdateSenderDomainStatusForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, 404, SenderDomainStatusVerified, time.Now().UTC()); !errors.Is(updateErr, ErrSenderDomainNotFound) {
+		if _, updateErr := repository.UpdateSenderDomainStatusForScope(context.Background(), AccessScope{TenantID: "member@example.com"}, 404, SenderDomainStatusVerified, time.Now().UTC()); !errors.Is(updateErr, ErrSenderDomainNotFound) {
 			t.Fatalf("expected missing update sender domain, got %v", updateErr)
 		}
 	})
 	t.Run("update save failure", func(t *testing.T) {
 		repository, database := newIdentityRepository(t)
-		domain, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, "customer.example")
+		domain, domainErr := repository.CreateSenderDomainForScope(context.Background(), AccessScope{TenantID: "member@example.com"}, "customer.example")
 		if domainErr != nil {
 			t.Fatalf("create sender domain: %v", domainErr)
 		}
 		registerSenderDomainUpdateError(t, database)
-		if _, updateErr := repository.UpdateSenderDomainStatusForScope(context.Background(), AccessScope{OwnerEmail: "member@example.com"}, domain.ID, SenderDomainStatusVerified, time.Now().UTC()); updateErr == nil || !strings.Contains(updateErr.Error(), "status") {
+		if _, updateErr := repository.UpdateSenderDomainStatusForScope(context.Background(), AccessScope{TenantID: "member@example.com"}, domain.ID, SenderDomainStatusVerified, time.Now().UTC()); updateErr == nil || !strings.Contains(updateErr.Error(), "status") {
 			t.Fatalf("expected status save failure, got %v", updateErr)
 		}
 	})
@@ -592,6 +613,7 @@ func TestRepositoryCreateReportsIdentityStorageFailures(t *testing.T) {
 		username := "smtp_" + base64.RawURLEncoding.EncodeToString(make([]byte, credentialUsernameBytes))
 		if err := database.Create(&Identity{
 			ID:           "existing-identity",
+			TenantID:     defaultTestTenantID,
 			EmailAddress: "existing@example.com",
 			Username:     username,
 			Status:       IdentityStatusActive,
@@ -661,6 +683,7 @@ func TestRepositoryUpdateForwardingReportsStorageFailures(t *testing.T) {
 		repository, database := newIdentityRepository(t)
 		if err := database.Create(&Identity{
 			ID:           "invalid-address-identity",
+			TenantID:     defaultTestTenantID,
 			EmailAddress: "bad address",
 			Username:     "smtp-invalid-address",
 			Status:       IdentityStatusActive,
@@ -803,6 +826,7 @@ func TestRepositoryCredentialsReportsStoredPasswordFailures(t *testing.T) {
 		repository, database := newIdentityRepository(t)
 		if err := database.Create(&Identity{
 			ID:           "missing-cipher-identity",
+			TenantID:     defaultTestTenantID,
 			EmailAddress: "alice@example.com",
 			Username:     "smtp-missing-cipher",
 			Status:       IdentityStatusActive,
@@ -819,6 +843,7 @@ func TestRepositoryCredentialsReportsStoredPasswordFailures(t *testing.T) {
 		repository, database := newIdentityRepository(t)
 		if err := database.Create(&Identity{
 			ID:             "short-cipher-identity",
+			TenantID:       defaultTestTenantID,
 			EmailAddress:   "alice@example.com",
 			Username:       "smtp-short-cipher",
 			PasswordCipher: []byte("short"),
@@ -873,6 +898,7 @@ func TestRepositoryCredentialsDoNotMutateInvalidStoredRows(t *testing.T) {
 	missingCipherID := "missing-cipher-identity"
 	if err := database.Create(&Identity{
 		ID:           missingCipherID,
+		TenantID:     defaultTestTenantID,
 		EmailAddress: "missing@example.com",
 		Username:     "smtp-missing",
 		Status:       IdentityStatusActive,
@@ -969,14 +995,44 @@ func TestRepositoryAuthenticateReportsInvalidStoredAddress(t *testing.T) {
 	}
 }
 
-func newIdentityRepository(t *testing.T) (*Repository, *gorm.DB) {
+const defaultTestTenantID = "tenant-default"
+
+type testRepository struct {
+	*Repository
+}
+
+func (repository *testRepository) List(ctx context.Context) ([]PublicIdentity, error) {
+	return repository.ListForScope(ctx, AccessScope{TenantID: defaultTestTenantID})
+}
+
+func (repository *testRepository) Create(ctx context.Context, address Address, forwardTo []Address) (PublicIdentity, string, error) {
+	return repository.CreateForScope(ctx, AccessScope{TenantID: defaultTestTenantID}, address, forwardTo)
+}
+
+func (repository *testRepository) Credentials(ctx context.Context, identityID string) (PublicIdentity, string, error) {
+	return repository.CredentialsForScope(ctx, AccessScope{TenantID: defaultTestTenantID}, identityID)
+}
+
+func (repository *testRepository) UpdateForwarding(ctx context.Context, identityID string, forwardTo []Address) (PublicIdentity, error) {
+	return repository.UpdateForwardingForScope(ctx, AccessScope{TenantID: defaultTestTenantID}, identityID, forwardTo)
+}
+
+func (repository *testRepository) Rotate(ctx context.Context, identityID string) (PublicIdentity, string, error) {
+	return repository.RotateForScope(ctx, AccessScope{TenantID: defaultTestTenantID}, identityID)
+}
+
+func (repository *testRepository) Delete(ctx context.Context, identityID string) error {
+	return repository.DeleteForScope(ctx, AccessScope{TenantID: defaultTestTenantID}, identityID)
+}
+
+func newIdentityRepository(t *testing.T) (*testRepository, *gorm.DB) {
 	t.Helper()
 	database := newIdentityDatabase(t)
 	repository, repositoryErr := NewRepository(database, strings.Repeat("a", 64))
 	if repositoryErr != nil {
 		t.Fatalf("new repository: %v", repositoryErr)
 	}
-	return repository, database
+	return &testRepository{Repository: repository}, database
 }
 
 func newIdentityDatabase(t *testing.T) *gorm.DB {
@@ -1051,6 +1107,37 @@ func registerSenderDomainCreateError(t *testing.T, database *gorm.DB) {
 	})
 }
 
+func registerSenderDomainConcurrentClaim(t *testing.T, database *gorm.DB, claimedTenant string) {
+	t.Helper()
+	callbackName := "pinguin:force_sender_domain_concurrent_claim"
+	if err := database.Callback().Create().Before("gorm:create").Register(callbackName, func(tx *gorm.DB) {
+		if _, ok := tx.Statement.Dest.(*SenderDomain); !ok {
+			return
+		}
+		_, insertErr := tx.Statement.ConnPool.ExecContext(
+			tx.Statement.Context,
+			"INSERT INTO sender_domains (tenant_id, domain, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+			claimedTenant,
+			"customer.example",
+			SenderDomainStatusPending,
+			time.Now().UTC(),
+			time.Now().UTC(),
+		)
+		if insertErr != nil {
+			tx.AddError(insertErr)
+			return
+		}
+		tx.AddError(errors.New("forced sender domain concurrent claim"))
+	}); err != nil {
+		t.Fatalf("register sender domain concurrent claim callback: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := database.Callback().Create().Remove(callbackName); err != nil {
+			t.Fatalf("remove sender domain concurrent claim callback: %v", err)
+		}
+	})
+}
+
 func registerForwardRecipientCreateError(t *testing.T, database *gorm.DB) {
 	t.Helper()
 	callbackName := "pinguin:force_forward_recipient_create_error"
@@ -1081,7 +1168,7 @@ func (reader identityFailingReader) Read([]byte) (int, error) {
 
 func seedSenderDomain(t *testing.T, database *gorm.DB, domain string) {
 	t.Helper()
-	if err := database.Create(&SenderDomain{Domain: domain}).Error; err != nil {
+	if err := database.Create(&SenderDomain{TenantID: defaultTestTenantID, Domain: domain, Status: SenderDomainStatusVerified}).Error; err != nil {
 		t.Fatalf("seed sender domain: %v", err)
 	}
 }

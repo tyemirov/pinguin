@@ -14,11 +14,8 @@ import (
 // ListSenderDomainsForScope returns sender domains visible to the authenticated owner scope.
 func (repository *Repository) ListSenderDomainsForScope(ctx context.Context, scope AccessScope) ([]SenderDomain, error) {
 	var records []SenderDomain
-	query := repository.db.WithContext(ctx)
-	if !scope.Admin {
-		query = query.Where(clause.Eq{Column: clause.Column{Name: ownerEmailColumn}, Value: normalizeOwnerEmail(scope.OwnerEmail)})
-	}
-	if err := query.
+	if err := repository.db.WithContext(ctx).
+		Where(&SenderDomain{TenantID: scope.TenantID}).
 		Order(clause.OrderByColumn{Column: clause.Column{Name: "domain"}}).
 		Find(&records).Error; err != nil {
 		return nil, fmt.Errorf("smtp identity sender domains list: %w", err)
@@ -35,16 +32,15 @@ func (repository *Repository) CreateSenderDomainForScope(ctx context.Context, sc
 	if normalizedDomain == "" {
 		return SenderDomain{}, ErrInvalidSenderDomain
 	}
-	ownerEmail := normalizeOwnerEmail(scope.OwnerEmail)
 	var existing SenderDomain
 	findErr := repository.db.WithContext(ctx).
-		Where(clause.Eq{Column: clause.Column{Name: "domain"}, Value: normalizedDomain}).
+		Where(&SenderDomain{Domain: normalizedDomain}).
 		First(&existing).Error
 	if findErr == nil {
-		if existing.OwnerEmail == ownerEmail || scope.Admin {
-			return repository.ensureSenderDomainToken(ctx, existing)
+		if existing.TenantID != scope.TenantID {
+			return SenderDomain{}, ErrSenderDomainExists
 		}
-		return SenderDomain{}, fmt.Errorf("%w: %s", ErrSenderDomainExists, normalizedDomain)
+		return repository.ensureSenderDomainToken(ctx, existing)
 	}
 	if findErr != nil && !errors.Is(findErr, gorm.ErrRecordNotFound) {
 		return SenderDomain{}, fmt.Errorf("smtp identity sender domain lookup: %w", findErr)
@@ -55,7 +51,7 @@ func (repository *Repository) CreateSenderDomainForScope(ctx context.Context, sc
 	}
 	now := repository.clockFunc()
 	record := SenderDomain{
-		OwnerEmail:        ownerEmail,
+		TenantID:          scope.TenantID,
 		Domain:            normalizedDomain,
 		Status:            SenderDomainStatusPending,
 		VerificationToken: token,
@@ -63,6 +59,13 @@ func (repository *Repository) CreateSenderDomainForScope(ctx context.Context, sc
 		UpdatedAt:         now,
 	}
 	if createErr := repository.db.WithContext(ctx).Create(&record).Error; createErr != nil {
+		var claimed SenderDomain
+		if lookupErr := repository.db.WithContext(ctx).Where(&SenderDomain{Domain: normalizedDomain}).First(&claimed).Error; lookupErr == nil {
+			if claimed.TenantID != scope.TenantID {
+				return SenderDomain{}, ErrSenderDomainExists
+			}
+			return repository.ensureSenderDomainToken(ctx, claimed)
+		}
 		return SenderDomain{}, fmt.Errorf("smtp identity sender domain create: %w", createErr)
 	}
 	return record, nil
@@ -71,10 +74,7 @@ func (repository *Repository) CreateSenderDomainForScope(ctx context.Context, sc
 // RequireSenderDomainForScope returns one sender-domain setup record visible to the owner scope.
 func (repository *Repository) RequireSenderDomainForScope(ctx context.Context, scope AccessScope, domainID uint) (SenderDomain, error) {
 	var record SenderDomain
-	query := repository.db.WithContext(ctx).Where(clause.Eq{Column: clause.Column{Name: identityIDColumn}, Value: domainID})
-	if !scope.Admin {
-		query = query.Where(clause.Eq{Column: clause.Column{Name: ownerEmailColumn}, Value: normalizeOwnerEmail(scope.OwnerEmail)})
-	}
+	query := repository.db.WithContext(ctx).Where(&SenderDomain{ID: domainID, TenantID: scope.TenantID})
 	err := query.First(&record).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -114,12 +114,4 @@ func (repository *Repository) ensureSenderDomainToken(ctx context.Context, recor
 		return SenderDomain{}, fmt.Errorf("smtp identity sender domain token: %w", saveErr)
 	}
 	return record, nil
-}
-
-func normalizeOwnerEmail(email string) string {
-	address, err := NewAddress(email)
-	if err != nil {
-		return strings.ToLower(strings.TrimSpace(email))
-	}
-	return address.String()
 }

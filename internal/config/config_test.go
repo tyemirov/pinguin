@@ -6,14 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/tyemirov/pinguin/internal/tenant"
-	"gopkg.in/yaml.v3"
 )
-
-func ptrBool(value bool) *bool {
-	return &value
-}
 
 func TestLoadConfigFromYAMLWithEnvExpansion(t *testing.T) {
 	t.Helper()
@@ -21,7 +14,6 @@ func TestLoadConfigFromYAMLWithEnvExpansion(t *testing.T) {
 	configPath := writeConfigFile(t, `
 server:
   databasePath: ${DATABASE_PATH}
-  grpcAuthToken: ${GRPC_AUTH_TOKEN}
   logLevel: INFO
   maxRetries: 5
   retryIntervalSec: 4
@@ -31,22 +23,6 @@ server:
   tauth:
     signingKey: ${TAUTH_SIGNING_KEY}
     cookieName: custom_session
-tenants:
-  - id: tenant-one
-    displayName: One Corp
-    supportEmail: support@one.test
-    enabled: true
-    domains: [one.test]
-    emailProfile:
-      host: smtp.one.test
-      port: 587
-      username: ${SMTP_USERNAME}
-      password: ${SMTP_PASSWORD}
-      fromAddress: noreply@one.test
-    smsProfile:
-      accountSid: ${TWILIO_ACCOUNT_SID}
-      authToken: ${TWILIO_AUTH_TOKEN}
-      fromNumber: ${TWILIO_FROM_NUMBER}
 web:
   enabled: true
   listenAddr: :8080
@@ -71,7 +47,6 @@ smtpSubmission:
 `)
 
 	t.Setenv("DATABASE_PATH", "test.db")
-	t.Setenv("GRPC_AUTH_TOKEN", "unit-token")
 	t.Setenv("MASTER_ENCRYPTION_KEY", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	t.Setenv("TAUTH_SIGNING_KEY", "signing-key")
 	t.Setenv("SMTP_USERNAME", "apikey")
@@ -91,34 +66,10 @@ smtpSubmission:
 
 	expected := Config{
 		DatabasePath:        "test.db",
-		GRPCAuthToken:       "unit-token",
 		LogLevel:            "INFO",
 		MaxRetries:          5,
 		RetryIntervalSec:    4,
 		MasterEncryptionKey: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		TenantBootstrap: tenant.BootstrapConfig{
-			Tenants: []tenant.BootstrapTenant{
-				{
-					ID:           "tenant-one",
-					DisplayName:  "One Corp",
-					SupportEmail: "support@one.test",
-					Enabled:      ptrBool(true),
-					Domains:      []string{"one.test"},
-					EmailProfile: tenant.BootstrapEmailProfile{
-						Host:        "smtp.one.test",
-						Port:        587,
-						Username:    "apikey",
-						Password:    "secret",
-						FromAddress: "noreply@one.test",
-					},
-					SMSProfile: &tenant.BootstrapSMSProfile{
-						AccountSID: "sid",
-						AuthToken:  "auth",
-						FromNumber: "+10000000000",
-					},
-				},
-			},
-		},
 		WebInterfaceEnabled: true,
 		HTTPListenAddr:      ":8080",
 		HTTPAllowedOrigins:  []string{"https://app.local", "https://alt.local"},
@@ -147,9 +98,6 @@ smtpSubmission:
 	if !reflect.DeepEqual(cfg, expected) {
 		t.Fatalf("unexpected config:\n got: %#v\nwant: %#v", cfg, expected)
 	}
-	if cfg.TwilioConfigured() {
-		t.Fatalf("expected global Twilio credentials to remain empty when provided via tenants")
-	}
 }
 
 func TestLoadConfigAppliesDefaultsAndRespectsWebEnabledFalse(t *testing.T) {
@@ -157,7 +105,6 @@ func TestLoadConfigAppliesDefaultsAndRespectsWebEnabledFalse(t *testing.T) {
 	configPath := writeConfigFile(t, `
 server:
   databasePath: app.db
-  grpcAuthToken: token
   logLevel: DEBUG
   maxRetries: 3
   retryIntervalSec: 30
@@ -166,18 +113,6 @@ server:
   operationTimeoutSec: 10
   tauth:
     signingKey: ${TAUTH_SIGNING_KEY}
-tenants:
-  - id: tenant-one
-    displayName: One Corp
-    supportEmail: support@one.test
-    enabled: true
-    domains: [one.test]
-    emailProfile:
-      host: smtp.one.test
-      port: 587
-      username: smtp-user
-      password: smtp-pass
-      fromAddress: noreply@one.test
 web:
   enabled: false
   listenAddr: :0
@@ -201,11 +136,10 @@ web:
 	}
 }
 
-func TestLoadConfigDefaultsCookieAndSupportsTenantConfigPath(t *testing.T) {
+func TestLoadConfigDefaultsCookie(t *testing.T) {
 	configPath := writeConfigFile(t, `
 server:
   databasePath: app.db
-  grpcAuthToken: token
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 30
@@ -214,8 +148,6 @@ server:
   operationTimeoutSec: 10
   tauth:
     signingKey: signing-key
-tenants:
-  configPath: tenants.yml
 web:
   enabled: true
   listenAddr: :0
@@ -226,9 +158,6 @@ web:
 	if err != nil {
 		t.Fatalf("LoadConfig returned error: %v", err)
 	}
-	if cfg.TenantConfigPath != "tenants.yml" {
-		t.Fatalf("unexpected tenant config path %q", cfg.TenantConfigPath)
-	}
 	if cfg.TAuthCookieName != "app_session" {
 		t.Fatalf("expected default cookie, got %q", cfg.TAuthCookieName)
 	}
@@ -238,15 +167,12 @@ func TestLoadConfigAllowsDirectSMTPSubmissionWithoutUpstreamRelay(t *testing.T) 
 	configPath := writeConfigFile(t, `
 server:
   databasePath: app.db
-  grpcAuthToken: token
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 30
   masterEncryptionKey: ${MASTER_ENCRYPTION_KEY}
   connectionTimeoutSec: 5
   operationTimeoutSec: 10
-tenants:
-  configPath: tenants.yml
 web:
   enabled: false
 smtpSubmission:
@@ -281,15 +207,12 @@ func TestLoadConfigSupportsSMTPForwarding(t *testing.T) {
 	configPath := writeConfigFile(t, `
 server:
   databasePath: app.db
-  grpcAuthToken: token
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 30
   masterEncryptionKey: ${MASTER_ENCRYPTION_KEY}
   connectionTimeoutSec: 5
   operationTimeoutSec: 10
-tenants:
-  configPath: tenants.yml
 web:
   enabled: false
 smtpForwarding:
@@ -332,7 +255,6 @@ func TestLoadConfigDoesNotDisableWebFromEnvironment(t *testing.T) {
 	configPath := writeConfigFile(t, `
 server:
   databasePath: app.db
-  grpcAuthToken: token
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 30
@@ -341,8 +263,6 @@ server:
   operationTimeoutSec: 10
   tauth:
     signingKey: signing-key
-tenants:
-  configPath: tenants.yml
 web:
   enabled: true
   listenAddr: :0
@@ -363,15 +283,12 @@ func TestLoadConfigRejectsMissingEnvironmentVariables(t *testing.T) {
 	configPath := writeConfigFile(t, `
 server:
   databasePath: app.db
-  grpcAuthToken: token
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 30
   masterEncryptionKey: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
   connectionTimeoutSec: 5
   operationTimeoutSec: 10
-tenants:
-  configPath: tenants.yml
 web:
   enabled: false
 smtpSubmission:
@@ -401,15 +318,12 @@ func TestLoadConfigRejectsUnknownSMTPSubmissionFields(t *testing.T) {
 	configPath := writeConfigFile(t, `
 server:
   databasePath: app.db
-  grpcAuthToken: token
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 30
   masterEncryptionKey: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
   connectionTimeoutSec: 5
   operationTimeoutSec: 10
-tenants:
-  configPath: tenants.yml
 web:
   enabled: false
 smtpSubmission:
@@ -433,67 +347,15 @@ smtpSubmission:
 	}
 }
 
-func TestLoadConfigRejectsUnsupportedTenantFields(t *testing.T) {
-	for _, testCase := range []struct {
-		name          string
-		tenantSnippet string
-		expected      string
-	}{
-		{
-			name: "legacy_status",
-			tenantSnippet: `
-    status: active`,
-			expected: "tenants[].status is no longer supported",
-		},
-		{
-			name: "legacy_identity",
-			tenantSnippet: `
-    identity:
-      googleClientId: google-client
-      tauthBaseUrl: https://tauth-api.mprlab.com`,
-			expected: "tenants[].identity is not supported",
-		},
-		{
-			name: "unknown_tenant_field",
-			tenantSnippet: `
-    unsupportedOption: true`,
-			expected: "tenants[].unsupportedOption is not supported",
-		},
-		{
-			name: "unknown_email_profile_field",
-			tenantSnippet: `
-    emailProfile:
-      host: smtp.one.test
-      port: 587
-      username: smtp-user
-      password: smtp-pass
-      fromAddress: noreply@one.test
-      unsupportedOption: true`,
-			expected: "tenants[].emailProfile.unsupportedOption is not supported",
-		},
-	} {
-		t.Run(testCase.name, func(t *testing.T) {
-			configPath := writeConfigFile(t, tenantConfigWithSnippet(testCase.tenantSnippet))
-
-			_, err := loadConfigFromPath(configPath)
-			if err == nil || !strings.Contains(err.Error(), testCase.expected) {
-				t.Fatalf("expected tenant schema error containing %q, got %v", testCase.expected, err)
-			}
-		})
-	}
-}
-
 func TestValidateConfigRejectsInvalidSMTPForwarding(t *testing.T) {
 	cfg := Config{
 		DatabasePath:         "app.db",
-		GRPCAuthToken:        "token",
 		LogLevel:             "INFO",
 		MaxRetries:           3,
 		RetryIntervalSec:     30,
 		MasterEncryptionKey:  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		ConnectionTimeoutSec: 5,
 		OperationTimeoutSec:  10,
-		TenantConfigPath:     "tenants.yml",
 		WebInterfaceEnabled:  false,
 		SMTPForwarding: SMTPForwardingConfig{
 			Enabled:         true,
@@ -524,14 +386,12 @@ func TestValidateConfigRejectsInvalidSMTPForwarding(t *testing.T) {
 func TestValidateConfigAllowsSMTPForwardingWithoutStaticSenderDomains(t *testing.T) {
 	cfg := Config{
 		DatabasePath:         "app.db",
-		GRPCAuthToken:        "token",
 		LogLevel:             "INFO",
 		MaxRetries:           3,
 		RetryIntervalSec:     30,
 		MasterEncryptionKey:  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		ConnectionTimeoutSec: 5,
 		OperationTimeoutSec:  10,
-		TenantConfigPath:     "tenants.yml",
 		WebInterfaceEnabled:  false,
 		SMTPForwarding: SMTPForwardingConfig{
 			Enabled:         true,
@@ -564,71 +424,11 @@ func TestLoadConfigRejectsUnreadableAndInvalidYAML(t *testing.T) {
 	}
 }
 
-func TestTenantConfigUnmarshalShapes(t *testing.T) {
-	var nilConfig tenantConfig
-	if err := nilConfig.UnmarshalYAML(nil); err != nil {
-		t.Fatalf("nil unmarshal: %v", err)
-	}
-
-	var sequence tenantConfig
-	if err := yaml.Unmarshal([]byte("- id: tenant-one\n  displayName: One\n"), &sequence); err != nil {
-		t.Fatalf("unmarshal sequence: %v", err)
-	}
-	if len(sequence.Tenants) != 1 || sequence.ConfigPath != "" {
-		t.Fatalf("unexpected sequence config %+v", sequence)
-	}
-
-	var unsupported tenantConfig
-	if err := yaml.Unmarshal([]byte("items:\n  - id: tenant-two\n    displayName: Two\nconfigPath: ignored.yml\n"), &unsupported); err == nil || !strings.Contains(err.Error(), "tenants.items is not supported") {
-		t.Fatalf("expected unsupported items error, got %v", err)
-	}
-
-	var invalid tenantConfig
-	if err := yaml.Unmarshal([]byte("123"), &invalid); err == nil || !strings.Contains(err.Error(), "tenants must be a list") {
-		t.Fatalf("expected invalid tenant shape error, got %v", err)
-	}
-
-	sequenceNode := &yaml.Node{
-		Kind: yaml.SequenceNode,
-		Content: []*yaml.Node{
-			{Kind: yaml.MappingNode, Content: []*yaml.Node{
-				{Kind: yaml.ScalarNode, Value: "domains"},
-				{Kind: yaml.MappingNode},
-			}},
-		},
-	}
-	if err := sequence.UnmarshalYAML(sequenceNode); err == nil {
-		t.Fatalf("expected sequence decode error")
-	}
-	mappingNode := &yaml.Node{
-		Kind: yaml.MappingNode,
-		Content: []*yaml.Node{
-			{Kind: yaml.ScalarNode, Value: "items"},
-			{Kind: yaml.MappingNode},
-		},
-	}
-	if err := unsupported.UnmarshalYAML(mappingNode); err == nil {
-		t.Fatalf("expected mapping decode error")
-	}
-
-	invalidKnownMappingNode := &yaml.Node{
-		Kind: yaml.MappingNode,
-		Content: []*yaml.Node{
-			{Kind: yaml.ScalarNode, Value: "tenants"},
-			{Kind: yaml.MappingNode},
-		},
-	}
-	if err := unsupported.UnmarshalYAML(invalidKnownMappingNode); err == nil {
-		t.Fatalf("expected known mapping decode error")
-	}
-}
-
 func TestLoadConfigRejectsMissingRequiredField(t *testing.T) {
 	t.Helper()
 	configPath := writeConfigFile(t, `
 server:
-  databasePath: db.sqlite
-  grpcAuthToken: ""
+  databasePath: ""
   logLevel: INFO
   maxRetries: 1
   retryIntervalSec: 10
@@ -637,18 +437,6 @@ server:
   operationTimeoutSec: 10
   tauth:
     signingKey: signing-key
-tenants:
-  - id: tenant-one
-    displayName: One Corp
-    supportEmail: support@one.test
-    enabled: true
-    domains: [one.test]
-    emailProfile:
-      host: smtp.one.test
-      port: 587
-      username: smtp-user
-      password: smtp-pass
-      fromAddress: noreply@one.test
 web:
   enabled: false
 `)
@@ -657,7 +445,7 @@ web:
 	if err == nil {
 		t.Fatalf("expected validation error")
 	}
-	if !strings.Contains(err.Error(), "server.grpcAuthToken") {
+	if !strings.Contains(err.Error(), "server.databasePath") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -668,9 +456,6 @@ func TestValidateConfigAggregatesMissingFields(t *testing.T) {
 		SMTPSubmission: SMTPSubmissionConfig{
 			Enabled: true,
 		},
-		TenantBootstrap: tenant.BootstrapConfig{
-			Tenants: []tenant.BootstrapTenant{{ID: "tenant-one"}},
-		},
 	})
 	if err == nil {
 		t.Fatalf("expected validation error")
@@ -679,8 +464,6 @@ func TestValidateConfigAggregatesMissingFields(t *testing.T) {
 		"server.databasePath",
 		"web.listenAddr",
 		"smtpSubmission.hostname",
-		"tenants[0].displayName",
-		"tenants[0].domains",
 	} {
 		if !strings.Contains(err.Error(), expected) {
 			t.Fatalf("expected error to contain %s, got %v", expected, err)
@@ -691,14 +474,12 @@ func TestValidateConfigAggregatesMissingFields(t *testing.T) {
 func TestValidateConfigRejectsInvalidSMTPSubmissionModeAndPublicSettings(t *testing.T) {
 	cfg := Config{
 		DatabasePath:         "app.db",
-		GRPCAuthToken:        "token",
 		LogLevel:             "INFO",
 		MaxRetries:           3,
 		RetryIntervalSec:     30,
 		MasterEncryptionKey:  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		ConnectionTimeoutSec: 5,
 		OperationTimeoutSec:  10,
-		TenantConfigPath:     "tenants.yml",
 		WebInterfaceEnabled:  false,
 		SMTPSubmission: SMTPSubmissionConfig{
 			Enabled:            true,
@@ -732,25 +513,12 @@ func TestLoadConfigRejectsIncompleteSMTPSubmission(t *testing.T) {
 	configPath := writeConfigFile(t, `
 server:
   databasePath: app.db
-  grpcAuthToken: token
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 30
   masterEncryptionKey: ${MASTER_ENCRYPTION_KEY}
   connectionTimeoutSec: 5
   operationTimeoutSec: 10
-tenants:
-  - id: tenant-one
-    displayName: One Corp
-    supportEmail: support@one.test
-    enabled: true
-    domains: [one.test]
-    emailProfile:
-      host: smtp.one.test
-      port: 587
-      username: smtp-user
-      password: smtp-pass
-      fromAddress: noreply@one.test
 web:
   enabled: false
 smtpSubmission:
@@ -777,15 +545,12 @@ func TestLoadConfigUsesDefaultPath(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte(`
 server:
   databasePath: app.db
-  grpcAuthToken: token
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 30
   masterEncryptionKey: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
   connectionTimeoutSec: 5
   operationTimeoutSec: 10
-tenants:
-  configPath: tenants.yml
 web:
   enabled: false
 `), 0o600); err != nil {
@@ -807,8 +572,8 @@ web:
 	if err != nil {
 		t.Fatalf("LoadConfig default path: %v", err)
 	}
-	if cfg.TenantConfigPath != "tenants.yml" {
-		t.Fatalf("unexpected tenant config path %q", cfg.TenantConfigPath)
+	if cfg.DatabasePath != "app.db" {
+		t.Fatalf("unexpected default config %+v", cfg)
 	}
 }
 
@@ -828,9 +593,6 @@ func TestStringHelpersSkipBlankValues(t *testing.T) {
 	if normalized := normalizeStrings([]string{" one ", " ", "two"}); !reflect.DeepEqual(normalized, []string{"one", "two"}) {
 		t.Fatalf("unexpected normalized strings %v", normalized)
 	}
-	if count := countNonEmptyStrings([]string{"one", " ", "two"}); count != 2 {
-		t.Fatalf("unexpected non-empty count %d", count)
-	}
 }
 
 func writeConfigFile(t *testing.T, contents string) string {
@@ -840,24 +602,4 @@ func writeConfigFile(t *testing.T, contents string) string {
 		t.Fatalf("write config file: %v", err)
 	}
 	return path
-}
-
-func tenantConfigWithSnippet(tenantSnippet string) string {
-	return `
-server:
-  databasePath: app.db
-  grpcAuthToken: token
-  logLevel: INFO
-  maxRetries: 3
-  retryIntervalSec: 30
-  masterEncryptionKey: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-  connectionTimeoutSec: 5
-  operationTimeoutSec: 10
-tenants:
-  - id: tenant-one
-    displayName: One Corp
-    domains: [one.test]` + tenantSnippet + `
-web:
-  enabled: false
-`
 }

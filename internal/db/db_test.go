@@ -20,6 +20,39 @@ import (
 
 const dbTestTenantID = "tenant-db"
 
+type extraApplicationTable struct {
+	ID uint `gorm:"primaryKey"`
+}
+
+func (extraApplicationTable) TableName() string { return "extra_application_table" }
+
+type tenantWithExtraColumn struct {
+	tenant.Tenant
+	Unexpected string
+}
+
+func (tenantWithExtraColumn) TableName() string { return "tenants" }
+
+type failingSchemaMigrator struct {
+	gorm.Migrator
+	columnErr error
+	indexErr  error
+}
+
+func (migrator failingSchemaMigrator) ColumnTypes(interface{}) ([]gorm.ColumnType, error) {
+	if migrator.columnErr != nil {
+		return nil, migrator.columnErr
+	}
+	return migrator.Migrator.ColumnTypes(&model.Notification{})
+}
+
+func (migrator failingSchemaMigrator) GetIndexes(interface{}) ([]gorm.Index, error) {
+	if migrator.indexErr != nil {
+		return nil, migrator.indexErr
+	}
+	return migrator.Migrator.GetIndexes(&model.Notification{})
+}
+
 func TestInitDBCreatesSchema(t *testing.T) {
 	t.Helper()
 
@@ -57,10 +90,10 @@ func TestInitDBCreatesSchema(t *testing.T) {
 
 	tables := []interface{}{
 		&tenant.Tenant{},
-		&tenant.TenantDomain{},
-		&tenant.TenantAdmin{},
 		&tenant.EmailProfile{},
 		&tenant.SMSProfile{},
+		&tenant.APICredential{},
+		&tenant.IdempotencyRecord{},
 		&smtpidentity.SenderDomain{},
 		&smtpidentity.Identity{},
 		&smtpidentity.ForwardRecipient{},
@@ -70,6 +103,143 @@ func TestInitDBCreatesSchema(t *testing.T) {
 			t.Fatalf("expected tenant table for %T", table)
 		}
 	}
+}
+
+func TestValidateManagedSchema(t *testing.T) {
+	newDatabase := func(t *testing.T) *gorm.DB {
+		t.Helper()
+		database, err := InitDB(filepath.Join(t.TempDir(), "pinguin.db"), slog.New(slog.NewTextHandler(io.Discard, nil)))
+		if err != nil {
+			t.Fatalf("init managed database: %v", err)
+		}
+		return database
+	}
+
+	t.Run("current schema", func(t *testing.T) {
+		databasePath := filepath.Join(t.TempDir(), "pinguin.db")
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		if _, err := InitDB(databasePath, logger); err != nil {
+			t.Fatalf("initialize current schema: %v", err)
+		}
+		database, err := InitDB(databasePath, logger)
+		if err != nil {
+			t.Fatalf("reopen current schema: %v", err)
+		}
+		if err := ValidateManagedSchema(database); err != nil {
+			t.Fatalf("validate current schema: %v", err)
+		}
+	})
+	t.Run("migration table inspection failure", func(t *testing.T) {
+		database := newDatabase(t)
+		sqlDatabase, err := database.DB()
+		if err != nil {
+			t.Fatalf("database handle: %v", err)
+		}
+		if err := sqlDatabase.Close(); err != nil {
+			t.Fatalf("close database: %v", err)
+		}
+		if err := migrateDatabaseSchema(database); err == nil || !strings.Contains(err.Error(), "inspect database schema") {
+			t.Fatalf("migration table inspection error = %v", err)
+		}
+	})
+	t.Run("table inspection failure", func(t *testing.T) {
+		database := newDatabase(t)
+		sqlDatabase, err := database.DB()
+		if err != nil {
+			t.Fatalf("database handle: %v", err)
+		}
+		if err := sqlDatabase.Close(); err != nil {
+			t.Fatalf("close database: %v", err)
+		}
+		if err := ValidateManagedSchema(database); err == nil || !strings.Contains(err.Error(), "inspect database schema") {
+			t.Fatalf("table inspection error = %v", err)
+		}
+	})
+	t.Run("missing table", func(t *testing.T) {
+		database := newDatabase(t)
+		if err := database.Migrator().DropTable(&tenant.Tenant{}); err != nil {
+			t.Fatalf("drop tenant table: %v", err)
+		}
+		if err := ValidateManagedSchema(database); err == nil || !strings.Contains(err.Error(), "missing table tenants") {
+			t.Fatalf("missing table error = %v", err)
+		}
+	})
+	t.Run("extra table", func(t *testing.T) {
+		database := newDatabase(t)
+		if err := database.Migrator().CreateTable(&extraApplicationTable{}); err != nil {
+			t.Fatalf("create extra table: %v", err)
+		}
+		if err := ValidateManagedSchema(database); err == nil || !strings.Contains(err.Error(), "application tables") {
+			t.Fatalf("extra table error = %v", err)
+		}
+	})
+	t.Run("extra column", func(t *testing.T) {
+		database := newDatabase(t)
+		if err := database.AutoMigrate(&tenantWithExtraColumn{}); err != nil {
+			t.Fatalf("add extra tenant column: %v", err)
+		}
+		if err := ValidateManagedSchema(database); err == nil || !strings.Contains(err.Error(), "columns, expected") {
+			t.Fatalf("extra column error = %v", err)
+		}
+	})
+	t.Run("missing expected column", func(t *testing.T) {
+		database := newDatabase(t)
+		if err := database.Migrator().RenameColumn(&tenant.Tenant{}, "support_email", "unexpected"); err != nil {
+			t.Fatalf("rename tenant column: %v", err)
+		}
+		if err := ValidateManagedSchema(database); err == nil || !strings.Contains(err.Error(), "missing column support_email") {
+			t.Fatalf("missing column error = %v", err)
+		}
+	})
+	t.Run("missing index count", func(t *testing.T) {
+		database := newDatabase(t)
+		if err := database.Migrator().DropIndex(&tenant.Tenant{}, "idx_tenants_owner_user_id"); err != nil {
+			t.Fatalf("drop tenant index: %v", err)
+		}
+		if err := ValidateManagedSchema(database); err == nil || !strings.Contains(err.Error(), "indexes, expected") {
+			t.Fatalf("index count error = %v", err)
+		}
+	})
+	t.Run("missing expected index", func(t *testing.T) {
+		database := newDatabase(t)
+		if err := database.Migrator().RenameIndex(&tenant.Tenant{}, "idx_tenants_owner_user_id", "idx_unexpected"); err != nil {
+			t.Fatalf("rename tenant index: %v", err)
+		}
+		if err := ValidateManagedSchema(database); err == nil || !strings.Contains(err.Error(), "missing index idx_tenants_owner_user_id") {
+			t.Fatalf("missing index error = %v", err)
+		}
+	})
+	t.Run("schema parse failure", func(t *testing.T) {
+		database := newDatabase(t)
+		err := validateDatabaseSchemaWithModels(database, database.Migrator(), map[string]struct{}{}, []interface{}{make(chan int)})
+		if err == nil || !strings.Contains(err.Error(), "parse managed schema") {
+			t.Fatalf("schema parse error = %v", err)
+		}
+	})
+	t.Run("column inspection failure", func(t *testing.T) {
+		database := newDatabase(t)
+		err := validateDatabaseSchemaWithModels(
+			database,
+			failingSchemaMigrator{Migrator: database.Migrator(), columnErr: errors.New("column inspection blocked")},
+			map[string]struct{}{"notifications": {}},
+			[]interface{}{&model.Notification{}},
+		)
+		if err == nil || !strings.Contains(err.Error(), "inspect table notifications") {
+			t.Fatalf("column inspection error = %v", err)
+		}
+	})
+	t.Run("index inspection failure", func(t *testing.T) {
+		database := newDatabase(t)
+		err := validateDatabaseSchemaWithModels(
+			database,
+			failingSchemaMigrator{Migrator: database.Migrator(), indexErr: errors.New("index inspection blocked")},
+			map[string]struct{}{"notifications": {}},
+			[]interface{}{&model.Notification{}},
+		)
+		if err == nil || !strings.Contains(err.Error(), "inspect indexes for table notifications") {
+			t.Fatalf("index inspection error = %v", err)
+		}
+	})
 }
 
 func TestInitDBConfiguresSQLiteContentionSettings(t *testing.T) {

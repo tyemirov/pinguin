@@ -65,18 +65,119 @@ func sqliteDSN(dbPath string) string {
 }
 
 var migrateDatabaseSchema = func(database *gorm.DB) error {
+	tables, tableErr := database.Migrator().GetTables()
+	if tableErr != nil {
+		return fmt.Errorf("inspect database schema: %w", tableErr)
+	}
+	applicationTables := make(map[string]struct{})
+	for _, table := range tables {
+		if table != "sqlite_sequence" {
+			applicationTables[table] = struct{}{}
+		}
+	}
+	if len(applicationTables) > 0 {
+		return validateDatabaseSchema(database, applicationTables)
+	}
 	return database.AutoMigrate(
 		&model.Notification{},
 		&model.NotificationAttachment{},
 		&tenant.Tenant{},
-		&tenant.TenantDomain{},
-		&tenant.TenantAdmin{},
 		&tenant.EmailProfile{},
 		&tenant.SMSProfile{},
+		&tenant.APICredential{},
+		&tenant.IdempotencyRecord{},
 		&smtpidentity.SenderDomain{},
 		&smtpidentity.Identity{},
 		&smtpidentity.ForwardRecipient{},
 	)
+}
+
+// ValidateManagedSchema verifies that a database contains only the current managed schema.
+func ValidateManagedSchema(database *gorm.DB) error {
+	tables, tableErr := database.Migrator().GetTables()
+	if tableErr != nil {
+		return fmt.Errorf("inspect database schema: %w", tableErr)
+	}
+	applicationTables := make(map[string]struct{})
+	for _, tableName := range tables {
+		if tableName != "sqlite_sequence" {
+			applicationTables[tableName] = struct{}{}
+		}
+	}
+	return validateDatabaseSchema(database, applicationTables)
+}
+
+func validateDatabaseSchema(database *gorm.DB, actualTables map[string]struct{}) error {
+	models := []interface{}{
+		&model.Notification{},
+		&model.NotificationAttachment{},
+		&tenant.Tenant{},
+		&tenant.EmailProfile{},
+		&tenant.SMSProfile{},
+		&tenant.APICredential{},
+		&tenant.IdempotencyRecord{},
+		&smtpidentity.SenderDomain{},
+		&smtpidentity.Identity{},
+		&smtpidentity.ForwardRecipient{},
+	}
+	return validateDatabaseSchemaWithModels(database, database.Migrator(), actualTables, models)
+}
+
+func validateDatabaseSchemaWithModels(database *gorm.DB, migrator gorm.Migrator, actualTables map[string]struct{}, models []interface{}) error {
+	expectedTables := make(map[string]struct{}, len(models))
+	for _, schemaModel := range models {
+		statement := &gorm.Statement{DB: database}
+		if parseErr := statement.Parse(schemaModel); parseErr != nil {
+			return fmt.Errorf("parse managed schema: %w", parseErr)
+		}
+		expectedTables[statement.Schema.Table] = struct{}{}
+		if _, exists := actualTables[statement.Schema.Table]; !exists {
+			return fmt.Errorf("database schema is not current: missing table %s", statement.Schema.Table)
+		}
+		columnTypes, columnErr := migrator.ColumnTypes(schemaModel)
+		if columnErr != nil {
+			return fmt.Errorf("inspect table %s: %w", statement.Schema.Table, columnErr)
+		}
+		actualColumns := make(map[string]struct{}, len(columnTypes))
+		for _, columnType := range columnTypes {
+			actualColumns[columnType.Name()] = struct{}{}
+		}
+		if len(actualColumns) != len(statement.Schema.DBNames) {
+			return fmt.Errorf("database schema is not current: table %s has %d columns, expected %d", statement.Schema.Table, len(actualColumns), len(statement.Schema.DBNames))
+		}
+		for _, expectedColumn := range statement.Schema.DBNames {
+			if _, exists := actualColumns[expectedColumn]; !exists {
+				return fmt.Errorf("database schema is not current: table %s is missing column %s", statement.Schema.Table, expectedColumn)
+			}
+		}
+		declaredIndexes := statement.Schema.ParseIndexes()
+		expectedIndexes := make(map[string]struct{}, len(declaredIndexes))
+		for _, index := range declaredIndexes {
+			expectedIndexes[index.Name] = struct{}{}
+		}
+		actualIndexes, indexErr := migrator.GetIndexes(schemaModel)
+		if indexErr != nil {
+			return fmt.Errorf("inspect indexes for table %s: %w", statement.Schema.Table, indexErr)
+		}
+		actualIndexNames := make(map[string]struct{}, len(actualIndexes))
+		for _, index := range actualIndexes {
+			if !strings.HasPrefix(index.Name(), "sqlite_autoindex_") {
+				actualIndexNames[index.Name()] = struct{}{}
+			}
+		}
+		if len(actualIndexNames) != len(expectedIndexes) {
+			return fmt.Errorf("database schema is not current: table %s has %d indexes, expected %d", statement.Schema.Table, len(actualIndexNames), len(expectedIndexes))
+		}
+		for indexName := range expectedIndexes {
+			if _, exists := actualIndexNames[indexName]; !exists {
+				return fmt.Errorf("database schema is not current: table %s is missing index %s", statement.Schema.Table, indexName)
+			}
+		}
+	}
+	if len(actualTables) != len(expectedTables) {
+		return fmt.Errorf("database schema is not current: found %d application tables, expected %d", len(actualTables), len(expectedTables))
+	}
+	return nil
 }
 
 type slogGormLogger struct {

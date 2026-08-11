@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"gopkg.in/yaml.v3"
 )
 
 func TestRunValidatesValidConfig(t *testing.T) {
@@ -47,198 +45,6 @@ func TestRunValidatesCurrentServerTAuthConfig(t *testing.T) {
 	}
 	if report.Summary.ValidConfigs != 1 {
 		t.Fatalf("expected current server.tauth config to be valid, got errors: %v", report.Diagnostics[0].Errors)
-	}
-}
-
-func TestRunValidatesCurrentRuntimeTenantSchema(t *testing.T) {
-	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, "config.yml")
-	writeTestConfig(t, configPath, currentRuntimeTenantFieldsConfigYAML)
-
-	report, err := Run(context.Background(), Options{
-		ConfigPaths: []string{configPath},
-	})
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if report.Summary.ValidConfigs != 1 {
-		t.Fatalf("expected current runtime tenant schema to be valid, got errors: %v", report.Diagnostics[0].Errors)
-	}
-}
-
-func TestRunRejectsUnsupportedTenantFields(t *testing.T) {
-	for _, testCase := range []struct {
-		name          string
-		tenantSnippet string
-		expected      string
-	}{
-		{
-			name: "legacy_status",
-			tenantSnippet: `
-    status: active`,
-			expected: "tenants[].status is no longer supported",
-		},
-		{
-			name: "legacy_identity",
-			tenantSnippet: `
-    identity:
-      googleClientId: google-client
-      tauthBaseUrl: https://tauth-api.mprlab.com`,
-			expected: "tenants[].identity is not supported",
-		},
-		{
-			name: "unknown_tenant_field",
-			tenantSnippet: `
-    unsupportedOption: true`,
-			expected: "tenants[].unsupportedOption is not supported",
-		},
-		{
-			name: "unknown_sms_profile_field",
-			tenantSnippet: `
-    smsProfile:
-      accountSid: sid
-      authToken: token
-      fromNumber: "+10000000000"
-      unsupportedOption: true`,
-			expected: "tenants[].smsProfile.unsupportedOption is not supported",
-		},
-	} {
-		t.Run(testCase.name, func(t *testing.T) {
-			configPath := filepath.Join(t.TempDir(), "config.yml")
-			writeTestConfig(t, configPath, doctorTenantConfigWithSnippet(testCase.tenantSnippet))
-
-			report, err := Run(context.Background(), Options{
-				ConfigPaths: []string{configPath},
-			})
-			if err != nil {
-				t.Fatalf("expected no run error, got %v", err)
-			}
-			if report.Summary.ValidConfigs != 0 {
-				t.Fatalf("expected unsupported tenant config to be invalid")
-			}
-			if !containsDiagnosticError(report.Diagnostics[0].Errors, testCase.expected) {
-				t.Fatalf("expected unsupported tenant diagnostic containing %q, got %v", testCase.expected, report.Diagnostics[0].Errors)
-			}
-		})
-	}
-}
-
-func TestRunValidatesTenantConfigPath(t *testing.T) {
-	tempDir := t.TempDir()
-	tenantConfigPath := filepath.Join(tempDir, "tenants.yml")
-	writeTestConfig(t, tenantConfigPath, `
-tenants:
-  - id: mapped
-    displayName: Mapped Tenant
-    domains:
-      - mapped.example.com
-`)
-	configPath := filepath.Join(tempDir, "config.yml")
-	writeTestConfig(t, configPath, doctorConfigWithTenantConfigPath(tenantConfigPath))
-
-	report, err := Run(context.Background(), Options{
-		ConfigPaths: []string{configPath},
-	})
-	if err != nil {
-		t.Fatalf("expected no run error, got %v", err)
-	}
-	if report.Summary.ValidConfigs != 1 {
-		t.Fatalf("expected tenant config path to be valid, got %v", report.Diagnostics[0].Errors)
-	}
-	if !containsString(report.Diagnostics[0].TenantIDs, "mapped") {
-		t.Fatalf("expected tenant IDs to include external tenant, got %v", report.Diagnostics[0].TenantIDs)
-	}
-}
-
-func TestRunRejectsInvalidTenantConfigPath(t *testing.T) {
-	tempDir := t.TempDir()
-	tenantConfigPath := filepath.Join(tempDir, "tenants.yml")
-	writeTestConfig(t, tenantConfigPath, `
-tenants:
-  - id: mapped
-    displayName: Mapped Tenant
-    domains:
-      - mapped.example.com
-    status: active
-`)
-	configPath := filepath.Join(tempDir, "config.yml")
-	writeTestConfig(t, configPath, doctorConfigWithTenantConfigPath(tenantConfigPath))
-
-	report, err := Run(context.Background(), Options{
-		ConfigPaths: []string{configPath},
-	})
-	if err != nil {
-		t.Fatalf("expected no run error, got %v", err)
-	}
-	if report.Summary.ValidConfigs != 0 {
-		t.Fatalf("expected invalid tenant config path")
-	}
-	if !containsDiagnosticError(report.Diagnostics[0].Errors, "tenants[].status is no longer supported") {
-		t.Fatalf("expected tenant config path diagnostic, got %v", report.Diagnostics[0].Errors)
-	}
-}
-
-func TestRunRejectsUnreadableAndEmptyTenantConfigPath(t *testing.T) {
-	for _, testCase := range []struct {
-		name             string
-		writeTenantFile  bool
-		tenantFileYAML   string
-		expectedFragment string
-	}{
-		{
-			name:             "unreadable",
-			expectedFragment: "tenants.configPath read",
-		},
-		{
-			name:            "empty",
-			writeTenantFile: true,
-			tenantFileYAML: `
-tenants: []
-`,
-			expectedFragment: "has no tenants configured",
-		},
-	} {
-		t.Run(testCase.name, func(t *testing.T) {
-			tempDir := t.TempDir()
-			tenantConfigPath := filepath.Join(tempDir, "tenants.yml")
-			if testCase.writeTenantFile {
-				writeTestConfig(t, tenantConfigPath, testCase.tenantFileYAML)
-			}
-			configPath := filepath.Join(tempDir, "config.yml")
-			writeTestConfig(t, configPath, doctorConfigWithTenantConfigPath(tenantConfigPath))
-
-			report, err := Run(context.Background(), Options{
-				ConfigPaths: []string{configPath},
-			})
-			if err != nil {
-				t.Fatalf("expected no run error, got %v", err)
-			}
-			if report.Summary.ValidConfigs != 0 {
-				t.Fatalf("expected invalid tenant config path")
-			}
-			if !containsDiagnosticError(report.Diagnostics[0].Errors, testCase.expectedFragment) {
-				t.Fatalf("expected tenant config path diagnostic containing %q, got %v", testCase.expectedFragment, report.Diagnostics[0].Errors)
-			}
-		})
-	}
-}
-
-func TestRunRejectsMissingTenantSource(t *testing.T) {
-	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, "config.yml")
-	writeTestConfig(t, configPath, doctorConfigWithTenantConfigPath(""))
-
-	report, err := Run(context.Background(), Options{
-		ConfigPaths: []string{configPath},
-	})
-	if err != nil {
-		t.Fatalf("expected no run error, got %v", err)
-	}
-	if report.Summary.ValidConfigs != 0 {
-		t.Fatalf("expected missing tenant source to be invalid")
-	}
-	if !containsDiagnosticError(report.Diagnostics[0].Errors, "tenants.configPath") {
-		t.Fatalf("expected missing tenant source diagnostic, got %v", report.Diagnostics[0].Errors)
 	}
 }
 
@@ -298,25 +104,6 @@ func TestRunValidatesMultipleConfigs(t *testing.T) {
 	}
 	if !report.CrossValidation.Performed {
 		t.Fatalf("expected cross validation to be performed")
-	}
-}
-
-func TestRunDetectsCrossConfigDomainConflict(t *testing.T) {
-	tempDir := t.TempDir()
-	config1Path := filepath.Join(tempDir, "config1.yml")
-	config2Path := filepath.Join(tempDir, "config2.yml")
-	writeTestConfig(t, config1Path, validConfigYAML)
-	writeTestConfig(t, config2Path, conflictingDomainConfigYAML)
-
-	report, err := Run(context.Background(), Options{
-		ConfigPaths:          []string{config1Path, config2Path},
-		ValidateCrossConfigs: true,
-	})
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if len(report.CrossValidation.Errors) == 0 {
-		t.Fatalf("expected cross-config errors for conflicting domains")
 	}
 }
 
@@ -459,15 +246,12 @@ func TestRunReportsMissingEnvWhenExpansionEnabled(t *testing.T) {
 	writeTestConfig(t, configPath, `
 server:
   databasePath: ${TEST_DB_PATH}
-  grpcAuthToken: test-token
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 30
   masterEncryptionKey: test-encryption-key-at-least-32
   connectionTimeoutSec: 5
   operationTimeoutSec: 10
-tenants:
-  configPath: tenants.yml
 web:
   enabled: false
 `)
@@ -484,25 +268,6 @@ web:
 	}
 	if !containsDiagnosticError(report.Diagnostics[0].Errors, "missing environment variables: TEST_DB_PATH") {
 		t.Fatalf("expected missing env diagnostic, got %v", report.Diagnostics[0].Errors)
-	}
-}
-
-func TestRunRejectsMappingTenantItems(t *testing.T) {
-	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, "config.yml")
-	writeTestConfig(t, configPath, mappingItemsSMTPSubmissionConfigYAML)
-
-	report, err := Run(context.Background(), Options{
-		ConfigPaths: []string{configPath},
-	})
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if report.Summary.ValidConfigs != 0 {
-		t.Fatalf("expected tenants.items config to be invalid")
-	}
-	if !containsDiagnosticError(report.Diagnostics[0].Errors, "tenants.items is not supported") {
-		t.Fatalf("expected tenants.items diagnostic, got %v", report.Diagnostics[0].Errors)
 	}
 }
 
@@ -532,6 +297,7 @@ func TestFormatSummaryIncludesInvalidAndCleanCrossValidation(t *testing.T) {
 			{
 				ConfigPath: "bad.yml",
 				Valid:      false,
+				TenantIDs:  []string{"tenant-one"},
 				Errors:     []string{"missing server.databasePath"},
 				Warnings:   []string{"server.masterEncryptionKey should be at least 32 characters"},
 			},
@@ -539,80 +305,10 @@ func TestFormatSummaryIncludesInvalidAndCleanCrossValidation(t *testing.T) {
 		CrossValidation: crossValidation{Performed: true},
 	}
 	summary := FormatSummary(report)
-	for _, expected := range []string{"INVALID", "ERROR: missing server.databasePath", "WARN: server.masterEncryptionKey", "No cross-config issues detected"} {
+	for _, expected := range []string{"INVALID", "Tenants: tenant-one", "ERROR: missing server.databasePath", "WARN: server.masterEncryptionKey", "No cross-config issues detected"} {
 		if !strings.Contains(summary, expected) {
 			t.Fatalf("expected summary to contain %q, got %q", expected, summary)
 		}
-	}
-}
-
-func TestPinguinYAMLNodeDefaultKind(t *testing.T) {
-	var node pinguinYAMLNode
-	if err := node.UnmarshalYAML(&yaml.Node{Kind: yaml.ScalarNode, Value: "ignored"}); err == nil || !strings.Contains(err.Error(), "tenants must be a list") {
-		t.Fatalf("expected invalid tenant shape error, got %v", err)
-	}
-	if tenants := node.AllTenants(); tenants != nil {
-		t.Fatalf("expected no tenants, got %+v", tenants)
-	}
-}
-
-func TestPinguinYAMLNodeAcceptsCurrentMappingShape(t *testing.T) {
-	var node pinguinYAMLNode
-	if err := yaml.Unmarshal([]byte(`
-configPath: " tenants.yml "
-tenants:
-  - id: mapped
-    displayName: Mapped Tenant
-    domains:
-      - mapped.example.com
-`), &node); err != nil {
-		t.Fatalf("unmarshal current mapping shape: %v", err)
-	}
-	if node.ConfigPath != "tenants.yml" {
-		t.Fatalf("expected trimmed config path, got %q", node.ConfigPath)
-	}
-	if len(node.AllTenants()) != 1 || node.AllTenants()[0].ID != "mapped" {
-		t.Fatalf("expected mapped tenant, got %+v", node.AllTenants())
-	}
-}
-
-func TestPinguinYAMLNodeDecodeErrors(t *testing.T) {
-	sequenceNode := &yaml.Node{
-		Kind: yaml.SequenceNode,
-		Content: []*yaml.Node{
-			{Kind: yaml.MappingNode, Content: []*yaml.Node{
-				{Kind: yaml.ScalarNode, Value: "domains"},
-				{Kind: yaml.MappingNode},
-			}},
-		},
-	}
-	var sequence pinguinYAMLNode
-	if err := sequence.UnmarshalYAML(sequenceNode); err == nil {
-		t.Fatalf("expected sequence decode error")
-	}
-
-	mappingNode := &yaml.Node{
-		Kind: yaml.MappingNode,
-		Content: []*yaml.Node{
-			{Kind: yaml.ScalarNode, Value: "items"},
-			{Kind: yaml.MappingNode},
-		},
-	}
-	var mapping pinguinYAMLNode
-	if err := mapping.UnmarshalYAML(mappingNode); err == nil {
-		t.Fatalf("expected mapping decode error")
-	}
-
-	invalidCurrentMappingNode := &yaml.Node{
-		Kind: yaml.MappingNode,
-		Content: []*yaml.Node{
-			{Kind: yaml.ScalarNode, Value: "tenants"},
-			{Kind: yaml.MappingNode},
-		},
-	}
-	var currentMapping pinguinYAMLNode
-	if err := currentMapping.UnmarshalYAML(invalidCurrentMappingNode); err == nil {
-		t.Fatalf("expected current mapping decode error")
 	}
 }
 
@@ -657,17 +353,6 @@ func TestDoctorValidationHelpersCoverErrorBranches(t *testing.T) {
 		}
 	}
 
-	tenantResult := DiagnosticResult{Valid: true}
-	validateTenantConfig(pinguinTenant{}, true, &tenantResult)
-	for _, expected := range []string{
-		"tenant[(unknown)]: displayName",
-		"tenant[(unknown)]: at least one domain",
-		"tenant[(unknown)]: at least one admin",
-	} {
-		if !containsDiagnosticError(tenantResult.Errors, expected) {
-			t.Fatalf("expected tenant validation error %q in %v", expected, tenantResult.Errors)
-		}
-	}
 }
 
 func TestFormatSummaryIncludesCrossValidationErrors(t *testing.T) {
@@ -700,45 +385,6 @@ func TestFormatSummaryIncludesCrossValidationWarnings(t *testing.T) {
 	if !strings.Contains(summary, "WARN: configuration warning") {
 		t.Fatalf("expected cross validation warning, got %q", summary)
 	}
-}
-
-func TestValidateCrossConfigsSkipsBlankDomains(t *testing.T) {
-	validation := validateCrossConfigs(map[string]*pinguinConfig{
-		"a.yml": {
-			Tenants: pinguinYAMLNode{Tenants: []pinguinTenant{
-				{ID: "tenant-a", Domains: []string{" ", "Alpha.example"}},
-			}},
-		},
-		"b.yml": {
-			Tenants: pinguinYAMLNode{Tenants: []pinguinTenant{
-				{ID: "tenant-b", Domains: []string{"Beta.example"}},
-			}},
-		},
-	})
-	if !validation.Performed {
-		t.Fatalf("expected cross validation to run")
-	}
-	if len(validation.Errors) != 0 {
-		t.Fatalf("blank domains should not create conflicts: %v", validation.Errors)
-	}
-}
-
-func containsDiagnosticError(errors []string, expected string) bool {
-	for _, diagnosticError := range errors {
-		if strings.Contains(diagnosticError, expected) {
-			return true
-		}
-	}
-	return false
-}
-
-func containsString(values []string, expected string) bool {
-	for _, value := range values {
-		if value == expected {
-			return true
-		}
-	}
-	return false
 }
 
 func TestFormatReportProducesValidJSON(t *testing.T) {
@@ -793,56 +439,18 @@ func writeTestConfig(t *testing.T, path string, content string) {
 	}
 }
 
-func doctorTenantConfigWithSnippet(tenantSnippet string) string {
-	return `
-server:
-  databasePath: /data/pinguin.db
-  grpcAuthToken: test-token-123
-  logLevel: INFO
-  maxRetries: 3
-  retryIntervalSec: 60
-  masterEncryptionKey: test-encryption-key-at-least-32-chars
-  connectionTimeoutSec: 30
-  operationTimeoutSec: 60
-
-web:
-  enabled: false
-
-tenants:
-  - id: demo
-    displayName: Demo Tenant
-    domains:
-      - demo.example.com` + tenantSnippet + `
-`
-}
-
-func doctorConfigWithTenantConfigPath(tenantConfigPath string) string {
-	configPathBlock := ""
-	if tenantConfigPath != "" {
-		configPathBlock = "  configPath: " + tenantConfigPath + "\n"
+func containsDiagnosticError(errorMessages []string, expected string) bool {
+	for _, errorMessage := range errorMessages {
+		if strings.Contains(errorMessage, expected) {
+			return true
+		}
 	}
-	return `
-server:
-  databasePath: /data/pinguin.db
-  grpcAuthToken: test-token-123
-  logLevel: INFO
-  maxRetries: 3
-  retryIntervalSec: 60
-  masterEncryptionKey: test-encryption-key-at-least-32-chars
-  connectionTimeoutSec: 30
-  operationTimeoutSec: 60
-
-web:
-  enabled: false
-
-tenants:
-` + configPathBlock
+	return false
 }
 
 const currentServerTAuthConfigYAML = `
 server:
   databasePath: /data/pinguin.db
-  grpcAuthToken: test-token-123
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 60
@@ -859,52 +467,11 @@ web:
   allowedOrigins:
     - http://localhost:3000
 
-tenants:
-  - id: demo
-    displayName: Demo Tenant
-    domains:
-      - demo.example.com
-    admins:
-      - admin@example.com
-`
-
-const currentRuntimeTenantFieldsConfigYAML = `
-server:
-  databasePath: /data/pinguin.db
-  grpcAuthToken: test-token-123
-  logLevel: INFO
-  maxRetries: 3
-  retryIntervalSec: 60
-  masterEncryptionKey: test-encryption-key-at-least-32-chars
-  connectionTimeoutSec: 30
-  operationTimeoutSec: 60
-
-web:
-  enabled: false
-
-tenants:
-  - id: demo
-    displayName: Demo Tenant
-    supportEmail: support@example.com
-    enabled: true
-    domains:
-      - demo.example.com
-    emailProfile:
-      host: smtp.example.com
-      port: 587
-      username: smtp-user
-      password: smtp-pass
-      fromAddress: noreply@example.com
-    smsProfile:
-      accountSid: sid
-      authToken: token
-      fromNumber: "+10000000000"
 `
 
 const validConfigYAML = `
 server:
   databasePath: /data/pinguin.db
-  grpcAuthToken: test-token-123
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 60
@@ -921,57 +488,13 @@ web:
   allowedOrigins:
     - http://localhost:3000
 
-tenants:
-  - id: demo
-    displayName: Demo Tenant
-    domains:
-      - demo.example.com
-    admins:
-      - admin@example.com
 `
 
 const timeNowForDoctorTest = "2026-05-03T00:00:00Z"
 
-const mappingItemsSMTPSubmissionConfigYAML = `
-server:
-  databasePath: /data/pinguin.db
-  grpcAuthToken: test-token-123
-  logLevel: INFO
-  maxRetries: 3
-  retryIntervalSec: 60
-  masterEncryptionKey: short-master-key-warning
-  connectionTimeoutSec: 30
-  operationTimeoutSec: 60
-
-web:
-  enabled: false
-
-smtpSubmission:
-  enabled: true
-  hostname: smtp.example.com
-  listenAddr: ":587"
-  tlsCertPath: /certs/fullchain.pem
-  tlsKeyPath: /certs/privkey.pem
-  maxMessageBytes: 1048576
-  maxRecipients: 25
-  relay:
-    host: smtp-relay.example.com
-    port: 587
-    username: relay-user
-    password: relay-pass
-
-tenants:
-  items:
-    - id: mapped
-      displayName: Mapped Tenant
-      domains:
-        - mapped.example.com
-`
-
 const validConfig2YAML = `
 server:
   databasePath: /data/pinguin2.db
-  grpcAuthToken: test-token-456
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 60
@@ -988,48 +511,11 @@ web:
   allowedOrigins:
     - http://localhost:3001
 
-tenants:
-  - id: other
-    displayName: Other Tenant
-    domains:
-      - other.example.com
-    admins:
-      - admin@example.com
-`
-
-const conflictingDomainConfigYAML = `
-server:
-  databasePath: /data/pinguin2.db
-  grpcAuthToken: test-token-456
-  logLevel: INFO
-  maxRetries: 3
-  retryIntervalSec: 60
-  masterEncryptionKey: test-encryption-key-at-least-32-chars
-  connectionTimeoutSec: 30
-  operationTimeoutSec: 60
-  tauth:
-    signingKey: test-signing-key-2
-    cookieName: app_session
-
-web:
-  enabled: true
-  listenAddr: ":8081"
-  allowedOrigins:
-    - http://localhost:3001
-
-tenants:
-  - id: conflicting
-    displayName: Conflicting Tenant
-    domains:
-      - demo.example.com
-    admins:
-      - admin@example.com
 `
 
 const invalidConfigYAML = `
 server:
   databasePath: ""
-  grpcAuthToken: ""
   logLevel: ""
   maxRetries: 0
   retryIntervalSec: 0
@@ -1041,7 +527,6 @@ server:
 const invalidSMTPSubmissionConfigYAML = `
 server:
   databasePath: /data/pinguin.db
-  grpcAuthToken: test-token-123
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 60
@@ -1059,17 +544,11 @@ smtpSubmission:
   maxRecipients: 25
   allowInsecureAuth: true
 
-tenants:
-  - id: demo
-    displayName: Demo Tenant
-    domains:
-      - demo.example.com
 `
 
 const directSMTPSubmissionConfigYAML = `
 server:
   databasePath: /data/pinguin.db
-  grpcAuthToken: test-token-123
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 60
@@ -1091,17 +570,11 @@ smtpSubmission:
   maxRecipients: 100
   allowInsecureAuth: true
 
-tenants:
-  - id: demo
-    displayName: Demo Tenant
-    domains:
-      - demo.example.com
 `
 
 const validSMTPForwardingConfigYAML = `
 server:
   databasePath: /data/pinguin.db
-  grpcAuthToken: test-token-123
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 60
@@ -1124,17 +597,11 @@ smtpForwarding:
     username: relay-user
     password: relay-pass
 
-tenants:
-  - id: demo
-    displayName: Demo Tenant
-    domains:
-      - demo.example.com
 `
 
 const unknownSMTPSubmissionConfigYAML = `
 server:
   databasePath: /data/pinguin.db
-  grpcAuthToken: test-token-123
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 60
@@ -1159,17 +626,11 @@ smtpSubmission:
     username: relay-user
     password: relay-pass
 
-tenants:
-  - id: demo
-    displayName: Demo Tenant
-    domains:
-      - demo.example.com
 `
 
 const dynamicForwardingConfigYAML = `
 server:
   databasePath: /data/pinguin.db
-  grpcAuthToken: test-token-123
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 60
@@ -1192,17 +653,11 @@ smtpForwarding:
     username: relay-user
     password: relay-pass
 
-tenants:
-  - id: demo
-    displayName: Demo Tenant
-    domains:
-      - demo.example.com
 `
 
 const invalidSMTPForwardingConfigYAML = `
 server:
   databasePath: /data/pinguin.db
-  grpcAuthToken: test-token-123
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 60
@@ -1225,17 +680,11 @@ smtpForwarding:
     username:
     password:
 
-tenants:
-  - id: demo
-    displayName: Demo Tenant
-    domains:
-      - demo.example.com
 `
 
 const configWithEnvVarsYAML = `
 server:
   databasePath: ${TEST_DB_PATH}
-  grpcAuthToken: ${TEST_GRPC_TOKEN}
   logLevel: ${TEST_LOG_LEVEL}
   maxRetries: 3
   retryIntervalSec: 60
@@ -1252,11 +701,4 @@ web:
   allowedOrigins:
     - http://localhost:3000
 
-tenants:
-  - id: test
-    displayName: Test Tenant
-    domains:
-      - ${TEST_TENANT_DOMAIN}
-    admins:
-      - ${TEST_ADMIN_EMAIL}
 `

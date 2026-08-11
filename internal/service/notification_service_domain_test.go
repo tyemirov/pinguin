@@ -302,11 +302,9 @@ func TestNotificationServicePropagatesStorageErrors(t *testing.T) {
 func TestSendNotificationReturnsEmailSenderResolutionError(t *testing.T) {
 	database := openIsolatedDatabase(t)
 	serviceInstance := &notificationServiceImpl{
-		database:     database,
-		logger:       slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
-		config:       config.Config{ConnectionTimeoutSec: 5, OperationTimeoutSec: 5},
-		emailSenders: make(map[string]EmailSender),
-		smsSenders:   make(map[string]SmsSender),
+		database: database,
+		logger:   slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+		config:   config.Config{ConnectionTimeoutSec: 5, OperationTimeoutSec: 5},
 	}
 	request := mustNotificationRequest(t, model.NotificationEmail, "user@example.com", "Subject", "Body", nil, nil)
 	runtimeCtx := tenant.WithRuntime(context.Background(), tenant.RuntimeConfig{Tenant: tenant.Tenant{ID: "tenant-empty-email"}})
@@ -485,10 +483,8 @@ func TestEmailSenderForTenantUsesRuntimeCredentials(t *testing.T) {
 	t.Helper()
 
 	serviceInstance := &notificationServiceImpl{
-		logger:       slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
-		config:       config.Config{ConnectionTimeoutSec: 5, OperationTimeoutSec: 5},
-		emailSenders: make(map[string]EmailSender),
-		smsSenders:   make(map[string]SmsSender),
+		logger: slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+		config: config.Config{ConnectionTimeoutSec: 5, OperationTimeoutSec: 5},
 	}
 
 	alphaRuntime := tenant.RuntimeConfig{
@@ -512,12 +508,12 @@ func TestEmailSenderForTenantUsesRuntimeCredentials(t *testing.T) {
 	if smtpSender.Config.Host != "smtp.alpha.example" || smtpSender.Config.Username != "alpha-user" {
 		t.Fatalf("smtp config mismatch: %+v", smtpSender.Config)
 	}
-	cached, err := serviceInstance.emailSenderForTenant(alphaRuntime)
+	reloaded, err := serviceInstance.emailSenderForTenant(alphaRuntime)
 	if err != nil {
-		t.Fatalf("cached sender error: %v", err)
+		t.Fatalf("reloaded sender error: %v", err)
 	}
-	if cached != sender {
-		t.Fatalf("expected cached sender reuse")
+	if reloaded == sender {
+		t.Fatalf("expected a fresh sender so profile changes take effect")
 	}
 
 	bravoRuntime := tenant.RuntimeConfig{
@@ -543,10 +539,8 @@ func TestSmsSenderForTenantUsesRuntimeCredentials(t *testing.T) {
 	t.Helper()
 
 	serviceInstance := &notificationServiceImpl{
-		logger:       slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
-		config:       config.Config{ConnectionTimeoutSec: 5, OperationTimeoutSec: 5},
-		emailSenders: make(map[string]EmailSender),
-		smsSenders:   make(map[string]SmsSender),
+		logger: slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+		config: config.Config{ConnectionTimeoutSec: 5, OperationTimeoutSec: 5},
 	}
 
 	bravoRuntime := tenant.RuntimeConfig{
@@ -568,16 +562,16 @@ func TestSmsSenderForTenantUsesRuntimeCredentials(t *testing.T) {
 	if twilioSender.FromNumber != "+15550001111" || twilioSender.AccountSID != "AC123" {
 		t.Fatalf("twilio sender mismatch: %+v", twilioSender)
 	}
-	cached, err := serviceInstance.smsSenderForTenant(bravoRuntime)
+	reloaded, err := serviceInstance.smsSenderForTenant(bravoRuntime)
 	if err != nil {
-		t.Fatalf("cached sms sender error: %v", err)
+		t.Fatalf("reloaded sms sender error: %v", err)
 	}
-	if cached != sender {
-		t.Fatalf("expected cached sms sender")
+	if reloaded == sender {
+		t.Fatalf("expected a fresh sender so profile changes take effect")
 	}
 }
 
-func TestNotificationServiceUsesInjectedDefaultsAndRuntimeFallbacks(t *testing.T) {
+func TestNotificationServiceUsesInjectedDefaultsWithoutRuntimeFallback(t *testing.T) {
 	database := openIsolatedDatabase(t)
 	emailSender := &stubEmailSender{}
 	smsSender := &stubSmsSender{}
@@ -593,12 +587,18 @@ func TestNotificationServiceUsesInjectedDefaultsAndRuntimeFallbacks(t *testing.T
 	if serviceInstance.defaultEmailSender != emailSender || serviceInstance.defaultSmsSender != smsSender {
 		t.Fatalf("expected injected default senders")
 	}
-	runtimeCfg, err := serviceInstance.runtimeForTenantID(context.Background(), "tenant-from-payload")
-	if err != nil {
-		t.Fatalf("runtime fallback: %v", err)
+	if _, err := serviceInstance.runtimeForTenantID(context.Background(), "tenant-from-payload"); !errors.Is(err, ErrMissingTenantContext) {
+		t.Fatalf("expected managed repository requirement, got %v", err)
 	}
-	if runtimeCfg.Tenant.ID != "tenant-from-payload" {
-		t.Fatalf("unexpected fallback runtime %+v", runtimeCfg)
+	managedRepository := &tenant.Repository{}
+	managedService := NewNotificationService(
+		database,
+		slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+		config.Config{MaxRetries: 2, RetryIntervalSec: 3},
+		managedRepository,
+	).(*notificationServiceImpl)
+	if managedService.tenantRepo != managedRepository || managedService.maxRetries != 2 || managedService.retryIntervalSec != 3 {
+		t.Fatalf("managed service constructor mismatch: %+v", managedService)
 	}
 }
 
@@ -610,62 +610,43 @@ func TestRuntimeForTenantIDValidation(t *testing.T) {
 	if _, err := bareService.runtimeForTenantID(context.Background(), "tenant"); !errors.Is(err, ErrMissingTenantContext) {
 		t.Fatalf("expected missing tenant without default senders, got %v", err)
 	}
-	serviceInstance := newNotificationServiceForDomainTests(openIsolatedDatabase(t))
-	if _, err := serviceInstance.runtimeForTenantID(tenantContext(), "other-tenant"); err == nil || !strings.Contains(err.Error(), "tenant mismatch") {
-		t.Fatalf("expected tenant mismatch, got %v", err)
-	}
-	runtimeCfg, err := serviceInstance.runtimeForTenantID(tenantContext(), testTenantID)
-	if err != nil {
-		t.Fatalf("expected runtime from context: %v", err)
-	}
-	if runtimeCfg.Tenant.ID != testTenantID {
-		t.Fatalf("unexpected runtime tenant %s", runtimeCfg.Tenant.ID)
-	}
-
 	database := openIsolatedDatabase(t)
-	if err := database.AutoMigrate(&tenant.Tenant{}, &tenant.TenantDomain{}, &tenant.TenantAdmin{}, &tenant.EmailProfile{}, &tenant.SMSProfile{}); err != nil {
+	if err := database.AutoMigrate(&tenant.Tenant{}, &tenant.EmailProfile{}, &tenant.SMSProfile{}); err != nil {
 		t.Fatalf("tenant migration: %v", err)
 	}
 	keeper, err := tenant.NewSecretKeeper(strings.Repeat("a", 64))
 	if err != nil {
 		t.Fatalf("secret keeper: %v", err)
 	}
-	if err := tenant.Bootstrap(context.Background(), database, keeper, tenant.BootstrapConfig{
-		Tenants: []tenant.BootstrapTenant{
-			{
-				ID:           "tenant-repo",
-				DisplayName:  "Repo Tenant",
-				SupportEmail: "support@example.com",
-				Enabled:      ptrBool(true),
-				Domains:      []string{"repo.example"},
-				EmailProfile: tenant.BootstrapEmailProfile{
-					Host:        "smtp.example.com",
-					Port:        587,
-					Username:    "smtp-user",
-					Password:    "smtp-pass",
-					FromAddress: "from@example.com",
-				},
-			},
-		},
-	}); err != nil {
-		t.Fatalf("bootstrap tenant repo: %v", err)
+	usernameCipher, usernameErr := keeper.Encrypt("smtp-user")
+	if usernameErr != nil {
+		t.Fatalf("encrypt username: %v", usernameErr)
+	}
+	passwordCipher, passwordErr := keeper.Encrypt("smtp-pass")
+	if passwordErr != nil {
+		t.Fatalf("encrypt password: %v", passwordErr)
+	}
+	repositoryTenantID := "11111111-1111-4111-8111-111111111111"
+	if createErr := database.Create(&tenant.Tenant{ID: repositoryTenantID, OwnerUserID: "owner-1", DisplayName: "Repo Tenant", Version: 1}).Error; createErr != nil {
+		t.Fatalf("create tenant: %v", createErr)
+	}
+	if createErr := database.Create(&tenant.EmailProfile{ID: "profile-1", TenantID: repositoryTenantID, Host: "smtp.example.com", Port: 587, UsernameCipher: usernameCipher, PasswordCipher: passwordCipher, FromAddress: "from@example.com", Version: 1}).Error; createErr != nil {
+		t.Fatalf("create email profile: %v", createErr)
 	}
 	repoService := &notificationServiceImpl{tenantRepo: tenant.NewRepository(database, keeper)}
-	repoRuntime, err := repoService.runtimeForTenantID(context.Background(), "tenant-repo")
+	repoRuntime, err := repoService.runtimeForTenantID(context.Background(), repositoryTenantID)
 	if err != nil {
 		t.Fatalf("tenant repo runtime: %v", err)
 	}
-	if repoRuntime.Tenant.ID != "tenant-repo" {
+	if repoRuntime.Tenant.ID != repositoryTenantID {
 		t.Fatalf("unexpected tenant repo runtime %+v", repoRuntime)
 	}
 }
 
 func TestSenderResolutionErrors(t *testing.T) {
 	serviceInstance := &notificationServiceImpl{
-		logger:       slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
-		config:       config.Config{ConnectionTimeoutSec: 5, OperationTimeoutSec: 5},
-		emailSenders: make(map[string]EmailSender),
-		smsSenders:   make(map[string]SmsSender),
+		logger: slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+		config: config.Config{ConnectionTimeoutSec: 5, OperationTimeoutSec: 5},
 	}
 	if _, err := serviceInstance.emailSenderForTenant(tenant.RuntimeConfig{Tenant: tenant.Tenant{ID: "tenant-empty"}}); err == nil {
 		t.Fatalf("expected missing email credentials error")
@@ -683,8 +664,6 @@ func newNotificationServiceForDomainTests(database *gorm.DB) *notificationServic
 		defaultSmsSender:   &stubSmsSender{},
 		maxRetries:         3,
 		retryIntervalSec:   1,
-		emailSenders:       make(map[string]EmailSender),
-		smsSenders:         make(map[string]SmsSender),
 	}
 }
 
@@ -726,8 +705,4 @@ func registerNotificationUpdateError(t *testing.T, database *gorm.DB) {
 	}); err != nil {
 		t.Fatalf("register update callback: %v", err)
 	}
-}
-
-func ptrBool(value bool) *bool {
-	return &value
 }

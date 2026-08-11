@@ -7,54 +7,28 @@ import (
 	"time"
 
 	"github.com/tyemirov/pinguin/internal/model"
-	"github.com/tyemirov/pinguin/internal/tenant"
 	"github.com/tyemirov/utils/scheduler"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 type notificationRetryStore struct {
-	database   *gorm.DB
-	tenantRepo *tenant.Repository
+	database *gorm.DB
 }
 
 const (
 	pendingJobsNotificationsTable = "notifications"
-	pendingJobsTenantsTable       = "tenants"
-	pendingJobsTenantIDColumn     = "tenant_id"
-	pendingJobsTenantStatusColumn = "status"
-	pendingJobsTenantPrimaryKey   = "id"
 	pendingJobsStatusColumn       = "status"
 	pendingJobsRetryCountColumn   = "retry_count"
 	pendingJobsScheduledForColumn = "scheduled_for"
 )
 
-func newNotificationRetryStore(database *gorm.DB, tenantRepo *tenant.Repository) *notificationRetryStore {
-	return &notificationRetryStore{database: database, tenantRepo: tenantRepo}
+func newNotificationRetryStore(database *gorm.DB) *notificationRetryStore {
+	return &notificationRetryStore{database: database}
 }
 
 func (store *notificationRetryStore) PendingJobs(ctx context.Context, maxRetries int, now time.Time) ([]scheduler.Job, error) {
-	if store.tenantRepo == nil {
-		return store.pendingJobsAll(ctx, maxRetries, now)
-	}
-	return store.pendingJobsForActiveTenants(ctx, maxRetries, now)
-}
-
-func (store *notificationRetryStore) pendingJobsForActiveTenants(ctx context.Context, maxRetries int, now time.Time) ([]scheduler.Job, error) {
-	var notifications []model.Notification
-	err := store.database.WithContext(ctx).
-		Preload("Attachments").
-		Clauses(activeTenantJoinClause()).
-		Where(clause.Eq{
-			Column: clause.Column{Table: pendingJobsTenantsTable, Name: pendingJobsTenantStatusColumn},
-			Value:  tenant.TenantStatusActive,
-		}).
-		Where(pendingJobsFilter(maxRetries, now)).
-		Find(&notifications).Error
-	if err != nil {
-		return nil, err
-	}
-	return store.jobsFromNotifications(notifications), nil
+	return store.pendingJobsAll(ctx, maxRetries, now)
 }
 
 func (store *notificationRetryStore) pendingJobsAll(ctx context.Context, maxRetries int, now time.Time) ([]scheduler.Job, error) {
@@ -82,23 +56,6 @@ func (store *notificationRetryStore) jobsFromNotifications(records []model.Notif
 		})
 	}
 	return jobs
-}
-
-func activeTenantJoinClause() clause.From {
-	return clause.From{
-		Joins: []clause.Join{
-			{
-				Type:  clause.InnerJoin,
-				Table: clause.Table{Name: pendingJobsTenantsTable},
-				ON: clause.Where{Exprs: []clause.Expression{
-					clause.Eq{
-						Column: clause.Column{Table: pendingJobsTenantsTable, Name: pendingJobsTenantPrimaryKey},
-						Value:  clause.Column{Table: pendingJobsNotificationsTable, Name: pendingJobsTenantIDColumn},
-					},
-				}},
-			},
-		},
-	}
 }
 
 func pendingJobsFilter(maxRetries int, currentTime time.Time) clause.Expression {

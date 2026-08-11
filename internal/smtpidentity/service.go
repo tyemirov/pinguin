@@ -41,26 +41,12 @@ func NewServiceWithDNSResolver(repository *Repository, settings PublicSettings, 
 	}
 }
 
-// List returns active identities.
-func (service *Service) List(ctx context.Context) ([]PublicIdentity, error) {
-	return service.repository.List(ctx)
-}
-
-// ListForScope returns active identities visible to an authenticated owner scope.
+// ListForScope returns active identities owned by one tenant.
 func (service *Service) ListForScope(ctx context.Context, scope AccessScope) ([]PublicIdentity, error) {
 	return service.repository.ListForScope(ctx, scope)
 }
 
-// Credentials returns current SMTP settings for an existing identity.
-func (service *Service) Credentials(ctx context.Context, identityID string) (Credentials, error) {
-	identity, password, err := service.repository.Credentials(ctx, strings.TrimSpace(identityID))
-	if err != nil {
-		return Credentials{}, err
-	}
-	return service.credentials(identity, password), nil
-}
-
-// CredentialsForScope returns current SMTP settings visible to an authenticated owner scope.
+// CredentialsForScope returns current SMTP settings for one tenant identity.
 func (service *Service) CredentialsForScope(ctx context.Context, scope AccessScope, identityID string) (Credentials, error) {
 	identity, password, err := service.repository.CredentialsForScope(ctx, scope, strings.TrimSpace(identityID))
 	if err != nil {
@@ -69,16 +55,7 @@ func (service *Service) CredentialsForScope(ctx context.Context, scope AccessSco
 	return service.credentials(identity, password), nil
 }
 
-// Create provisions a new exact sender identity with inbound forwarding owners.
-func (service *Service) Create(ctx context.Context, address Address, forwardTo []Address) (Credentials, error) {
-	identity, password, err := service.repository.Create(ctx, address, forwardTo)
-	if err != nil {
-		return Credentials{}, err
-	}
-	return service.credentials(identity, password), nil
-}
-
-// CreateForScope provisions a new exact sender identity for an authenticated owner scope.
+// CreateForScope provisions a new exact sender identity for one tenant.
 func (service *Service) CreateForScope(ctx context.Context, scope AccessScope, address Address, forwardTo []Address) (Credentials, error) {
 	identity, password, err := service.repository.CreateForScope(ctx, scope, address, forwardTo)
 	if err != nil {
@@ -87,26 +64,12 @@ func (service *Service) CreateForScope(ctx context.Context, scope AccessScope, a
 	return service.credentials(identity, password), nil
 }
 
-// UpdateForwarding replaces inbound forwarding recipients for an existing identity.
-func (service *Service) UpdateForwarding(ctx context.Context, identityID string, forwardTo []Address) (PublicIdentity, error) {
-	return service.repository.UpdateForwarding(ctx, strings.TrimSpace(identityID), forwardTo)
-}
-
-// UpdateForwardingForScope replaces inbound forwarding recipients visible to an authenticated owner scope.
+// UpdateForwardingForScope replaces inbound forwarding recipients for one tenant identity.
 func (service *Service) UpdateForwardingForScope(ctx context.Context, scope AccessScope, identityID string, forwardTo []Address) (PublicIdentity, error) {
 	return service.repository.UpdateForwardingForScope(ctx, scope, strings.TrimSpace(identityID), forwardTo)
 }
 
-// Rotate replaces credentials for an existing identity.
-func (service *Service) Rotate(ctx context.Context, identityID string) (Credentials, error) {
-	identity, password, err := service.repository.Rotate(ctx, strings.TrimSpace(identityID))
-	if err != nil {
-		return Credentials{}, err
-	}
-	return service.credentials(identity, password), nil
-}
-
-// RotateForScope replaces credentials for an identity visible to an authenticated owner scope.
+// RotateForScope replaces credentials for one tenant identity.
 func (service *Service) RotateForScope(ctx context.Context, scope AccessScope, identityID string) (Credentials, error) {
 	identity, password, err := service.repository.RotateForScope(ctx, scope, strings.TrimSpace(identityID))
 	if err != nil {
@@ -115,12 +78,7 @@ func (service *Service) RotateForScope(ctx context.Context, scope AccessScope, i
 	return service.credentials(identity, password), nil
 }
 
-// Delete disables an identity.
-func (service *Service) Delete(ctx context.Context, identityID string) error {
-	return service.repository.Delete(ctx, strings.TrimSpace(identityID))
-}
-
-// DeleteForScope disables an identity visible to an authenticated owner scope.
+// DeleteForScope disables one tenant identity.
 func (service *Service) DeleteForScope(ctx context.Context, scope AccessScope, identityID string) error {
 	return service.repository.DeleteForScope(ctx, scope, strings.TrimSpace(identityID))
 }
