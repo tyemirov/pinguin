@@ -32,7 +32,6 @@ test-results/
 bin/
 tools/
 
-PLAN.md
 # Managed by gix gitignore workflow
 .env.*
 !.env.tauth.example
@@ -47,3 +46,7 @@ docs/mprui-integration-guide.md
 docs/tauth-usage.md
 
 client_secret*.json
+
+# BEGIN MPRLAB-GOVERNANCE
+/.mprlab/*-PLAN.md
+# END MPRLAB-GOVERNANCE
