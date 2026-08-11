@@ -7,8 +7,9 @@ import { createNotificationsList } from './ui/notificationsList.js';
 import { createSMTPWorkspace } from './ui/smtpIdentities.js';
 import { dispatchRefresh } from './core/events.js';
 import { createToastCenter } from './ui/toastCenter.js';
+import { createTenantManagement } from './ui/tenantManagement.js';
 
-const PROTECTED_PAGE_IDS = new Set(['event-log', 'smtp-relay']);
+const PROTECTED_PAGE_IDS = new Set(['tenants', 'event-log', 'smtp-relay']);
 
 window.Alpine = Alpine;
 Alpine.store('auth', createAuthStore());
@@ -33,6 +34,9 @@ Alpine.data('smtpWorkspace', () =>
   }),
 );
 Alpine.data('toastCenter', () => createToastCenter());
+Alpine.data('tenantManagement', () =>
+  createTenantManagement({ apiClient, strings: STRINGS.tenants, actions: STRINGS.actions }),
+);
 
 Alpine.start();
 
@@ -163,7 +167,7 @@ function bootstrapPage(controller) {
     store.setProfile(profile);
     if (pageId === 'landing' && !redirected) {
       redirected = true;
-      window.location.assign(RUNTIME_CONFIG.eventLogUrl);
+      window.location.assign(RUNTIME_CONFIG.tenantUrl);
     }
   };
 

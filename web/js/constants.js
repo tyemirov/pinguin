@@ -3,8 +3,6 @@
 /** @type {Window & typeof globalThis & { __PINGUIN_CONFIG__?: Record<string, unknown> }} */
 const runtimeWindow = window;
 const rawConfig = runtimeWindow.__PINGUIN_CONFIG__ ?? {};
-const tenantConfig =
-  rawConfig && typeof rawConfig.tenant === 'object' ? rawConfig.tenant : null;
 
 const normalizeUrl = (value) => {
   if (!value || typeof value !== "string") {
@@ -31,14 +29,15 @@ const deriveDefaultApiBaseUrl = () => {
 export const RUNTIME_CONFIG = Object.freeze({
   apiBaseUrl: normalizeUrl(rawConfig.apiBaseUrl) || deriveDefaultApiBaseUrl(),
   landingUrl: String(rawConfig.landingUrl || "/index.html"),
+	tenantUrl: String(rawConfig.tenantUrl || "/tenants.html"),
   eventLogUrl: String(rawConfig.eventLogUrl || "/event-log.html"),
   smtpRelayUrl: String(rawConfig.smtpRelayUrl || "/smtp-relay.html"),
-  tenant: tenantConfig,
 });
 
 export const STRINGS = Object.freeze({
   appName: "Pinguin Notification Service",
   navigation: {
+	tenants: "Tenants",
     eventLog: "Event log",
     smtpRelay: "SMTP relay",
   },
@@ -56,6 +55,46 @@ export const STRINGS = Object.freeze({
       Object.freeze({ status: "Errored", subject: "Invoice notice", time: "11:00", variant: "errored" }),
     ]),
   },
+	tenants: {
+	  title: "Tenants",
+	  subtitle: "Create and manage notification delivery tenants and API access.",
+	  emptyState: "No tenants yet. Create the first tenant to start sending notifications.",
+	  loadingState: "Loading tenants…",
+	  loadError: "Unable to load tenants.",
+	  createLabel: "Create tenant",
+	  createTitle: "Create tenant",
+	  createSuccess: "Tenant created",
+	  createError: "Unable to create tenant. Check every required delivery field.",
+	  updateLabel: "Manage tenant",
+	  updateTitle: "Manage tenant",
+	  updateSuccess: "Tenant configuration updated",
+	  updateError: "Unable to update tenant configuration.",
+	  deleteTitle: "Permanently delete tenant",
+	  deleteDescription: "Permanently delete this tenant and every notification, delivery profile, API credential, and SMTP resource it owns?",
+	  deleteSuccess: "Tenant permanently deleted",
+	  deleteError: "Unable to delete tenant.",
+	  rotateLabel: "Rotate API key",
+	  rotateError: "Unable to rotate API key.",
+	  createdKeyTitle: "Copy the new API key",
+	  rotatedKeyTitle: "Copy the rotated API key",
+	  keyDescription: "This key is shown once. Copy it before closing this dialog.",
+	  copySuccess: "API key copied",
+	  copyError: "Unable to copy API key.",
+	  displayNameLabel: "Display name",
+	  supportEmailLabel: "Support email",
+	  emailProfileTitle: "External email delivery",
+	  emailHostLabel: "SMTP host",
+	  emailPortLabel: "SMTP port",
+	  emailUsernameLabel: "SMTP username",
+	  emailPasswordLabel: "SMTP password",
+	  emailFromLabel: "From address",
+	  smsEnabledLabel: "Configure SMS delivery",
+	  smsAccountSIDLabel: "Twilio account SID",
+	  smsAuthTokenLabel: "Twilio auth token",
+	  smsFromLabel: "SMS from number",
+	  credentialLabel: "API credential",
+	  neverUsed: "Never used",
+	},
   eventLog: {
     title: "Event log",
     subtitle: "Review delivery status, adjust schedules, or cancel queued jobs in a single view.",
@@ -93,6 +132,8 @@ export const STRINGS = Object.freeze({
   smtpIdentities: {
     title: "SMTP relay",
     subtitle: "Create shared sender credentials and reply forwarding.",
+	tenantLabel: "Tenant",
+	tenantLoadError: "Unable to load tenants.",
     domainSetupTitle: "Sender domains",
     domainSetupDescription: "Add a domain, publish its DNS records, and verify it before creating identities.",
     domainLabel: "Sending domain",

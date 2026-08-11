@@ -37,6 +37,11 @@
         <span>Pinguin</span>
       </a>
       <span slot="nav-left" class="workspace-navigation__menu">
+		<a
+		  class="workspace-navigation__link"
+		  :href="RUNTIME_CONFIG.tenantUrl"
+		  x-text="STRINGS.navigation.tenants"
+		></a>
         <a
           class="workspace-navigation__link"
           :href="RUNTIME_CONFIG.eventLogUrl"

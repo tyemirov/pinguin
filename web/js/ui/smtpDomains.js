@@ -29,7 +29,7 @@ export function createSMTPDomains(options) {
       this.isLoadingDomains = true;
       this.errorMessage = '';
       try {
-        this.domains = await apiClient.listSMTPDomains();
+        this.domains = await apiClient.listSMTPDomains(this.selectedTenantId);
         if (!this.domains.some((domain) => domain.id === this.expandedDomainId)) {
           this.expandedDomainId = 0;
         }
@@ -51,7 +51,7 @@ export function createSMTPDomains(options) {
       this.isSubmitting = true;
       this.errorMessage = '';
       try {
-        const domain = await apiClient.createSMTPDomain(domainName);
+        const domain = await apiClient.createSMTPDomain(this.selectedTenantId, domainName);
         if (!domain) {
           throw new Error('missing_domain');
         }
@@ -82,7 +82,7 @@ export function createSMTPDomains(options) {
       this.expandedDomainId = domain.id;
       this.errorMessage = '';
       try {
-        const checkedDomain = await apiClient.checkSMTPDomainDNS(domain.id);
+        const checkedDomain = await apiClient.checkSMTPDomainDNS(this.selectedTenantId, domain.id);
         if (!checkedDomain) {
           throw new Error('missing_domain');
         }
