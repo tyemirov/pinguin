@@ -12,15 +12,17 @@ type ConfigureRuntimeOptions = {
 
 const PLAYWRIGHT_AVATAR_URL =
   'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"%3E%3Crect width="40" height="40" rx="20" fill="%232563eb"/%3E%3Ctext x="20" y="25" text-anchor="middle" font-size="16" font-family="Arial" fill="white"%3EP%3C/text%3E%3C/svg%3E';
+const PLAYWRIGHT_AUTH_COOKIE = 'pinguin_playwright_auth';
+const PLAYWRIGHT_RUNTIME_COOKIE = 'pinguin_playwright_runtime';
+const PLAYWRIGHT_TAUTH_TENANT_ID = 'tauth-devserver';
 
 export async function configureRuntime(page: Page, options: ConfigureRuntimeOptions) {
   const baseUrl = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:4174';
-  const runtimeToken = `${Date.now()}-${Math.random()}`;
   await page.context().clearCookies();
   if (options.authenticated) {
     await page.context().addCookies([
       {
-        name: 'pinguin_playwright_auth',
+        name: PLAYWRIGHT_AUTH_COOKIE,
         value: '1',
         url: baseUrl,
         sameSite: 'Lax',
@@ -31,38 +33,25 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
     id: 'tenant-playwright',
     displayName: 'Playwright Tenant',
   };
-  await page.addInitScript(
-    ({ authenticated, avatarUrl, token }) => {
-      const defaultProfile = {
-        user_email: 'playwright@example.com',
-        user_display_name: 'Playwright User',
-        user_avatar_url: avatarUrl,
-        display: 'Playwright User',
-        given_name: 'Playwright',
-        avatar_url: avatarUrl,
-      };
-      let payload = {};
-      try {
-        payload = window.name ? JSON.parse(window.name) : {};
-      } catch {
-        payload = {};
-      }
-      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-        payload = {};
-      }
-      if (payload.__configureRuntimeToken !== token) {
-        payload.__configureRuntimeToken = token;
-        payload.__mockAuth = {
-          authenticated,
-          profile: defaultProfile,
-        };
-        window.name = JSON.stringify(payload);
-      }
+  await page.context().addCookies([
+    {
+      name: PLAYWRIGHT_RUNTIME_COOKIE,
+      value: encodeURIComponent(JSON.stringify(tenant)),
+      url: baseUrl,
+      sameSite: 'Lax',
     },
-    { authenticated: options.authenticated, avatarUrl: PLAYWRIGHT_AVATAR_URL, token: runtimeToken },
-  );
+  ]);
   await page.addInitScript(
-    ({ authenticated, tenantPayload, avatarUrl }) => {
+    ({ authCookieName, runtimeCookieName, tauthBaseUrl, tauthTenantId }) => {
+      const cookieValues = Object.fromEntries(
+        document.cookie.split(';').map((cookieEntry) => {
+          const separatorIndex = cookieEntry.indexOf('=');
+          const cookieName = cookieEntry.slice(0, separatorIndex).trim();
+          const cookieValue = cookieEntry.slice(separatorIndex + 1);
+          return [cookieName, cookieValue];
+        }),
+      );
+      const tenantPayload = JSON.parse(decodeURIComponent(cookieValues[runtimeCookieName]));
       window.__PINGUIN_CONFIG__ = {
         apiBaseUrl: '/api',
         landingUrl: '/index.html',
@@ -73,109 +62,18 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
         tenant: tenantPayload,
       };
       window.__PINGUIN_RUNTIME_CONFIG_URL = '/runtime-config';
-      const defaultProfile = {
-        user_email: 'playwright@example.com',
-        user_display_name: 'Playwright User',
-        user_avatar_url: avatarUrl,
-        display: 'Playwright User',
-        given_name: 'Playwright',
-        avatar_url: avatarUrl,
-      };
-      const storedState = (() => {
-        try {
-          return window.name ? JSON.parse(window.name) : null;
-        } catch {
-          return null;
-        }
-      })();
-      const session = storedState?.__mockAuth || {
-        authenticated,
-        profile: defaultProfile,
-      };
-      session.profile = session.profile || defaultProfile;
-      window.__mockAuth = session;
-      window.__persistMockAuth = () => {
-        const payload = storedState || {};
-        payload.__mockAuth = window.__mockAuth;
-        try {
-          window.name = JSON.stringify(payload);
-        } catch {
-          // ignore
-        }
-      };
-      window.__persistMockAuth();
-      const authSnapshot = () => {
-        if (window.__mockAuth && window.__mockAuth.authenticated) {
-          return { status: 'authenticated', profile: window.__mockAuth.profile || defaultProfile };
-        }
-        return { status: 'unauthenticated' };
-      };
-      window.MPRUI = {
-        ...(window.MPRUI || {}),
-        whenAutoOrchestrationReady: () => Promise.resolve(),
-        resolveAuthProfileSnapshot: () => authSnapshot(),
-      };
-      const publishMockAuth = () => {
-        const header = document.querySelector('mpr-header');
-        const userMenu = header?.querySelector('[data-mpr-header="user-menu"]');
-        const snapshot = authSnapshot();
-        if (snapshot.status === 'authenticated') {
-          const profile = snapshot.profile || defaultProfile;
-          header?.setAttribute('data-mpr-auth-status', 'authenticated');
-          header?.setAttribute('data-user-email', profile.user_email || '');
-          header?.setAttribute('data-user-display', profile.user_display_name || profile.display || '');
-          header?.setAttribute('data-user-avatar-url', profile.user_avatar_url || profile.avatar_url || '');
-          userMenu?.setAttribute('data-mpr-user-status', 'authenticated');
-          userMenu?.setAttribute('data-user-email', profile.user_email || '');
-          userMenu?.setAttribute('data-user-display', profile.user_display_name || profile.display || '');
-          userMenu?.setAttribute('data-user-avatar-url', profile.user_avatar_url || profile.avatar_url || '');
-          if (userMenu instanceof HTMLElement) {
-            userMenu.style.display = 'inline-flex';
-            const name = userMenu.querySelector('[data-mpr-user="name"]');
-            if (name) {
-              name.textContent = profile.user_display_name || profile.display || '';
-            }
-            const trigger = userMenu.querySelector('[data-mpr-user="trigger"]');
-            if (trigger instanceof HTMLElement) {
-              trigger.style.display = 'inline-flex';
-            }
-          }
-          document.dispatchEvent(new CustomEvent('mpr-ui:auth:authenticated', { detail: { profile } }));
-          return;
-        }
-        header?.setAttribute('data-mpr-auth-status', 'unauthenticated');
-        userMenu?.setAttribute('data-mpr-user-status', 'unauthenticated');
-        if (userMenu instanceof HTMLElement) {
-          userMenu.style.display = 'none';
-          const trigger = userMenu.querySelector('[data-mpr-user="trigger"]');
-          if (trigger instanceof HTMLElement) {
-            trigger.style.display = 'none';
-          }
-        }
-        document.dispatchEvent(new CustomEvent('mpr-ui:auth:unauthenticated'));
-      };
-      window.__publishMockAuth = publishMockAuth;
-      document.addEventListener('click', (event) => {
-        const target = event.target instanceof Element ? event.target : null;
-        if (!target?.closest('[data-mpr-user="logout"]')) {
-          return;
-        }
-        event.preventDefault();
-        window.__mockAuth = window.__mockAuth || { authenticated: false };
-        window.__mockAuth.authenticated = false;
-        window.__persistMockAuth && window.__persistMockAuth();
-        publishMockAuth();
-      });
-      document.addEventListener('DOMContentLoaded', () => {
-        setTimeout(publishMockAuth, 0);
-        setTimeout(publishMockAuth, 100);
-      });
+      const restoreHintKey = `tauth.restore.v1:${encodeURIComponent(tauthBaseUrl)}:${encodeURIComponent(tauthTenantId)}`;
+      if (cookieValues[authCookieName] === '1') {
+        window.localStorage.setItem(restoreHintKey, '1');
+      } else {
+        window.localStorage.removeItem(restoreHintKey);
+      }
     },
     {
-      authenticated: options.authenticated,
-      tenantPayload: tenant,
-      avatarUrl: PLAYWRIGHT_AVATAR_URL,
-      token: runtimeToken,
+      authCookieName: PLAYWRIGHT_AUTH_COOKIE,
+      runtimeCookieName: PLAYWRIGHT_RUNTIME_COOKIE,
+      tauthBaseUrl: new URL(baseUrl).origin,
+      tauthTenantId: PLAYWRIGHT_TAUTH_TENANT_ID,
     },
   );
 }
@@ -195,18 +93,6 @@ export async function stubExternalAssets(page: Page) {
           if (!this.callback) {
             return;
           }
-          window.__mockAuth = window.__mockAuth || { authenticated: false };
-          window.__mockAuth.authenticated = true;
-          window.__mockAuth.profile =
-            window.__mockAuth.profile || {
-              user_email: 'playwright@example.com',
-              user_display_name: 'Playwright User',
-              user_avatar_url: '${PLAYWRIGHT_AVATAR_URL}',
-              display: 'Playwright User',
-              given_name: 'Playwright',
-              avatar_url: '${PLAYWRIGHT_AVATAR_URL}',
-            };
-          window.__persistMockAuth && window.__persistMockAuth();
           this.callback(payload || { credential: 'playwright-token' });
         },
       };

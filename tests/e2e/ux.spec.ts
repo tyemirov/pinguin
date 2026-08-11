@@ -320,6 +320,7 @@ test.describe('Compact MPR UX', () => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await configureRuntime(page, { authenticated: false });
     await page.goto('/index.html');
+    await expect(page.getByRole('status')).toHaveText('Workspace ready');
     await expect(page.getByTestId('page-work-surface')).toHaveScreenshot('compact-landing.png');
 
     const fixedTimestamp = '2030-01-02T03:04:00.000Z';

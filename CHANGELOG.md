@@ -11,6 +11,7 @@
 - Add backend-backed search and infinite scroll for dashboard notification events, including cursor pagination and a single top-level refresh control.
 
 ### Bug Fixes
+- Stabilize release browser acceptance by restoring authenticated fixtures through the real `mpr-ui` session hint and `/auth/session` boundary, and capture the landing snapshot only after anonymous session hydration settles.
 - Preserve independent SMTP identity creation and forwarding drafts, submit destructive confirmations once, restore focus to stable lists after removed actions, and label identity metadata values.
 - Route gateway-terminated public SMTPS on port 465 to Pinguin's canonical private plaintext SMTP submission listener on port 587.
 - Delete the obsolete source-owned Pages `CNAME` so the schema-v3 lifecycle remains the sole authority for generated Pages metadata.
