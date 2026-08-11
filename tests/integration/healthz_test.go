@@ -19,10 +19,6 @@ func TestHealthzBypassesTenantResolution(t *testing.T) {
 	t.Helper()
 
 	db, secretKeeper := setupTestDB(t)
-	configFile := setupTenantConfig(t)
-	if err := tenant.BootstrapFromFile(context.Background(), db, secretKeeper, configFile); err != nil {
-		t.Fatalf("bootstrap failed: %v", err)
-	}
 	repo := tenant.NewRepository(db, secretKeeper)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	svc := service.NewNotificationService(db, logger, config.Config{}, repo)

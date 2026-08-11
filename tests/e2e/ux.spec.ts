@@ -61,7 +61,7 @@ async function expectWorkspaceNavigation(page: Page, currentLabel: string) {
   const navigation = header.getByRole('navigation', { name: 'Primary navigation' });
   const workspaceLinks = navigation.locator('.workspace-navigation__link');
   await expect(navigation).toBeVisible();
-  await expect(workspaceLinks).toHaveText(['Event log', 'SMTP relay']);
+  await expect(workspaceLinks).toHaveText(['Tenants', 'Event log', 'SMTP relay']);
   await expect(workspaceLinks.filter({ hasText: currentLabel })).toHaveAttribute(
     'aria-current',
     'page',
@@ -91,7 +91,7 @@ test.describe('Compact MPR UX', () => {
       await expectWorkSurfaceClearOfFooter(page);
 
       await configureRuntime(page, { authenticated: true });
-      for (const path of ['/event-log.html', '/smtp-relay.html']) {
+      for (const path of ['/tenants.html', '/event-log.html', '/smtp-relay.html']) {
         await page.goto(path);
         await expectNoHorizontalOverflow(page);
         await expectWorkSurfaceClearOfFooter(page);
@@ -107,6 +107,10 @@ test.describe('Compact MPR UX', () => {
     await expect(page.getByTestId('notification-preview')).toBeVisible();
 
     await configureRuntime(page, { authenticated: true });
+    await page.goto('/tenants.html');
+    await expectCompactMPRTheme(page);
+    await expectWorkspaceNavigation(page, 'Tenants');
+
     await page.goto('/event-log.html');
     await expectCompactMPRTheme(page);
     await expectWorkspaceNavigation(page, 'Event log');
@@ -139,6 +143,7 @@ test.describe('Compact MPR UX', () => {
   test('opens the seven-service MPR Platform catalog from every footer', async ({ page }) => {
     const pages = [
       { path: '/index.html', authenticated: false },
+      { path: '/tenants.html', authenticated: true },
       { path: '/event-log.html', authenticated: true },
       { path: '/smtp-relay.html', authenticated: true },
     ];

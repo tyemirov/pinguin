@@ -1,19 +1,12 @@
 import { expect, Page } from '@playwright/test';
 
-type TenantConfig = {
-  id: string;
-  displayName: string;
-};
-
 type ConfigureRuntimeOptions = {
   authenticated: boolean;
-  tenant?: TenantConfig;
 };
 
 const PLAYWRIGHT_AVATAR_URL =
   'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"%3E%3Crect width="40" height="40" rx="20" fill="%232563eb"/%3E%3Ctext x="20" y="25" text-anchor="middle" font-size="16" font-family="Arial" fill="white"%3EP%3C/text%3E%3C/svg%3E';
 const PLAYWRIGHT_AUTH_COOKIE = 'pinguin_playwright_auth';
-const PLAYWRIGHT_RUNTIME_COOKIE = 'pinguin_playwright_runtime';
 const PLAYWRIGHT_TAUTH_TENANT_ID = 'tauth-devserver';
 
 export async function configureRuntime(page: Page, options: ConfigureRuntimeOptions) {
@@ -29,20 +22,8 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
       },
     ]);
   }
-  const tenant: TenantConfig = options.tenant || {
-    id: 'tenant-playwright',
-    displayName: 'Playwright Tenant',
-  };
-  await page.context().addCookies([
-    {
-      name: PLAYWRIGHT_RUNTIME_COOKIE,
-      value: encodeURIComponent(JSON.stringify(tenant)),
-      url: baseUrl,
-      sameSite: 'Lax',
-    },
-  ]);
   await page.addInitScript(
-    ({ authCookieName, runtimeCookieName, tauthBaseUrl, tauthTenantId }) => {
+    ({ authCookieName, tauthBaseUrl, tauthTenantId }) => {
       const cookieValues = Object.fromEntries(
         document.cookie.split(';').map((cookieEntry) => {
           const separatorIndex = cookieEntry.indexOf('=');
@@ -51,15 +32,14 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
           return [cookieName, cookieValue];
         }),
       );
-      const tenantPayload = JSON.parse(decodeURIComponent(cookieValues[runtimeCookieName]));
       window.__PINGUIN_CONFIG__ = {
         apiBaseUrl: '/api',
-        landingUrl: '/index.html',
+		landingUrl: '/index.html',
+		tenantUrl: '/tenants.html',
         eventLogUrl: '/event-log.html',
         smtpRelayUrl: '/smtp-relay.html',
         runtimeConfigUrl: '/runtime-config',
         skipRemoteConfig: true,
-        tenant: tenantPayload,
       };
       window.__PINGUIN_RUNTIME_CONFIG_URL = '/runtime-config';
       const restoreHintKey = `tauth.restore.v1:${encodeURIComponent(tauthBaseUrl)}:${encodeURIComponent(tauthTenantId)}`;
@@ -71,7 +51,6 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
     },
     {
       authCookieName: PLAYWRIGHT_AUTH_COOKIE,
-      runtimeCookieName: PLAYWRIGHT_RUNTIME_COOKIE,
       tauthBaseUrl: new URL(baseUrl).origin,
       tauthTenantId: PLAYWRIGHT_TAUTH_TENANT_ID,
     },
@@ -332,10 +311,10 @@ export async function clickSharedHeaderSignInButton(page: Page) {
 export async function completeHeaderLogin(page: Page) {
   await expectSharedHeaderSignInButton(page);
   await clickSharedHeaderSignInButton(page);
-  await triggerSharedAuthCredentialAndWaitForEventLog(page);
+  await triggerSharedAuthCredentialAndWaitForTenantPage(page);
 }
 
-export async function triggerSharedAuthCredentialAndWaitForEventLog(page: Page) {
+export async function triggerSharedAuthCredentialAndWaitForTenantPage(page: Page) {
   await page.waitForFunction(() => {
     const stub = (window as any).__playwrightSharedAuth;
     return stub && typeof stub.callback === 'function';
@@ -343,9 +322,9 @@ export async function triggerSharedAuthCredentialAndWaitForEventLog(page: Page) 
     throw new Error('Timed out waiting for shared auth callback to be registered');
   });
 
-  const waitForEventLog = page.url().includes('/event-log.html')
+  const waitForTenantPage = page.url().includes('/tenants.html')
     ? Promise.resolve()
-    : page.waitForURL('**/event-log.html', { timeout: 30000 });
+    : page.waitForURL('**/tenants.html', { timeout: 30000 });
 
   const triggered = await page.evaluate(() => {
     const authStub = (window as any).__playwrightSharedAuth;
@@ -359,11 +338,12 @@ export async function triggerSharedAuthCredentialAndWaitForEventLog(page: Page) 
   if (!triggered) {
     throw new Error('Shared auth stub unavailable or failed to trigger');
   }
-  await waitForEventLog;
-  await expect(page.getByTestId('notifications-list')).toBeVisible();
+  await waitForTenantPage;
+  await expect(page.getByRole('heading', { name: 'Tenants' })).toBeVisible();
 }
 
 export async function loginAndVisitEventLog(page: Page) {
   await page.goto('/index.html');
   await completeHeaderLogin(page);
+  await page.goto('/event-log.html');
 }

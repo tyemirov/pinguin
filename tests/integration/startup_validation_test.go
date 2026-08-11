@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestServerExitsWhenNoEnabledTenants(t *testing.T) {
+func TestServerRejectsObsoleteTenantBootstrapConfiguration(t *testing.T) {
 	temporaryBinaryDirectory := t.TempDir()
 	temporaryBinaryPath := buildServerBinary(t, temporaryBinaryDirectory)
 
@@ -56,8 +56,8 @@ web:
 	if exitErr, ok := runErr.(*exec.ExitError); ok && exitErr.ExitCode() == 0 {
 		t.Fatalf("expected non-zero exit code; output:\n%s", string(output))
 	}
-	if !strings.Contains(string(output), "no enabled tenants configured") {
-		t.Fatalf("expected error about enabled tenants; got:\n%s", string(output))
+	if !strings.Contains(string(output), "field grpcAuthToken not found") {
+		t.Fatalf("expected obsolete configuration error; got:\n%s", string(output))
 	}
 }
 
@@ -73,17 +73,16 @@ func TestServerExitsWhenConfigEnvironmentVariableIsMissing(t *testing.T) {
 	configYAML := `
 server:
   databasePath: app.db
-  grpcAuthToken: ${MISSING_GRPC_AUTH_TOKEN}
   logLevel: INFO
   maxRetries: 1
   retryIntervalSec: 1
   masterEncryptionKey: 000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f
   connectionTimeoutSec: 5
   operationTimeoutSec: 5
-tenants:
-  configPath: tenants.yml
 web:
   enabled: false
+smtpSubmission:
+  enabled: ${MISSING_SMTP_SUBMISSION_ENABLED}
 `
 	if writeErr := os.WriteFile(configPath, []byte(strings.TrimSpace(configYAML)+"\n"), 0o600); writeErr != nil {
 		t.Fatalf("write config file: %v", writeErr)
@@ -96,7 +95,7 @@ web:
 	if runErr == nil {
 		t.Fatalf("expected server to exit non-zero; output:\n%s", string(output))
 	}
-	if !strings.Contains(string(output), "configuration: missing environment variables: MISSING_GRPC_AUTH_TOKEN") {
+	if !strings.Contains(string(output), "configuration: missing environment variables: MISSING_SMTP_SUBMISSION_ENABLED") {
 		t.Fatalf("expected missing environment variable error; got:\n%s", string(output))
 	}
 }

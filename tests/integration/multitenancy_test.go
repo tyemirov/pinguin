@@ -1,276 +1,215 @@
 package integrationtest
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
-	"fmt"
-	"os"
+	"io"
+	"log/slog"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/glebarez/sqlite"
+	"github.com/google/uuid"
 	"github.com/tyemirov/pinguin/internal/config"
 	"github.com/tyemirov/pinguin/internal/httpapi"
 	"github.com/tyemirov/pinguin/internal/model"
 	"github.com/tyemirov/pinguin/internal/service"
+	"github.com/tyemirov/pinguin/internal/smtpidentity"
 	"github.com/tyemirov/pinguin/internal/tenant"
 	sessionvalidator "github.com/tyemirov/tauth/pkg/sessionvalidator"
-	"gopkg.in/yaml.v3"
 	"gorm.io/gorm"
-	"log/slog"
-	"net/http"
 )
 
-func boolPtr(value bool) *bool {
-	return &value
+const integrationOwnerID = "integration-owner"
+
+type acceptingEmailSender struct{}
+
+func (acceptingEmailSender) SendEmail(context.Context, string, string, string, []model.EmailAttachment) error {
+	return nil
 }
 
-func TestMultitenantIsolation(t *testing.T) {
-	// 1. Setup DB and Tenant Config
-	db, secretKeeper := setupTestDB(t)
-	configFile := setupTenantConfig(t)
-
-	// 2. Bootstrap Tenants
-	err := tenant.BootstrapFromFile(context.Background(), db, secretKeeper, configFile)
-	if err != nil {
-		t.Fatalf("BootstrapFromFile failed: %v", err)
-	}
-
-	repo := tenant.NewRepository(db, secretKeeper)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-
-	// Use mock senders to avoid real calls
-	// We use a simple config that satisfies requirements
-	cfg := config.Config{
-		MaxRetries:       3,
-		RetryIntervalSec: 1,
-		TwilioAccountSID: "mock", TwilioAuthToken: "mock", TwilioFromNumber: "+1555",
-	}
-
-	// We initialize with senders to allow SMS even if credentials in DB are mocked
-	// But for this test we focus on DB isolation, not dispatch success.
-	// Using nil senders means it will try to build them from tenant config (which we provided).
-	svc := service.NewNotificationService(db, logger, cfg, repo)
-
-	// 3. Resolve Contexts
-	ctxA, err := resolveContext(db, repo, "tenant-a")
-	if err != nil {
-		t.Fatalf("resolveContext(tenant-a) failed: %v", err)
-	}
-
-	ctxB, err := resolveContext(db, repo, "tenant-b")
-	if err != nil {
-		t.Fatalf("resolveContext(tenant-b) failed: %v", err)
-	}
-
-	// 4. Create Notification in Tenant A
-	reqA, requestErr := model.NewNotificationRequest(
-		model.NotificationEmail,
-		"user@a.com",
-		"Subject A",
-		"Message A",
-		nil,
+func TestManagedTenantNotificationIsolation(t *testing.T) {
+	database, keeper := setupTestDB(t)
+	repository := tenant.NewRepository(database, keeper)
+	tenantA := createManagedTenant(t, repository, integrationOwnerID, "Tenant A")
+	tenantB := createManagedTenant(t, repository, integrationOwnerID, "Tenant B")
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	notificationService := service.NewNotificationServiceWithSenders(
+		database,
+		logger,
+		config.Config{MaxRetries: 3, RetryIntervalSec: 1},
+		repository,
+		acceptingEmailSender{},
 		nil,
 	)
+
+	contextA := runtimeContext(t, repository, tenantA.ID)
+	contextB := runtimeContext(t, repository, tenantB.ID)
+	request, requestErr := model.NewNotificationRequest(model.NotificationEmail, "user@example.com", "Subject", "Message", nil, nil)
 	if requestErr != nil {
-		t.Fatalf("notification request error: %v", requestErr)
+		t.Fatalf("notification request: %v", requestErr)
 	}
-	respA, err := svc.SendNotification(ctxA, reqA)
-	if err != nil {
-		t.Fatalf("SendNotification(A) failed: %v", err)
+	response, sendErr := notificationService.SendNotification(contextA, request)
+	if sendErr != nil {
+		t.Fatalf("send notification: %v", sendErr)
 	}
-	if respA.NotificationID == "" {
-		t.Fatal("expected non-empty NotificationID")
+	if _, statusErr := notificationService.GetNotificationStatus(contextB, response.NotificationID); statusErr == nil {
+		t.Fatalf("foreign tenant read must fail")
 	}
-
-	// 5. Verify Isolation: Tenant B cannot see A's notification
-	_, err = svc.GetNotificationStatus(ctxB, respA.NotificationID)
-	if err == nil {
-		t.Fatal("expected error accessing Tenant A notification from Tenant B, got nil")
+	if listed, listErr := notificationService.ListNotifications(contextB, model.NotificationListFilters{}); listErr != nil || len(listed) != 0 {
+		t.Fatalf("foreign tenant list = %v, %v", listed, listErr)
 	}
-	if !strings.Contains(err.Error(), "notification not found") && !strings.Contains(err.Error(), "record not found") {
-		t.Fatalf("expected 'not found' error, got: %v", err)
+	if _, cancelErr := notificationService.CancelNotification(contextB, response.NotificationID); cancelErr == nil {
+		t.Fatalf("foreign tenant cancel must fail")
 	}
-
-	// 6. Verify Isolation: Tenant B List does not show A's notification
-	listB, err := svc.ListNotifications(ctxB, model.NotificationListFilters{})
-	if err != nil {
-		t.Fatalf("ListNotifications(B) failed: %v", err)
-	}
-	if len(listB) != 0 {
-		t.Fatalf("expected empty list for Tenant B, got %d items", len(listB))
-	}
-
-	// 7. Verify Tenant A CAN see it
-	statusA, err := svc.GetNotificationStatus(ctxA, respA.NotificationID)
-	if err != nil {
-		t.Fatalf("GetNotificationStatus(A) failed: %v", err)
-	}
-	if statusA.NotificationID != respA.NotificationID {
-		t.Fatalf("expected ID %s, got %s", respA.NotificationID, statusA.NotificationID)
-	}
-
-	// 8. Verify Tenant B cannot Cancel A's notification
-	_, err = svc.CancelNotification(ctxB, respA.NotificationID)
-	if err == nil {
-		t.Fatal("expected error cancelling Tenant A notification from Tenant B, got nil")
-	}
-	if !strings.Contains(err.Error(), "notification not found") && !strings.Contains(err.Error(), "record not found") {
-		t.Fatalf("expected 'not found' error, got: %v", err)
+	if owned, statusErr := notificationService.GetNotificationStatus(contextA, response.NotificationID); statusErr != nil || owned.NotificationID != response.NotificationID {
+		t.Fatalf("owner read = %+v, %v", owned, statusErr)
 	}
 }
 
-type mockSessionValidator struct{}
-
-func (m *mockSessionValidator) ValidateRequest(r *http.Request) (*sessionvalidator.Claims, error) {
-	return nil, nil // Return nil claims, nil error (or error if needed for auth tests)
+type mockSessionValidator struct {
+	claims *sessionvalidator.Claims
 }
 
-func TestHTTPMultitenantIsolation(t *testing.T) {
-	db, secretKeeper := setupTestDB(t)
-	configFile := setupTenantConfig(t)
-	err := tenant.BootstrapFromFile(context.Background(), db, secretKeeper, configFile)
-	if err != nil {
-		t.Fatalf("Bootstrap failed: %v", err)
+func (validator *mockSessionValidator) ValidateRequest(*http.Request) (*sessionvalidator.Claims, error) {
+	if validator.claims != nil {
+		return validator.claims, nil
 	}
-	repo := tenant.NewRepository(db, secretKeeper)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	svc := service.NewNotificationService(db, logger, config.Config{}, repo)
+	return &sessionvalidator.Claims{UserID: integrationOwnerID, UserEmail: "owner@example.com"}, nil
+}
 
-	addr := allocateFreeAddr(t)
-	server, err := httpapi.NewServer(httpapi.Config{
-		ListenAddr:          addr,
-		SessionValidator:    &mockSessionValidator{},
-		NotificationService: svc,
-		TenantRepository:    repo,
-		Logger:              logger,
+func TestManagedTenantHTTPCreateAndList(t *testing.T) {
+	database, keeper := setupTestDB(t)
+	repository := tenant.NewRepository(database, keeper)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	notificationService := service.NewNotificationServiceWithSenders(database, logger, config.Config{}, repository, acceptingEmailSender{}, nil)
+	address := allocateFreeAddr(t)
+	server, serverErr := httpapi.NewServer(httpapi.Config{
+		ListenAddr: address, SessionValidator: &mockSessionValidator{}, NotificationService: notificationService,
+		TenantRepository: repository, Logger: logger,
 	})
-	if err != nil {
-		t.Fatalf("NewServer failed: %v", err)
+	if serverErr != nil {
+		t.Fatalf("new HTTP server: %v", serverErr)
+	}
+	go func() { _ = server.Start() }()
+	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
+
+	digest := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))
+	payload := map[string]interface{}{
+		"display_name":  "Managed Tenant",
+		"support_email": "support@example.com",
+		"email_profile": map[string]interface{}{
+			"host": "smtp.example.com", "port": 587, "username": "smtp-user", "password": "smtp-password", "from_address": "sender@example.com",
+		},
+		"api_credential": map[string]interface{}{"id": uuid.NewString(), "secret_digest": digest},
+	}
+	requestBody, marshalErr := json.Marshal(payload)
+	if marshalErr != nil {
+		t.Fatalf("marshal request: %v", marshalErr)
+	}
+	client := &http.Client{Timeout: 2 * time.Second}
+	baseURL := "http://" + address + "/api/tenants"
+	createRequest, requestErr := http.NewRequest(http.MethodPost, baseURL, bytes.NewReader(requestBody))
+	if requestErr != nil {
+		t.Fatalf("create request: %v", requestErr)
+	}
+	createRequest.Header.Set("Content-Type", "application/json")
+	createRequest.Header.Set("Idempotency-Key", uuid.NewString())
+	createResponse := doWhenReady(t, client, createRequest)
+	defer createResponse.Body.Close()
+	if createResponse.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(createResponse.Body)
+		t.Fatalf("create status %d: %s", createResponse.StatusCode, body)
+	}
+	if createResponse.Header.Get("Cache-Control") != "private, no-store" || createResponse.Header.Get("ETag") == "" {
+		t.Fatalf("missing managed response headers: %v", createResponse.Header)
 	}
 
-	// We can't easily use server.httpServer.Handler directly because it's private?
-	// No, httpapi.Server struct has `httpServer *http.Server`. `Handler` is public on `http.Server`.
-	// But `httpServer` field is private in `httpapi.Server`.
-	// Wait, `internal/httpapi/server.go`:
-	// type Server struct { httpServer *http.Server ... }
-	// It IS private.
-	// However, `Start()` runs ListenAndServe.
-	// We want to test the Handler.
-	// `NewServer` returns `*Server`.
-	// We might need to expose Handler or use a real port.
-	// Using a real port is flaky (port conflicts).
-	// Checking `internal/httpapi/server.go` again...
-
-	// If I cannot access the handler, I have to rely on `Start()` and `Shutdown()`.
-	// Or I can modify `httpapi` to verify.
-	// OR I can just use `Start()` on a random port.
-
-	go func() {
-		_ = server.Start()
-	}()
-	defer func() { _ = server.Shutdown(context.Background()) }()
-
-	// Give it a moment to start? Or rely on retry?
-	time.Sleep(100 * time.Millisecond) // Brittle but simple for now.
-
-	client := &http.Client{}
-	runtimeConfigURL := fmt.Sprintf("http://%s/runtime-config", addr)
-
-	// Test 1: Valid Host (Tenant A)
-	req, _ := http.NewRequest("GET", runtimeConfigURL, nil)
-	req.Host = "a.example.com" // Set Host header
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatalf("Request failed: %v", err)
+	listRequest, requestErr := http.NewRequest(http.MethodGet, baseURL, nil)
+	if requestErr != nil {
+		t.Fatalf("list request: %v", requestErr)
 	}
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("Expected 200 OK for tenant-a, got %d", resp.StatusCode)
+	listResponse, listErr := client.Do(listRequest)
+	if listErr != nil {
+		t.Fatalf("list request: %v", listErr)
 	}
-	defer resp.Body.Close()
-	var body map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		t.Fatalf("Failed to decode JSON: %v", err)
+	defer listResponse.Body.Close()
+	var listPayload struct {
+		Tenants []tenant.Resource `json:"tenants"`
 	}
-	tenantMap, ok := body["tenant"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("Response missing 'tenant' object")
+	if decodeErr := json.NewDecoder(listResponse.Body).Decode(&listPayload); decodeErr != nil {
+		t.Fatalf("decode list: %v", decodeErr)
 	}
-	if tenantMap["id"] != "tenant-a" {
-		t.Errorf("Expected tenant-a, got %v", tenantMap["id"])
+	if len(listPayload.Tenants) != 1 || listPayload.Tenants[0].DisplayName != "Managed Tenant" {
+		t.Fatalf("unexpected tenant list: %+v", listPayload.Tenants)
 	}
-
-	// Test 2: Invalid Host
-	req2, _ := http.NewRequest("GET", runtimeConfigURL, nil)
-	req2.Host = "unknown.example.com"
-	resp2, err := client.Do(req2)
-	if err != nil {
-		t.Fatalf("Request failed: %v", err)
-	}
-	if resp2.StatusCode != http.StatusNotFound {
-		t.Errorf("Expected 404 Not Found for unknown host, got %d", resp2.StatusCode)
+	encoded, _ := json.Marshal(listPayload)
+	if strings.Contains(string(encoded), "smtp-password") || strings.Contains(string(encoded), digest) {
+		t.Fatalf("safe response leaked a secret: %s", encoded)
 	}
 }
 
 func setupTestDB(t *testing.T) (*gorm.DB, *tenant.SecretKeeper) {
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("gorm.Open failed: %v", err)
+	t.Helper()
+	database, openErr := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "test.db")), &gorm.Config{})
+	if openErr != nil {
+		t.Fatalf("open database: %v", openErr)
 	}
-
-	err = db.AutoMigrate(&model.Notification{}, &model.NotificationAttachment{}, &tenant.Tenant{}, &tenant.TenantDomain{}, &tenant.TenantAdmin{}, &tenant.EmailProfile{}, &tenant.SMSProfile{})
-	if err != nil {
-		t.Fatalf("AutoMigrate failed: %v", err)
+	if migrationErr := database.AutoMigrate(
+		&model.Notification{}, &model.NotificationAttachment{}, &tenant.Tenant{}, &tenant.EmailProfile{}, &tenant.SMSProfile{},
+		&tenant.APICredential{}, &tenant.IdempotencyRecord{}, &smtpidentity.SenderDomain{}, &smtpidentity.Identity{}, &smtpidentity.ForwardRecipient{},
+	); migrationErr != nil {
+		t.Fatalf("migrate database: %v", migrationErr)
 	}
-
-	// Key must be 32 bytes hex -> 64 characters
-	key := "000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f"
-	keeper, err := tenant.NewSecretKeeper(key)
-	if err != nil {
-		t.Fatalf("NewSecretKeeper failed: %v", err)
+	keeper, keeperErr := tenant.NewSecretKeeper("000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f")
+	if keeperErr != nil {
+		t.Fatalf("new secret keeper: %v", keeperErr)
 	}
-
-	return db, keeper
+	return database, keeper
 }
 
-func setupTenantConfig(t *testing.T) string {
-	config := tenant.BootstrapConfig{
-		Tenants: []tenant.BootstrapTenant{
-			{
-				ID: "tenant-a", DisplayName: "Tenant A", Enabled: boolPtr(true),
-				Domains: []string{"a.example.com"},
-				EmailProfile: tenant.BootstrapEmailProfile{
-					Host: "smtp.a.com", Port: 587, Username: "userA", Password: "passA", FromAddress: "no@a.com",
-				},
-			},
-			{
-				ID: "tenant-b", DisplayName: "Tenant B", Enabled: boolPtr(true),
-				Domains: []string{"b.example.com"},
-				EmailProfile: tenant.BootstrapEmailProfile{
-					Host: "smtp.b.com", Port: 587, Username: "userB", Password: "passB", FromAddress: "no@b.com",
-				},
-			},
-		},
+func createManagedTenant(t *testing.T, repository *tenant.Repository, owner string, displayName string) tenant.Resource {
+	t.Helper()
+	ownerID, _ := tenant.NewOwnerUserID(owner)
+	name, _ := tenant.NewDisplayName(displayName)
+	email, _ := tenant.NewEmailProfileInput("smtp.example.com", 587, "user", "password", "sender@example.com")
+	credentialID, _ := tenant.NewCredentialID(uuid.NewString())
+	digest, _ := tenant.NewCredentialDigest(bytes.Repeat([]byte{5}, 32))
+	requestDigest, _ := tenant.NewRequestDigest(bytes.Repeat([]byte{6}, 32))
+	result, createErr := repository.Create(context.Background(), tenant.CreateInput{
+		OwnerUserID: ownerID, DisplayName: name, EmailProfile: email, CredentialID: credentialID, CredentialDigest: digest,
+	}, uuid.NewString(), requestDigest)
+	if createErr != nil {
+		t.Fatalf("create managed tenant: %v", createErr)
 	}
-	bytes, err := yaml.Marshal(config)
-	if err != nil {
-		t.Fatalf("yaml.Marshal failed: %v", err)
-	}
-	path := filepath.Join(t.TempDir(), "tenants.yml")
-	err = os.WriteFile(path, bytes, 0644)
-	if err != nil {
-		t.Fatalf("os.WriteFile failed: %v", err)
-	}
-	return path
+	return result.Resource
 }
 
-func resolveContext(db *gorm.DB, repo *tenant.Repository, tenantID string) (context.Context, error) {
-	rt, err := repo.ResolveByID(context.Background(), tenantID)
-	if err != nil {
-		return nil, err
+func runtimeContext(t *testing.T, repository *tenant.Repository, tenantID string) context.Context {
+	t.Helper()
+	runtimeConfig, resolveErr := repository.ResolveByID(context.Background(), tenantID)
+	if resolveErr != nil {
+		t.Fatalf("resolve tenant: %v", resolveErr)
 	}
-	return tenant.WithRuntime(context.Background(), rt), nil
+	return tenant.WithRuntime(context.Background(), runtimeConfig)
+}
+
+func doWhenReady(t *testing.T, client *http.Client, request *http.Request) *http.Response {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		response, requestErr := client.Do(request.Clone(request.Context()))
+		if requestErr == nil {
+			return response
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("HTTP server did not start: %v", requestErr)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
 }

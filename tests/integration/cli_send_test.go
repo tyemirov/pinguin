@@ -55,8 +55,7 @@ func TestCLISendUsesFlagsAndToAlias(t *testing.T) {
 		cliBinary,
 		"send",
 		"--grpc-server-addr", listener.Addr().String(),
-		"--grpc-auth-token", "token-123",
-		"--tenant-id", "tenant-123",
+		"--api-key", "api-key-123",
 		"--type", "email",
 		"--to", "user@example.com",
 		"--subject", "Hello",
@@ -77,9 +76,6 @@ func TestCLISendUsesFlagsAndToAlias(t *testing.T) {
 	if recorder.lastRequest == nil {
 		t.Fatalf("expected gRPC request to be recorded")
 	}
-	if got := recorder.lastRequest.GetTenantId(); got != "tenant-123" {
-		t.Fatalf("expected tenant id tenant-123, got %q", got)
-	}
 	if got := recorder.lastRequest.GetRecipient(); got != "user@example.com" {
 		t.Fatalf("expected recipient user@example.com, got %q", got)
 	}
@@ -90,11 +86,11 @@ func TestCLISendUsesFlagsAndToAlias(t *testing.T) {
 		t.Fatalf("expected message World, got %q", got)
 	}
 
-	if got := recorder.lastMetadata.Get("authorization"); len(got) == 0 || got[0] != "Bearer token-123" {
+	if got := recorder.lastMetadata.Get("authorization"); len(got) == 0 || got[0] != "Bearer api-key-123" {
 		t.Fatalf("expected authorization metadata, got %v", got)
 	}
-	if got := recorder.lastMetadata.Get("x-tenant-id"); len(got) == 0 || got[0] != "tenant-123" {
-		t.Fatalf("expected x-tenant-id metadata, got %v", got)
+	if got := recorder.lastMetadata.Get("x-tenant-id"); len(got) != 0 {
+		t.Fatalf("expected no caller tenant metadata, got %v", got)
 	}
 }
 
@@ -121,8 +117,7 @@ func TestCLISendUsesExplicitFlags(t *testing.T) {
 		cliBinary,
 		"send",
 		"--grpc-server-addr", listener.Addr().String(),
-		"--grpc-auth-token", "token-456",
-		"--tenant-id", "tenant-456",
+		"--api-key", "api-key-456",
 		"--type", "sms",
 		"--recipient", "+15551234567",
 		"--message", "OTP",
@@ -134,9 +129,6 @@ func TestCLISendUsesExplicitFlags(t *testing.T) {
 	}
 	if recorder.lastRequest == nil {
 		t.Fatalf("expected gRPC request to be recorded")
-	}
-	if got := recorder.lastRequest.GetTenantId(); got != "tenant-456" {
-		t.Fatalf("expected tenant id tenant-456, got %q", got)
 	}
 	if got := recorder.lastRequest.GetNotificationType(); got != grpcapi.NotificationType_SMS {
 		t.Fatalf("expected sms type, got %v", got)
@@ -171,8 +163,7 @@ func TestCLISendRejectsAttachmentsForSMS(t *testing.T) {
 		cliBinary,
 		"send",
 		"--grpc-server-addr", listener.Addr().String(),
-		"--grpc-auth-token", "token-123",
-		"--tenant-id", "tenant-123",
+		"--api-key", "api-key-123",
 		"--type", "sms",
 		"--recipient", "+15551234567",
 		"--message", "OTP",
@@ -213,8 +204,7 @@ func TestCLISendRequiresSubjectForEmail(t *testing.T) {
 		cliBinary,
 		"send",
 		"--grpc-server-addr", listener.Addr().String(),
-		"--grpc-auth-token", "token-123",
-		"--tenant-id", "tenant-123",
+		"--api-key", "api-key-123",
 		"--type", "email",
 		"--recipient", "user@example.com",
 		"--message", "Body",

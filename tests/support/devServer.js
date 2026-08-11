@@ -21,12 +21,9 @@ const AUTH_PROFILE = {
 };
 const runtimeConfig = {
   apiBaseUrl: `http://${HOST}:${PORT}/api`,
+  tenantUrl: '/tenants.html',
   eventLogUrl: '/event-log.html',
   smtpRelayUrl: '/smtp-relay.html',
-  tenant: {
-    id: 'tenant-devserver',
-    displayName: 'Dev Server Tenant',
-  },
 };
 
 const shouldLog = process.env.PLAYWRIGHT_DEVSERVER_LOGS === '1';
@@ -232,17 +229,14 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === 'GET' && url.pathname === '/api/notifications') {
+  const notificationListMatch = url.pathname.match(/^\/api\/tenants\/([^/]+)\/notifications$/);
+  if (notificationListMatch && req.method === 'GET') {
     if (serverState.failList) {
       sendJson(res, 500, { error: 'list_failed' });
       return;
     }
     const statuses = url.searchParams.getAll('status').filter(Boolean);
-    const tenantId = url.searchParams.get('tenant_id') || '';
-    if (!tenantId.trim()) {
-      sendJson(res, 400, { error: 'tenant_id is required' });
-      return;
-    }
+    const tenantId = decodeURIComponent(notificationListMatch[1]);
     const searchQuery = url.searchParams.get('q') || '';
     const filtered = filterNotifications(serverState.notifications, statuses, tenantId, searchQuery);
     const page = paginateNotifications(filtered, url.searchParams);
@@ -255,53 +249,107 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  const scheduleMatch = url.pathname.match(/^\/api\/notifications\/([^/]+)\/schedule$/);
-  if (scheduleMatch && req.method === 'PATCH') {
-    const tenantId = url.searchParams.get('tenant_id') || '';
-    if (!tenantId.trim()) {
-      sendJson(res, 400, { error: 'tenant_id is required' });
-      return;
-    }
-    if (serverState.failReschedule) {
-      sendJson(res, 500, { error: 'reschedule_failed' });
-      return;
-    }
+  if (req.method === 'POST' && url.pathname === '/api/tenants') {
     const body = await readJson(req);
-    const scheduled_for = body.scheduled_for || body.scheduled_time || null;
-    serverState.notifications = serverState.notifications.map((item) => {
-      if (item.notification_id === scheduleMatch[1]) {
-        return { ...item, scheduled_for, status: 'queued', updated_at: new Date().toISOString() };
-      }
-      return item;
-    });
-    const updated = serverState.notifications.find((item) => item.notification_id === scheduleMatch[1]);
-    sendJson(res, 200, updated || {});
+    const now = new Date().toISOString();
+    const tenant = {
+      id: crypto.randomUUID(),
+      display_name: body.display_name,
+      support_email: body.support_email || '',
+      version: 1,
+      created_at: now,
+      updated_at: now,
+      email_profile: { ...body.email_profile, username: undefined, password: undefined, has_username: true, has_password: true, version: 1, created_at: now, updated_at: now },
+      sms_profile: body.sms_profile ? { from_number: body.sms_profile.from_number, has_account_sid: true, has_auth_token: true, version: 1, created_at: now, updated_at: now } : null,
+      api_credential: { id: body.api_credential.id, display_prefix: `pgn_1_${body.api_credential.id.slice(0, 8)}`, version: 1, created_at: now, updated_at: now },
+    };
+    serverState.tenants.push(tenant);
+    sendJson(res, 201, tenant, { ETag: '"1"' });
     return;
   }
 
-  const cancelMatch = url.pathname.match(/^\/api\/notifications\/([^/]+)\/cancel$/);
-  if (cancelMatch && req.method === 'POST') {
-    const tenantId = url.searchParams.get('tenant_id') || '';
-    if (!tenantId.trim()) {
-      sendJson(res, 400, { error: 'tenant_id is required' });
+  const tenantMatch = url.pathname.match(/^\/api\/tenants\/([^/]+)$/);
+  if (tenantMatch && req.method === 'PUT') {
+    const tenantId = decodeURIComponent(tenantMatch[1]);
+    const tenant = serverState.tenants.find((item) => item.id === tenantId);
+    if (!tenant) {
+      sendJson(res, 404, { error: { message: 'tenant was not found' } });
       return;
     }
-    if (serverState.failCancel) {
+    const body = await readJson(req);
+    tenant.display_name = body.display_name;
+    tenant.displayName = body.display_name;
+    tenant.support_email = body.support_email || '';
+    tenant.version = Number(tenant.version || 1) + 1;
+    tenant.updated_at = new Date().toISOString();
+    sendJson(res, 200, tenant);
+    return;
+  }
+  if (tenantMatch && req.method === 'DELETE') {
+    const tenantId = decodeURIComponent(tenantMatch[1]);
+    serverState.tenants = serverState.tenants.filter((item) => item.id !== tenantId);
+    serverState.notifications = serverState.notifications.filter((item) => item.tenant_id !== tenantId);
+    sendJson(res, 204, null);
+    return;
+  }
+
+  const profileMatch = url.pathname.match(/^\/api\/tenants\/([^/]+)\/(email-profile|sms-profile)$/);
+  if (profileMatch && (req.method === 'PATCH' || req.method === 'PUT')) {
+    const tenant = serverState.tenants.find((item) => item.id === decodeURIComponent(profileMatch[1]));
+    if (!tenant) {
+      sendJson(res, 404, { error: { message: 'tenant was not found' } });
+      return;
+    }
+    const body = await readJson(req);
+    const now = new Date().toISOString();
+    if (profileMatch[2] === 'email-profile') {
+      tenant.email_profile = { ...tenant.email_profile, ...body, username: undefined, password: undefined, has_username: true, has_password: true, version: Number(tenant.email_profile?.version || 0) + 1, updated_at: now };
+      sendJson(res, 200, tenant.email_profile);
+    } else {
+      tenant.sms_profile = { ...tenant.sms_profile, from_number: body.from_number, has_account_sid: true, has_auth_token: true, version: Number(tenant.sms_profile?.version || 0) + 1, created_at: tenant.sms_profile?.created_at || now, updated_at: now };
+      sendJson(res, 200, tenant.sms_profile);
+    }
+    return;
+  }
+
+  const credentialMatch = url.pathname.match(/^\/api\/tenants\/([^/]+)\/api-credential$/);
+  if (credentialMatch && req.method === 'PUT') {
+    const tenant = serverState.tenants.find((item) => item.id === decodeURIComponent(credentialMatch[1]));
+    if (!tenant) {
+      sendJson(res, 404, { error: { message: 'tenant was not found' } });
+      return;
+    }
+    const body = await readJson(req);
+    tenant.api_credential = { id: body.id, display_prefix: `pgn_1_${body.id.slice(0, 8)}`, version: Number(tenant.api_credential?.version || 0) + 1, updated_at: new Date().toISOString() };
+    sendJson(res, 200, tenant.api_credential);
+    return;
+  }
+
+  const notificationMatch = url.pathname.match(/^\/api\/tenants\/([^/]+)\/notifications\/([^/]+)$/);
+  if (notificationMatch && req.method === 'PATCH') {
+    const tenantId = decodeURIComponent(notificationMatch[1]);
+    const notificationId = decodeURIComponent(notificationMatch[2]);
+    const body = await readJson(req);
+    if (body.scheduled_time && serverState.failReschedule) {
+      sendJson(res, 500, { error: 'reschedule_failed' });
+      return;
+    }
+    if (body.status === 'cancelled' && serverState.failCancel) {
       sendJson(res, 500, { error: 'cancel_failed' });
       return;
     }
     serverState.notifications = serverState.notifications.map((item) => {
-      if (item.notification_id === cancelMatch[1]) {
-        return { ...item, status: 'cancelled', updated_at: new Date().toISOString() };
-      }
-      return item;
+      if (item.notification_id !== notificationId || item.tenant_id !== tenantId) return item;
+      if (body.scheduled_time) return { ...item, scheduled_for: body.scheduled_time, status: 'queued', updated_at: new Date().toISOString() };
+      return { ...item, status: 'cancelled', updated_at: new Date().toISOString() };
     });
-    const updated = serverState.notifications.find((item) => item.notification_id === cancelMatch[1]);
+    const updated = serverState.notifications.find((item) => item.notification_id === notificationId && item.tenant_id === tenantId);
     sendJson(res, 200, updated || {});
     return;
   }
 
-  if (req.method === 'GET' && url.pathname === '/api/smtp-identities') {
+  const smtpListMatch = url.pathname.match(/^\/api\/tenants\/([^/]+)\/(smtp-identities|smtp-domains)$/);
+  if (smtpListMatch && req.method === 'GET' && smtpListMatch[2] === 'smtp-identities') {
     if (serverState.failSMTPList) {
       sendJson(res, 500, { error: 'smtp_identity_list_failed' });
       return;
@@ -309,8 +357,7 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 200, { identities: serverState.smtpIdentities.map(publicSMTPIdentity) });
     return;
   }
-
-  if (req.method === 'GET' && url.pathname === '/api/smtp-domains') {
+  if (smtpListMatch && req.method === 'GET' && smtpListMatch[2] === 'smtp-domains') {
     if (serverState.failSMTPDomainList) {
       sendJson(res, 500, { error: 'smtp_domain_list_failed' });
       return;
@@ -318,8 +365,7 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 200, { domains: serverState.smtpDomains });
     return;
   }
-
-  if (req.method === 'POST' && url.pathname === '/api/smtp-domains') {
+  if (smtpListMatch && req.method === 'POST' && smtpListMatch[2] === 'smtp-domains') {
     if (serverState.failSMTPDomainCreate) {
       sendJson(res, 500, { error: 'smtp_domain_create_failed' });
       return;
@@ -327,11 +373,11 @@ const server = http.createServer(async (req, res) => {
     const body = await readJson(req);
     const domainName = normalizeDomain(body.domain);
     if (!domainName) {
-      sendJson(res, 400, { error: 'sender domain is invalid' });
+      sendJson(res, 400, { error: { message: 'sender domain is invalid' } });
       return;
     }
     if (serverState.smtpDomains.some((domain) => domain.domain === domainName)) {
-      sendJson(res, 409, { error: 'sender domain is already registered' });
+      sendJson(res, 409, { error: { message: 'sender domain is already registered' } });
       return;
     }
     const domain = newSMTPDomain(domainName);
@@ -339,16 +385,38 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 201, domain);
     return;
   }
+  if (smtpListMatch && req.method === 'POST' && smtpListMatch[2] === 'smtp-identities') {
+    if (serverState.failSMTPCreate) {
+      sendJson(res, 500, { error: 'smtp_identity_create_failed' });
+      return;
+    }
+    const body = await readJson(req);
+    const emailAddress = typeof body.email_address === 'string' ? body.email_address.trim() : '';
+    const forwardTo = Array.isArray(body.forward_to) ? body.forward_to.map((item) => String(item).trim()).filter(Boolean) : [];
+    if (!emailAddress || forwardTo.length === 0) {
+      sendJson(res, 400, { error: { message: 'email_address is invalid' } });
+      return;
+    }
+    const senderDomain = emailAddress.split('@').pop().toLowerCase();
+    if (!serverState.smtpDomains.some((domain) => domain.domain === senderDomain && domain.status === 'verified')) {
+      sendJson(res, 422, { error: { message: 'sender domain is not verified' } });
+      return;
+    }
+    const identity = newSMTPIdentity(emailAddress, forwardTo);
+    serverState.smtpIdentities.push(identity);
+    sendJson(res, 201, credentialsForIdentity(identity));
+    return;
+  }
 
-  const checkSMTPDomainMatch = url.pathname.match(/^\/api\/smtp-domains\/([^/]+)\/check-dns$/);
-  if (checkSMTPDomainMatch && req.method === 'POST') {
+  const domainCheckMatch = url.pathname.match(/^\/api\/tenants\/([^/]+)\/smtp-domains\/([^/]+)\/dns-checks$/);
+  if (domainCheckMatch && req.method === 'POST') {
     if (serverState.failSMTPDomainCheck) {
       sendJson(res, 500, { error: 'smtp_domain_check_failed' });
       return;
     }
-    const domain = serverState.smtpDomains.find((item) => String(item.id) === checkSMTPDomainMatch[1]);
+    const domain = serverState.smtpDomains.find((item) => String(item.id) === domainCheckMatch[2]);
     if (!domain) {
-      sendJson(res, 404, { error: 'sender domain not found' });
+      sendJson(res, 404, { error: { message: 'sender domain was not found' } });
       return;
     }
     domain.status = 'verified';
@@ -359,48 +427,17 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === 'POST' && url.pathname === '/api/smtp-identities') {
-    if (serverState.failSMTPCreate) {
-      sendJson(res, 500, { error: 'smtp_identity_create_failed' });
-      return;
-    }
-    const body = await readJson(req);
-    const emailAddress = typeof body.email_address === 'string' ? body.email_address.trim() : '';
-    const forwardTo = Array.isArray(body.forward_to)
-      ? body.forward_to.map((item) => String(item).trim()).filter(Boolean)
-      : [];
-    if (!emailAddress || forwardTo.length === 0) {
-      sendJson(res, 400, { error: 'email_address is invalid' });
-      return;
-    }
-    const senderDomain = emailAddress.split('@').pop().toLowerCase();
-    if (!serverState.smtpDomains.some((domain) => domain.domain === senderDomain && domain.status === 'verified')) {
-      sendJson(res, 422, { error: 'sender domain is not verified' });
-      return;
-    }
-    const identity = newSMTPIdentity(emailAddress, forwardTo);
-    serverState.smtpIdentities.push(identity);
-    sendJson(res, 201, credentialsForIdentity(identity));
-    return;
-  }
-
-  const updateSMTPForwardingMatch = url.pathname.match(/^\/api\/smtp-identities\/([^/]+)\/forwarding$/);
-  if (updateSMTPForwardingMatch && req.method === 'PATCH') {
+  const identityMatch = url.pathname.match(/^\/api\/tenants\/([^/]+)\/smtp-identities\/([^/]+)$/);
+  if (identityMatch && req.method === 'PATCH') {
     if (serverState.failSMTPForwardingUpdate) {
       sendJson(res, 500, { error: 'smtp_identity_forwarding_update_failed' });
       return;
     }
-    const identity = serverState.smtpIdentities.find((item) => item.id === updateSMTPForwardingMatch[1]);
-    if (!identity) {
-      sendJson(res, 404, { error: 'smtp identity not found' });
-      return;
-    }
+    const identity = serverState.smtpIdentities.find((item) => item.id === decodeURIComponent(identityMatch[2]));
     const body = await readJson(req);
-    const forwardTo = Array.isArray(body.forward_to)
-      ? body.forward_to.map((item) => String(item).trim()).filter(Boolean)
-      : [];
-    if (forwardTo.length === 0) {
-      sendJson(res, 400, { error: 'forward_to is required' });
+    const forwardTo = Array.isArray(body.forward_to) ? body.forward_to.map((item) => String(item).trim()).filter(Boolean) : [];
+    if (!identity || forwardTo.length === 0) {
+      sendJson(res, identity ? 400 : 404, { error: { message: identity ? 'forward_to is required' : 'smtp identity was not found' } });
       return;
     }
     identity.forward_to = forwardTo;
@@ -408,46 +445,40 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 200, publicSMTPIdentity(identity));
     return;
   }
-
-  const credentialsSMTPMatch = url.pathname.match(/^\/api\/smtp-identities\/([^/]+)\/credentials$/);
-  if (credentialsSMTPMatch && req.method === 'GET') {
-    const identity = serverState.smtpIdentities.find((item) => item.id === credentialsSMTPMatch[1]);
-    if (!identity) {
-      sendJson(res, 404, { error: 'smtp identity not found' });
-      return;
-    }
-    sendJson(res, 200, credentialsForIdentity(identity, identity.password));
-    return;
-  }
-
-  const rotateSMTPMatch = url.pathname.match(/^\/api\/smtp-identities\/([^/]+)\/rotate$/);
-  if (rotateSMTPMatch && req.method === 'POST') {
-    if (serverState.failSMTPRotate) {
-      sendJson(res, 500, { error: 'smtp_identity_rotate_failed' });
-      return;
-    }
-    const identity = serverState.smtpIdentities.find((item) => item.id === rotateSMTPMatch[1]);
-    if (!identity) {
-      sendJson(res, 404, { error: 'smtp identity not found' });
-      return;
-    }
-    identity.username = `smtp_rotated_JAYbQkNwQvT-LZI${serverState.smtpIdentities.length}`;
-    identity.password = 'pgsmtp_rotated_UVSZ9mxDW6ZeV-tNwApoddcyCjOM5uA';
-    identity.updated_at = new Date().toISOString();
-    sendJson(res, 200, credentialsForIdentity(identity, identity.password));
-    return;
-  }
-
-  const deleteSMTPMatch = url.pathname.match(/^\/api\/smtp-identities\/([^/]+)$/);
-  if (deleteSMTPMatch && req.method === 'DELETE') {
+  if (identityMatch && req.method === 'DELETE') {
     if (serverState.failSMTPDelete) {
       sendJson(res, 500, { error: 'smtp_identity_delete_failed' });
       return;
     }
-    serverState.smtpIdentities = serverState.smtpIdentities.filter((item) => item.id !== deleteSMTPMatch[1]);
+    serverState.smtpIdentities = serverState.smtpIdentities.filter((item) => item.id !== decodeURIComponent(identityMatch[2]));
     sendJson(res, 204, null);
     return;
   }
+
+  const smtpCredentialMatch = url.pathname.match(/^\/api\/tenants\/([^/]+)\/smtp-identities\/([^/]+)\/credential$/);
+  if (smtpCredentialMatch && (req.method === 'GET' || req.method === 'PUT')) {
+    if (req.method === 'PUT' && serverState.failSMTPRotate) {
+      sendJson(res, 500, { error: 'smtp_identity_rotate_failed' });
+      return;
+    }
+    const identity = serverState.smtpIdentities.find((item) => item.id === decodeURIComponent(smtpCredentialMatch[2]));
+    if (!identity) {
+      sendJson(res, 404, { error: { message: 'smtp identity was not found' } });
+      return;
+    }
+    if (req.method === 'PUT') {
+      identity.username = `smtp_rotated_JAYbQkNwQvT-LZI${serverState.smtpIdentities.length}`;
+      identity.password = 'pgsmtp_rotated_UVSZ9mxDW6ZeV-tNwApoddcyCjOM5uA';
+      identity.updated_at = new Date().toISOString();
+    }
+    sendJson(res, 200, credentialsForIdentity(identity, identity.password));
+    return;
+  }
+
+  /*
+   * The development server intentionally implements only the current nested
+   * tenant resource contract used by the production HTTP service.
+   */
 
   if (url.pathname === '/auth/nonce' && req.method === 'POST') {
     const token = issueNonce();
