@@ -17,7 +17,12 @@ test.describe('Profile Menu Integration', () => {
       authenticated: true,
       tenant: { id: 'tenant-test', displayName: 'Test Tenant' },
     });
+    const restoredSession = page.waitForResponse((response) => {
+      const request = response.request();
+      return request.method() === 'GET' && new URL(response.url()).pathname === '/auth/session';
+    });
     await page.goto('/event-log.html');
+    expect((await restoredSession).status()).toBe(200);
 
     await expectSharedHeaderUserMenu(page);
     const settingsButton = page.locator('mpr-header [data-mpr-header="settings-button"]');
