@@ -1,7 +1,9 @@
 ---
 mprlab_resources:
-  schema_version: 3
+  schema_version: 4
   owner: pinguin
+  release:
+    scheme: semver
   resources:
     - kind: private_values
       id: private
@@ -110,7 +112,6 @@ mprlab_resources:
       images:
         - id: pinguin-image
           repository: ghcr.io/tyemirov/pinguin
-          visibility: public
           build:
             context: .
             dockerfile: Dockerfile

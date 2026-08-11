@@ -30,20 +30,31 @@ var expectedGatewayWrapper = strings.Join([]string{
 
 type deploymentDocument struct {
 	Resources struct {
-		SchemaVersion int              `yaml:"schema_version"`
-		Owner         string           `yaml:"owner"`
-		Items         []map[string]any `yaml:"resources"`
+		SchemaVersion int    `yaml:"schema_version"`
+		Owner         string `yaml:"owner"`
+		Release       struct {
+			Scheme string `yaml:"scheme"`
+		} `yaml:"release"`
+		Items []map[string]any `yaml:"resources"`
 	} `yaml:"mprlab_resources"`
 }
 
-func TestRepositoryOwnsCompleteSchemaV3Deployment(t *testing.T) {
+func TestRepositoryOwnsCompleteSchemaV4Deployment(t *testing.T) {
 	manifestData := readRepoFile(t, filepath.FromSlash(deploymentManifestPath))
 	var document deploymentDocument
 	if unmarshalErr := yaml.Unmarshal(manifestData, &document); unmarshalErr != nil {
 		t.Fatalf("decode deployment manifest: %v", unmarshalErr)
 	}
-	if document.Resources.SchemaVersion != 3 || document.Resources.Owner != "pinguin" {
-		t.Fatalf("unexpected manifest identity: schema=%d owner=%q", document.Resources.SchemaVersion, document.Resources.Owner)
+	if document.Resources.SchemaVersion != 4 || document.Resources.Owner != "pinguin" || document.Resources.Release.Scheme != "semver" {
+		t.Fatalf(
+			"unexpected manifest identity: schema=%d owner=%q scheme=%q",
+			document.Resources.SchemaVersion,
+			document.Resources.Owner,
+			document.Resources.Release.Scheme,
+		)
+	}
+	if strings.Contains(string(manifestData), "visibility:") {
+		t.Fatal("deployment manifest retains retired package visibility")
 	}
 
 	identities := make([]string, 0, len(document.Resources.Items))
@@ -89,7 +100,7 @@ func TestRepositoryOwnsCompleteSchemaV3Deployment(t *testing.T) {
 
 	project := resources["compose_project/runtime"]
 	if _, exists := project["placement"]; exists {
-		t.Fatal("schema-v3 placement must be declared by each service")
+		t.Fatal("schema-v4 placement must be declared by each service")
 	}
 	services := deploymentList(t, project, "services")
 	if len(services) != 1 {
@@ -163,6 +174,7 @@ func TestProductionLifecycleDelegatesOnlyToSiblingGateway(t *testing.T) {
 	}
 
 	for _, forbiddenPath := range []string{
+		".mprlab/release.yml",
 		".mprlab/deploy/config.yml",
 		".mprlab/deploy/runtime.env.example",
 		"scripts/deploy.sh",
