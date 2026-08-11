@@ -12,8 +12,7 @@ func TestLoadSuccessful(t *testing.T) {
 	t.Helper()
 	v := viper.New()
 	v.Set(serverAddressKey, "localhost:5050")
-	v.Set(authTokenKey, "secret")
-	v.Set(tenantIDKey, "tenant-cli")
+	v.Set(apiKeyKey, "secret")
 	v.Set(connectionTimeoutKey, 7)
 	v.Set(operationTimeoutKey, 13)
 	v.Set(logLevelKey, "debug")
@@ -25,11 +24,8 @@ func TestLoadSuccessful(t *testing.T) {
 	if cfg.ServerAddress() != "localhost:5050" {
 		t.Fatalf("unexpected server address: %s", cfg.ServerAddress())
 	}
-	if cfg.AuthToken() != "secret" {
-		t.Fatalf("unexpected auth token: %s", cfg.AuthToken())
-	}
-	if cfg.TenantID() != "tenant-cli" {
-		t.Fatalf("unexpected tenant id: %s", cfg.TenantID())
+	if cfg.APIKey() != "secret" {
+		t.Fatalf("unexpected API key: %s", cfg.APIKey())
 	}
 	if cfg.ConnectionTimeoutSeconds() != 7 {
 		t.Fatalf("unexpected connection timeout seconds: %d", cfg.ConnectionTimeoutSeconds())
@@ -51,8 +47,7 @@ func TestLoadSuccessful(t *testing.T) {
 func TestLoadIgnoresEnvironmentFallbacks(t *testing.T) {
 	t.Helper()
 	t.Setenv("GRPC_SERVER_ADDR", "localhost:6060")
-	t.Setenv("GRPC_AUTH_TOKEN", "secret")
-	t.Setenv("TENANT_ID", "tenant-cli")
+	t.Setenv("PINGUIN_API_KEY", "secret")
 	t.Setenv("CONNECTION_TIMEOUT_SEC", "9")
 	t.Setenv("OPERATION_TIMEOUT_SEC", "11")
 	t.Setenv("LOG_LEVEL", "warn")
@@ -65,11 +60,8 @@ func TestLoadIgnoresEnvironmentFallbacks(t *testing.T) {
 	if cfg.ServerAddress() != "localhost:50051" {
 		t.Fatalf("unexpected server address: %s", cfg.ServerAddress())
 	}
-	if cfg.AuthToken() != "" {
-		t.Fatalf("unexpected auth token: %s", cfg.AuthToken())
-	}
-	if cfg.TenantID() != "" {
-		t.Fatalf("unexpected tenant id: %s", cfg.TenantID())
+	if cfg.APIKey() != "" {
+		t.Fatalf("unexpected API key: %s", cfg.APIKey())
 	}
 	if cfg.ConnectionTimeoutSeconds() != 5 {
 		t.Fatalf("unexpected connection timeout seconds: %d", cfg.ConnectionTimeoutSeconds())

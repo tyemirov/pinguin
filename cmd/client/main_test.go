@@ -74,7 +74,7 @@ func TestRunReturnsOneForCommandError(t *testing.T) {
 	if exitCode != 1 {
 		t.Fatalf("expected exit code 1, got %d", exitCode)
 	}
-	if !strings.Contains(stderr.String(), "grpc-auth-token is required") {
+	if !strings.Contains(stderr.String(), "api-key is required") {
 		t.Fatalf("expected auth error, got %q", stderr.String())
 	}
 }
@@ -101,8 +101,7 @@ func TestRunUsesInjectedSender(t *testing.T) {
 	exitCode := run([]string{
 		"send",
 		"--grpc-server-addr", "localhost:50051",
-		"--grpc-auth-token", "token",
-		"--tenant-id", "tenant",
+		"--api-key", "pgn_1_test_key",
 		"--type", "sms",
 		"--recipient", "+15551234567",
 		"--message", "hello",
@@ -126,8 +125,7 @@ func TestRunReportsInjectedSenderFailure(t *testing.T) {
 	exitCode := run([]string{
 		"send",
 		"--grpc-server-addr", "localhost:50051",
-		"--grpc-auth-token", "token",
-		"--tenant-id", "tenant",
+		"--api-key", "pgn_1_test_key",
 		"--type", "sms",
 		"--recipient", "+15551234567",
 		"--message", "hello",

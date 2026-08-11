@@ -10,8 +10,7 @@ import (
 
 const (
 	serverAddressKey     = "grpc_server_addr"
-	authTokenKey         = "grpc_auth_token"
-	tenantIDKey          = "tenant_id"
+	apiKeyKey            = "api_key"
 	connectionTimeoutKey = "connection_timeout_sec"
 	operationTimeoutKey  = "operation_timeout_sec"
 	logLevelKey          = "log_level"
@@ -19,8 +18,7 @@ const (
 
 type Config struct {
 	serverAddress     string
-	authToken         string
-	tenantID          string
+	apiKey            string
 	connectionTimeout int
 	operationTimeout  int
 	logLevel          string
@@ -41,8 +39,7 @@ func Load(provider *viper.Viper) (Config, error) {
 		return Config{}, fmt.Errorf("missing gRPC server address")
 	}
 
-	authToken := strings.TrimSpace(provider.GetString(authTokenKey))
-	tenantID := strings.TrimSpace(provider.GetString(tenantIDKey))
+	apiKey := strings.TrimSpace(provider.GetString(apiKeyKey))
 
 	connectionTimeout := provider.GetInt(connectionTimeoutKey)
 	if connectionTimeout <= 0 {
@@ -61,8 +58,7 @@ func Load(provider *viper.Viper) (Config, error) {
 
 	return Config{
 		serverAddress:     serverAddress,
-		authToken:         authToken,
-		tenantID:          tenantID,
+		apiKey:            apiKey,
 		connectionTimeout: connectionTimeout,
 		operationTimeout:  operationTimeout,
 		logLevel:          strings.ToUpper(logLevel),
@@ -73,8 +69,8 @@ func (configuration Config) ServerAddress() string {
 	return configuration.serverAddress
 }
 
-func (configuration Config) AuthToken() string {
-	return configuration.authToken
+func (configuration Config) APIKey() string {
+	return configuration.apiKey
 }
 
 func (configuration Config) ConnectionTimeoutSeconds() int {
@@ -83,10 +79,6 @@ func (configuration Config) ConnectionTimeoutSeconds() int {
 
 func (configuration Config) OperationTimeoutSeconds() int {
 	return configuration.operationTimeout
-}
-
-func (configuration Config) TenantID() string {
-	return configuration.tenantID
 }
 
 func (configuration Config) ConnectionTimeout() time.Duration {

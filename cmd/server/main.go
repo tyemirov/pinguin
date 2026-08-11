@@ -45,9 +45,6 @@ type notificationServiceServer struct {
 }
 
 const (
-	tenantMetadataKey                = "x-tenant-id"
-	tenantIDRequiredMessage          = "tenant_id is required"
-	tenantNotFoundMessage            = "tenant not found"
 	tenantRepositoryUnavailableError = "tenant repository unavailable"
 	notificationIDRequiredMessage    = "notification_id is required"
 	scheduledTimeRequiredMessage     = "scheduled_time is required"
@@ -239,7 +236,6 @@ func mapModelToGrpcResponse(modelResp model.NotificationResponse) *grpcapi.Notif
 		UpdatedAt:         modelResp.UpdatedAt.Format(time.RFC3339),
 		ScheduledTime:     scheduledTime,
 		Attachments:       mapModelAttachments(modelResp.Attachments),
-		TenantId:          modelResp.TenantID,
 	}
 }
 
@@ -314,60 +310,36 @@ func mapGrpcStatuses(source []grpcapi.Status) []model.NotificationStatus {
 	return result
 }
 
-func buildAuthInterceptor(logger *slog.Logger, requiredToken string) grpc.UnaryServerInterceptor {
+func buildCredentialInterceptor(logger *slog.Logger, repo *tenant.Repository) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		if repo == nil {
+			logger.Error(tenantRepositoryUnavailableError)
+			return nil, status.Error(codes.Internal, tenantRepositoryUnavailableError)
+		}
 		metadataValues, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
 			logger.Error("Missing metadata in gRPC request")
 			return nil, status.Error(codes.Unauthenticated, "missing metadata")
 		}
 		authorizationHeaders := metadataValues.Get("authorization")
-		if len(authorizationHeaders) == 0 {
+		if len(authorizationHeaders) != 1 {
 			logger.Error("Missing authorization header")
 			return nil, status.Error(codes.Unauthenticated, "missing authorization header")
 		}
-		headerValue := authorizationHeaders[0]
-		if !strings.HasPrefix(headerValue, "Bearer ") {
+		scheme, rawAPIKey, found := strings.Cut(strings.TrimSpace(authorizationHeaders[0]), " ")
+		if !found || scheme != "Bearer" || strings.TrimSpace(rawAPIKey) == "" {
 			logger.Error("Invalid authorization header format")
 			return nil, status.Error(codes.Unauthenticated, "invalid authorization header")
 		}
-		token := strings.TrimPrefix(headerValue, "Bearer ")
-		if token != requiredToken {
-			logger.Error("Invalid token provided")
-			return nil, status.Error(codes.Unauthenticated, "invalid token")
+		apiKey, parseErr := tenant.ParseAPIKey(rawAPIKey)
+		if parseErr != nil {
+			logger.Error("Invalid API key format")
+			return nil, status.Error(codes.Unauthenticated, "invalid api key")
 		}
-		return handler(ctx, req)
-	}
-}
-
-type tenantIDGetter interface {
-	GetTenantId() string
-}
-
-func buildTenantInterceptor(logger *slog.Logger, repo *tenant.Repository) grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		if repo == nil {
-			logger.Error(tenantRepositoryUnavailableError)
-			return nil, status.Error(codes.Internal, tenantRepositoryUnavailableError)
-		}
-		var tenantID string
-		if requestWithTenantID, ok := req.(tenantIDGetter); ok {
-			tenantID = strings.TrimSpace(requestWithTenantID.GetTenantId())
-		}
-		if tenantID == "" {
-			if metadataValues, ok := metadata.FromIncomingContext(ctx); ok {
-				if values := metadataValues.Get(tenantMetadataKey); len(values) > 0 {
-					tenantID = strings.TrimSpace(values[0])
-				}
-			}
-		}
-		if tenantID == "" {
-			return nil, status.Error(codes.InvalidArgument, tenantIDRequiredMessage)
-		}
-		runtimeCfg, err := repo.ResolveByID(ctx, tenantID)
-		if err != nil {
-			logger.Error("tenant_resolution_failed", "tenant_id", tenantID, "error", err)
-			return nil, status.Error(codes.NotFound, tenantNotFoundMessage)
+		runtimeCfg, authenticateErr := repo.AuthenticateAPIKey(ctx, apiKey)
+		if authenticateErr != nil {
+			logger.Error("tenant_credential_authentication_failed", "error", authenticateErr)
+			return nil, status.Error(codes.Unauthenticated, "invalid api key")
 		}
 		ctxWithTenant := tenant.WithRuntime(ctx, runtimeCfg)
 		return handler(ctxWithTenant, req)
@@ -392,8 +364,6 @@ type serverDependencies struct {
 	newLogger                 func(string) *slog.Logger
 	initDB                    func(string, *slog.Logger) (*gorm.DB, error)
 	newSecretKeeper           func(string) (*tenant.SecretKeeper, error)
-	bootstrapTenants          func(context.Context, *gorm.DB, *tenant.SecretKeeper, tenant.BootstrapConfig) error
-	bootstrapTenantsFromFile  func(context.Context, *gorm.DB, *tenant.SecretKeeper, string) error
 	newTenantRepository       func(*gorm.DB, *tenant.SecretKeeper) *tenant.Repository
 	newSMTPIdentityRepository func(*gorm.DB, string) (*smtpidentity.Repository, error)
 	newSMTPIdentityService    func(*smtpidentity.Repository, smtpidentity.PublicSettings) *smtpidentity.Service
@@ -406,7 +376,7 @@ type serverDependencies struct {
 	newSessionValidator       func(sessionvalidator.Config) (httpapi.SessionValidator, error)
 	newHTTPServer             func(httpapi.Config) (httpServerRunner, error)
 	listen                    func(string, string) (net.Listener, error)
-	serveGRPC                 func(net.Listener, service.NotificationService, *tenant.Repository, *slog.Logger, string) error
+	serveGRPC                 func(net.Listener, service.NotificationService, *tenant.Repository, *slog.Logger) error
 	exit                      func(int)
 }
 
@@ -430,8 +400,6 @@ func productionServerDependencies() serverDependencies {
 		newLogger:                 logging.NewLogger,
 		initDB:                    db.InitDB,
 		newSecretKeeper:           tenant.NewSecretKeeper,
-		bootstrapTenants:          tenant.Bootstrap,
-		bootstrapTenantsFromFile:  tenant.BootstrapFromFile,
 		newTenantRepository:       tenant.NewRepository,
 		newSMTPIdentityRepository: smtpidentity.NewRepository,
 		newSMTPIdentityService:    smtpidentity.NewService,
@@ -507,22 +475,6 @@ func runServer(args []string, dependencies serverDependencies) int {
 		return 1
 	}
 
-	bootstrapCfg := configuration.TenantBootstrap
-	switch {
-	case len(bootstrapCfg.Tenants) > 0:
-		if bootstrapErr := dependencies.bootstrapTenants(context.Background(), databaseInstance, secretKeeper, bootstrapCfg); bootstrapErr != nil {
-			mainLogger.Error("Failed to bootstrap tenants", "error", bootstrapErr)
-			return 1
-		}
-	case configuration.TenantConfigPath != "":
-		if bootstrapErr := dependencies.bootstrapTenantsFromFile(context.Background(), databaseInstance, secretKeeper, configuration.TenantConfigPath); bootstrapErr != nil {
-			mainLogger.Error("Failed to bootstrap tenants", "error", bootstrapErr)
-			return 1
-		}
-	default:
-		mainLogger.Error("Failed to bootstrap tenants", "error", "no tenant config supplied")
-		return 1
-	}
 	tenantRepo := dependencies.newTenantRepository(databaseInstance, secretKeeper)
 	smtpIdentityRepo, smtpIdentityRepoErr := dependencies.newSMTPIdentityRepository(databaseInstance, configuration.MasterEncryptionKey)
 	if smtpIdentityRepoErr != nil {
@@ -639,7 +591,7 @@ func runServer(args []string, dependencies serverDependencies) int {
 	}
 	mainLogger.Info("service_ready", "event", grpcReadinessEvent)
 
-	if serveErr := dependencies.serveGRPC(listener, notificationSvc, tenantRepo, mainLogger, configuration.GRPCAuthToken); serveErr != nil {
+	if serveErr := dependencies.serveGRPC(listener, notificationSvc, tenantRepo, mainLogger); serveErr != nil {
 		mainLogger.Error("gRPC server crashed", "error", serveErr)
 		return 1
 	}
@@ -659,12 +611,6 @@ func withServerDependencyDefaults(dependencies serverDependencies) serverDepende
 	}
 	if dependencies.newSecretKeeper == nil {
 		dependencies.newSecretKeeper = production.newSecretKeeper
-	}
-	if dependencies.bootstrapTenants == nil {
-		dependencies.bootstrapTenants = production.bootstrapTenants
-	}
-	if dependencies.bootstrapTenantsFromFile == nil {
-		dependencies.bootstrapTenantsFromFile = production.bootstrapTenantsFromFile
 	}
 	if dependencies.newTenantRepository == nil {
 		dependencies.newTenantRepository = production.newTenantRepository
@@ -759,14 +705,11 @@ func startHTTPServer(logger *slog.Logger, server httpServerRunner, listenAddr st
 	}()
 }
 
-func serveGRPC(listener net.Listener, notificationSvc service.NotificationService, tenantRepo *tenant.Repository, logger *slog.Logger, requiredToken string) error {
+func serveGRPC(listener net.Listener, notificationSvc service.NotificationService, tenantRepo *tenant.Repository, logger *slog.Logger) error {
 	grpcServer := grpc.NewServer(
 		grpc.MaxRecvMsgSize(grpcutil.MaxMessageSizeBytes),
 		grpc.MaxSendMsgSize(grpcutil.MaxMessageSizeBytes),
-		grpc.ChainUnaryInterceptor(
-			buildAuthInterceptor(logger, requiredToken),
-			buildTenantInterceptor(logger, tenantRepo),
-		),
+		grpc.ChainUnaryInterceptor(buildCredentialInterceptor(logger, tenantRepo)),
 	)
 	grpcapi.RegisterNotificationServiceServer(grpcServer, &notificationServiceServer{
 		notificationService: notificationSvc,

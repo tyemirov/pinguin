@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/base64"
 	"errors"
 	"io"
 	"log/slog"
@@ -36,11 +38,9 @@ import (
 )
 
 const (
-	testTenantID                       = "tenant-test"
-	missingTenantRuntimeMessage        = "missing tenant runtime"
-	expectedInterceptorSuccessTemplate = "expected interceptor success, got %v"
-	expectedTenantIDTemplate           = "expected tenant id %s, got %v"
-	expectedHandlerNotCalledMessage    = "expected handler not to be called"
+	testTenantID                    = "11111111-1111-4111-8111-111111111111"
+	missingTenantRuntimeMessage     = "missing tenant runtime"
+	expectedHandlerNotCalledMessage = "expected handler not to be called"
 )
 
 func TestDigestForLogging(t *testing.T) {
@@ -189,21 +189,26 @@ func TestMapModelToGrpcResponse(t *testing.T) {
 	}
 }
 
-func TestBuildAuthInterceptor(t *testing.T) {
+func TestBuildCredentialInterceptor(t *testing.T) {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
-	interceptor := buildAuthInterceptor(logger, "token")
+	repository, rawAPIKey := newCredentialTestRepository(t)
+	interceptor := buildCredentialInterceptor(logger, repository)
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return "ok", nil
+		runtimeConfig, ok := tenant.RuntimeFromContext(ctx)
+		if !ok {
+			return nil, status.Error(codes.Internal, missingTenantRuntimeMessage)
+		}
+		return runtimeConfig.Tenant.ID, nil
 	}
-	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer token"))
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer "+rawAPIKey))
 	resp, err := interceptor(ctx, nil, &grpc.UnaryServerInfo{}, handler)
-	if err != nil || resp != "ok" {
+	if err != nil || resp != testTenantID {
 		t.Fatalf("expected successful call, err=%v resp=%v", err, resp)
 	}
 
 	t.Run("RejectInvalidToken", func(t *testing.T) {
-		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer wrong"))
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer pgn_1_invalid"))
 		_, err := interceptor(ctx, nil, &grpc.UnaryServerInfo{}, handler)
 		if status.Code(err) != codes.Unauthenticated {
 			t.Fatalf("expected unauthenticated, got %v", err)
@@ -232,18 +237,28 @@ func TestBuildAuthInterceptor(t *testing.T) {
 			t.Fatalf("expected unauthenticated for invalid authorization, got %v", err)
 		}
 	})
+
+	t.Run("UnknownCredential", func(t *testing.T) {
+		unknownID := "22222222-2222-4222-8222-222222222222"
+		unknownKey := "pgn_1_" + unknownID + "_" + base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{9}, 32))
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer "+unknownKey))
+		_, err := interceptor(ctx, nil, &grpc.UnaryServerInfo{}, handler)
+		if status.Code(err) != codes.Unauthenticated {
+			t.Fatalf("expected unauthenticated, got %v", err)
+		}
+	})
 }
 
-func TestBuildTenantInterceptorRejectsMissingRepository(testHandle *testing.T) {
+func TestBuildCredentialInterceptorRejectsMissingRepository(testHandle *testing.T) {
 	testHandle.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
-	interceptor := buildTenantInterceptor(logger, nil)
+	interceptor := buildCredentialInterceptor(logger, nil)
 	handlerCalled := false
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		handlerCalled = true
 		return "ok", nil
 	}
-	_, err := interceptor(context.Background(), &grpcapi.NotificationRequest{TenantId: testTenantID}, &grpc.UnaryServerInfo{}, handler)
+	_, err := interceptor(context.Background(), &grpcapi.NotificationRequest{}, &grpc.UnaryServerInfo{}, handler)
 	if status.Code(err) != codes.Internal {
 		testHandle.Fatalf("expected internal error, got %v", err)
 	}
@@ -487,16 +502,13 @@ func TestSMTPPublicSettings(testHandle *testing.T) {
 	}
 }
 
-func TestRunServerSuccessWithInlineTenants(testHandle *testing.T) {
+func TestRunServerSuccess(testHandle *testing.T) {
 	testHandle.Helper()
 	cfg := serverTestConfig()
 	state, dependencies := newServerTestDependencies(cfg)
 
 	if exitCode := runServer(nil, dependencies); exitCode != 0 {
 		testHandle.Fatalf("expected success exit code, got %d", exitCode)
-	}
-	if !state.bootstrapCalled || state.bootstrapFileCalled {
-		testHandle.Fatalf("expected inline bootstrap, state=%+v", state)
 	}
 	if !state.grpcServed {
 		testHandle.Fatalf("expected grpc server to be served")
@@ -517,7 +529,7 @@ func TestRunServerPublishesGRPCReadyEventAfterListenerBind(testHandle *testing.T
 		}
 		return fakeListener{}, nil
 	}
-	dependencies.serveGRPC = func(net.Listener, service.NotificationService, *tenant.Repository, *slog.Logger, string) error {
+	dependencies.serveGRPC = func(net.Listener, service.NotificationService, *tenant.Repository, *slog.Logger) error {
 		if !strings.Contains(logOutput.String(), "event=pinguin.grpc.ready") {
 			testHandle.Fatalf("gRPC readiness event was not published after listener bind:\n%s", logOutput.String())
 		}
@@ -556,8 +568,6 @@ func TestRunServerDoesNotPublishGRPCReadyEventWhenListenerBindFails(testHandle *
 func TestRunServerStartsWebAndSMTPSubmission(testHandle *testing.T) {
 	testHandle.Helper()
 	cfg := serverTestConfig()
-	cfg.TenantBootstrap = tenant.BootstrapConfig{}
-	cfg.TenantConfigPath = "tenants.yml"
 	cfg.WebInterfaceEnabled = true
 	cfg.HTTPListenAddr = "127.0.0.1:8080"
 	cfg.HTTPTrustedProxies = []string{"127.0.0.1"}
@@ -582,8 +592,8 @@ func TestRunServerStartsWebAndSMTPSubmission(testHandle *testing.T) {
 	}
 	waitForClosed(testHandle, state.smtpStarter.started)
 	waitForClosed(testHandle, state.httpServer.started)
-	if !state.bootstrapFileCalled || !state.tlsLoaded {
-		testHandle.Fatalf("expected file/bootstrap/tls setup, state=%+v", state)
+	if !state.tlsLoaded {
+		testHandle.Fatalf("expected TLS setup, state=%+v", state)
 	}
 	if len(state.httpConfig.TrustedProxies) != 1 || state.httpConfig.TrustedProxies[0] != "127.0.0.1" {
 		testHandle.Fatalf("expected trusted proxy config to reach HTTP server, got %+v", state.httpConfig.TrustedProxies)
@@ -644,7 +654,11 @@ func TestSMTPIdentityForwardingResolver(testHandle *testing.T) {
 	if migrateErr := database.AutoMigrate(&smtpidentity.SenderDomain{}, &smtpidentity.Identity{}, &smtpidentity.ForwardRecipient{}); migrateErr != nil {
 		testHandle.Fatalf("migrate database: %v", migrateErr)
 	}
-	if seedErr := database.Create(&smtpidentity.SenderDomain{Domain: "example.com"}).Error; seedErr != nil {
+	if seedErr := database.Create(&smtpidentity.SenderDomain{
+		TenantID: testTenantID,
+		Domain:   "example.com",
+		Status:   smtpidentity.SenderDomainStatusVerified,
+	}).Error; seedErr != nil {
 		testHandle.Fatalf("seed sender domain: %v", seedErr)
 	}
 	repository, repoErr := smtpidentity.NewRepository(database, strings.Repeat("a", 64))
@@ -653,7 +667,8 @@ func TestSMTPIdentityForwardingResolver(testHandle *testing.T) {
 	}
 	address := mustServerAddress(testHandle, "support@example.com")
 	owner := mustServerAddress(testHandle, "owner@example.com")
-	identity, _, createErr := repository.Create(context.Background(), address, []smtpidentity.Address{owner})
+	scope := smtpidentity.AccessScope{TenantID: testTenantID}
+	identity, _, createErr := repository.CreateForScope(context.Background(), scope, address, []smtpidentity.Address{owner})
 	if createErr != nil {
 		testHandle.Fatalf("create identity: %v", createErr)
 	}
@@ -700,26 +715,6 @@ func TestRunServerErrorPaths(testHandle *testing.T) {
 		}},
 		{name: "secret keeper", config: serverTestConfig, mutate: func(deps *serverDependencies) {
 			deps.newSecretKeeper = func(string) (*tenant.SecretKeeper, error) { return nil, expectedErr }
-		}},
-		{name: "inline bootstrap", config: serverTestConfig, mutate: func(deps *serverDependencies) {
-			deps.bootstrapTenants = func(context.Context, *gorm.DB, *tenant.SecretKeeper, tenant.BootstrapConfig) error {
-				return expectedErr
-			}
-		}},
-		{name: "file bootstrap", config: func() config.Config {
-			cfg := serverTestConfig()
-			cfg.TenantBootstrap = tenant.BootstrapConfig{}
-			cfg.TenantConfigPath = "tenants.yml"
-			return cfg
-		}, mutate: func(deps *serverDependencies) {
-			deps.bootstrapTenantsFromFile = func(context.Context, *gorm.DB, *tenant.SecretKeeper, string) error {
-				return expectedErr
-			}
-		}},
-		{name: "missing tenant config", config: func() config.Config {
-			cfg := serverTestConfig()
-			cfg.TenantBootstrap = tenant.BootstrapConfig{}
-			return cfg
 		}},
 		{name: "smtp identity repository", config: serverTestConfig, mutate: func(deps *serverDependencies) {
 			deps.newSMTPIdentityRepository = func(*gorm.DB, string) (*smtpidentity.Repository, error) { return nil, expectedErr }
@@ -786,7 +781,7 @@ func TestRunServerErrorPaths(testHandle *testing.T) {
 			deps.listen = func(string, string) (net.Listener, error) { return nil, expectedErr }
 		}},
 		{name: "serve grpc", config: serverTestConfig, mutate: func(deps *serverDependencies) {
-			deps.serveGRPC = func(net.Listener, service.NotificationService, *tenant.Repository, *slog.Logger, string) error {
+			deps.serveGRPC = func(net.Listener, service.NotificationService, *tenant.Repository, *slog.Logger) error {
 				return expectedErr
 			}
 		}},
@@ -968,7 +963,7 @@ func TestServeGRPCBuildsServer(testHandle *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- serveGRPC(listener, &recordingNotificationService{}, nil, logger, "token")
+		errCh <- serveGRPC(listener, &recordingNotificationService{}, nil, logger)
 	}()
 	if err := listener.Close(); err != nil {
 		testHandle.Fatalf("close listener: %v", err)
@@ -983,91 +978,7 @@ func TestServeGRPCBuildsServer(testHandle *testing.T) {
 	}
 }
 
-func TestBuildTenantInterceptorAttachesRuntime(testHandle *testing.T) {
-	testHandle.Helper()
-	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
-	repo := newTestTenantRepository(testHandle, testTenantID)
-	interceptor := buildTenantInterceptor(logger, repo)
-	request := &grpcapi.NotificationRequest{TenantId: testTenantID}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		runtimeCfg, ok := tenant.RuntimeFromContext(ctx)
-		if !ok {
-			return nil, status.Error(codes.Internal, missingTenantRuntimeMessage)
-		}
-		return runtimeCfg.Tenant.ID, nil
-	}
-	response, err := interceptor(context.Background(), request, &grpc.UnaryServerInfo{}, handler)
-	if err != nil {
-		testHandle.Fatalf(expectedInterceptorSuccessTemplate, err)
-	}
-	if response != testTenantID {
-		testHandle.Fatalf(expectedTenantIDTemplate, testTenantID, response)
-	}
-}
-
-func TestBuildTenantInterceptorUsesMetadata(testHandle *testing.T) {
-	testHandle.Helper()
-	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
-	repo := newTestTenantRepository(testHandle, testTenantID)
-	interceptor := buildTenantInterceptor(logger, repo)
-	request := &grpcapi.GetNotificationStatusRequest{}
-	metadataContext := metadata.NewIncomingContext(context.Background(), metadata.Pairs(tenantMetadataKey, testTenantID))
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		runtimeCfg, ok := tenant.RuntimeFromContext(ctx)
-		if !ok {
-			return nil, status.Error(codes.Internal, missingTenantRuntimeMessage)
-		}
-		return runtimeCfg.Tenant.ID, nil
-	}
-	response, err := interceptor(metadataContext, request, &grpc.UnaryServerInfo{}, handler)
-	if err != nil {
-		testHandle.Fatalf(expectedInterceptorSuccessTemplate, err)
-	}
-	if response != testTenantID {
-		testHandle.Fatalf(expectedTenantIDTemplate, testTenantID, response)
-	}
-}
-
-func TestBuildTenantInterceptorRejectsMissingTenantID(testHandle *testing.T) {
-	testHandle.Helper()
-	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
-	repo := newTestTenantRepository(testHandle, testTenantID)
-	interceptor := buildTenantInterceptor(logger, repo)
-	handlerCalled := false
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		handlerCalled = true
-		return "ok", nil
-	}
-	_, err := interceptor(context.Background(), &grpcapi.ListNotificationsRequest{}, &grpc.UnaryServerInfo{}, handler)
-	if status.Code(err) != codes.InvalidArgument {
-		testHandle.Fatalf("expected invalid argument, got %v", err)
-	}
-	if handlerCalled {
-		testHandle.Fatal(expectedHandlerNotCalledMessage)
-	}
-}
-
-func TestBuildTenantInterceptorRejectsUnknownTenant(testHandle *testing.T) {
-	testHandle.Helper()
-	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
-	repo := newTestTenantRepository(testHandle, testTenantID)
-	interceptor := buildTenantInterceptor(logger, repo)
-	handlerCalled := false
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		handlerCalled = true
-		return "ok", nil
-	}
-	request := &grpcapi.CancelNotificationRequest{TenantId: "missing-tenant"}
-	_, err := interceptor(context.Background(), request, &grpc.UnaryServerInfo{}, handler)
-	if status.Code(err) != codes.NotFound {
-		testHandle.Fatalf("expected not found, got %v", err)
-	}
-	if handlerCalled {
-		testHandle.Fatal(expectedHandlerNotCalledMessage)
-	}
-}
-
-func newTestTenantRepository(testHandle *testing.T, tenantID string) *tenant.Repository {
+func newCredentialTestRepository(testHandle *testing.T) (*tenant.Repository, string) {
 	testHandle.Helper()
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
@@ -1075,10 +986,10 @@ func newTestTenantRepository(testHandle *testing.T, tenantID string) *tenant.Rep
 	}
 	if err := database.AutoMigrate(
 		&tenant.Tenant{},
-		&tenant.TenantDomain{},
-		&tenant.TenantAdmin{},
 		&tenant.EmailProfile{},
 		&tenant.SMSProfile{},
+		&tenant.APICredential{},
+		&tenant.IdempotencyRecord{},
 	); err != nil {
 		testHandle.Fatalf("auto migrate: %v", err)
 	}
@@ -1086,28 +997,33 @@ func newTestTenantRepository(testHandle *testing.T, tenantID string) *tenant.Rep
 	if err != nil {
 		testHandle.Fatalf("init secret keeper: %v", err)
 	}
-	enabled := true
-	bootstrapCfg := tenant.BootstrapConfig{
-		Tenants: []tenant.BootstrapTenant{
-			{
-				ID:          tenantID,
-				DisplayName: "Test Tenant",
-				Enabled:     &enabled,
-				Domains:     []string{"test.localhost"},
-				EmailProfile: tenant.BootstrapEmailProfile{
-					Host:        "smtp.localhost",
-					Port:        587,
-					Username:    "smtp-user",
-					Password:    "smtp-pass",
-					FromAddress: "admin@example.com",
-				},
-			},
-		},
+	repository := tenant.NewRepository(database, secretKeeper)
+	ownerUserID, _ := tenant.NewOwnerUserID("owner-user")
+	displayName, _ := tenant.NewDisplayName("Test Tenant")
+	emailProfile, _ := tenant.NewEmailProfileInput("smtp.localhost", 587, "smtp-user", "smtp-pass", "admin@example.com")
+	credentialID, _ := tenant.NewCredentialID("33333333-3333-4333-8333-333333333333")
+	secret := bytes.Repeat([]byte{7}, 32)
+	digestBytes := sha256.Sum256(secret)
+	credentialDigest, _ := tenant.NewCredentialDigest(digestBytes[:])
+	requestDigest, _ := tenant.NewRequestDigest(bytes.Repeat([]byte{8}, 32))
+	result, createErr := repository.Create(context.Background(), tenant.CreateInput{
+		OwnerUserID: ownerUserID, DisplayName: displayName, EmailProfile: emailProfile,
+		CredentialID: credentialID, CredentialDigest: credentialDigest,
+	}, "server-test-create", requestDigest)
+	if createErr != nil {
+		testHandle.Fatalf("create tenant: %v", createErr)
 	}
-	if err := tenant.Bootstrap(context.Background(), database, secretKeeper, bootstrapCfg); err != nil {
-		testHandle.Fatalf("bootstrap tenants: %v", err)
+	if updateErr := database.Model(&tenant.Tenant{}).Where(&tenant.Tenant{ID: result.Resource.ID}).Update("id", testTenantID).Error; updateErr != nil {
+		testHandle.Fatalf("set deterministic tenant id: %v", updateErr)
 	}
-	return tenant.NewRepository(database, secretKeeper)
+	if updateErr := database.Model(&tenant.EmailProfile{}).Where(&tenant.EmailProfile{TenantID: result.Resource.ID}).Update("tenant_id", testTenantID).Error; updateErr != nil {
+		testHandle.Fatalf("set email tenant id: %v", updateErr)
+	}
+	if updateErr := database.Model(&tenant.APICredential{}).Where(&tenant.APICredential{TenantID: result.Resource.ID}).Update("tenant_id", testTenantID).Error; updateErr != nil {
+		testHandle.Fatalf("set credential tenant id: %v", updateErr)
+	}
+	rawAPIKey := "pgn_1_" + credentialID.String() + "_" + base64.RawURLEncoding.EncodeToString(secret)
+	return repository, rawAPIKey
 }
 
 type recordingNotificationService struct {
@@ -1191,8 +1107,6 @@ func configSMTPSubmission(listenAddr string, tlsListenAddr string) config.SMTPSu
 }
 
 type serverTestState struct {
-	bootstrapCalled       bool
-	bootstrapFileCalled   bool
 	tlsLoaded             bool
 	grpcServed            bool
 	smtpConfig            smtpsubmission.Config
@@ -1206,29 +1120,12 @@ type serverTestState struct {
 func serverTestConfig() config.Config {
 	return config.Config{
 		DatabasePath:         "pinguin.db",
-		GRPCAuthToken:        "token",
 		LogLevel:             "INFO",
 		MaxRetries:           3,
 		RetryIntervalSec:     60,
 		MasterEncryptionKey:  strings.Repeat("a", 64),
 		ConnectionTimeoutSec: 5,
 		OperationTimeoutSec:  30,
-		TenantBootstrap: tenant.BootstrapConfig{
-			Tenants: []tenant.BootstrapTenant{
-				{
-					ID:          testTenantID,
-					DisplayName: "Test Tenant",
-					Domains:     []string{"test.localhost"},
-					EmailProfile: tenant.BootstrapEmailProfile{
-						Host:        "smtp.localhost",
-						Port:        587,
-						Username:    "smtp-user",
-						Password:    "smtp-pass",
-						FromAddress: "admin@example.com",
-					},
-				},
-			},
-		},
 		SMTPSubmission: config.SMTPSubmissionConfig{
 			Hostname:        "smtp.example.com",
 			ListenAddr:      ":587",
@@ -1256,14 +1153,6 @@ func newServerTestDependencies(cfg config.Config) (*serverTestState, serverDepen
 		},
 		newSecretKeeper: func(string) (*tenant.SecretKeeper, error) {
 			return &tenant.SecretKeeper{}, nil
-		},
-		bootstrapTenants: func(context.Context, *gorm.DB, *tenant.SecretKeeper, tenant.BootstrapConfig) error {
-			state.bootstrapCalled = true
-			return nil
-		},
-		bootstrapTenantsFromFile: func(context.Context, *gorm.DB, *tenant.SecretKeeper, string) error {
-			state.bootstrapFileCalled = true
-			return nil
 		},
 		newTenantRepository: func(*gorm.DB, *tenant.SecretKeeper) *tenant.Repository {
 			return nil
@@ -1305,14 +1194,11 @@ func newServerTestDependencies(cfg config.Config) (*serverTestState, serverDepen
 		listen: func(string, string) (net.Listener, error) {
 			return fakeListener{}, nil
 		},
-		serveGRPC: func(listener net.Listener, svc service.NotificationService, repo *tenant.Repository, logger *slog.Logger, token string) error {
+		serveGRPC: func(listener net.Listener, svc service.NotificationService, repo *tenant.Repository, logger *slog.Logger) error {
 			_ = listener
 			_ = svc
 			_ = repo
 			_ = logger
-			if token != cfg.GRPCAuthToken {
-				return errors.New("unexpected token")
-			}
 			state.grpcServed = true
 			return nil
 		},

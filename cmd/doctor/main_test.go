@@ -179,7 +179,6 @@ func writeDoctorConfig(t *testing.T, content string) string {
 const validDoctorConfig = `
 server:
   databasePath: /data/pinguin.db
-  grpcAuthToken: test-token-123
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 60
@@ -188,9 +187,4 @@ server:
   operationTimeoutSec: 60
 web:
   enabled: false
-tenants:
-  - id: demo
-    displayName: Demo Tenant
-    domains:
-      - demo.example.com
 `
