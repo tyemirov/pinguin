@@ -1,78 +1,87 @@
 # Architecture
 
 ## System Overview
-- Pinguin exposes two surfaces inside a single Go process: a gRPC notification service (port `50051`) and a Gin HTTP server that serves the REST-ish `/api` endpoints plus `/runtime-config`; static assets are hosted separately (GitHub Pages at `https://pinguin.mprlab.com` in production, or the ghttp container on `8080` for local dev).
-- When enabled, the same process also exposes SMTP submission listeners for Gmail-compatible Send-As clients. The SMTP listener authenticates exact sender identities, accepts raw RFC 5322 messages, and either relays them through the independent `smtpSubmission.relay` upstream profile or delivers them directly to recipient-domain MX hosts in `smtpSubmission.deliveryMode: direct`.
-- When enabled, a separate inbound SMTP forwarding listener accepts unauthenticated MX delivery only for active SMTP identities with forwarding owners, forwards the raw accepted message through `smtpForwarding.relay`, accepts null reverse-path DSNs, and stores no mailbox state or message body.
-- Docker Compose runs Pinguin alongside two support services:
-  - **ghttp** (`:8080`) serves the static front-end when developing locally. Browsers always load the UI from this host; API traffic targets the Pinguin HTTP server on `:8081`.
-  - **TAuth** (`:8082`) issues shared-shell sessions and signs `app_session` cookies.
-- All persistent data lives in SQLite (`DATABASE_PATH` inside the container path `/app/data/pinguin.db`). Docker manages the volume so restarts keep the state.
 
-## Authentication & Session Flow
-- The browser UI never talks directly to Pinguin for authentication. Instead, the `<mpr-header>` component (from `mpr-ui`) coordinates provider-specific sign-in and TAuth:
-  1. `<mpr-header data-config-url="/config-ui.yaml">` declares the shared shell contract in `index.html`, `event-log.html`, and `smtp-relay.html`.
-  2. `mpr-ui-config.js` reads `web/config-ui.yaml`, selects the entry for the current page origin, applies shared-shell auth attributes including the `/auth/session` restoration path to the header, and loads the `mpr-ui@latest` bundle from the bundle marker. Login-button presentation remains component-owned rather than runtime YAML.
-  3. `web/js/bootstrap.js` still fetches `/runtime-config` (from `pinguin-api.mprlab.com` when served from `.mprlab.com`) for the Pinguin API URL and tenant display metadata used by the app surface.
-  4. `web/js/app.js` listens for `mpr-ui:auth:*` events and reads `MPRUI.resolveAuthProfileSnapshot` to sync profile state, drive redirects, and guard the authenticated pages.
-  5. Successful sign-in yields an HttpOnly `app_session` cookie issued by TAuth; Pinguin validates that cookie on every `/api` request.
-- The Go backend needs the shared signing key (`TAUTH_SIGNING_KEY`) and optional cookie name override. TAuth issuer is handled inside the session validator; Pinguin should not configure it directly.
-- Pinguin reads TAuth session roles and configured tenant admin emails for browser workspace authorization. Users with the `admin` role or a configured `tenants[].admins` email can list, reschedule, and cancel notifications for any active tenant; non-admin users are limited to tenants whose configured domain matches the user's email domain.
+- Pinguin runs a gRPC notification service and an optional Gin HTTP API in one Go process.
+- The gRPC service uses port `50051`. The HTTP API uses port `8080`.
+- Static browser assets run separately. Production uses GitHub Pages at `https://pinguin.mprlab.com`. Local development uses the ghttp container on port `8080` and the Pinguin HTTP API on port `8081`.
+- SQLite stores tenants, delivery profiles, API credential digests, notifications, attachments, SMTP sender domains, SMTP identities, and forwarding routes.
+- A new database can start with zero tenants. The server creates the exact managed schema for an empty database.
+- The server rejects a non-empty database that does not have the exact current schema.
+- Tenant configuration changes take effect from the database without a service restart.
 
-## HTTP Server Responsibilities
-- Routes defined in `internal/httpapi`:
-- `GET /runtime-config` → `{ apiBaseUrl, eventLogUrl, smtpRelayUrl, tenant }`. The UI uses this to derive absolute API URLs, named page destinations, and tenant display metadata; shared-shell auth attributes come from `web/config-ui.yaml`, not Pinguin runtime metadata.
-  - `GET /healthz` – unauthenticated health probe.
-  - Authenticated `/api/notifications` list/reschedule/cancel handlers guarded by the session middleware.
-  - `/api/notifications*` accepts an explicit `tenant_id`, but the handler authorizes that tenant against the authenticated session before resolving tenant runtime config.
-  - Authenticated `/api/smtp-identities` list/create/view-credentials/rotate/delete handlers for exact SMTP submission sender credentials and dynamic inbound forwarding owners. Passwords are stored encrypted at rest under the server master encryption key; list responses remain secret-free, and the credentials endpoint returns the current password only to authorized admins.
-- Static assets do not come from the Gin stack anymore; ghttp serves `/web` while the Go HTTP server keeps `/api/**` and `/runtime-config` free of wildcard conflicts.
-- CORS defaults:
-  - When `web.allowedOrigins` is empty, requests are treated as same-origin only (credentials disabled while `AllowAllOrigins=true`).
-  - When provided, Gin restricts origins to the explicit allowlist and enables credentials so browsers can send TAuth cookies.
-- HTTP request logs emit `source_ip`, `remote_addr`, and `user_agent`; `source_ip` uses forwarding headers only when the direct peer matches `web.trustedProxies`.
+## Ownership and Authentication
 
-## Front-End Structure
-- `/web` hosts an Alpine.js-based bundle that follows `AGENTS.md` guidelines:
-  - `index.html` (landing page), `event-log.html`, and `smtp-relay.html` import `mpr-ui` CSS via CDN, load the compact MPR token/base stylesheet pair plus one page stylesheet, load `/config-ui.yaml` through `mpr-ui-config.js`, initialize Pinguin runtime URLs through `/js/runtime-config.js`, and bootstrap via `/js/app.js`.
-- `/js/bootstrap.js` centralizes runtime config resolution and lazy loading of the main app module.
-  - `js/app.js` is the composition root. `js/core/sessionBridge.js` owns the shared-shell session boundary, and `js/core/apiClient.js` owns Pinguin REST access.
-  - `js/ui/notificationsList.js` owns the responsive notification records and application dialogs. SMTP behavior is split across `smtpDomains.js`, `smtpIdentities.js`, and `smtpCredentialsDialog.js`.
-  - `assets/css/tokens.css` defines the dark-first MPR roles. `base.css` owns the shared compact shell and controls; `landing.css`, `event-log.css`, and `smtp-relay.css` own page layout.
-  - Protected pages place Event log and SMTP relay in the shared `<mpr-header>` `nav-left` slot, keep `aria-current="page"` on the active destination, and use the same header for product identity, Docs, authentication, and profile controls.
-  - Every page configures the shared `<mpr-footer>` with one seven-service MPR Platform drop-up. Public browser products use their canonical `mprlab.com` origins; service-only Ledger and Dictator use their repository pages.
-  - Event log and SMTP relay use semantic bordered records rather than minimum-width tables. Sender domains are collapsed by default, only one DNS setup panel can be expanded, identity metadata uses labeled definition lists, and creation drafts remain separate from inline forwarding drafts.
-- The schema-v3 `github_pages` resource publishes `/web` to the `gh-pages` branch through the sibling gateway, which generates `CNAME` from the declared domain and records and verifies `/.mprlab-release.json` against the sealed source. `web/.nojekyll` keeps GitHub Pages from running Jekyll over the static bundle.
-- `<mpr-header>` renders the shared sign-in control inside its own shadow tree. Playwright tests assert that the header shows exactly one visible shared sign-in button and that Pinguin runtime config contains no auth-provider metadata (`tests/e2e/landing.spec.ts`, `tests/e2e/utils.ts::expectSharedHeaderSignInButton`).
+- TAuth owns browser authentication. The `<mpr-header>` component starts sign-in, TAuth issues the HttpOnly session cookie, and Pinguin validates that cookie for each `/api` request.
+- Pinguin uses the validated TAuth user ID as `owner_user_id`. Each browser tenant query contains both the owner user ID and tenant ID.
+- A user can own more than one tenant. A foreign tenant ID returns `404` and does not disclose that tenant.
+- Each tenant has exactly one API credential. The API key format is `pgn_1_<credential-uuid>_<secret>`.
+- Pinguin stores only the SHA-256 digest of the 32-byte API secret. The browser shows the raw key once during tenant creation or rotation and clears it when the dialog closes.
+- The gRPC interceptor validates one bearer API key and resolves its tenant.
+- The interceptor adds the tenant runtime data to the request context. gRPC messages and metadata contain no caller-selected tenant ID.
 
-## Testing Strategy
-- `npm test` runs Playwright against `tests/support/devServer.js`, which serves `/web` and mocks the `/api` + `/auth` endpoints.
-- Key coverage includes:
-  - Landing CTA + shared-shell happy path redirects.
-  - Header contract coverage through `web/config-ui.yaml` and `mpr-ui-config.js`.
-  - Dashboard guards (unauthenticated redirect, shared-shell logout).
-  - Notification list, filtering, reschedule, cancel flows, and associated toasts.
-  - `390px`, `768px`, and `1440px` document-width and footer-clearance acceptance.
-  - Single-flight destructive dialogs with stable-list focus fallback, sender-domain disclosure, DNS copy feedback, verified-domain identity construction, and Pinguin-owned visual snapshots.
-  - One platform-independent snapshot path with a fixed `en-US` locale, `America/Los_Angeles` timezone, and bounded host anti-aliasing tolerance.
-- Go unit/integration tests cover configuration loading, HTTP handlers, domain scheduling logic, and the SQLite-backed scheduler worker (`go test ./...` gate).
+## Managed Tenant Data
 
-## Configuration Files
-- `configs/.env.pinguin.example`: defines the environment variables referenced by `configs/config.pinguin.yml` (database path, master encryption key, tenant bootstrap values, shared TAuth signing key, optional Twilio credentials).
-- `smtpSubmission` controls optional SMTP submission listeners, user-owned sender-domain DNS verification, public Gmail-facing SMTP settings, and the selected delivery mode. Sender domains live in SQLite through the SMTP relay API instead of YAML. The schema-v3 manifest declares public `pinguin-api.mprlab.com:465`; gateway-owned Caddy terminates TLS and forwards plaintext SMTP to the private `pinguin.smtp-submission` capability on port `587`.
-- `smtpForwarding` controls the optional MX-facing forwarding listener and outbound relay used to deliver copies. Dynamic shared addresses and forwarding owners live in SQLite as part of active SMTP identities and use the same verified sender-domain gate as outbound SMTP relay identities. The schema-v3 manifest declares public `mx.pinguin.mprlab.com:25` and forwards raw SMTP to the private `pinguin.smtp-forwarding` capability; customer onboarding should prefer a dedicated subdomain such as `help.customer.com` because MX records are domain-wide.
-- Caddy's shared HTTP `rate_limit` snippet applies to the HTTPS API route, not to the Layer 4 SMTPS route. The SMTP submission server owns protocol-aware throttling: command/data deadlines, global and backend-visible per-remote-host session caps, SMTP AUTH failure windows keyed by credential username, and accepted-message windows keyed by SMTP identity.
-- `configs/.env.tauth.example`: holds shared auth provider settings, signing key, cookie domain, and CORS allowlist for the colocated TAuth service.
-- Front-end auth details for `mpr-ui` live in `web/config-ui.yaml`; Pinguin runtime metadata still comes from `/runtime-config` and does not include auth provider fields.
+- A tenant contains a server-generated UUID, immutable owner user ID, display name, optional support email, version, and timestamps.
+- Tenant creation stores one tenant, one email profile, and one API credential in one transaction.
+- The same transaction stores an optional complete SMS profile.
+- Provider usernames, passwords, Twilio account identifiers, and Twilio tokens are encrypted with `MASTER_ENCRYPTION_KEY`.
+- Management responses contain safe metadata and do not contain provider secrets or raw API secrets.
+- Tenant metadata, delivery profiles, and the API credential use version preconditions through `ETag` and `If-Match`.
+- Tenant deletion is permanent. It removes notifications, attachments, profiles, the API credential, SMTP resources, forwarding routes, and idempotency records in one transaction.
 
-## Docker Compose Topology
-- `docker-compose.yaml` starts three services sharing the same network:
-  - `pinguin`: Go server with `/web` bind-mounted for local iteration.
-  - `tauth`: official `ghcr.io/tyemirov/tauth` image configured via `.env.tauth`.
-  - `ghttp`: lightweight HTTP server serving `/web` on host port 8080.
-- Local SMTP testing maps `localhost:8025` to container `:25`, `localhost:1587` to container `:587`, and `localhost:8465` to container `:465` without changing the production listener contract.
-- Ensure `.env.pinguin` and `.env.tauth` reuse the **same** signing key so cookie verification succeeds.
-- Workflow:
-  1. Create private env files explicitly, using the example files only as variable-name documentation, then populate secrets.
-  2. `make up`.
-  3. Visit `http://localhost:8080` for the landing page; the UI talks to `http://localhost:8081/api`, and TAuth runs on `http://localhost:8082`.
+## HTTP API
+
+- `GET /runtime-config` returns `apiBaseUrl`, `tenantUrl`, `eventLogUrl`, and `smtpRelayUrl`. It contains no tenant or authentication-provider data.
+- `GET /healthz` is the unauthenticated readiness route.
+- `/api/tenants` lists and creates owner-scoped tenants.
+- `/api/tenants/:tenant_id` reads, replaces tenant metadata, and permanently deletes one tenant.
+- Nested `email-profile`, `sms-profile`, and `api-credential` routes manage delivery data and the single programmatic credential.
+- Nested `notifications` routes list, reschedule, and cancel tenant notifications.
+- Nested `smtp-domains` and `smtp-identities` routes manage tenant-owned SMTP resources.
+- Tenant creation requires `Idempotency-Key`. Mutating an existing versioned resource requires `If-Match`.
+- Authenticated responses use `Cache-Control: private, no-store`.
+- CORS permits configured browser origins and credentials. Forwarding headers affect `source_ip` only when the direct peer is in `web.trustedProxies`.
+
+## Notification Runtime
+
+- The gRPC API credential defines the tenant for each programmatic notification request.
+- The retry worker lists current tenant IDs and resolves fresh tenant provider data before dispatch.
+- Email uses the tenant external SMTP profile. SMS uses the optional tenant Twilio profile.
+- Scheduled and errored notifications remain in SQLite for retry processing.
+
+## SMTP Submission and Forwarding
+
+- SMTP sender domains, identities, identity credentials, and forwarding routes belong to one tenant.
+- Sender-domain names and identity email addresses are globally unique.
+- The SMTP relay page requires a tenant selection before it loads or changes SMTP resources.
+- `smtpSubmission` and `smtpForwarding` remain service configuration because their listeners and upstream relays are shared infrastructure.
+- The optional submission listener authenticates an exact SMTP identity. It relays through `smtpSubmission.relay` or delivers to recipient MX hosts when `deliveryMode` is `direct`.
+- The optional forwarding listener accepts mail only for active identities that have forwarding recipients. It stores no mailbox or message body.
+- The schema version 4 manifest publishes SMTPS on `pinguin-api.mprlab.com:465` and MX delivery on `mx.pinguin.mprlab.com:25` through gateway-owned listeners.
+
+## Browser Structure
+
+- `index.html` is the public landing page. `tenants.html`, `event-log.html`, and `smtp-relay.html` are authenticated workspaces.
+- `web/js/runtime-config.js` buffers the latest public `mpr-ui` authentication event before the application module loads.
+- `web/js/core/sessionBridge.js` consumes the buffered event and the optional public profile snapshot.
+- `web/js/core/apiClient.js` owns the nested tenant HTTP routes.
+- `web/js/ui/tenantManagement.js` owns tenant creation, update, credential rotation, and permanent deletion.
+- Event log and SMTP relay require a selected owner tenant.
+- Each page uses the shared MPR header, three workspace destinations, and the seven-service MPR footer.
+
+## Configuration and Deployment
+
+- `configs/config.pinguin.yml` contains only service settings: database, logging, encryption, TAuth validation, HTTP, SMTP submission, and SMTP forwarding.
+- Runtime configuration and `.mprlab/deploy/resources.yml` contain no tenant definitions, tenant provider values, or global gRPC token.
+- `.mprlab/deploy/resources.yml` is the schema version 4 production declaration.
+- The bounded `cmd/convert-managed-tenants` command converts the former schema during one write-stopped maintenance window.
+- The conversion assigns all current production tenants to the TAuth account for `temirov@gmail.com`.
+- Server startup never runs this conversion.
+- The production operator owns conversion and deployment. After production acceptance, a steady-state change removes the conversion command.
+
+## Validation
+
+- `make test-coverage` requires 100% Go statement coverage.
+- `make test-frontend` runs the Playwright browser suite against `tests/support/devServer.js`.
+- `make ci` runs format checks, Go analysis, all Go tests, the coverage gate, and browser acceptance tests.
