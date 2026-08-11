@@ -24,26 +24,21 @@ var ErrInvalidSettings = errors.New("invalid_client_settings")
 // NotificationClient instances. Use NewSettings to construct a validated copy.
 type Settings struct {
 	serverAddress     string
-	authToken         string
-	tenantID          string
+	apiKey            string
 	connectionTimeout time.Duration
 	operationTimeout  time.Duration
 }
 
 // NewSettings validates and normalizes connection/authentication parameters
 // used by NotificationClient.
-func NewSettings(serverAddress string, authToken string, tenantID string, connectionTimeoutSeconds int, operationTimeoutSeconds int) (Settings, error) {
+func NewSettings(serverAddress string, apiKey string, connectionTimeoutSeconds int, operationTimeoutSeconds int) (Settings, error) {
 	address := strings.TrimSpace(serverAddress)
 	if address == "" {
 		return Settings{}, fmt.Errorf("%w: empty server address", ErrInvalidSettings)
 	}
-	token := strings.TrimSpace(authToken)
-	if token == "" {
-		return Settings{}, fmt.Errorf("%w: empty auth token", ErrInvalidSettings)
-	}
-	tenant := strings.TrimSpace(tenantID)
-	if tenant == "" {
-		return Settings{}, fmt.Errorf("%w: empty tenant id", ErrInvalidSettings)
+	key := strings.TrimSpace(apiKey)
+	if key == "" {
+		return Settings{}, fmt.Errorf("%w: empty api key", ErrInvalidSettings)
 	}
 	if connectionTimeoutSeconds <= 0 {
 		return Settings{}, fmt.Errorf("%w: invalid connection timeout %d", ErrInvalidSettings, connectionTimeoutSeconds)
@@ -53,8 +48,7 @@ func NewSettings(serverAddress string, authToken string, tenantID string, connec
 	}
 	return Settings{
 		serverAddress:     address,
-		authToken:         token,
-		tenantID:          tenant,
+		apiKey:            key,
 		connectionTimeout: time.Duration(connectionTimeoutSeconds) * time.Second,
 		operationTimeout:  time.Duration(operationTimeoutSeconds) * time.Second,
 	}, nil
@@ -65,14 +59,9 @@ func (s Settings) ServerAddress() string {
 	return s.serverAddress
 }
 
-// AuthToken returns the Bearer token that will be attached to outgoing RPCs.
-func (s Settings) AuthToken() string {
-	return s.authToken
-}
-
-// TenantID returns the tenant identifier that will be applied to RPCs.
-func (s Settings) TenantID() string {
-	return s.tenantID
+// APIKey returns the tenant API key attached to outgoing RPCs.
+func (s Settings) APIKey() string {
+	return s.apiKey
 }
 
 // ConnectionTimeout exposes the maximum time allowed to establish the gRPC
@@ -93,8 +82,7 @@ func (s Settings) OperationTimeout() time.Duration {
 type NotificationClient struct {
 	conn       *grpc.ClientConn
 	grpcClient grpcapi.NotificationServiceClient
-	authToken  string
-	tenantID   string
+	apiKey     string
 	logger     *slog.Logger
 	settings   Settings
 }
@@ -124,8 +112,7 @@ func NewNotificationClient(logger *slog.Logger, settings Settings) (*Notificatio
 	return &NotificationClient{
 		conn:       conn,
 		grpcClient: grpcClient,
-		authToken:  settings.AuthToken(),
-		tenantID:   settings.TenantID(),
+		apiKey:     settings.APIKey(),
 		logger:     logger,
 		settings:   settings,
 	}, nil
@@ -139,9 +126,6 @@ func (clientInstance *NotificationClient) Close() error {
 // SendNotification invokes the SendNotification RPC with the provided context.
 func (clientInstance *NotificationClient) SendNotification(ctx context.Context, req *grpcapi.NotificationRequest) (*grpcapi.NotificationResponse, error) {
 	ctx = clientInstance.withMetadata(ctx)
-	if req.GetTenantId() == "" {
-		req.TenantId = clientInstance.tenantID
-	}
 	resp, err := clientInstance.grpcClient.SendNotification(ctx, req)
 	if err != nil {
 		return nil, err
@@ -155,10 +139,7 @@ func (clientInstance *NotificationClient) GetNotificationStatus(notificationID s
 	ctx, cancel := context.WithTimeout(context.Background(), clientInstance.settings.OperationTimeout())
 	defer cancel()
 	ctx = clientInstance.withMetadata(ctx)
-	req := &grpcapi.GetNotificationStatusRequest{
-		NotificationId: notificationID,
-		TenantId:       clientInstance.tenantID,
-	}
+	req := &grpcapi.GetNotificationStatusRequest{NotificationId: notificationID}
 	resp, err := clientInstance.grpcClient.GetNotificationStatus(ctx, req)
 	if err != nil {
 		return nil, err
@@ -208,7 +189,6 @@ func (clientInstance *NotificationClient) SendNotificationAndWait(req *grpcapi.N
 func (clientInstance *NotificationClient) withMetadata(ctx context.Context) context.Context {
 	return metadata.AppendToOutgoingContext(
 		ctx,
-		"authorization", "Bearer "+clientInstance.authToken,
-		"x-tenant-id", clientInstance.tenantID,
+		"authorization", "Bearer "+clientInstance.apiKey,
 	)
 }
