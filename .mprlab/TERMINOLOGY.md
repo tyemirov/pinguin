@@ -77,11 +77,27 @@ Give each term one meaning. Use the same term for the same concept in all docume
 
 ## Repository Technical Nouns
 
-Add repository-specific technical nouns below this line.
-
-```text
-- `term`: Definition with one meaning.
-```
+- `API credential`: A tenant-bound record that authenticates a programmatic client.
+- `API key`: The bearer value that contains an API credential ID and secret.
+- `base64url`: The URL-safe Base64 encoding without padding.
+- `data conversion`: A bounded operation that moves persisted data into the current schema.
+- `delivery profile`: A tenant record that contains email or SMS provider configuration.
+- `GORM`: The Go library that Pinguin uses for database access.
+- `gRPC`: The protocol that Pinguin clients use for programmatic notification requests.
+- `idempotency record`: A database record that binds a repeated create request to its first result.
+- `managed tenant`: A Pinguin tenant that its TAuth owner configures through Pinguin.
+- `mpr-ui`: The shared MPR Lab browser user-interface library.
+- `owner user ID`: The validated TAuth user ID that owns a managed tenant.
+- `Pinguin`: The repository notification service.
+- `protobuf`: The canonical source format for the Pinguin gRPC API.
+- `SQLite`: The database engine that stores Pinguin data.
+- `SMTP forwarding`: The Pinguin capability that sends inbound messages to configured recipients.
+- `SMTP identity`: A tenant-owned sender address and its SMTP authentication credential.
+- `SMTP submission`: The Pinguin capability that accepts authenticated messages from an email client.
+- `sender domain`: A tenant-owned domain that Pinguin verifies for SMTP submission.
+- `TAuth`: The MPR Lab authentication service.
+- `tenant`: An isolated Pinguin notification owner and its resources.
+- `tenant ID`: The opaque UUID that identifies one Pinguin tenant.
 
 ## MPR Lab Technical Verbs
 
