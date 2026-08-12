@@ -17,7 +17,9 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     GOOS="${TARGETOS:-$(go env GOOS)}" GOARCH="${TARGETARCH:-$(go env GOARCH)}" \
     go build -o /workspace/bin/pinguin ./cmd/server && \
     GOOS="${TARGETOS:-$(go env GOOS)}" GOARCH="${TARGETARCH:-$(go env GOARCH)}" \
-    go build -o /workspace/bin/pinguin-doctor ./cmd/doctor
+    go build -o /workspace/bin/pinguin-doctor ./cmd/doctor && \
+    GOOS="${TARGETOS:-$(go env GOOS)}" GOARCH="${TARGETARCH:-$(go env GOARCH)}" \
+    go build -o /workspace/bin/pinguin-convert-managed-tenants ./cmd/convert-managed-tenants
 
 FROM alpine:latest
 
@@ -25,6 +27,7 @@ RUN apk add --no-cache ca-certificates
 
 COPY --from=builder /workspace/bin/pinguin /usr/local/bin/pinguin
 COPY --from=builder /workspace/bin/pinguin-doctor /usr/local/bin/pinguin-doctor
+COPY --from=builder /workspace/bin/pinguin-convert-managed-tenants /usr/local/bin/pinguin-convert-managed-tenants
 
 VOLUME ["/web"]
 
