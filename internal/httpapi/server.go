@@ -104,6 +104,7 @@ func NewServer(cfg Config) (*Server, error) {
 	protected.GET("/tenants/:tenant_id/sms-profile", tenantHandler.getSMSProfile)
 	protected.PUT("/tenants/:tenant_id/sms-profile", tenantHandler.putSMSProfile)
 	protected.PATCH("/tenants/:tenant_id/sms-profile", tenantHandler.patchSMSProfile)
+	protected.DELETE("/tenants/:tenant_id/sms-profile", tenantHandler.deleteSMSProfile)
 	protected.GET("/tenants/:tenant_id/api-credential", tenantHandler.getCredential)
 	protected.PUT("/tenants/:tenant_id/api-credential", tenantHandler.rotateCredential)
 	protected.GET("/tenants/:tenant_id/notifications", handler.listNotifications)

@@ -96,6 +96,15 @@ func TestManagedTenantHTTPLifecycle(t *testing.T) {
 	if patchedSMS.Code != http.StatusOK || patchedSMS.Header().Get(etagHeader) != `"3"` {
 		t.Fatalf("patch SMS profile = %d %s", patchedSMS.Code, patchedSMS.Body.String())
 	}
+	if response := tenantRequest(t, server, http.MethodDelete, smsPath, nil, map[string]string{ifMatchHeader: `"3"`}); response.Code != http.StatusNoContent {
+		t.Fatalf("delete SMS profile = %d %s", response.Code, response.Body.String())
+	}
+	if response := tenantRequest(t, server, http.MethodDelete, smsPath, nil, map[string]string{ifMatchHeader: `"3"`}); response.Code != http.StatusNoContent {
+		t.Fatalf("repeat SMS profile delete = %d %s", response.Code, response.Body.String())
+	}
+	if response := tenantRequest(t, server, http.MethodGet, smsPath, nil, nil); response.Code != http.StatusNotFound {
+		t.Fatalf("get deleted SMS profile = %d %s", response.Code, response.Body.String())
+	}
 
 	credentialPath := tenantPath + "/api-credential"
 	if response := tenantRequest(t, server, http.MethodGet, credentialPath, nil, nil); response.Code != http.StatusOK || response.Header().Get(etagHeader) != `"1"` {
@@ -175,6 +184,9 @@ func TestManagedTenantHTTPValidationAndFailures(t *testing.T) {
 		{name: "SMS put invalid", method: http.MethodPut, path: "/api/tenants/" + testTenantID + "/sms-profile", body: map[string]string{}, headers: map[string]string{ifMatchHeader: `"0"`}, statusCode: http.StatusUnprocessableEntity},
 		{name: "SMS put masked", method: http.MethodPut, path: "/api/tenants/" + testTenantID + "/sms-profile", body: map[string]string{"account_sid": "***", "auth_token": "token", "from_number": "+1"}, headers: map[string]string{ifMatchHeader: `"0"`}, statusCode: http.StatusUnprocessableEntity},
 		{name: "SMS put stale version", method: http.MethodPut, path: "/api/tenants/" + testTenantID + "/sms-profile", body: validSMS, headers: map[string]string{ifMatchHeader: `"9"`}, statusCode: http.StatusPreconditionFailed},
+		{name: "SMS delete missing version", method: http.MethodDelete, path: "/api/tenants/" + testTenantID + "/sms-profile", statusCode: http.StatusPreconditionFailed},
+		{name: "SMS delete invalid tenant", method: http.MethodDelete, path: "/api/tenants/invalid/sms-profile", headers: map[string]string{ifMatchHeader: `"1"`}, statusCode: http.StatusNotFound},
+		{name: "SMS delete stale version", method: http.MethodDelete, path: "/api/tenants/" + testTenantID + "/sms-profile", headers: map[string]string{ifMatchHeader: `"9"`}, statusCode: http.StatusPreconditionFailed},
 		{name: "SMS patch media type", method: http.MethodPatch, path: "/api/tenants/" + testTenantID + "/sms-profile", body: map[string]string{}, headers: map[string]string{"Content-Type": "text/plain"}, statusCode: http.StatusUnsupportedMediaType},
 		{name: "SMS patch malformed JSON", method: http.MethodPatch, path: "/api/tenants/" + testTenantID + "/sms-profile", body: json.RawMessage(`{"broken"`), headers: map[string]string{ifMatchHeader: `"1"`}, statusCode: http.StatusBadRequest},
 		{name: "SMS patch empty", method: http.MethodPatch, path: "/api/tenants/" + testTenantID + "/sms-profile", body: map[string]string{}, headers: map[string]string{ifMatchHeader: `"1"`}, statusCode: http.StatusUnprocessableEntity},
@@ -238,6 +250,7 @@ func TestManagedTenantHTTPValidationAndFailures(t *testing.T) {
 		{method: http.MethodGet, path: "/api/tenants/" + testTenantID},
 		{method: http.MethodPut, path: "/api/tenants/" + testTenantID, body: map[string]string{"display_name": "Name", "support_email": "support@example.com"}, headers: map[string]string{ifMatchHeader: `"1"`}},
 		{method: http.MethodDelete, path: "/api/tenants/" + testTenantID, headers: map[string]string{ifMatchHeader: `"1"`}},
+		{method: http.MethodDelete, path: "/api/tenants/" + testTenantID + "/sms-profile", headers: map[string]string{ifMatchHeader: `"1"`}},
 		{method: http.MethodGet, path: "/api/tenants/" + testTenantID + "/api-credential"},
 	} {
 		response := tenantRequest(t, closedServer, requestSpec.method, requestSpec.path, requestSpec.body, requestSpec.headers)

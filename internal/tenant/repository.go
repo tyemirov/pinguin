@@ -556,6 +556,32 @@ func (repository *Repository) PatchSMSProfile(ctx context.Context, ownerUserID O
 	return repository.ReplaceSMSProfile(ctx, ownerUserID, tenantID, expectedVersion, input)
 }
 
+// DeleteSMSProfile permanently removes the optional tenant SMS profile.
+func (repository *Repository) DeleteSMSProfile(ctx context.Context, ownerUserID OwnerUserID, tenantID TenantID, expectedVersion uint64) error {
+	if _, requireErr := repository.requireOwnedTenant(ctx, ownerUserID, tenantID); requireErr != nil {
+		return requireErr
+	}
+	deleteResult := repository.database.WithContext(ctx).
+		Where(&SMSProfile{TenantID: tenantID.String(), Version: expectedVersion}).
+		Delete(&SMSProfile{})
+	if deleteResult.Error != nil {
+		return fmt.Errorf("sms profile delete: %w", deleteResult.Error)
+	}
+	if deleteResult.RowsAffected != 1 {
+		var profile SMSProfile
+		lookupErr := repository.database.WithContext(ctx).Where(&SMSProfile{TenantID: tenantID.String()}).First(&profile).Error
+		if errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		if lookupErr != nil {
+			return fmt.Errorf("sms profile delete: lookup: %w", lookupErr)
+		}
+		return ErrVersionPrecondition
+	}
+	repository.invalidateRuntime(tenantID.String())
+	return nil
+}
+
 // GetCredential returns safe metadata for the tenant API credential.
 func (repository *Repository) GetCredential(ctx context.Context, ownerUserID OwnerUserID, tenantID TenantID) (APICredentialResource, error) {
 	if _, requireErr := repository.requireOwnedTenant(ctx, ownerUserID, tenantID); requireErr != nil {
@@ -613,7 +639,13 @@ func (repository *Repository) RotateCredential(ctx context.Context, ownerUserID 
 func (repository *Repository) AuthenticateAPIKey(ctx context.Context, apiKey APIKey) (RuntimeConfig, error) {
 	var credential APICredential
 	lookupErr := repository.database.WithContext(ctx).Where(&APICredential{ID: apiKey.CredentialID().String()}).First(&credential).Error
-	if lookupErr != nil || subtle.ConstantTimeCompare(credential.SecretDigest, apiKey.Digest().Bytes()) != 1 {
+	if errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+		return RuntimeConfig{}, ErrCredentialAuthentication
+	}
+	if lookupErr != nil {
+		return RuntimeConfig{}, fmt.Errorf("api credential authenticate: lookup %s: %w", apiKey.CredentialID().String(), lookupErr)
+	}
+	if subtle.ConstantTimeCompare(credential.SecretDigest, apiKey.Digest().Bytes()) != 1 {
 		return RuntimeConfig{}, ErrCredentialAuthentication
 	}
 	now := repository.clock()

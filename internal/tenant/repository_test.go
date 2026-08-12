@@ -226,6 +226,22 @@ func TestManagedTenantRepositoryLifecycle(t *testing.T) {
 	if _, err := repository.PatchSMSProfile(context.Background(), owner, firstID, 3, SMSProfilePatch{FromNumber: &invalidNumber}); !errors.Is(err, ErrInvalidSMSProfile) {
 		t.Fatalf("expected invalid SMS patch, got %v", err)
 	}
+	if err := repository.DeleteSMSProfile(context.Background(), owner, firstID, 2); !errors.Is(err, ErrVersionPrecondition) {
+		t.Fatalf("expected stale SMS delete, got %v", err)
+	}
+	if err := repository.DeleteSMSProfile(context.Background(), otherOwner, firstID, 3); !errors.Is(err, ErrTenantNotFound) {
+		t.Fatalf("expected foreign SMS delete to be hidden, got %v", err)
+	}
+	if err := repository.DeleteSMSProfile(context.Background(), owner, firstID, 3); err != nil {
+		t.Fatalf("delete SMS profile: %v", err)
+	}
+	if err := repository.DeleteSMSProfile(context.Background(), owner, firstID, 3); err != nil {
+		t.Fatalf("repeat SMS profile delete: %v", err)
+	}
+	withoutSMS, err := repository.ResolveByID(context.Background(), repositoryTenantID)
+	if err != nil || withoutSMS.SMS != nil {
+		t.Fatalf("runtime after SMS delete = %+v, %v", withoutSMS, err)
+	}
 	secondID, _ := NewTenantID(repositorySecondID)
 	createdSMS, err := repository.ReplaceSMSProfile(context.Background(), owner, secondID, 0, replacementSMS)
 	if err != nil || createdSMS.Version != 1 {
@@ -461,6 +477,9 @@ func TestManagedTenantRepositoryFailures(t *testing.T) {
 				return err
 			},
 			func() error {
+				return repository.DeleteSMSProfile(context.Background(), otherOwner, tenantID, 1)
+			},
+			func() error {
 				_, err := repository.GetCredential(context.Background(), otherOwner, tenantID)
 				return err
 			},
@@ -536,6 +555,7 @@ func TestManagedTenantRepositoryFailures(t *testing.T) {
 			prepare   func(*Repository, *gorm.DB)
 			patch     bool
 			create    bool
+			delete    bool
 		}{
 			{name: "replace lookup", operation: "query", table: "sms_profiles"},
 			{name: "replace encryption", prepare: func(repository *Repository, _ *gorm.DB) { repository.keeper = &SecretKeeper{key: []byte{1}} }},
@@ -548,6 +568,11 @@ func TestManagedTenantRepositoryFailures(t *testing.T) {
 			}},
 			{name: "patch token decrypt", patch: true, prepare: func(_ *Repository, database *gorm.DB) {
 				corruptTenantColumn(t, database, &SMSProfile{}, "auth_token_cipher")
+			}},
+			{name: "delete storage", operation: "delete", table: "sms_profiles", delete: true},
+			{name: "delete zero rows", operation: "delete", table: "sms_profiles", zeroRows: true, delete: true},
+			{name: "delete result lookup", operation: "delete", table: "sms_profiles", zeroRows: true, delete: true, prepare: func(_ *Repository, database *gorm.DB) {
+				registerTenantFailure(t, database, "query", "sms_profiles", 1)
 			}},
 		} {
 			t.Run(testCase.name, func(t *testing.T) {
@@ -566,7 +591,9 @@ func TestManagedTenantRepositoryFailures(t *testing.T) {
 				owner, _ := NewOwnerUserID(repositoryOwnerID)
 				tenantID, _ := NewTenantID(repositoryTenantID)
 				var err error
-				if testCase.patch {
+				if testCase.delete {
+					err = repository.DeleteSMSProfile(context.Background(), owner, tenantID, 1)
+				} else if testCase.patch {
 					_, err = repository.PatchSMSProfile(context.Background(), owner, tenantID, 1, SMSProfilePatch{})
 				} else {
 					input, _ := NewSMSProfileInput("new-sid", "new-token", "+15550000000")
@@ -629,6 +656,7 @@ func TestManagedTenantRepositoryFailures(t *testing.T) {
 			prepare   func(*Repository, *gorm.DB)
 			invoke    func(*Repository) error
 		}{
+			{name: "authenticate lookup", operation: "query", table: "api_credentials", invoke: authenticateStoredCredential},
 			{name: "authenticate last use", operation: "update", table: "api_credentials", invoke: authenticateStoredCredential},
 			{name: "invalid tenant id", invoke: func(repository *Repository) error {
 				_, err := repository.ResolveByID(context.Background(), "bad")
@@ -665,6 +693,8 @@ func TestManagedTenantRepositoryFailures(t *testing.T) {
 				}
 				if err := testCase.invoke(repository); err == nil {
 					t.Fatal("expected runtime failure")
+				} else if testCase.name == "authenticate lookup" && errors.Is(err, ErrCredentialAuthentication) {
+					t.Fatalf("storage error collapsed to authentication failure: %v", err)
 				}
 			})
 		}
@@ -796,13 +826,20 @@ func registerTenantZeroRows(t *testing.T, database *gorm.DB, operation, table st
 			transaction.Statement.AddClause(clause.Where{Exprs: []clause.Expression{clause.Eq{Column: clause.Column{Name: "id"}, Value: "never"}}})
 		}
 	}
-	if operation != "update" {
+	var err error
+	switch operation {
+	case "update":
+		err = database.Callback().Update().Before("gorm:update").Register(name, callback)
+		t.Cleanup(func() { _ = database.Callback().Update().Remove(name) })
+	case "delete":
+		err = database.Callback().Delete().Before("gorm:delete").Register(name, callback)
+		t.Cleanup(func() { _ = database.Callback().Delete().Remove(name) })
+	default:
 		t.Fatalf("unsupported zero-row operation %q", operation)
 	}
-	if err := database.Callback().Update().Before("gorm:update").Register(name, callback); err != nil {
+	if err != nil {
 		t.Fatalf("register zero-row callback: %v", err)
 	}
-	t.Cleanup(func() { _ = database.Callback().Update().Remove(name) })
 }
 
 func corruptTenantColumn(t *testing.T, database *gorm.DB, modelValue interface{}, column string) {

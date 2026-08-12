@@ -324,6 +324,19 @@ func (handler *tenantHandler) patchSMSProfile(contextGin *gin.Context) {
 	contextGin.JSON(http.StatusOK, profile)
 }
 
+func (handler *tenantHandler) deleteSMSProfile(contextGin *gin.Context) {
+	ownerUserID, tenantID, expectedVersion, identifiersErr := profileIdentifiers(contextGin)
+	if identifiersErr != nil {
+		handler.writeProfileError(contextGin, identifiersErr)
+		return
+	}
+	if deleteErr := handler.repository.DeleteSMSProfile(contextGin.Request.Context(), ownerUserID, tenantID, expectedVersion); deleteErr != nil {
+		handler.writeProfileError(contextGin, deleteErr)
+		return
+	}
+	contextGin.Status(http.StatusNoContent)
+}
+
 func (handler *tenantHandler) getCredential(contextGin *gin.Context) {
 	ownerUserID, tenantID, identifiersErr := tenantIdentifiers(contextGin)
 	if identifiersErr != nil {
