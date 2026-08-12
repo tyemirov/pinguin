@@ -29,6 +29,25 @@ type testSmsSender struct {
 	called   bool
 }
 
+type staticTenantRuntimeResolver struct {
+	runtime tenant.RuntimeConfig
+	err     error
+}
+
+func (resolver staticTenantRuntimeResolver) ResolveByID(_ context.Context, tenantID string) (tenant.RuntimeConfig, error) {
+	if resolver.err != nil {
+		return tenant.RuntimeConfig{}, resolver.err
+	}
+	if resolver.runtime.Tenant.ID != tenantID {
+		return tenant.RuntimeConfig{}, tenant.ErrTenantNotFound
+	}
+	return resolver.runtime, nil
+}
+
+func testTenantRuntimeResolver() staticTenantRuntimeResolver {
+	return staticTenantRuntimeResolver{runtime: tenant.RuntimeConfig{Tenant: tenant.Tenant{ID: testTenantID}}}
+}
+
 func (sender *testSmsSender) SendSms(context.Context, string, string) (string, error) {
 	sender.called = true
 	return sender.response, sender.err
@@ -39,6 +58,7 @@ func TestNotificationDispatcherEmail(t *testing.T) {
 	serviceInstance := &notificationServiceImpl{
 		logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
 		defaultEmailSender: emailSender,
+		tenantRepo:         testTenantRuntimeResolver(),
 	}
 	dispatcher := newNotificationDispatcher(serviceInstance)
 	job := scheduler.Job{
@@ -64,7 +84,8 @@ func TestNotificationDispatcherEmail(t *testing.T) {
 
 func TestNotificationDispatcherSMSDisabled(t *testing.T) {
 	serviceInstance := &notificationServiceImpl{
-		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		tenantRepo: testTenantRuntimeResolver(),
 	}
 	dispatcher := newNotificationDispatcher(serviceInstance)
 	job := scheduler.Job{
@@ -89,6 +110,7 @@ func TestNotificationDispatcherSMSSuccess(t *testing.T) {
 	serviceInstance := &notificationServiceImpl{
 		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 		defaultSmsSender: sender,
+		tenantRepo:       testTenantRuntimeResolver(),
 	}
 	dispatcher := newNotificationDispatcher(serviceInstance)
 	job := scheduler.Job{
@@ -122,9 +144,9 @@ func TestNotificationRetryStoreFetchesJobsPerTenant(t *testing.T) {
 		t.Fatalf("tenant migration error: %v", err)
 	}
 	tenants := []tenant.Tenant{
-		{ID: "tenant-retry-1", Status: tenant.TenantStatusActive},
-		{ID: "tenant-retry-2", Status: tenant.TenantStatusActive},
-		{ID: "tenant-suspended", Status: tenant.TenantStatusSuspended},
+		{ID: "tenant-retry-1"},
+		{ID: "tenant-retry-2"},
+		{ID: "tenant-retry-3"},
 	}
 	for _, tenantRow := range tenants {
 		if err := database.WithContext(context.Background()).Create(&tenantRow).Error; err != nil {
@@ -169,15 +191,14 @@ func TestNotificationRetryStoreFetchesJobsPerTenant(t *testing.T) {
 			t.Fatalf("create notification error: %v", err)
 		}
 	}
-	repository := tenant.NewRepository(database, nil)
-	store := newNotificationRetryStore(database, repository)
+	store := newNotificationRetryStore(database)
 
 	jobs, err := store.PendingJobs(context.Background(), 5, now.Add(time.Minute))
 	if err != nil {
 		t.Fatalf("pending jobs error: %v", err)
 	}
-	if len(jobs) != 2 {
-		t.Fatalf("expected jobs for two active tenants, got %d", len(jobs))
+	if len(jobs) != 3 {
+		t.Fatalf("expected jobs for all three tenants, got %d", len(jobs))
 	}
 	tenantSet := make(map[string]struct{}, len(jobs))
 	for _, job := range jobs {
@@ -187,13 +208,10 @@ func TestNotificationRetryStoreFetchesJobsPerTenant(t *testing.T) {
 		}
 		tenantSet[record.TenantID] = struct{}{}
 	}
-	for _, tenantID := range []string{tenants[0].ID, tenants[1].ID} {
+	for _, tenantID := range []string{tenants[0].ID, tenants[1].ID, tenants[2].ID} {
 		if _, ok := tenantSet[tenantID]; !ok {
 			t.Fatalf("expected tenant %s in job payloads", tenantID)
 		}
-	}
-	if _, ok := tenantSet[tenants[2].ID]; ok {
-		t.Fatalf("suspended tenant should not contribute jobs")
 	}
 }
 
@@ -219,7 +237,7 @@ func TestNotificationRetryStoreWithoutTenantRepository(t *testing.T) {
 		}
 	}
 
-	store := newNotificationRetryStore(database, nil)
+	store := newNotificationRetryStore(database)
 	jobs, err := store.PendingJobs(context.Background(), 5, now.Add(time.Minute))
 	if err != nil {
 		t.Fatalf("pending jobs error: %v", err)
@@ -232,7 +250,7 @@ func TestNotificationRetryStoreWithoutTenantRepository(t *testing.T) {
 func TestNotificationRetryStoreReportsStorageAndPayloadErrors(t *testing.T) {
 	now := time.Now().UTC()
 	allDatabase := openIsolatedDatabase(t)
-	allStore := newNotificationRetryStore(allDatabase, nil)
+	allStore := newNotificationRetryStore(allDatabase)
 	closeDatabase(t, allDatabase)
 	if _, err := allStore.PendingJobs(context.Background(), 3, now); err == nil {
 		t.Fatalf("expected pending jobs storage error without tenant repo")
@@ -242,13 +260,13 @@ func TestNotificationRetryStoreReportsStorageAndPayloadErrors(t *testing.T) {
 	if err := activeDatabase.AutoMigrate(&tenant.Tenant{}); err != nil {
 		t.Fatalf("tenant migration error: %v", err)
 	}
-	activeStore := newNotificationRetryStore(activeDatabase, tenant.NewRepository(activeDatabase, nil))
+	activeStore := newNotificationRetryStore(activeDatabase)
 	closeDatabase(t, activeDatabase)
 	if _, err := activeStore.PendingJobs(context.Background(), 3, now); err == nil {
 		t.Fatalf("expected pending jobs storage error with tenant repo")
 	}
 
-	store := newNotificationRetryStore(openIsolatedDatabase(t), nil)
+	store := newNotificationRetryStore(openIsolatedDatabase(t))
 	if err := store.ApplyAttemptResult(context.Background(), scheduler.Job{ID: "missing"}, scheduler.AttemptUpdate{}); err == nil {
 		t.Fatalf("expected missing payload error")
 	}
@@ -259,7 +277,7 @@ func TestNotificationRetryStoreReportsStorageAndPayloadErrors(t *testing.T) {
 
 func TestNotificationRetryStoreCanonicalizesUnknownAttemptStatus(t *testing.T) {
 	database := openIsolatedDatabase(t)
-	store := newNotificationRetryStore(database, nil)
+	store := newNotificationRetryStore(database)
 	now := time.Now().UTC()
 	record := &model.Notification{
 		TenantID:         testTenantID,
@@ -318,6 +336,7 @@ func TestNotificationDispatcherReportsPayloadRuntimeAndSendFailures(t *testing.T
 	emailService := &notificationServiceImpl{
 		logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
 		defaultEmailSender: &stubEmailSender{err: emailErr},
+		tenantRepo:         testTenantRuntimeResolver(),
 	}
 	emailResult, err := newNotificationDispatcher(emailService).Attempt(tenantContext(), scheduler.Job{Payload: &model.Notification{
 		TenantID:         testTenantID,
@@ -331,9 +350,8 @@ func TestNotificationDispatcherReportsPayloadRuntimeAndSendFailures(t *testing.T
 	}
 
 	unavailableEmailService := &notificationServiceImpl{
-		logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
-		emailSenders: make(map[string]EmailSender),
-		smsSenders:   make(map[string]SmsSender),
+		logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		tenantRepo: testTenantRuntimeResolver(),
 	}
 	unavailableEmailResult, unavailableEmailErr := newNotificationDispatcher(unavailableEmailService).Attempt(
 		tenant.WithRuntime(context.Background(), tenant.RuntimeConfig{Tenant: tenant.Tenant{ID: testTenantID}}),
@@ -353,6 +371,7 @@ func TestNotificationDispatcherReportsPayloadRuntimeAndSendFailures(t *testing.T
 	smsService := &notificationServiceImpl{
 		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 		defaultSmsSender: &stubSmsSender{err: smsErr},
+		tenantRepo:       testTenantRuntimeResolver(),
 	}
 	smsResult, err := newNotificationDispatcher(smsService).Attempt(tenantContext(), scheduler.Job{Payload: &model.Notification{
 		TenantID:         testTenantID,
@@ -368,6 +387,7 @@ func TestNotificationDispatcherReportsPayloadRuntimeAndSendFailures(t *testing.T
 		logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
 		defaultEmailSender: &testEmailSender{},
 		defaultSmsSender:   &testSmsSender{},
+		tenantRepo:         testTenantRuntimeResolver(),
 	}
 	unsupportedResult, unsupportedErr := newNotificationDispatcher(unsupportedService).Attempt(tenantContext(), scheduler.Job{Payload: &model.Notification{
 		TenantID:         testTenantID,

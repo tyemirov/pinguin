@@ -24,17 +24,10 @@ const (
 	contextKeyClaims         = "auth_claims"
 	defaultTimeout           = 5 * time.Second
 	scheduledTimeFutureError = "scheduled_time must be in the future"
-	tenantIDQueryParam       = "tenant_id"
 	notificationSearchParam  = "q"
 	notificationLimitParam   = "limit"
 	notificationCursorParam  = "cursor"
-	sessionAdminRole         = "admin"
 	unknownSourceIP          = "unknown"
-)
-
-var (
-	errTenantIDRequired   = errors.New("tenant_id is required")
-	errTenantAccessDenied = errors.New("tenant access denied")
 )
 
 // SessionValidator exposes the subset of validator behaviour we depend on.
@@ -88,7 +81,6 @@ func NewServer(cfg Config) (*Server, error) {
 	}
 	engine.Use(gin.Recovery())
 	engine.Use(requestLogger(cfg.Logger))
-	engine.Use(tenantMiddleware(cfg.TenantRepository))
 	engine.Use(buildCORS(cfg.AllowedOrigins))
 
 	engine.GET("/runtime-config", serveRuntimeConfig())
@@ -97,23 +89,37 @@ func NewServer(cfg Config) (*Server, error) {
 	})
 	protected := engine.Group("/api")
 	protected.Use(sessionMiddleware(cfg.SessionValidator))
+	protected.Use(noStore())
 
 	handler := newNotificationHandler(cfg.NotificationService, cfg.TenantRepository, cfg.Logger)
-	protected.GET("/tenants", handler.listTenants)
-	protected.GET("/notifications", handler.listNotifications)
-	protected.PATCH("/notifications/:id/schedule", handler.rescheduleNotification)
-	protected.POST("/notifications/:id/cancel", handler.cancelNotification)
+	tenantHandler := newTenantHandler(cfg.TenantRepository, cfg.Logger)
+	protected.GET("/tenants", tenantHandler.list)
+	protected.POST("/tenants", tenantHandler.create)
+	protected.GET("/tenants/:tenant_id", tenantHandler.get)
+	protected.PUT("/tenants/:tenant_id", tenantHandler.update)
+	protected.DELETE("/tenants/:tenant_id", tenantHandler.delete)
+	protected.GET("/tenants/:tenant_id/email-profile", tenantHandler.getEmailProfile)
+	protected.PUT("/tenants/:tenant_id/email-profile", tenantHandler.putEmailProfile)
+	protected.PATCH("/tenants/:tenant_id/email-profile", tenantHandler.patchEmailProfile)
+	protected.GET("/tenants/:tenant_id/sms-profile", tenantHandler.getSMSProfile)
+	protected.PUT("/tenants/:tenant_id/sms-profile", tenantHandler.putSMSProfile)
+	protected.PATCH("/tenants/:tenant_id/sms-profile", tenantHandler.patchSMSProfile)
+	protected.DELETE("/tenants/:tenant_id/sms-profile", tenantHandler.deleteSMSProfile)
+	protected.GET("/tenants/:tenant_id/api-credential", tenantHandler.getCredential)
+	protected.PUT("/tenants/:tenant_id/api-credential", tenantHandler.rotateCredential)
+	protected.GET("/tenants/:tenant_id/notifications", handler.listNotifications)
+	protected.PATCH("/tenants/:tenant_id/notifications/:notification_id", handler.patchNotification)
 	if cfg.SMTPIdentityService != nil {
 		identityHandler := newSMTPIdentityHandler(cfg.SMTPIdentityService, cfg.TenantRepository, cfg.Logger)
-		protected.GET("/smtp-domains", identityHandler.listSenderDomains)
-		protected.POST("/smtp-domains", identityHandler.createSenderDomain)
-		protected.POST("/smtp-domains/:id/check-dns", identityHandler.checkSenderDomainDNS)
-		protected.GET("/smtp-identities", identityHandler.listIdentities)
-		protected.POST("/smtp-identities", identityHandler.createIdentity)
-		protected.PATCH("/smtp-identities/:id/forwarding", identityHandler.updateForwarding)
-		protected.GET("/smtp-identities/:id/credentials", identityHandler.getCredentials)
-		protected.POST("/smtp-identities/:id/rotate", identityHandler.rotateIdentity)
-		protected.DELETE("/smtp-identities/:id", identityHandler.deleteIdentity)
+		protected.GET("/tenants/:tenant_id/smtp-domains", identityHandler.listSenderDomains)
+		protected.POST("/tenants/:tenant_id/smtp-domains", identityHandler.createSenderDomain)
+		protected.POST("/tenants/:tenant_id/smtp-domains/:domain_id/dns-checks", identityHandler.checkSenderDomainDNS)
+		protected.GET("/tenants/:tenant_id/smtp-identities", identityHandler.listIdentities)
+		protected.POST("/tenants/:tenant_id/smtp-identities", identityHandler.createIdentity)
+		protected.PATCH("/tenants/:tenant_id/smtp-identities/:identity_id", identityHandler.updateForwarding)
+		protected.GET("/tenants/:tenant_id/smtp-identities/:identity_id/credential", identityHandler.getCredentials)
+		protected.PUT("/tenants/:tenant_id/smtp-identities/:identity_id/credential", identityHandler.rotateIdentity)
+		protected.DELETE("/tenants/:tenant_id/smtp-identities/:identity_id", identityHandler.deleteIdentity)
 	}
 
 	httpServer := &http.Server{
@@ -201,47 +207,26 @@ func buildCORS(allowedOrigins []string) gin.HandlerFunc {
 	if len(allowedOrigins) == 0 {
 		cfg := cors.Config{
 			AllowAllOrigins:  true,
-			AllowHeaders:     []string{"Content-Type", "X-Requested-With", "X-Client-Data", "X-Client"},
-			AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodOptions},
+			AllowHeaders:     []string{"Content-Type", "Idempotency-Key", "If-Match", "X-Request-ID", "X-Requested-With", "X-Client-Data", "X-Client"},
+			AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
 			AllowCredentials: false,
 		}
 		return cors.New(cfg)
 	}
 	cfg := cors.Config{
 		AllowOrigins:     allowedOrigins,
-		AllowHeaders:     []string{"Content-Type", "X-Requested-With", "X-Client-Data", "X-Client"},
-		AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodOptions},
+		AllowHeaders:     []string{"Content-Type", "Idempotency-Key", "If-Match", "X-Request-ID", "X-Requested-With", "X-Client-Data", "X-Client"},
+		AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
 		AllowCredentials: true,
 	}
 	return cors.New(cfg)
 }
 
-func tenantMiddleware(repo *tenant.Repository) gin.HandlerFunc {
+func noStore() gin.HandlerFunc {
 	return func(contextGin *gin.Context) {
-		if contextGin.Request != nil && contextGin.Request.URL != nil && isTenantAgnosticPath(contextGin.Request.URL.Path) {
-			contextGin.Next()
-			return
-		}
-		runtimeCfg, err := repo.ResolveByHost(contextGin.Request.Context(), contextGin.Request.Host)
-		if err != nil {
-			contextGin.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "tenant_not_found"})
-			return
-		}
-		ctx := tenant.WithRuntime(contextGin.Request.Context(), runtimeCfg)
-		contextGin.Request = contextGin.Request.WithContext(ctx)
+		contextGin.Header("Cache-Control", "private, no-store")
 		contextGin.Next()
 	}
-}
-
-func isTenantAgnosticPath(path string) bool {
-	return path == "/healthz" ||
-		path == "/api/tenants" ||
-		path == "/api/notifications" ||
-		strings.HasPrefix(path, "/api/notifications/") ||
-		path == "/api/smtp-domains" ||
-		strings.HasPrefix(path, "/api/smtp-domains/") ||
-		path == "/api/smtp-identities" ||
-		strings.HasPrefix(path, "/api/smtp-identities/")
 }
 
 func sessionMiddleware(validator SessionValidator) gin.HandlerFunc {
@@ -266,22 +251,6 @@ func newNotificationHandler(svc service.NotificationService, repo *tenant.Reposi
 	return &notificationHandler{service: svc, repository: repo, logger: logger}
 }
 
-func (handler *notificationHandler) listTenants(contextGin *gin.Context) {
-	tenants, err := handler.accessibleTenants(contextGin)
-	if err != nil {
-		handler.writeTenantListError(contextGin, err)
-		return
-	}
-	payload := make([]runtimeConfigTenant, 0, len(tenants))
-	for _, tenantModel := range tenants {
-		payload = append(payload, runtimeConfigTenant{
-			ID:          tenantModel.ID,
-			DisplayName: tenantModel.DisplayName,
-		})
-	}
-	contextGin.JSON(http.StatusOK, gin.H{"tenants": payload})
-}
-
 func (handler *notificationHandler) listNotifications(contextGin *gin.Context) {
 	requestContext, resolveErr := handler.resolveNotificationContext(contextGin)
 	if resolveErr != nil {
@@ -304,31 +273,25 @@ func (handler *notificationHandler) listNotifications(contextGin *gin.Context) {
 	})
 }
 
-func (handler *notificationHandler) rescheduleNotification(contextGin *gin.Context) {
-	notificationID := strings.TrimSpace(contextGin.Param("id"))
+func (handler *notificationHandler) patchNotification(contextGin *gin.Context) {
+	if !requireJSON(contextGin) {
+		return
+	}
+	notificationID := strings.TrimSpace(contextGin.Param("notification_id"))
 	if notificationID == "" {
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "notification_id is required"})
+		writeAPIError(contextGin, http.StatusBadRequest, "notification.id.invalid", "notification_id is required")
 		return
 	}
 	var payload struct {
-		ScheduledTime string `json:"scheduled_time"`
+		ScheduledTime *string `json:"scheduled_time"`
+		Status        *string `json:"status"`
 	}
 	if err := contextGin.ShouldBindJSON(&payload); err != nil {
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
+		writeAPIError(contextGin, http.StatusBadRequest, "request.json.invalid", "request body is invalid JSON")
 		return
 	}
-	if strings.TrimSpace(payload.ScheduledTime) == "" {
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "scheduled_time is required"})
-		return
-	}
-	parsedTime, err := time.Parse(time.RFC3339, payload.ScheduledTime)
-	if err != nil {
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "scheduled_time must be RFC3339"})
-		return
-	}
-	normalizedTime := parsedTime.UTC()
-	if normalizedTime.Before(time.Now().UTC()) {
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": scheduledTimeFutureError})
+	if (payload.ScheduledTime == nil) == (payload.Status == nil) {
+		writeAPIError(contextGin, http.StatusUnprocessableEntity, "notification.change.invalid", "set scheduled_time or status")
 		return
 	}
 	requestContext, resolveErr := handler.resolveNotificationContext(contextGin)
@@ -336,28 +299,23 @@ func (handler *notificationHandler) rescheduleNotification(contextGin *gin.Conte
 		handler.writeTenantResolutionError(contextGin, resolveErr)
 		return
 	}
-	response, svcErr := handler.service.RescheduleNotification(requestContext, notificationID, normalizedTime)
-	if svcErr != nil {
-		handler.writeError(contextGin, svcErr)
+	var response model.NotificationResponse
+	var serviceErr error
+	if payload.ScheduledTime != nil {
+		parsedTime, parseErr := time.Parse(time.RFC3339, strings.TrimSpace(*payload.ScheduledTime))
+		if parseErr != nil || !parsedTime.After(time.Now().UTC()) {
+			writeAPIError(contextGin, http.StatusUnprocessableEntity, "notification.scheduled_time.invalid", "scheduled_time must be a future RFC3339 value")
+			return
+		}
+		response, serviceErr = handler.service.RescheduleNotification(requestContext, notificationID, parsedTime.UTC())
+	} else if strings.TrimSpace(*payload.Status) == string(model.StatusCancelled) {
+		response, serviceErr = handler.service.CancelNotification(requestContext, notificationID)
+	} else {
+		writeAPIError(contextGin, http.StatusUnprocessableEntity, "notification.status.invalid", "status must be cancelled")
 		return
 	}
-	contextGin.JSON(http.StatusOK, response)
-}
-
-func (handler *notificationHandler) cancelNotification(contextGin *gin.Context) {
-	notificationID := strings.TrimSpace(contextGin.Param("id"))
-	if notificationID == "" {
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "notification_id is required"})
-		return
-	}
-	requestContext, resolveErr := handler.resolveNotificationContext(contextGin)
-	if resolveErr != nil {
-		handler.writeTenantResolutionError(contextGin, resolveErr)
-		return
-	}
-	response, err := handler.service.CancelNotification(requestContext, notificationID)
-	if err != nil {
-		handler.writeError(contextGin, err)
+	if serviceErr != nil {
+		handler.writeError(contextGin, serviceErr)
 		return
 	}
 	contextGin.JSON(http.StatusOK, response)
@@ -366,120 +324,47 @@ func (handler *notificationHandler) cancelNotification(contextGin *gin.Context) 
 func (handler *notificationHandler) writeError(contextGin *gin.Context, err error) {
 	switch {
 	case isMissingNotificationID(err):
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "notification_id is required"})
+		writeAPIError(contextGin, http.StatusBadRequest, "notification.id.invalid", "notification_id is required")
 	case errors.Is(err, service.ErrNotificationNotEditable):
-		contextGin.JSON(http.StatusConflict, gin.H{"error": "notification can only be edited while queued"})
+		writeAPIError(contextGin, http.StatusConflict, "notification.state.conflict", "notification can only be edited while queued")
 	case errors.Is(err, model.ErrNotificationNotFound), errors.Is(err, gorm.ErrRecordNotFound):
-		contextGin.JSON(http.StatusNotFound, gin.H{"error": "notification not found"})
+		writeAPIError(contextGin, http.StatusNotFound, "notification.not_found", "notification was not found")
 	default:
 		handler.logger.Error("http_handler_error", "error", err)
-		contextGin.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		writeAPIError(contextGin, http.StatusInternalServerError, "internal.error", "internal server error")
 	}
 }
 
 func (handler *notificationHandler) resolveNotificationContext(contextGin *gin.Context) (context.Context, error) {
-	tenantID := strings.TrimSpace(contextGin.Query(tenantIDQueryParam))
-	if tenantID == "" {
-		return nil, errTenantIDRequired
+	ownerUserID, ownerErr := ownerFromContext(contextGin)
+	if ownerErr != nil {
+		return nil, ownerErr
 	}
-	if err := handler.authorizeNotificationTenant(contextGin, tenantID); err != nil {
-		return nil, err
+	tenantID, tenantErr := tenant.NewTenantID(contextGin.Param("tenant_id"))
+	if tenantErr != nil {
+		return nil, tenant.ErrTenantNotFound
 	}
-	targetCfg, err := handler.repository.ResolveByID(contextGin.Request.Context(), tenantID)
+	if _, ownedErr := handler.repository.GetOwned(contextGin.Request.Context(), ownerUserID, tenantID); ownedErr != nil {
+		return nil, ownedErr
+	}
+	targetCfg, err := handler.repository.ResolveByID(contextGin.Request.Context(), tenantID.String())
 	if err != nil {
 		return nil, err
 	}
 	return tenant.WithRuntime(contextGin.Request.Context(), targetCfg), nil
 }
 
-func (handler *notificationHandler) accessibleTenants(contextGin *gin.Context) ([]tenant.Tenant, error) {
-	claims := claimsFromContextGin(contextGin)
-	admin, adminErr := sessionHasAdminAccess(contextGin, handler.repository, claims)
-	if adminErr != nil {
-		return nil, adminErr
-	}
-	if admin {
-		return handler.repository.ListActiveTenants(contextGin.Request.Context())
-	}
-	emailDomain, ok := sessionEmailDomain(claims)
-	if !ok {
-		return nil, errTenantAccessDenied
-	}
-	return handler.repository.ListActiveTenantsByDomain(contextGin.Request.Context(), emailDomain)
-}
-
-func (handler *notificationHandler) authorizeNotificationTenant(contextGin *gin.Context, tenantID string) error {
-	claims := claimsFromContextGin(contextGin)
-	admin, adminErr := sessionHasAdminAccess(contextGin, handler.repository, claims)
-	if adminErr != nil {
-		return adminErr
-	}
-	if admin {
-		return nil
-	}
-	emailDomain, ok := sessionEmailDomain(claims)
-	if !ok {
-		return errTenantAccessDenied
-	}
-	tenants, err := handler.repository.ListActiveTenantsByDomain(contextGin.Request.Context(), emailDomain)
-	if err != nil {
-		return err
-	}
-	for _, tenantModel := range tenants {
-		if tenantModel.ID == tenantID {
-			return nil
-		}
-	}
-	return errTenantAccessDenied
-}
-
 func claimsFromContextGin(contextGin *gin.Context) *sessionvalidator.Claims {
 	return contextGin.MustGet(contextKeyClaims).(*sessionvalidator.Claims)
 }
 
-func sessionHasAdminRole(claims *sessionvalidator.Claims) bool {
-	for _, role := range claims.GetUserRoles() {
-		if strings.EqualFold(strings.TrimSpace(role), sessionAdminRole) {
-			return true
-		}
-	}
-	return false
-}
-
-func sessionHasAdminAccess(contextGin *gin.Context, repository *tenant.Repository, claims *sessionvalidator.Claims) (bool, error) {
-	if sessionHasAdminRole(claims) {
-		return true, nil
-	}
-	return repository.IsActiveTenantAdmin(contextGin.Request.Context(), claims.GetUserEmail())
-}
-
-func sessionEmailDomain(claims *sessionvalidator.Claims) (string, bool) {
-	normalizedEmail := strings.ToLower(strings.TrimSpace(claims.GetUserEmail()))
-	_, domain, found := strings.Cut(normalizedEmail, "@")
-	normalizedDomain := strings.TrimSpace(domain)
-	return normalizedDomain, found && normalizedDomain != ""
-}
-
-func (handler *notificationHandler) writeTenantListError(contextGin *gin.Context, err error) {
-	if errors.Is(err, errTenantAccessDenied) {
-		contextGin.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
-		return
-	}
-	handler.logger.Error("http_handler_error", "error", err)
-	contextGin.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-}
-
 func (handler *notificationHandler) writeTenantResolutionError(contextGin *gin.Context, err error) {
 	switch {
-	case errors.Is(err, errTenantIDRequired):
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-	case errors.Is(err, errTenantAccessDenied):
-		contextGin.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
-	case errors.Is(err, tenant.ErrInvalidTenantID), errors.Is(err, gorm.ErrRecordNotFound):
-		contextGin.JSON(http.StatusNotFound, gin.H{"error": "tenant not found"})
+	case errors.Is(err, tenant.ErrTenantNotFound), errors.Is(err, tenant.ErrInvalidTenantID), errors.Is(err, gorm.ErrRecordNotFound):
+		writeAPIError(contextGin, http.StatusNotFound, "tenant.not_found", "tenant was not found")
 	default:
 		handler.logger.Error("http_handler_error", "error", err)
-		contextGin.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		writeAPIError(contextGin, http.StatusInternalServerError, "internal.error", "internal server error")
 	}
 }
 
@@ -555,13 +440,13 @@ func parseNotificationListLimit(rawValue string) (int, error) {
 func writeNotificationListRequestError(contextGin *gin.Context, err error) {
 	switch {
 	case errors.Is(err, model.ErrInvalidNotificationSearch):
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "q must be 200 characters or fewer"})
+		writeAPIError(contextGin, http.StatusBadRequest, "notification.query.invalid", "q must be 200 characters or fewer")
 	case errors.Is(err, model.ErrInvalidNotificationCursor):
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "cursor is invalid"})
+		writeAPIError(contextGin, http.StatusBadRequest, "notification.cursor.invalid", "cursor is invalid")
 	case errors.Is(err, model.ErrInvalidNotificationLimit):
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "limit must be between 1 and 100"})
+		writeAPIError(contextGin, http.StatusBadRequest, "notification.limit.invalid", "limit must be between 1 and 100")
 	default:
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "invalid notification list request"})
+		writeAPIError(contextGin, http.StatusBadRequest, "notification.list.invalid", "notification list request is invalid")
 	}
 }
 
@@ -573,32 +458,19 @@ func pickDuration(candidate time.Duration, fallback time.Duration) time.Duration
 }
 
 type runtimeConfigPayload struct {
-	APIBaseURL   string              `json:"apiBaseUrl"`
-	Tenant       runtimeConfigTenant `json:"tenant"`
-	EventLogURL  string              `json:"eventLogUrl"`
-	SMTPRelayURL string              `json:"smtpRelayUrl"`
-}
-
-type runtimeConfigTenant struct {
-	ID          string `json:"id"`
-	DisplayName string `json:"displayName"`
+	APIBaseURL   string `json:"apiBaseUrl"`
+	TenantURL    string `json:"tenantUrl"`
+	EventLogURL  string `json:"eventLogUrl"`
+	SMTPRelayURL string `json:"smtpRelayUrl"`
 }
 
 func serveRuntimeConfig() gin.HandlerFunc {
 	return func(contextGin *gin.Context) {
-		runtimeCfg, ok := tenant.RuntimeFromContext(contextGin.Request.Context())
-		if !ok {
-			contextGin.AbortWithStatus(http.StatusInternalServerError)
-			return
-		}
 		payload := runtimeConfigPayload{
 			APIBaseURL:   buildAPIBaseURL(contextGin.Request),
+			TenantURL:    "/tenants.html",
 			EventLogURL:  "/event-log.html",
 			SMTPRelayURL: "/smtp-relay.html",
-			Tenant: runtimeConfigTenant{
-				ID:          runtimeCfg.Tenant.ID,
-				DisplayName: runtimeCfg.Tenant.DisplayName,
-			},
 		}
 		contextGin.JSON(http.StatusOK, payload)
 	}

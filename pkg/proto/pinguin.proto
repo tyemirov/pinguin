@@ -29,17 +29,20 @@ message EmailAttachment {
 
 // Request to send a notification.
 message NotificationRequest {
+  reserved 7;
+  reserved "tenant_id";
   NotificationType notification_type = 1;
   string recipient = 2;
   string subject = 3; // Optional for SMS.
   string message = 4;
   google.protobuf.Timestamp scheduled_time = 5;
   repeated EmailAttachment attachments = 6;
-  string tenant_id = 7;
 }
 
 // Response returned after sending (or when retrieving) a notification.
 message NotificationResponse {
+  reserved 13;
+  reserved "tenant_id";
   string notification_id = 1;
   NotificationType notification_type = 2;
   string recipient = 3;
@@ -52,19 +55,20 @@ message NotificationResponse {
   string updated_at = 10;
   google.protobuf.Timestamp scheduled_time = 11;
   repeated EmailAttachment attachments = 12;
-  string tenant_id = 13;
 }
 
 // Request for retrieving the status.
 message GetNotificationStatusRequest {
+  reserved 2;
+  reserved "tenant_id";
   string notification_id = 1;
-  string tenant_id = 2;
 }
 
 // Request for listing notifications.
 message ListNotificationsRequest {
+  reserved 2;
+  reserved "tenant_id";
   repeated Status statuses = 1;
-  string tenant_id = 2;
 }
 
 // Response containing notifications for list requests.
@@ -74,15 +78,17 @@ message ListNotificationsResponse {
 
 // Request to reschedule a queued notification.
 message RescheduleNotificationRequest {
+  reserved 3;
+  reserved "tenant_id";
   string notification_id = 1;
   google.protobuf.Timestamp scheduled_time = 2;
-  string tenant_id = 3;
 }
 
 // Request to cancel a queued notification.
 message CancelNotificationRequest {
+  reserved 2;
+  reserved "tenant_id";
   string notification_id = 1;
-  string tenant_id = 2;
 }
 
 // NotificationService defines two RPC methods.

@@ -1,8 +1,8 @@
 # Pinguin Notification Service
 
-Pinguin is a notification service written in Go. It exposes a gRPC interface for sending **email** and **SMS** notifications. The service uses SQLite (via GORM) for persistent storage and runs a background worker to retry errored notifications using exponential backoff. Structured logging is provided using Go’s built‑in `slog` package.
+Pinguin is a notification service written in Go. It exposes a gRPC interface for **email** and **SMS** notifications. The service uses SQLite with GORM for persistent storage. A background worker retries errored notifications with exponential backoff. Go's built-in `slog` package provides structured logging.
 
-Pinguin also ships an optional HTTP + browser workspace for inspecting queued notifications and managing SMTP relay access; set `web.enabled: false` in `config.yml` to run gRPC-only.
+Pinguin also ships an optional HTTP and browser workspace for notification and SMTP relay operations. Set `web.enabled: false` to run gRPC-only.
 
 ---
 
@@ -26,15 +26,15 @@ Pinguin also ships an optional HTTP + browser workspace for inspecting queued no
 ## Features
 
 - **gRPC API + optional browser workspace:**
-  Notifications are sent via gRPC; the optional HTTP UI provides separate Event log and SMTP relay pages plus JSON endpoints for listing/rescheduling/cancelling queued notifications.
+  Notifications are sent via gRPC. The optional HTTP UI manages tenants, API keys, notifications, and tenant-owned SMTP resources.
 
 - **Email and SMS Notifications:**  
-  - **Email:** Delivered via SMTP using the credentials you configure for your preferred mail provider.
-  - **SMS:** Delivered using Twilio’s REST API.
+  - **Email:** Delivered through SMTP with the credentials for your selected mail provider.
+  - **SMS:** Delivered with Twilio's REST API.
 - **Authenticated SMTP Submission:**
   Optionally accepts Gmail-compatible SMTP AUTH submissions for exact sender identities and relays the raw message through the SMTP submission relay profile.
 - **Email Attachments:**  
-  Attach up to **10 files** (5 MiB each, 25 MiB aggregate) to email notifications. Attachments are persisted so scheduled or retried jobs keep their payloads, and both the server and CLI bump the gRPC message size limit to 32 MiB so the larger payloads are accepted end-to-end.
+  Attach up to **10 files** to email notifications. Each file can be 5 MiB, with a 25 MiB total limit. Pinguin stores attachments for scheduled and retry operations. The server and CLI use a 32 MiB gRPC message limit.
 
 - **Scheduled Delivery:**  
   Clients can provide an optional `scheduled_time` to defer dispatch until a specific timestamp. The background worker releases the notification when the scheduled time arrives.
@@ -46,13 +46,13 @@ Pinguin also ships an optional HTTP + browser workspace for inspecting queued no
   Processes queued or errored notifications and retries them with exponential backoff.
 
 - **Reusable Scheduler Package:**  
-  The retry worker is built on `github.com/tyemirov/utils/scheduler`, exposing repository and dispatcher interfaces so other binaries can embed the same persistence-agnostic scheduler without reimplementing the ticker, backoff, or status bookkeeping logic.
+  The retry worker uses `github.com/tyemirov/utils/scheduler`. Its repository and dispatcher interfaces let other binaries use the same scheduler.
 
 - **Structured Logging:**  
   Uses Go’s `slog` package for structured logging with configurable levels.
 
-- **Bearer Token Authentication:**  
-  Secure access to the gRPC endpoints via a bearer token.
+- **Tenant API-Key Authentication:**
+  Each tenant has one bearer API key that authenticates gRPC requests and defines their tenant context.
 
 - **SMTP Send-As Identities:**
   Dashboard users can create, view, rotate, and delete one-address SMTP credentials for Gmail Send-As. SMTP identity passwords are stored encrypted at rest and can be reopened from the SMTP relay page.
@@ -102,189 +102,64 @@ go build -o pinguin ./cmd/server
 
 ## Configuration
 
-Pinguin loads settings from `configs/config.yml` locally or `/config/config.yml` in container deployments. The YAML supports `${VAR}` expansion so you can keep secrets in your shell or `.env` file instead of the repository. A minimal example:
+Pinguin loads service settings from `configs/config.yml` locally or `/config/config.yml` in a container. The YAML supports `${VAR}` expansion. Tenant definitions and the gRPC credential are database data and are not service configuration.
 
 ```yaml
 server:
   databasePath: ${DATABASE_PATH}
+  logLevel: ${LOG_LEVEL}
+  maxRetries: ${MAX_RETRIES}
+  retryIntervalSec: ${RETRY_INTERVAL_SEC}
   masterEncryptionKey: ${MASTER_ENCRYPTION_KEY}
+  connectionTimeoutSec: ${CONNECTION_TIMEOUT_SEC}
+  operationTimeoutSec: ${OPERATION_TIMEOUT_SEC}
   tauth:
     signingKey: ${TAUTH_SIGNING_KEY}
-    cookieName: app_session
-tenants:
-  - id: tenant-local
-    displayName: Local Sandbox
-    domains: [${TENANT_LOCAL_DOMAIN_PRIMARY}, ${TENANT_LOCAL_DOMAIN_SECONDARY}]
-    emailProfile:
-      host: ${TENANT_LOCAL_SMTP_HOST}
-      port: ${TENANT_LOCAL_SMTP_PORT}
-      username: ${TENANT_LOCAL_SMTP_USERNAME}
-      password: ${TENANT_LOCAL_SMTP_PASSWORD}
-      fromAddress: ${TENANT_LOCAL_FROM_EMAIL}
-    smsProfile:
-      accountSid: ${TWILIO_ACCOUNT_SID}
-      authToken: ${TWILIO_AUTH_TOKEN}
-      fromNumber: ${TWILIO_FROM_NUMBER}
+    cookieName: ${TAUTH_COOKIE_NAME}
+
+web:
+  enabled: true
+  listenAddr: ${HTTP_LISTEN_ADDR}
+  allowedOrigins:
+    - ${HTTP_ALLOWED_ORIGIN1}
 ```
 
-Export the referenced environment variables before starting the server only when `config.yml` contains `${VAR}` placeholders. Pinguin does not read these keys directly; `internal/config.LoadConfig` expands the YAML and then all runtime values come from the parsed config. Missing placeholder variables are startup errors; define intentionally unused optional placeholders as `KEY=` so the parser can distinguish blank values from absent configuration. The default config references or sets the following keys:
+Export each referenced variable before server start. A missing placeholder is a startup error. Set an intentionally unused placeholder to an empty value.
 
-- See `configs/.env.pinguin.example` for a full list of variables to seed your environment when using the default config template.
-- **DATABASE_PATH:**  
-  Path to the SQLite database file (e.g., `app.db`).
+The principal service inputs are:
 
-- **LOG_LEVEL:**  
-  Logging level. Possible values: `DEBUG`, `INFO`, `WARN`, `ERROR`.
+- `DATABASE_PATH`: SQLite database path.
+- `MASTER_ENCRYPTION_KEY`: Hex-encoded 32-byte key for tenant provider secrets and SMTP identity passwords.
+- `TAUTH_SIGNING_KEY`: HS256 key that Pinguin uses to validate TAuth sessions.
+- `TAUTH_COOKIE_NAME`: TAuth session-cookie name. It defaults to `app_session` when the web API is enabled.
+- `HTTP_LISTEN_ADDR`: Gin API listen address.
+- `HTTP_ALLOWED_ORIGIN1/2/3`: Browser origins that can send authenticated cross-origin requests.
+- `HTTP_TRUSTED_PROXY1/2/3`: Proxy addresses or CIDR ranges that can supply forwarding headers.
+- `MAX_RETRIES` and `RETRY_INTERVAL_SEC`: Notification retry limits and scan interval.
+- `CONNECTION_TIMEOUT_SEC` and `OPERATION_TIMEOUT_SEC`: Provider connection and operation limits.
 
-- **GRPC_AUTH_TOKEN:**  
-  Bearer token used for authenticating gRPC requests. All clients must supply this token.  
-  Generate a value with `openssl rand -base64 32` (or an equivalent secure random command) and store it in a password manager.
+See `configs/.env.pinguin.example` for all shared SMTP listener and relay inputs. The tracked example values are documentation only.
 
-- **CONNECTION_TIMEOUT_SEC:**  
-  Number of seconds to wait when establishing outbound SMTP/Twilio connections. A value of `5` seconds works well for most deployments.
+### Managed tenants
 
-- **OPERATION_TIMEOUT_SEC:**  
-  Maximum number of seconds to wait for a send attempt before treating it as errored. Set this to `30` seconds unless your provider requires longer operations.
-- **HTTP_LISTEN_ADDR:**  
-  Address used by the Gin HTTP server that exposes runtime config and the JSON `/api/*` endpoints (local Compose uses `:8081`). The HTTP stack no longer serves static assets directly—use a separate host such as GitHub Pages at `https://pinguin.mprlab.com` (production) or ghttp (`http://localhost:8080`) for `/web`.
-- **HTTP_ALLOWED_ORIGIN1/2/3:**
-  Origins allowed to call the JSON API when running cross-origin (leave empty to allow same-origin only). The docker-compose workflow serves the UI via ghttp on `http://localhost:8080`, and production uses `https://pinguin.mprlab.com`, so include the relevant UI origins here.
-- **HTTP_TRUSTED_PROXY1/2/3:**
-  Reverse proxy IP addresses or CIDR ranges whose `X-Forwarded-For` / `X-Real-IP` headers may determine `source_ip` in HTTP request logs. Leave these empty for direct local access; deployments behind Caddy or another trusted proxy should set the proxy peer address or network so spoofed client-supplied forwarding headers are ignored.
-- **web.enabled:**
-  Set to `false` in `config.yml` to skip booting the Gin/HTML stack entirely. When disabled, Pinguin runs the gRPC service only and skips browser HTTP configuration checks, which is useful for backends that never expose the browser workspace.
-- **MASTER_ENCRYPTION_KEY:**  
-  Hex-encoded 32-byte key used to encrypt SMTP/Twilio secrets stored in the tenant config. Generate one with `openssl rand -hex 32` and keep it secret.
-- **TAuth CORS allowlist:**  
-  When you serve the UI from a different origin (ghttp on `http://localhost:8080`, GitHub Pages on `https://pinguin.mprlab.com`, a CDN, etc.), TAuth must enable CORS for the UI origin and any provider-origin exceptions required by the shared shell. The sample `configs/.env.tauth.example` keeps those provider details in TAuth-owned configuration, not in Pinguin runtime config.
-- **Shared-shell auth config:**
-  Browser authentication is configured outside Pinguin's runtime config. The shared shell reads auth settings from `web/config-ui.yaml`, which is selected by the current page origin and consumed by `mpr-ui-config.js`. Every environment declares `/auth/session` as the TAuth session restoration path; login-button presentation is component-owned and does not live in runtime YAML. `web/js/runtime-config.js` only supplies the Pinguin runtime-config URL and API base for hosted deployments; it does not configure `<mpr-header>` auth.
-- **Web authentication flow:**  
-  The browser UI relies on `<mpr-header>` from the `mpr-ui` package. `mpr-ui-config.js` applies `/config-ui.yaml` to the header, loads the `mpr-ui@latest` bundle, and the app listens for `mpr-ui:auth:*` events plus `MPRUI.resolveAuthProfileSnapshot` to drive redirects and profile state. Pinguin does not load `tauth.js`, call TAuth profile endpoints, or expose auth-provider metadata from `/runtime-config`.
-- **TAUTH_SIGNING_KEY:**  
-  HS256 signing key shared with the TAuth deployment. Used to validate the `app_session` cookie.
-- **Authorization:**  
-  Pinguin reads TAuth `user_roles` from the signed session and configured `tenants[].admins` emails. Sessions with the `admin` role or a configured admin email can view and manage notifications for every tenant. Other authenticated sessions can only list, reschedule, or cancel notifications for tenants whose `tenants[].domains` entry matches the user's email domain.
+An authenticated TAuth user creates a tenant from the **Tenants** workspace. Creation requires:
 
-- **MAX_RETRIES:**  
-  Maximum number of times the background worker will retry sending an errored notification.
+- A display name.
+- One complete external email delivery profile: SMTP host, port, username, password, and from address.
+- One client-generated API credential ID and digest. The browser generates the raw API key and shows it once.
+- An optional complete Twilio profile for SMS delivery.
 
-- **RETRY_INTERVAL_SEC:**  
-  Base interval (in seconds) between retry scans. The actual backoff is exponential.
+Pinguin creates a UUID tenant ID and stores the owner from the validated TAuth user ID. Each owner can list and change only their tenants. Tenant deletion is permanent and removes all tenant-owned records.
 
-- **SMTP_USERNAME:**  
-  SMTP username provided by your email service. Some providers require the full email address.
+Each tenant has exactly one API credential. Rotation immediately replaces the old credential. Pinguin stores only the SHA-256 digest of the raw API secret.
 
-- **SMTP_PASSWORD:**  
-  SMTP password or application-specific password issued by your provider.
+SMTP sender domains, identities, credentials, and forwarding routes also belong to the selected tenant. Shared SMTP listeners and upstream relay profiles remain in YAML service configuration.
 
-- **FROM_EMAIL:**  
-  The email address from which notifications are sent. This must be a verified sender with your SMTP provider.
-
-- **SMTP_HOST:**  
-  The hostname of the SMTP server (e.g., `smtp.yourdomain.com`).
-
-- **SMTP_PORT:**  
-  The SMTP port. Use `587` for STARTTLS or `465` for implicit TLS; the service will initiate TLS automatically when you specify `465`.
-
-- **TWILIO_ACCOUNT_SID:**  
-  Your Twilio Account SID, used for sending SMS messages.
-
-- **TWILIO_AUTH_TOKEN:**  
-  Your Twilio Auth Token.
-
-- **TWILIO_FROM_NUMBER:**  
-  The phone number (in E.164 format) from which SMS messages are sent.
-
-  When any of the Twilio variables are omitted, the server starts with SMS delivery disabled and logs a warning that text notifications are unavailable.
-
-### Tenant configuration (single YAML)
-
-Pinguin keeps all configuration—including tenants—in a single YAML file (`configs/config.yml` by default). The `tenants` section defines which tenants exist, which domains map to each tenant, and what delivery credentials each tenant uses.
-
-`tenants[].status` is not supported. Use `tenants[].enabled: true|false`.
-
-Example (inline tenants):
-
-```yaml
-tenants:
-  - id: tenant-acme
-    displayName: Acme Corp
-    supportEmail: support@acme.example
-    enabled: true
-    domains:
-      - acme.example
-      - portal.acme.example
-    admins:
-      - admin@acme.example
-    emailProfile:
-      host: smtp.acme.example
-      port: 587
-      username: smtp-user
-      password: smtp-password
-      fromAddress: noreply@acme.example
-    smsProfile:
-      accountSid: ACxxxxxxxx
-      authToken: twilio-secret
-      fromNumber: "+12015550123"
-```
-
-See `configs/config.yml` for a ready-to-use sample. `MASTER_ENCRYPTION_KEY` encrypts tenant SMTP/Twilio secrets at rest in SQLite.
-
-#### Tenant keys
-
-- `tenants`: list of tenant objects. Must contain at least one enabled tenant (`enabled: true`) or the server exits during startup.
-  - Bootstrap treats this list as the source of truth for tenant configuration. Removing a tenant from config removes its tenant, domain, admin, SMTP profile, and SMS profile records on the next startup.
-- `tenants[].id` (string, required): stable tenant identifier.
-  - Used by gRPC callers (`tenant_id`) and as the database partition key.
-  - Avoid leaving it empty: an empty id is auto-generated during bootstrap and will drift between runs.
-- `tenants[].enabled` (bool, optional): whether the tenant is enabled.
-  - `true` → persisted as tenant status `active`.
-  - `false` → persisted as tenant status `suspended`.
-  - Defaults to `true` when omitted.
-- `tenants[].displayName` (string, required): tenant name shown in the UI (e.g. the header label).
-- `tenants[].supportEmail` (string, optional): tenant support contact (reserved for future use in UI/templates).
-- `tenants[].domains` (list of strings, required): hostnames that map HTTP requests to this tenant.
-  - The first domain is treated as the tenant’s default domain.
-  - Matching is case-insensitive; ports are ignored (e.g. `localhost:8080` matches `localhost`).
-  - The same normalized values authorize non-admin browser workspace users by email domain.
-- `tenants[].admins` (list of strings, optional): email addresses that grant browser workspace admin access for the deployment.
-  - Matching is case-insensitive.
-  - Admin users can list every active tenant and manage global SMTP identities.
-- `tenants[].emailProfile` (required): tenant SMTP settings.
-  - `host` (string), `port` (int), `username` (string), `password` (string), `fromAddress` (string).
-  - `username` and `password` are encrypted with `MASTER_ENCRYPTION_KEY` before storing in SQLite.
-- `tenants[].smsProfile` (optional): tenant Twilio settings.
-  - If omitted, SMS delivery is disabled for that tenant.
-  - `accountSid` and `authToken` are encrypted with `MASTER_ENCRYPTION_KEY`; `fromNumber` is stored as-is.
-
-Example `.env` file:
-
-```bash
-DATABASE_PATH=app.db
-LOG_LEVEL=DEBUG
-GRPC_AUTH_TOKEN=my-secret-token
-MAX_RETRIES=3
-RETRY_INTERVAL_SEC=30
-CONNECTION_TIMEOUT_SEC=5
-OPERATION_TIMEOUT_SEC=30
-
-SMTP_USERNAME=apikey
-SMTP_PASSWORD=super-secret-password
-FROM_EMAIL=support@yourdomain.com
-SMTP_HOST=smtp.yourdomain.com
-SMTP_PORT=587
-
-TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxx
-TWILIO_AUTH_TOKEN=yyyyyyyyyyyyyy
-TWILIO_FROM_NUMBER=+12015550123
-```
-
-For a deeper walkthrough of the SMTP delivery pipeline, see [`docs/smtp_delivery_plan.md`](docs/smtp_delivery_plan.md). The [managed tenant configuration plan](docs/multitenancy-plan.md) defines the proposed ownership, API, credential, data conversion, and validation contracts.
+See the [managed tenant configuration contract](docs/multitenancy-plan.md) for the HTTP routes, storage rules, conversion runbook, and acceptance criteria. See the [SMTP delivery plan](docs/smtp_delivery_plan.md) for the SMTP pipeline.
 
 ### Authenticated SMTP submission for Gmail Send-As
 
-Pinguin can optionally expose a Gmail-compatible SMTP submission endpoint for outbound “send as” use cases. Inbound fanout is handled by the separate SMTP forwarding listener described below; mailbox hosting remains outside Pinguin.
+Pinguin can expose a Gmail-compatible SMTP submission endpoint for outbound “send as” operations. A separate SMTP forwarding listener handles inbound fanout. Pinguin does not host mailboxes.
 
 Set the `smtpSubmission` section in `configs/config.pinguin.yml`:
 
@@ -304,11 +179,11 @@ smtpSubmission:
   allowInsecureAuth: true
 ```
 
-Sender domains are not configured in YAML. Authenticated users add a sender domain in the SMTP relay page, publish the DNS records Pinguin shows, and click **Check DNS**. Pinguin marks the domain verified only when the ownership TXT, SPF authorization, and DMARC records match the displayed specification. Users can create SMTP relay identities only for their own verified domains. In `deliveryMode: direct`, Pinguin accepts the authenticated submission and delivers the raw message to each recipient domain's MX hosts using the authenticated identity as the envelope sender. DKIM signing, bounce processing, and mailbox hosting remain outside Pinguin.
+Sender domains are not configured in YAML. An authenticated owner selects a tenant and adds a sender domain. The owner publishes the displayed DNS records and clicks **Check DNS**. Pinguin creates SMTP identities only under a verified tenant domain. In `deliveryMode: direct`, Pinguin accepts the authenticated submission. It sends the raw message to each recipient domain's MX hosts with the authenticated envelope sender. Pinguin does not provide DKIM signing, bounce processing, or mailbox hosting.
 
-The schema-v3 gateway deployment accepts public SMTPS on `pinguin-api.mprlab.com:465`, terminates TLS in Caddy, and proxies the decrypted SMTP session to Pinguin's private plaintext SMTP capability on port `587` over the shared runtime network. That is why production direct-relay config leaves `tlsListenAddr`, `tlsCertPath`, and `tlsKeyPath` empty and sets `allowInsecureAuth: true`; do not publish the private Pinguin SMTP listener directly to the internet.
+The schema version 4 gateway accepts public SMTPS on `pinguin-api.mprlab.com:465`. Caddy terminates TLS and sends the decrypted session to private port `587`. As a result, the production config leaves the Pinguin TLS fields empty and sets `allowInsecureAuth: true`. Publish only the gateway TLS listener.
 
-The public SMTPS listener does not inherit the shared HTTP Caddy request limiter because it is routed through Caddy Layer 4. Pinguin applies SMTP-aware controls in the submission server instead: idle command/data deadlines use `server.operationTimeoutSec`, concurrent sessions are capped globally and per backend-visible remote host, repeated SMTP AUTH failures are throttled by credential username, and accepted messages are rate-limited per SMTP identity. Built-in defaults allow 200 concurrent SMTP sessions globally, 20 per backend-visible remote host, 5 AUTH failures per credential username per 10 minutes, and 60 accepted messages per SMTP identity per hour.
+The public SMTPS listener uses Caddy Layer 4 and does not use the shared HTTP request limit. Pinguin applies SMTP controls in the submission server. `server.operationTimeoutSec` controls idle command and data deadlines. Session limits apply globally and to each backend-visible remote host. Authentication failure limits apply to each credential username. Message limits apply to each SMTP identity. Defaults permit 200 global sessions and 20 sessions for each remote host. Defaults also permit five authentication failures per 10 minutes and 60 accepted messages per identity per hour.
 
 If you still have a provider SMTP account, set `deliveryMode: upstream` and provide:
 
@@ -327,11 +202,11 @@ SMTP relay workflow:
 3. Add the sender domain, for example `acme.example`.
 4. Publish the DNS records shown by Pinguin:
    - TXT `_pinguin-challenge.acme.example` with the displayed verification token.
-   - TXT `acme.example` SPF with the displayed `a:<smtp-host>` mechanism, or add that mechanism to the existing SPF record before its final `all` directive.
+   - Add the displayed `a:<smtp-host>` mechanism to the `acme.example` SPF record before its final `all` directive.
    - TXT `_dmarc.acme.example` with a DMARC policy such as `v=DMARC1; p=none`.
 5. Click **Check DNS**. Pinguin enables SMTP identity creation when the domain status becomes **Verified**.
 6. Create an identity such as `alice@acme.example`.
-7. Use the settings shown in the Gmail SMTP settings modal, or reopen them later with **View password**, in Gmail → Settings → Accounts → **Send mail as**:
+7. Use the settings in the Gmail SMTP settings dialog. Open **View password** to see the settings again.
    - SMTP server: `pinguin-api.mprlab.com`
    - Port: `465`
    - Security: SSL
@@ -342,7 +217,7 @@ Pinguin validates that the SMTP login, envelope sender, and RFC 5322 `From` head
 
 ### Inbound SMTP forwarding for shared addresses
 
-Pinguin can also expose a separate unauthenticated inbound SMTP listener for shared-address fanout. This is not a mailbox: Pinguin accepts only active SMTP identities that have forwarding owners, immediately forwards the raw message to every configured `forward_to` recipient through `smtpForwarding.relay`, and stores no message body. Forwarded copies preserve the original message headers and use the shared address as the outbound SMTP envelope sender.
+Pinguin can expose a separate unauthenticated SMTP listener for shared-address fanout. This listener is not a mailbox. Pinguin accepts only active identities that have forwarding recipients. It immediately sends the raw message to each `forward_to` recipient through `smtpForwarding.relay`. Pinguin stores no message body. Forwarded copies keep the original headers and use the shared address as the outbound envelope sender.
 
 Set the `smtpForwarding` section in `configs/config.pinguin.yml`:
 
@@ -375,16 +250,16 @@ Pinguin rejects identity creation or forwarding updates unless `forward_to` cont
 
 The inbound listener accepts `MAIL FROM:<>` null reverse-path messages so DSNs and other auto-generated loop-safe mail can be forwarded to configured shared addresses.
 
-Customer DNS should use a dedicated mail subdomain whenever possible:
+Use a dedicated mail subdomain for customer DNS when possible:
 
 ```dns
 help.example.com. MX 10 mx.pinguin.mprlab.com.
 _dmarc.help.example.com. TXT "v=DMARC1; p=none; rua=mailto:dmarc@example.com"
 ```
 
-MX records apply to an entire domain, not a single address. If a customer points `example.com` MX at Pinguin, Pinguin becomes the inbound front door for all `@example.com` mail and must be configured for every accepted address. For a first rollout, prefer addresses like `support@help.example.com` over changing the apex domain's existing Google Workspace, Zoho, or Mailgun MX records.
+MX records apply to an entire domain, not one address. If `example.com` points to Pinguin, configure each accepted `@example.com` address. For the first release, use an address such as `support@help.example.com`. Keep the current apex-domain MX records.
 
-Forwarded copies use the shared address as the outbound envelope sender, so SPF must authorize the actual relay configured in `smtpForwarding.relay`. Do not publish a Pinguin SPF include unless Pinguin operators have first published that TXT record; use the relay provider's documented SPF include or an explicit Pinguin-provided `ip4:`/`ip6:` mechanism instead.
+Forwarded copies use the shared address as the outbound envelope sender. SPF must authorize the relay in `smtpForwarding.relay`. Use the relay provider's documented SPF include or a Pinguin-provided `ip4:` or `ip6:` mechanism.
 
 Domain setup verification:
 
@@ -395,14 +270,14 @@ Domain setup verification:
    ```
 	   The MX answer must include `mx.pinguin.mprlab.com`.
 	   If the customer publishes SPF for forwarded copies, also verify `dig +short TXT help.example.com` returns the relay-authorizing SPF value.
-2. For authenticated SMTP relay, prefer the SMTP relay page **Check DNS** button. It checks the exact ownership TXT, SPF mechanism, and DMARC policy Pinguin issued for that sender domain and updates the domain's verified state.
+2. For authenticated SMTP relay, click **Check DNS** on the SMTP relay page. Pinguin checks ownership, SPF, and DMARC records. Pinguin then updates the domain state.
 3. Verify configuration:
    ```sh
    pinguin-doctor configs/config.pinguin.yml --expand-env
    ```
-3. Send an external SMTP test to `support@help.example.com` and confirm every configured forwarding owner receives a copy.
+3. Send an external SMTP test to `support@help.example.com` and confirm that each configured forwarding recipient receives a copy.
 
-The schema-v3 gateway accepts public MX traffic on `mx.pinguin.mprlab.com:25` and proxies the raw SMTP session through Caddy to Pinguin's private forwarding capability on the shared runtime network.
+The schema version 4 gateway accepts public MX traffic on `mx.pinguin.mprlab.com:25`. Caddy sends the SMTP session to Pinguin's private forwarding capability.
 
 If forwarding through `smtpForwarding.relay` fails before Pinguin accepts `DATA`, Pinguin returns a temporary `451` SMTP response so the sender's mail server can retry. Pinguin does not provide IMAP, POP3, search, read/unread state, or retention for forwarded mail.
 
@@ -423,15 +298,19 @@ The repository ships with `docker-compose.yaml` to run Pinguin alongside TAuth a
 - SMTP submission: `localhost:1587` → container `:587`, `localhost:8465` → container `:465`
 - TAuth: `http://localhost:8082`
 
-Open `http://localhost:8080` in your browser for the landing page, Event log, and SMTP relay UI. The HTTP API on `http://localhost:8081` remains available for CLI/grpcurl clients, but browsers should use the UI port.
+Open `http://localhost:8080` in your browser for the landing, Tenants, Event log, and SMTP relay pages. The HTTP API on `http://localhost:8081` serves the browser workspace. gRPC clients use port `50051`.
 
-The Pinguin Docker image declares `/web` as a separate volume for the UI bundle; the compose workflow mounts the `pinguin-web` volume (bound to `./web`) at `/web` for you.
+The Pinguin Docker image declares `/web` as a separate UI volume. Compose mounts the `pinguin-web` volume at `/web`.
 
 ### Release, publish, then deploy
 
-GitHub Actions are disabled for Pinguin. The schema-v3 manifest at `.mprlab/deploy/resources.yml` is the sole production declaration. It describes the cross-platform server binary, multi-platform container image, retained data, HTTP/gRPC/SMTP capabilities, HTTPS and Layer 4 listeners, public health check, GitHub Pages site, and TAuth tenant. `configs/config.production.yml` is the tracked production config template; its exact private values come from the ignored mode-`0600` `.mprlab/deploy/.env`, which is excluded from the Docker build context.
+GitHub Actions are disabled for Pinguin. `.mprlab/deploy/resources.yml` is the schema version 4 production declaration. It declares the server binary, container image, retained data, runtime capabilities, listeners, health check, Pages site, and TAuth tenant. `configs/config.production.yml` is the tracked production config template. The ignored mode-`0600` `.mprlab/deploy/.env` provides its private values. The Docker build context excludes this file.
 
 The zero-argument `make release`, `make publish`, and `make deploy` commands delegate to the exact sibling `../mprlab-gateway`. The gateway validates and seals the selected manifest, publishes only the declared artifacts, and converges only Pinguin's declared runtime resources. This repository keeps `make up` and `make down` for local Compose development.
+
+The first managed release requires the bounded [production data conversion](docs/multitenancy-plan.md#production-data-conversion) before deployment.
+
+The conversion assigns all current production tenants to the TAuth account for `temirov@gmail.com`.
 
 Prepare and publish the release in order:
 
@@ -441,15 +320,15 @@ make release
 make publish
 ```
 
-The gateway requires clean, committed application and gateway checkouts at their exact remote revisions. Release prepares the declared binary, image, and Pages artifacts; publish publishes that sealed release; deploy converges the retained service, routes, SMTP listeners, TAuth tenant, Pages branch, and public health checks. The operator command is:
+The gateway requires clean application and gateway checkouts at their exact remote revisions. `release` prepares the declared artifacts. `publish` publishes the sealed release. `deploy` converges the declared runtime resources. Use this operator command:
 
 ```bash
 make deploy
 ```
 
-Pinguin declares public SMTPS on `pinguin-api.mprlab.com:465` with gateway TLS termination and public MX delivery on `mx.pinguin.mprlab.com:25`. The sibling gateway owns the physical listener bindings, shared runtime network, Caddy reconciliation, publication receipts, and deployment receipts; Pinguin does not own high host-port forwarding or a separate Pages activation command.
+Pinguin declares public SMTPS on `pinguin-api.mprlab.com:465` and public MX delivery on `mx.pinguin.mprlab.com:25`. The sibling gateway owns physical listeners, the shared network, Caddy reconciliation, and lifecycle receipts. Pinguin owns no separate Pages activation command.
 
-1. Create private environment files explicitly. Use the tracked examples only to review variable names; their values are intentionally unusable, so never copy or source them. **Use the same signing key in both private files** so TAuth and Pinguin agree on JWT validation.
+1. Create private environment files. Use the tracked examples to review variable names. Add operational values to the private files. Use the same signing key in both files.
 
    ```bash
    install -m 0600 /dev/null configs/.env.pinguin
@@ -457,11 +336,10 @@ Pinguin declares public SMTPS on `pinguin-api.mprlab.com:465` with gateway TLS t
    ${EDITOR:-vi} configs/.env.pinguin configs/.env.tauth
    ```
 
-  - `configs/.env.pinguin` configures the environment variables referenced by `configs/config.pinguin.yml` (including tenant domains, SMTP/Twilio credentials, and `TAUTH_SIGNING_KEY`).
-   - If `GET http://localhost:8081/runtime-config` returns `{"error":"tenant_not_found"}`, the tenant domain env vars (`TENANT_LOCAL_DOMAIN_PRIMARY` / `TENANT_LOCAL_DOMAIN_SECONDARY`) are missing/mismatched.
+  - `configs/.env.pinguin` configures the database, master key, TAuth signing key, SMTP listeners, and SMTP relays.
    - `configs/.env.tauth` configures shared auth provider settings, signing key, and CORS settings for local development. Compose expands these values into `configs/config.tauth.yml` and passes that file to TAuth via `TAUTH_CONFIG_FILE`.
    - Keep `TAUTH_SIGNING_KEY` (Pinguin) identical to `TAUTH_TENANT_JWT_SIGNING_KEY_PINGUIN` (TAuth) so cookie validation succeeds.
-   - `configs/config.pinguin.yml` controls the Pinguin web allowlist (`web.allowedOrigins`); keep `http://localhost:8080` there when using ghttp.
+   - `configs/config.pinguin.yml` controls `web.allowedOrigins`. Add `http://localhost:8080` for ghttp.
    - Match the same UI origin in `configs/.env.tauth` via `TAUTH_TENANT_ORIGIN_PINGUIN`/`TAUTH_CORS_ORIGIN_1` so the auth endpoints accept browser requests.
 
 2. Build and start the stack (this creates the named Docker volume `pinguin-data` automatically). Use the `dev` profile to build Pinguin from the local Dockerfile:
@@ -476,7 +354,7 @@ Pinguin declares public SMTPS on `pinguin-api.mprlab.com:465` with gateway TLS t
    COMPOSE_PROFILE=docker make up
    ```
 
-   Pinguin writes its SQLite file to the Docker-managed volume, validates browser sessions issued by the colocated TAuth instance, and exposes the HTTP API on port 8081. The static landing, Event log, and SMTP relay bundle is served by ghttp on `http://localhost:8080`.
+   Pinguin writes its SQLite file to the Docker-managed volume. It validates browser sessions from the colocated TAuth instance. The HTTP API uses port 8081. ghttp serves the browser pages on `http://localhost:8080`.
 
 3. Stop the stack when you are finished (use the same profile you started):
 
@@ -499,7 +377,7 @@ docker volume inspect pinguin-data
    install -m 0600 /dev/null configs/.env.tauth
    ```
 
-   Consult the tracked examples for variable names only; never copy, source, or use their intentionally goofy values.
+   Use the tracked examples to review variable names. Add operational values to private files.
 
 2. Edit `configs/.env.pinguin` (SMTP/Twilio + shared signing key) and `configs/.env.tauth` (shared-shell auth settings + the same signing key + `TAUTH_TENANT_ORIGIN_PINGUIN=http://localhost:8080`).
 3. Start the orchestration with the `dev` profile (which builds Pinguin locally):
@@ -511,11 +389,11 @@ docker volume inspect pinguin-data
    To run the prebuilt Pinguin + ghttp containers from GHCR instead, run `COMPOSE_PROFILE=docker make up` (TAuth still builds locally).
 
    - gRPC server → `localhost:50051`
-   - UI (landing + Event log + SMTP relay) → `http://localhost:8080`
+   - UI (landing + Tenants + Event log + SMTP relay) → `http://localhost:8080`
    - HTTP API → `http://localhost:8081`
    - TAuth → `http://localhost:8082`
 
-4. Visit `http://localhost:8080` in your browser, sign in through the shared shell, and use Event log or SMTP relay (the UI automatically talks to the API on port 8081).
+4. Visit `http://localhost:8080`, sign in through the shared shell, create a tenant, and then use Event log or SMTP relay. The UI uses the API on port 8081.
 5. When finished, stop the stack (match the profile you started):
 
    ```bash
@@ -540,7 +418,7 @@ go run ./cmd/server
 go run ./...
 ```
 
-By default, the server listens on port `50051`. The server initializes the SQLite database, starts the background retry worker, and registers the gRPC NotificationService with bearer token authentication.
+By default, the server listens on port `50051`. It creates the managed schema for an empty SQLite database. It rejects a non-empty obsolete schema. It starts the retry worker and registers tenant API-key authentication.
 
 ---
 
@@ -565,12 +443,13 @@ go build -o pinguin-doctor ./cmd/doctor
 ./pinguin-doctor config.yml --expand-env
 ```
 
-The doctor command performs comprehensive validation including:
-- Configuration file syntax and structure
-- Server requirements (database path, gRPC auth token, encryption key)
-- Web interface configuration (when enabled)
-- Tenant requirements (domains, admins)
-- Cross-config validation (conflicting domains)
+The doctor command validates:
+
+- Configuration file syntax and exact known fields.
+- Server database, retry, timeout, logging, and master-key requirements.
+- TAuth and web API settings when the web API is enabled.
+- Shared SMTP submission and forwarding settings.
+- Cross-config differences for the database path and shared listeners.
 
 ---
 
@@ -591,8 +470,7 @@ Configuration values are passed explicitly as flags:
 | Flag | Purpose | Default |
 | --- | --- | --- |
 | `--grpc-server-addr` | Target gRPC endpoint | `localhost:50051` |
-| `--grpc-auth-token` | Bearer token used for authentication | _required_ |
-| `--tenant-id` | Tenant identifier for the authenticated user | _required_ |
+| `--api-key` | Tenant API key used for authentication | _required_ |
 | `--connection-timeout-sec` | Dial timeout in seconds | `5` |
 | `--operation-timeout-sec` | Per-command timeout in seconds | `30` |
 | `--log-level` | CLI log level (`DEBUG`, `INFO`, `WARN`, `ERROR`) | `INFO` |
@@ -601,8 +479,7 @@ Example command that schedules an email:
 
 ```bash
 ./pinguin-cli send \
-  --grpc-auth-token my-secret-token \
-  --tenant-id tenant-acme \
+  --api-key 'pgn_1_<credential-uuid>_<secret>' \
   --type email \
   --to someone@example.com \
   --subject "Meeting Reminder" \
@@ -614,8 +491,7 @@ Attachments are added with the repeatable `--attachment` flag. Each value accept
 
 ```bash
 ./pinguin-cli send \
-  --grpc-auth-token my-secret-token \
-  --tenant-id tenant-acme \
+  --api-key 'pgn_1_<credential-uuid>_<secret>' \
   --type email \
   --recipient someone@example.com \
   --subject "Weekly Report" \
@@ -635,7 +511,7 @@ grpcurl -d '{
   "subject": "Test Email",
   "message": "Hello from Pinguin!",
   "scheduled_time": "2024-05-03T17:00:00Z"
-}' -H "Authorization: Bearer my-secret-token" localhost:50051 pinguin.NotificationService/SendNotification
+}' -H "Authorization: Bearer pgn_1_<credential-uuid>_<secret>" localhost:50051 pinguin.NotificationService/SendNotification
 ```
 
 To attach files, populate the repeated `attachments` field (protobuf encodes the `bytes` field as base64 in JSON):
@@ -653,7 +529,7 @@ grpcurl -d '{
       "data": "JVBERi0xLjcKJc..."
     }
   ]
-}' -H "Authorization: Bearer my-secret-token" localhost:50051 pinguin.NotificationService/SendNotification
+}' -H "Authorization: Bearer pgn_1_<credential-uuid>_<secret>" localhost:50051 pinguin.NotificationService/SendNotification
 ```
 
 To retrieve the status of a notification (replace `<notification_id>` with the actual ID):
@@ -661,7 +537,7 @@ To retrieve the status of a notification (replace `<notification_id>` with the a
 ```bash
 grpcurl -d '{
   "notification_id": "<notification_id>"
-}' -H "Authorization: Bearer my-secret-token" localhost:50051 pinguin.NotificationService/GetNotificationStatus
+}' -H "Authorization: Bearer pgn_1_<credential-uuid>_<secret>" localhost:50051 pinguin.NotificationService/GetNotificationStatus
 ```
 
 ---
@@ -669,47 +545,48 @@ grpcurl -d '{
 ## End-to-End Flow
 
 1. **Submission:**  
-   A client submits a notification (email or SMS) via gRPC using the `SendNotification` RPC. The notification is stored in the SQLite database with a status of `queued`. If `scheduled_time` is in the future, the notification remains queued until the target time.
+   A client submits an email or SMS notification through the `SendNotification` RPC. Pinguin stores the notification with the `queued` status. If `scheduled_time` is in the future, the notification remains queued until that time.
 
 2. **Immediate Dispatch:**  
    The server attempts to dispatch the notification immediately:
-    - **Email:** Sent via SMTP using the configured credentials. When you supply port `465`, Pinguin initiates the connection over TLS before issuing SMTP commands; otherwise it uses STARTTLS on demand.
-    - **SMS:** Sent using Twilio’s REST API.
+    - **Email:** Sent through SMTP with the tenant credentials. For port `465`, Pinguin starts the connection with TLS. For other ports, it uses STARTTLS.
+    - **SMS:** Sent with Twilio's REST API.
 
 3. **Background Worker:**  
    A background worker periodically polls the database for notifications that are still queued or errored and reattempts sending them with exponential backoff.
 
 4. **Status Retrieval:**  
-   Clients can query the notification’s status using the `GetNotificationStatus` RPC or the `/api/notifications` HTTP endpoint until the status changes to `sent`, `cancelled`, or `errored`.
+   Query the status with the `GetNotificationStatus` RPC or the selected tenant HTTP route. Continue until the status is `sent`, `cancelled`, or `errored`.
 
 ---
 
 ## HTTP API
 
-The gRPC server now ships with a sibling Gin HTTP server that:
+The sibling Gin HTTP API:
 
-- Serves runtime configuration (`/runtime-config`) and the REST-ish JSON `/api/*` endpoints the browser UI consumes. Static assets under `/web` are hosted separately (GitHub Pages at `https://pinguin.mprlab.com` in production; ghttp on `http://localhost:8080` during local dev).
-- Validates every authenticated request by reading the TAuth `app_session` cookie (via `TAUTH_*` settings and the shared signing key).
-- Exposes JSON endpoints for the UI:
-  - `GET /api/notifications?status=queued&status=errored` – lists stored notifications filtered by status.
-  - `PATCH /api/notifications/:id/schedule` – accepts `{"scheduled_time":"RFC3339"}` to move a queued notification.
-  - `POST /api/notifications/:id/cancel` – cancels queued notifications so workers skip them.
-  - `GET /healthz` – liveness probe (no auth required).
+- Serves tenant-independent runtime URLs at `GET /runtime-config`.
+- Serves the unauthenticated readiness probe at `GET /healthz`.
+- Validates the TAuth session cookie on each `/api` request.
+- Uses `/api/tenants` for owner-scoped tenant list and create operations.
+- Uses `/api/tenants/:tenant_id` and its nested profile, credential, notification, SMTP domain, and SMTP identity routes for all tenant resources.
+- Requires `Idempotency-Key` for tenant creation and `If-Match` for versioned updates and deletion.
+- Returns safe tenant and profile representations without provider secrets or raw API secrets.
 
-All endpoints emit structured JSON errors (`401` for auth failures, `400` for invalid payloads, `404` when a notification does not exist, `409` when edits are requested for non-queued notifications). CORS is enabled for the origins listed via `HTTP_ALLOWED_ORIGIN1/2/3`, and credentials are required so the browser sends the TAuth cookie. HTTP request logs include `source_ip`, `remote_addr`, and `user_agent`; `source_ip` only honors forwarding headers from `HTTP_TRUSTED_PROXY1/2/3`.
+Expected failures use `{ "error": { "code": "...", "message": "...", "request_id": "..." } }`. The API uses `401` for authentication failures and `404` for absent or foreign resources. It uses `409` for conflicts and `412` for stale versions. It uses `415` for unsupported media types and `422` for invalid domain values. CORS permits configured origins and credentials. HTTP logs honor forwarding headers only from configured trusted proxies.
 
 ### Browser UI (beta)
 
-- Static assets live under `/web` and are served by GitHub Pages at `https://pinguin.mprlab.com` in production, with ghttp on `http://localhost:8080` for local development (the Go HTTP server keeps `/api`/`/runtime-config` on `http://localhost:8081` in this arrangement). `index.html` provides the sign-in landing experience, `event-log.html` renders notification delivery events, and `smtp-relay.html` renders SMTP relay identity management.
-- The UI uses the compact MPR visual language by default: dark charcoal surfaces, dense controls, semantic status chips, a narrow centered work surface, and a light-theme mapping with the same density and interaction roles.
-- The shared header owns brand, Event log and SMTP relay navigation, Docs, authentication, profile, and theme controls. The active workspace destination uses `aria-current="page"` inside the `mpr-ui` primary navigation region.
-- The shared footer opens a **Built By Marco Polo Research Lab** drop-up catalog for the seven MPR Platform services: LLM Proxy, TAuth, Ledger, ISSUES.md, Dictator, Pinguin, and LoopAware.
-- Event log renders responsive semantic notification records, compact search/status controls, a loaded count, and single-flight application dialogs for queued actions. SMTP relay keeps sender domains collapsed, expands one DNS setup at a time, combines each DNS requirement with its check result, labels every identity metadata value, and keeps creation and forwarding-edit drafts independent.
-- The UI follows AGENTS.md: Alpine components per section, mpr-ui header/footer, DOM-scoped events (`notifications:*`) for toasts and refreshes, and all strings centralized in `js/constants.js`.
-- `js/app.js` bootstraps Alpine, registers the UI components, and reacts to `mpr-ui:auth:*` events plus the shared `MPRUI.resolveAuthProfileSnapshot` verifier to sync profile state and guard routes. The header handles auth through `/config-ui.yaml` plus `mpr-ui-config.js`, and components talk to `/api/notifications` via the shared `apiClient`.
-- `js/core/sessionBridge.js` owns the authentication bridge. `js/ui/notificationsList.js` owns Event log behavior; `smtpDomains.js`, `smtpIdentities.js`, and `smtpCredentialsDialog.js` own the SMTP workflows.
-- Cross-tab authentication state is owned by the shared shell; Pinguin consumes only the resulting `mpr-ui` events and profile snapshot.
-- Handy for local testing: start the Compose stack so ghttp (`http://localhost:8080`) serves the `/web` bundle while the Go server handles `/api`/`/runtime-config` on `http://localhost:8081`, then visit the ghttp host to exercise the landing, Event log, and SMTP relay flows without needing an external client.
+- Static assets live under `/web`. `index.html` provides sign-in. `tenants.html` manages tenant configuration and API keys. `event-log.html` manages notifications. `smtp-relay.html` manages tenant-owned SMTP resources.
+- The UI uses compact MPR styles. It has dark surfaces, dense controls, status chips, and a narrow work surface.
+- The shared header owns brand, Tenants, Event log, SMTP relay, Docs, authentication, profile, and theme controls. The active workspace destination uses `aria-current="page"`.
+- The shared footer opens the seven-service **Built By Marco Polo Research Lab** catalog.
+- Tenant management creates, updates, and permanently deletes a tenant. It also shows and rotates the one API key. Event log and SMTP relay require a selected tenant.
+- Event log renders responsive notification records and queued-action dialogs. SMTP relay keeps sender domains collapsed, expands one DNS setup at a time, and separates identity creation from forwarding edits.
+- The UI uses one Alpine component for each section. It uses the shared header, footer, events, and centralized strings.
+- `web/js/runtime-config.js` buffers the latest public `mpr-ui` auth event before the application module loads. `js/core/sessionBridge.js` consumes that event and the optional public profile snapshot.
+- `js/ui/tenantManagement.js` owns tenant operations. `js/ui/notificationsList.js` owns Event log behavior. `smtpDomains.js`, `smtpIdentities.js`, and `smtpCredentialsDialog.js` own SMTP workflows.
+- The shared shell owns cross-tab authentication state. Pinguin consumes only the `mpr-ui` events and profile snapshot.
+- For local testing, start the Compose stack and visit `http://localhost:8080`. The browser uses the Pinguin API on `http://localhost:8081`.
 
 ### Front-End Tests (Playwright)
 
@@ -720,7 +597,7 @@ npm install
 npx playwright install --with-deps
 ```
 
-Then execute the browser suite (landing auth, responsive layout, Event log actions, SMTP relay flows, accessibility focus, and visual snapshots) with:
+Then execute the browser suite for authentication, tenant lifecycle, responsive layout, Event log, SMTP relay, accessibility, and visual snapshots:
 
 ```bash
 npm test
@@ -728,7 +605,7 @@ npm test
 
 Visual baselines use one host-independent path with the `en-US` locale and `America/Los_Angeles` timezone. When an intentional visual change is accepted, refresh the Pinguin-owned snapshot baselines with `make test-frontend-update`, then run `make test-frontend` normally.
 
-The Playwright harness spins up a lightweight local server that mocks the `/api/notifications` + TAuth endpoints so the UI can be exercised without external services.
+The Playwright harness starts a local server that provides the nested managed-tenant API and TAuth test boundary.
 
 ---
 
@@ -738,7 +615,7 @@ The Playwright harness spins up a lightweight local server that mocks the `/api/
   Pinguin uses Go’s `slog` package for structured logging. Set the logging level with `server.logLevel` in `config.yml`.
 
 - **Debug Output:**  
-  When `server.logLevel` resolves to `DEBUG`, detailed messages (including SMTP debug output and fallback warnings) are logged. Sensitive data (such as API keys) is masked in the logs.
+  When `server.logLevel` is `DEBUG`, Pinguin emits detailed diagnostic messages without raw API keys or provider secrets.
 
 ---
 

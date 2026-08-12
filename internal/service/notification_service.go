@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/tyemirov/pinguin/internal/config"
@@ -45,15 +44,16 @@ var (
 type notificationServiceImpl struct {
 	database           *gorm.DB
 	logger             *slog.Logger
-	tenantRepo         *tenant.Repository
+	tenantRepo         tenantRuntimeResolver
 	config             config.Config
 	defaultEmailSender EmailSender
 	defaultSmsSender   SmsSender
 	maxRetries         int
 	retryIntervalSec   int
-	senderMutex        sync.RWMutex
-	emailSenders       map[string]EmailSender
-	smsSenders         map[string]SmsSender
+}
+
+type tenantRuntimeResolver interface {
+	ResolveByID(context.Context, string) (tenant.RuntimeConfig, error)
 }
 
 // NewNotificationService creates a NotificationService backed by SMTP/Twilio senders.
@@ -70,43 +70,19 @@ func NewNotificationServiceWithSenders(
 	emailSender EmailSender,
 	smsSender SmsSender,
 ) NotificationService {
-	var defaultEmailSender EmailSender
-	var defaultSmsSender SmsSender
-
-	if emailSender != nil {
-		defaultEmailSender = emailSender
-	} else if tenantRepo == nil {
-		emailSender = NewSMTPEmailSender(SMTPConfig{
-			Host:        cfg.SMTPHost,
-			Port:        fmt.Sprintf("%d", cfg.SMTPPort),
-			Username:    cfg.SMTPUsername,
-			Password:    cfg.SMTPPassword,
-			FromAddress: cfg.FromEmail,
-			Timeouts:    cfg,
-		}, logger)
-		defaultEmailSender = emailSender
+	var runtimeResolver tenantRuntimeResolver
+	if tenantRepo != nil {
+		runtimeResolver = tenantRepo
 	}
-
-	switch {
-	case smsSender != nil:
-		defaultSmsSender = smsSender
-	case tenantRepo == nil && cfg.TwilioConfigured():
-		defaultSmsSender = NewTwilioSmsSender(cfg.TwilioAccountSID, cfg.TwilioAuthToken, cfg.TwilioFromNumber, logger, cfg)
-	case tenantRepo == nil:
-		logger.Warn("SMS notifications disabled: missing Twilio credentials")
-	}
-
 	return &notificationServiceImpl{
 		database:           db,
 		logger:             logger,
-		tenantRepo:         tenantRepo,
+		tenantRepo:         runtimeResolver,
 		config:             cfg,
-		defaultEmailSender: defaultEmailSender,
-		defaultSmsSender:   defaultSmsSender,
+		defaultEmailSender: emailSender,
+		defaultSmsSender:   smsSender,
 		maxRetries:         cfg.MaxRetries,
 		retryIntervalSec:   cfg.RetryIntervalSec,
-		emailSenders:       make(map[string]EmailSender),
-		smsSenders:         make(map[string]SmsSender),
 	}
 }
 
@@ -296,7 +272,7 @@ func (serviceInstance *notificationServiceImpl) CancelNotification(ctx context.C
 
 func (serviceInstance *notificationServiceImpl) StartRetryWorker(ctx context.Context) {
 	worker, workerErr := scheduler.NewWorker(scheduler.Config{
-		Repository:    newNotificationRetryStore(serviceInstance.database, serviceInstance.tenantRepo),
+		Repository:    newNotificationRetryStore(serviceInstance.database),
 		Dispatcher:    newNotificationDispatcher(serviceInstance),
 		Logger:        serviceInstance.logger,
 		Interval:      time.Duration(serviceInstance.retryIntervalSec) * time.Second,
@@ -326,24 +302,14 @@ func (serviceInstance *notificationServiceImpl) emailSenderForTenant(runtimeCfg 
 	if runtimeCfg.Email.Host == "" || runtimeCfg.Email.Username == "" || runtimeCfg.Email.Password == "" || runtimeCfg.Email.FromAddress == "" {
 		return nil, fmt.Errorf("email credentials unavailable for tenant %s", runtimeCfg.Tenant.ID)
 	}
-	serviceInstance.senderMutex.RLock()
-	cached := serviceInstance.emailSenders[runtimeCfg.Tenant.ID]
-	serviceInstance.senderMutex.RUnlock()
-	if cached != nil {
-		return cached, nil
-	}
-	smtpSender := NewSMTPEmailSender(SMTPConfig{
+	return NewSMTPEmailSender(SMTPConfig{
 		Host:        runtimeCfg.Email.Host,
 		Port:        strconv.Itoa(runtimeCfg.Email.Port),
 		Username:    runtimeCfg.Email.Username,
 		Password:    runtimeCfg.Email.Password,
 		FromAddress: runtimeCfg.Email.FromAddress,
 		Timeouts:    serviceInstance.config,
-	}, serviceInstance.logger)
-	serviceInstance.senderMutex.Lock()
-	defer serviceInstance.senderMutex.Unlock()
-	serviceInstance.emailSenders[runtimeCfg.Tenant.ID] = smtpSender
-	return smtpSender, nil
+	}, serviceInstance.logger), nil
 }
 
 func (serviceInstance *notificationServiceImpl) smsSenderForTenant(runtimeCfg tenant.RuntimeConfig) (SmsSender, error) {
@@ -353,37 +319,15 @@ func (serviceInstance *notificationServiceImpl) smsSenderForTenant(runtimeCfg te
 	if runtimeCfg.SMS == nil || runtimeCfg.SMS.AccountSID == "" || runtimeCfg.SMS.AuthToken == "" || runtimeCfg.SMS.FromNumber == "" {
 		return nil, ErrSMSDisabled
 	}
-	serviceInstance.senderMutex.RLock()
-	cached := serviceInstance.smsSenders[runtimeCfg.Tenant.ID]
-	serviceInstance.senderMutex.RUnlock()
-	if cached != nil {
-		return cached, nil
-	}
-	smsSender := NewTwilioSmsSender(runtimeCfg.SMS.AccountSID, runtimeCfg.SMS.AuthToken, runtimeCfg.SMS.FromNumber, serviceInstance.logger, serviceInstance.config)
-	serviceInstance.senderMutex.Lock()
-	defer serviceInstance.senderMutex.Unlock()
-	serviceInstance.smsSenders[runtimeCfg.Tenant.ID] = smsSender
-	return smsSender, nil
+	return NewTwilioSmsSender(runtimeCfg.SMS.AccountSID, runtimeCfg.SMS.AuthToken, runtimeCfg.SMS.FromNumber, serviceInstance.logger, serviceInstance.config), nil
 }
 
 func (serviceInstance *notificationServiceImpl) runtimeForTenantID(ctx context.Context, tenantID string) (tenant.RuntimeConfig, error) {
 	if tenantID == "" {
 		return tenant.RuntimeConfig{}, ErrMissingTenantContext
 	}
-	if serviceInstance.tenantRepo != nil {
-		return serviceInstance.tenantRepo.ResolveByID(ctx, tenantID)
-	}
-	runtimeCfg, ok := tenant.RuntimeFromContext(ctx)
-	if !ok {
-		if serviceInstance.defaultEmailSender != nil || serviceInstance.defaultSmsSender != nil {
-			return tenant.RuntimeConfig{
-				Tenant: tenant.Tenant{ID: tenantID},
-			}, nil
-		}
+	if serviceInstance.tenantRepo == nil {
 		return tenant.RuntimeConfig{}, ErrMissingTenantContext
 	}
-	if runtimeCfg.Tenant.ID != tenantID {
-		return tenant.RuntimeConfig{}, fmt.Errorf("tenant mismatch: context=%s payload=%s", runtimeCfg.Tenant.ID, tenantID)
-	}
-	return runtimeCfg, nil
+	return serviceInstance.tenantRepo.ResolveByID(ctx, tenantID)
 }

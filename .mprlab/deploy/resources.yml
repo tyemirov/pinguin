@@ -10,7 +10,6 @@ mprlab_resources:
       bindings:
         connection-timeout-sec: CONNECTION_TIMEOUT_SEC
         database-path: DATABASE_PATH
-        grpc-auth-token: GRPC_AUTH_TOKEN
         http-allowed-origin1: HTTP_ALLOWED_ORIGIN1
         http-allowed-origin2: HTTP_ALLOWED_ORIGIN2
         http-allowed-origin3: HTTP_ALLOWED_ORIGIN3
@@ -19,66 +18,6 @@ mprlab_resources:
         master-encryption-key: MASTER_ENCRYPTION_KEY
         max-retries: MAX_RETRIES
         operation-timeout-sec: OPERATION_TIMEOUT_SEC
-        pinguin-la-admin-email-1: PINGUIN_LA_ADMIN_EMAIL_1
-        pinguin-la-admin-email-2: PINGUIN_LA_ADMIN_EMAIL_2
-        pinguin-la-display-name: PINGUIN_LA_DISPLAY_NAME
-        pinguin-la-domain-primary: PINGUIN_LA_DOMAIN_PRIMARY
-        pinguin-la-enabled: PINGUIN_LA_ENABLED
-        pinguin-la-from-email: PINGUIN_LA_FROM_EMAIL
-        pinguin-la-smtp-host: PINGUIN_LA_SMTP_HOST
-        pinguin-la-smtp-password: PINGUIN_LA_SMTP_PASSWORD
-        pinguin-la-smtp-port: PINGUIN_LA_SMTP_PORT
-        pinguin-la-smtp-username: PINGUIN_LA_SMTP_USERNAME
-        pinguin-la-support-email: PINGUIN_LA_SUPPORT_EMAIL
-        pinguin-la-twilio-account-sid: PINGUIN_LA_TWILIO_ACCOUNT_SID
-        pinguin-la-twilio-auth-token: PINGUIN_LA_TWILIO_AUTH_TOKEN
-        pinguin-la-twilio-from-number: PINGUIN_LA_TWILIO_FROM_NUMBER
-        pinguin-namesignal-admin-email-1: PINGUIN_NAMESIGNAL_ADMIN_EMAIL_1
-        pinguin-namesignal-admin-email-2: PINGUIN_NAMESIGNAL_ADMIN_EMAIL_2
-        pinguin-namesignal-display-name: PINGUIN_NAMESIGNAL_DISPLAY_NAME
-        pinguin-namesignal-domain-primary: PINGUIN_NAMESIGNAL_DOMAIN_PRIMARY
-        pinguin-namesignal-enabled: PINGUIN_NAMESIGNAL_ENABLED
-        pinguin-namesignal-from-email: PINGUIN_NAMESIGNAL_FROM_EMAIL
-        pinguin-namesignal-smtp-host: PINGUIN_NAMESIGNAL_SMTP_HOST
-        pinguin-namesignal-smtp-password: PINGUIN_NAMESIGNAL_SMTP_PASSWORD
-        pinguin-namesignal-smtp-port: PINGUIN_NAMESIGNAL_SMTP_PORT
-        pinguin-namesignal-smtp-username: PINGUIN_NAMESIGNAL_SMTP_USERNAME
-        pinguin-namesignal-support-email: PINGUIN_NAMESIGNAL_SUPPORT_EMAIL
-        pinguin-namesignal-twilio-account-sid: PINGUIN_NAMESIGNAL_TWILIO_ACCOUNT_SID
-        pinguin-namesignal-twilio-auth-token: PINGUIN_NAMESIGNAL_TWILIO_AUTH_TOKEN
-        pinguin-namesignal-twilio-from-number: PINGUIN_NAMESIGNAL_TWILIO_FROM_NUMBER
-        pinguin-ps-admin-email-1: PINGUIN_PS_ADMIN_EMAIL_1
-        pinguin-ps-admin-email-2: PINGUIN_PS_ADMIN_EMAIL_2
-        pinguin-ps-display-name: PINGUIN_PS_DISPLAY_NAME
-        pinguin-ps-domain-primary: PINGUIN_PS_DOMAIN_PRIMARY
-        pinguin-ps-domain-secondary: PINGUIN_PS_DOMAIN_SECONDARY
-        pinguin-ps-enabled: PINGUIN_PS_ENABLED
-        pinguin-ps-from-email: PINGUIN_PS_FROM_EMAIL
-        pinguin-ps-smtp-host: PINGUIN_PS_SMTP_HOST
-        pinguin-ps-smtp-password: PINGUIN_PS_SMTP_PASSWORD
-        pinguin-ps-smtp-port: PINGUIN_PS_SMTP_PORT
-        pinguin-ps-smtp-username: PINGUIN_PS_SMTP_USERNAME
-        pinguin-ps-support-email: PINGUIN_PS_SUPPORT_EMAIL
-        pinguin-ps-twilio-account-sid: PINGUIN_PS_TWILIO_ACCOUNT_SID
-        pinguin-ps-twilio-auth-token: PINGUIN_PS_TWILIO_AUTH_TOKEN
-        pinguin-ps-twilio-from-number: PINGUIN_PS_TWILIO_FROM_NUMBER
-        pinguin-summercan-admin-email-1: PINGUIN_SUMMERCAN_ADMIN_EMAIL_1
-        pinguin-summercan-display-name: PINGUIN_SUMMERCAN_DISPLAY_NAME
-        pinguin-summercan-domain-primary: PINGUIN_SUMMERCAN_DOMAIN_PRIMARY
-        pinguin-summercan-enabled: PINGUIN_SUMMERCAN_ENABLED
-        pinguin-summercan-from-email: PINGUIN_SUMMERCAN_FROM_EMAIL
-        pinguin-summercan-smtp-host: PINGUIN_SUMMERCAN_SMTP_HOST
-        pinguin-summercan-smtp-password: PINGUIN_SUMMERCAN_SMTP_PASSWORD
-        pinguin-summercan-smtp-port: PINGUIN_SUMMERCAN_SMTP_PORT
-        pinguin-summercan-smtp-username: PINGUIN_SUMMERCAN_SMTP_USERNAME
-        pinguin-summercan-support-email: PINGUIN_SUMMERCAN_SUPPORT_EMAIL
-        pinguin-summercan-twilio-account-sid: PINGUIN_SUMMERCAN_TWILIO_ACCOUNT_SID
-        pinguin-summercan-twilio-auth-token: PINGUIN_SUMMERCAN_TWILIO_AUTH_TOKEN
-        pinguin-summercan-twilio-from-number: PINGUIN_SUMMERCAN_TWILIO_FROM_NUMBER
-        pinguin-tenant-id-la: PINGUIN_TENANT_ID_LA
-        pinguin-tenant-id-namesignal: PINGUIN_TENANT_ID_NAMESIGNAL
-        pinguin-tenant-id-ps: PINGUIN_TENANT_ID_PS
-        pinguin-tenant-id-summercan: PINGUIN_TENANT_ID_SUMMERCAN
         retry-interval-sec: RETRY_INTERVAL_SEC
         smtp-forwarding-enabled: SMTP_FORWARDING_ENABLED
         smtp-forwarding-hostname: SMTP_FORWARDING_HOSTNAME
@@ -131,9 +70,6 @@ mprlab_resources:
             DATABASE_PATH:
               resource: private
               output: database-path
-            GRPC_AUTH_TOKEN:
-              resource: private
-              output: grpc-auth-token
             HTTP_ALLOWED_ORIGIN1:
               resource: private
               output: http-allowed-origin1
@@ -158,186 +94,6 @@ mprlab_resources:
             OPERATION_TIMEOUT_SEC:
               resource: private
               output: operation-timeout-sec
-            PINGUIN_LA_ADMIN_EMAIL_1:
-              resource: private
-              output: pinguin-la-admin-email-1
-            PINGUIN_LA_ADMIN_EMAIL_2:
-              resource: private
-              output: pinguin-la-admin-email-2
-            PINGUIN_LA_DISPLAY_NAME:
-              resource: private
-              output: pinguin-la-display-name
-            PINGUIN_LA_DOMAIN_PRIMARY:
-              resource: private
-              output: pinguin-la-domain-primary
-            PINGUIN_LA_ENABLED:
-              resource: private
-              output: pinguin-la-enabled
-            PINGUIN_LA_FROM_EMAIL:
-              resource: private
-              output: pinguin-la-from-email
-            PINGUIN_LA_SMTP_HOST:
-              resource: private
-              output: pinguin-la-smtp-host
-            PINGUIN_LA_SMTP_PASSWORD:
-              resource: private
-              output: pinguin-la-smtp-password
-            PINGUIN_LA_SMTP_PORT:
-              resource: private
-              output: pinguin-la-smtp-port
-            PINGUIN_LA_SMTP_USERNAME:
-              resource: private
-              output: pinguin-la-smtp-username
-            PINGUIN_LA_SUPPORT_EMAIL:
-              resource: private
-              output: pinguin-la-support-email
-            PINGUIN_LA_TWILIO_ACCOUNT_SID:
-              resource: private
-              output: pinguin-la-twilio-account-sid
-            PINGUIN_LA_TWILIO_AUTH_TOKEN:
-              resource: private
-              output: pinguin-la-twilio-auth-token
-            PINGUIN_LA_TWILIO_FROM_NUMBER:
-              resource: private
-              output: pinguin-la-twilio-from-number
-            PINGUIN_NAMESIGNAL_ADMIN_EMAIL_1:
-              resource: private
-              output: pinguin-namesignal-admin-email-1
-            PINGUIN_NAMESIGNAL_ADMIN_EMAIL_2:
-              resource: private
-              output: pinguin-namesignal-admin-email-2
-            PINGUIN_NAMESIGNAL_DISPLAY_NAME:
-              resource: private
-              output: pinguin-namesignal-display-name
-            PINGUIN_NAMESIGNAL_DOMAIN_PRIMARY:
-              resource: private
-              output: pinguin-namesignal-domain-primary
-            PINGUIN_NAMESIGNAL_ENABLED:
-              resource: private
-              output: pinguin-namesignal-enabled
-            PINGUIN_NAMESIGNAL_FROM_EMAIL:
-              resource: private
-              output: pinguin-namesignal-from-email
-            PINGUIN_NAMESIGNAL_SMTP_HOST:
-              resource: private
-              output: pinguin-namesignal-smtp-host
-            PINGUIN_NAMESIGNAL_SMTP_PASSWORD:
-              resource: private
-              output: pinguin-namesignal-smtp-password
-            PINGUIN_NAMESIGNAL_SMTP_PORT:
-              resource: private
-              output: pinguin-namesignal-smtp-port
-            PINGUIN_NAMESIGNAL_SMTP_USERNAME:
-              resource: private
-              output: pinguin-namesignal-smtp-username
-            PINGUIN_NAMESIGNAL_SUPPORT_EMAIL:
-              resource: private
-              output: pinguin-namesignal-support-email
-            PINGUIN_NAMESIGNAL_TWILIO_ACCOUNT_SID:
-              resource: private
-              output: pinguin-namesignal-twilio-account-sid
-            PINGUIN_NAMESIGNAL_TWILIO_AUTH_TOKEN:
-              resource: private
-              output: pinguin-namesignal-twilio-auth-token
-            PINGUIN_NAMESIGNAL_TWILIO_FROM_NUMBER:
-              resource: private
-              output: pinguin-namesignal-twilio-from-number
-            PINGUIN_PS_ADMIN_EMAIL_1:
-              resource: private
-              output: pinguin-ps-admin-email-1
-            PINGUIN_PS_ADMIN_EMAIL_2:
-              resource: private
-              output: pinguin-ps-admin-email-2
-            PINGUIN_PS_DISPLAY_NAME:
-              resource: private
-              output: pinguin-ps-display-name
-            PINGUIN_PS_DOMAIN_PRIMARY:
-              resource: private
-              output: pinguin-ps-domain-primary
-            PINGUIN_PS_DOMAIN_SECONDARY:
-              resource: private
-              output: pinguin-ps-domain-secondary
-            PINGUIN_PS_ENABLED:
-              resource: private
-              output: pinguin-ps-enabled
-            PINGUIN_PS_FROM_EMAIL:
-              resource: private
-              output: pinguin-ps-from-email
-            PINGUIN_PS_SMTP_HOST:
-              resource: private
-              output: pinguin-ps-smtp-host
-            PINGUIN_PS_SMTP_PASSWORD:
-              resource: private
-              output: pinguin-ps-smtp-password
-            PINGUIN_PS_SMTP_PORT:
-              resource: private
-              output: pinguin-ps-smtp-port
-            PINGUIN_PS_SMTP_USERNAME:
-              resource: private
-              output: pinguin-ps-smtp-username
-            PINGUIN_PS_SUPPORT_EMAIL:
-              resource: private
-              output: pinguin-ps-support-email
-            PINGUIN_PS_TWILIO_ACCOUNT_SID:
-              resource: private
-              output: pinguin-ps-twilio-account-sid
-            PINGUIN_PS_TWILIO_AUTH_TOKEN:
-              resource: private
-              output: pinguin-ps-twilio-auth-token
-            PINGUIN_PS_TWILIO_FROM_NUMBER:
-              resource: private
-              output: pinguin-ps-twilio-from-number
-            PINGUIN_SUMMERCAN_ADMIN_EMAIL_1:
-              resource: private
-              output: pinguin-summercan-admin-email-1
-            PINGUIN_SUMMERCAN_DISPLAY_NAME:
-              resource: private
-              output: pinguin-summercan-display-name
-            PINGUIN_SUMMERCAN_DOMAIN_PRIMARY:
-              resource: private
-              output: pinguin-summercan-domain-primary
-            PINGUIN_SUMMERCAN_ENABLED:
-              resource: private
-              output: pinguin-summercan-enabled
-            PINGUIN_SUMMERCAN_FROM_EMAIL:
-              resource: private
-              output: pinguin-summercan-from-email
-            PINGUIN_SUMMERCAN_SMTP_HOST:
-              resource: private
-              output: pinguin-summercan-smtp-host
-            PINGUIN_SUMMERCAN_SMTP_PASSWORD:
-              resource: private
-              output: pinguin-summercan-smtp-password
-            PINGUIN_SUMMERCAN_SMTP_PORT:
-              resource: private
-              output: pinguin-summercan-smtp-port
-            PINGUIN_SUMMERCAN_SMTP_USERNAME:
-              resource: private
-              output: pinguin-summercan-smtp-username
-            PINGUIN_SUMMERCAN_SUPPORT_EMAIL:
-              resource: private
-              output: pinguin-summercan-support-email
-            PINGUIN_SUMMERCAN_TWILIO_ACCOUNT_SID:
-              resource: private
-              output: pinguin-summercan-twilio-account-sid
-            PINGUIN_SUMMERCAN_TWILIO_AUTH_TOKEN:
-              resource: private
-              output: pinguin-summercan-twilio-auth-token
-            PINGUIN_SUMMERCAN_TWILIO_FROM_NUMBER:
-              resource: private
-              output: pinguin-summercan-twilio-from-number
-            PINGUIN_TENANT_ID_LA:
-              resource: private
-              output: pinguin-tenant-id-la
-            PINGUIN_TENANT_ID_NAMESIGNAL:
-              resource: private
-              output: pinguin-tenant-id-namesignal
-            PINGUIN_TENANT_ID_PS:
-              resource: private
-              output: pinguin-tenant-id-ps
-            PINGUIN_TENANT_ID_SUMMERCAN:
-              resource: private
-              output: pinguin-tenant-id-summercan
             RETRY_INTERVAL_SEC:
               resource: private
               output: retry-interval-sec

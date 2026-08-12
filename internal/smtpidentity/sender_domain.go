@@ -7,11 +7,6 @@ import (
 	"time"
 )
 
-const (
-	senderDomainVerifiedStatus = string(SenderDomainStatusVerified)
-	senderDomainPendingStatus  = string(SenderDomainStatusPending)
-)
-
 var (
 	// ErrInvalidSenderDomain indicates a domain cannot be used for SMTP relay ownership.
 	ErrInvalidSenderDomain = errors.New("smtp_identity.sender_domain.invalid")
@@ -34,8 +29,8 @@ const (
 // SenderDomain declares a domain that may be used for SMTP submission senders.
 type SenderDomain struct {
 	ID                uint               `gorm:"primaryKey"`
-	OwnerEmail        string             `gorm:"index"`
-	Domain            string             `gorm:"uniqueIndex"`
+	TenantID          string             `gorm:"index;not null"`
+	Domain            string             `gorm:"uniqueIndex;not null"`
 	Status            SenderDomainStatus `gorm:"index"`
 	VerificationToken string
 	LastCheckedAt     *time.Time

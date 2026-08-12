@@ -3,40 +3,34 @@ package integrationtest
 import (
 	"context"
 	"io"
-	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/glebarez/sqlite"
 	"github.com/tyemirov/pinguin/internal/config"
 	"github.com/tyemirov/pinguin/internal/model"
 	"github.com/tyemirov/pinguin/internal/service"
 	"github.com/tyemirov/pinguin/internal/tenant"
-	"gorm.io/gorm"
 	"log/slog"
 )
 
 func TestScheduledEmailDispatchesAfterWorkerRuns(t *testing.T) {
 	t.Helper()
 
-	database := openIntegrationDatabase(t)
+	database, keeper := setupTestDB(t)
+	repository := tenant.NewRepository(database, keeper)
+	managedTenant := createManagedTenant(t, repository, integrationOwnerID, "Scheduled Tenant")
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
 	emailSender := newRecordingEmailSender()
 
 	cfg := config.Config{
 		MaxRetries:           3,
 		RetryIntervalSec:     1,
-		SMTPHost:             "example.com",
-		SMTPPort:             587,
-		SMTPUsername:         "user",
-		SMTPPassword:         "pass",
-		FromEmail:            "noreply@example.com",
 		ConnectionTimeoutSec: 5,
 		OperationTimeoutSec:  5,
 	}
 
-	notificationService := service.NewNotificationServiceWithSenders(database, logger, cfg, nil, emailSender, nil)
+	notificationService := service.NewNotificationServiceWithSenders(database, logger, cfg, repository, emailSender, nil)
 	scheduledFor := time.Now().UTC().Add(2 * time.Second)
 
 	request, requestErr := model.NewNotificationRequest(
@@ -50,7 +44,8 @@ func TestScheduledEmailDispatchesAfterWorkerRuns(t *testing.T) {
 	if requestErr != nil {
 		t.Fatalf("notification request error: %v", requestErr)
 	}
-	response, err := notificationService.SendNotification(integrationTenantContext(), request)
+	tenantContext := runtimeContext(t, repository, managedTenant.ID)
+	response, err := notificationService.SendNotification(tenantContext, request)
 	if err != nil {
 		t.Fatalf("send notification error: %v", err)
 	}
@@ -74,24 +69,10 @@ func TestScheduledEmailDispatchesAfterWorkerRuns(t *testing.T) {
 		t.Fatalf("expected dispatch at or after scheduled time; scheduled=%v dispatch=%v", scheduledFor, sentAt)
 	}
 
-	finalResponse := waitForNotificationStatus(t, notificationService, response.NotificationID, model.StatusSent, 5*time.Second)
+	finalResponse := waitForNotificationStatus(t, notificationService, tenantContext, response.NotificationID, model.StatusSent, 5*time.Second)
 	if finalResponse.RetryCount != 1 {
 		t.Fatalf("expected retry count 1, got %d", finalResponse.RetryCount)
 	}
-}
-
-func openIntegrationDatabase(t *testing.T) *gorm.DB {
-	t.Helper()
-
-	databasePath := filepath.Join(t.TempDir(), "integration.db")
-	database, err := gorm.Open(sqlite.Open(databasePath), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("sqlite open error: %v", err)
-	}
-	if migrateErr := database.AutoMigrate(&model.Notification{}, &model.NotificationAttachment{}); migrateErr != nil {
-		t.Fatalf("migration error: %v", migrateErr)
-	}
-	return database
 }
 
 type recordingEmailSender struct {
@@ -127,7 +108,7 @@ func (sender *recordingEmailSender) WaitForSend(timeout time.Duration) (time.Tim
 	}
 }
 
-func waitForNotificationStatus(t *testing.T, notificationService service.NotificationService, notificationID string, expectedStatus model.NotificationStatus, timeout time.Duration) model.NotificationResponse {
+func waitForNotificationStatus(t *testing.T, notificationService service.NotificationService, tenantContext context.Context, notificationID string, expectedStatus model.NotificationStatus, timeout time.Duration) model.NotificationResponse {
 	t.Helper()
 
 	deadline := time.Now().Add(timeout)
@@ -136,7 +117,7 @@ func waitForNotificationStatus(t *testing.T, notificationService service.Notific
 
 	var lastResponse model.NotificationResponse
 	for {
-		response, err := notificationService.GetNotificationStatus(integrationTenantContext(), notificationID)
+		response, err := notificationService.GetNotificationStatus(tenantContext, notificationID)
 		if err != nil {
 			t.Fatalf("status retrieval error: %v", err)
 		}
@@ -149,19 +130,4 @@ func waitForNotificationStatus(t *testing.T, notificationService service.Notific
 		}
 		<-ticker.C
 	}
-}
-
-func integrationTenantContext() context.Context {
-	return tenant.WithRuntime(context.Background(), tenant.RuntimeConfig{
-		Tenant: tenant.Tenant{
-			ID: "integration-tenant",
-		},
-		Email: tenant.EmailCredentials{
-			Host:        "smtp.integration",
-			Port:        25,
-			Username:    "integration",
-			Password:    "secret",
-			FromAddress: "noreply@integration",
-		},
-	})
 }

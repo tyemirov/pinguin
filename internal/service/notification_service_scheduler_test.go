@@ -431,7 +431,7 @@ func newRetryWorkerForTest(t *testing.T, serviceInstance *notificationServiceImp
 	t.Helper()
 
 	worker, err := scheduler.NewWorker(scheduler.Config{
-		Repository:    newNotificationRetryStore(serviceInstance.database, nil),
+		Repository:    newNotificationRetryStore(serviceInstance.database),
 		Dispatcher:    newNotificationDispatcher(serviceInstance),
 		Logger:        serviceInstance.logger,
 		Interval:      time.Duration(serviceInstance.retryIntervalSec) * time.Second,
@@ -526,9 +526,8 @@ func newNotificationServiceWithSendersForSchedulerTests(database *gorm.DB, email
 		logger:             slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 		defaultEmailSender: emailSender,
 		defaultSmsSender:   smsSender,
+		tenantRepo:         testTenantRuntimeResolver(),
 		maxRetries:         5,
 		retryIntervalSec:   1,
-		emailSenders:       make(map[string]EmailSender),
-		smsSenders:         make(map[string]SmsSender),
 	}
 }

@@ -63,8 +63,8 @@ func TestSendCommandSubmitsEmailWithScheduleAndAttachment(t *testing.T) {
 			if settings.ServerAddress() != "smtp.local:50051" {
 				t.Fatalf("unexpected server address %s", settings.ServerAddress())
 			}
-			if settings.AuthToken() != "token" || settings.TenantID() != "tenant-one" {
-				t.Fatalf("unexpected settings token=%s tenant=%s", settings.AuthToken(), settings.TenantID())
+			if settings.APIKey() != "key" {
+				t.Fatalf("unexpected API key=%s", settings.APIKey())
 			}
 			return sender, closer, nil
 		},
@@ -74,8 +74,7 @@ func TestSendCommandSubmitsEmailWithScheduleAndAttachment(t *testing.T) {
 	command.SetArgs([]string{
 		"send",
 		"--grpc-server-addr", "smtp.local:50051",
-		"--grpc-auth-token", "token",
-		"--tenant-id", "tenant-one",
+		"--api-key", "key",
 		"--connection-timeout-sec", "7",
 		"--operation-timeout-sec", "9",
 		"--log-level", "debug",
@@ -99,7 +98,7 @@ func TestSendCommandSubmitsEmailWithScheduleAndAttachment(t *testing.T) {
 	if sender.request.GetNotificationType() != grpcapi.NotificationType_EMAIL {
 		t.Fatalf("unexpected notification type %v", sender.request.GetNotificationType())
 	}
-	if sender.request.GetTenantId() != "tenant-one" || sender.request.GetRecipient() != "user@example.com" {
+	if sender.request.GetRecipient() != "user@example.com" {
 		t.Fatalf("unexpected request %+v", sender.request)
 	}
 	if sender.request.GetScheduledTime().AsTime() != scheduledAt {
@@ -115,8 +114,7 @@ func TestSendCommandSubmitsEmailWithScheduleAndAttachment(t *testing.T) {
 
 func TestSendCommandUsesExplicitFlagsForSMS(t *testing.T) {
 	t.Setenv("GRPC_SERVER_ADDR", "env.local:50051")
-	t.Setenv("GRPC_AUTH_TOKEN", "env-token")
-	t.Setenv("TENANT_ID", "tenant-env")
+	t.Setenv("PINGUIN_API_KEY", "env-key")
 	t.Setenv("CONNECTION_TIMEOUT_SEC", "6")
 	t.Setenv("OPERATION_TIMEOUT_SEC", "8")
 	t.Setenv("LOG_LEVEL", "warn")
@@ -124,7 +122,7 @@ func TestSendCommandUsesExplicitFlagsForSMS(t *testing.T) {
 	sender := &recordingSender{}
 	command := NewRootCommand(Dependencies{
 		NewSender: func(_ *slog.Logger, settings client.Settings) (NotificationSender, io.Closer, error) {
-			if settings.ServerAddress() != "flag.local:50051" || settings.AuthToken() != "flag-token" || settings.TenantID() != "tenant-flag" {
+			if settings.ServerAddress() != "flag.local:50051" || settings.APIKey() != "flag-key" {
 				t.Fatalf("unexpected settings from flags")
 			}
 			return sender, nil, nil
@@ -135,8 +133,7 @@ func TestSendCommandUsesExplicitFlagsForSMS(t *testing.T) {
 	command.SetArgs([]string{
 		"send",
 		"--grpc-server-addr", "flag.local:50051",
-		"--grpc-auth-token", "flag-token",
-		"--tenant-id", "tenant-flag",
+		"--api-key", "flag-key",
 		"--type", "sms",
 		"--recipient", "+15551234567",
 		"--message", "OTP",
@@ -168,8 +165,7 @@ func TestSendCommandValidationErrors(t *testing.T) {
 		factoryErr error
 		wantErr    string
 	}{
-		{name: "missing auth", args: []string{"send", "--tenant-id", "tenant"}, wantErr: "grpc-auth-token is required"},
-		{name: "missing tenant", args: []string{"send", "--grpc-auth-token", "token"}, wantErr: "tenant-id is required"},
+		{name: "missing API key", args: []string{"send"}, wantErr: "api-key is required"},
 		{name: "invalid timeout", args: validSendArgs("--connection-timeout-sec", "0"), wantErr: "connection-timeout-sec must be positive"},
 		{name: "invalid type", args: validSendArgs("--type", "push"), wantErr: "invalid notification type"},
 		{name: "missing recipient", args: validSendArgs("--recipient", ""), wantErr: "recipient is required"},
@@ -274,48 +270,35 @@ func TestSendCommandReportsInternalFlagResolutionErrors(t *testing.T) {
 		setup func(*cobra.Command)
 	}{
 		{name: "server address", setup: func(*cobra.Command) {}},
-		{name: "auth token", setup: func(cmd *cobra.Command) {
+		{name: "API key", setup: func(cmd *cobra.Command) {
 			cmd.Flags().String("grpc-server-addr", "localhost:50051", "")
-		}},
-		{name: "tenant id", setup: func(cmd *cobra.Command) {
-			cmd.Flags().String("grpc-server-addr", "localhost:50051", "")
-			cmd.Flags().String("grpc-auth-token", "", "")
-			_ = cmd.Flags().Set("grpc-auth-token", "token")
 		}},
 		{name: "connection timeout", setup: func(cmd *cobra.Command) {
 			cmd.Flags().String("grpc-server-addr", "localhost:50051", "")
-			cmd.Flags().String("grpc-auth-token", "", "")
-			cmd.Flags().String("tenant-id", "", "")
-			_ = cmd.Flags().Set("grpc-auth-token", "token")
-			_ = cmd.Flags().Set("tenant-id", "tenant")
+			cmd.Flags().String("api-key", "", "")
+			_ = cmd.Flags().Set("api-key", "key")
 		}},
 		{name: "operation timeout", setup: func(cmd *cobra.Command) {
 			cmd.Flags().String("grpc-server-addr", "localhost:50051", "")
-			cmd.Flags().String("grpc-auth-token", "", "")
-			cmd.Flags().String("tenant-id", "", "")
+			cmd.Flags().String("api-key", "", "")
 			cmd.Flags().Int("connection-timeout-sec", 5, "")
-			_ = cmd.Flags().Set("grpc-auth-token", "token")
-			_ = cmd.Flags().Set("tenant-id", "tenant")
+			_ = cmd.Flags().Set("api-key", "key")
 		}},
 		{name: "log level", setup: func(cmd *cobra.Command) {
 			cmd.Flags().String("grpc-server-addr", "localhost:50051", "")
-			cmd.Flags().String("grpc-auth-token", "", "")
-			cmd.Flags().String("tenant-id", "", "")
+			cmd.Flags().String("api-key", "", "")
 			cmd.Flags().Int("connection-timeout-sec", 5, "")
 			cmd.Flags().Int("operation-timeout-sec", 30, "")
-			_ = cmd.Flags().Set("grpc-auth-token", "token")
-			_ = cmd.Flags().Set("tenant-id", "tenant")
+			_ = cmd.Flags().Set("api-key", "key")
 		}},
 		{name: "settings", setup: func(cmd *cobra.Command) {
 			cmd.Flags().String("grpc-server-addr", "", "")
-			cmd.Flags().String("grpc-auth-token", "", "")
-			cmd.Flags().String("tenant-id", "", "")
+			cmd.Flags().String("api-key", "", "")
 			cmd.Flags().Int("connection-timeout-sec", 5, "")
 			cmd.Flags().Int("operation-timeout-sec", 30, "")
 			cmd.Flags().String("log-level", "INFO", "")
 			_ = cmd.Flags().Set("grpc-server-addr", " ")
-			_ = cmd.Flags().Set("grpc-auth-token", "token")
-			_ = cmd.Flags().Set("tenant-id", "tenant")
+			_ = cmd.Flags().Set("api-key", "key")
 		}},
 	}
 	for _, testCase := range testCases {
@@ -485,8 +468,7 @@ func TestFlagHelpersReturnLocalInheritedAndConfigValues(t *testing.T) {
 func validSendArgs(overrides ...string) []string {
 	baseFlags := map[string]struct{}{
 		"--grpc-server-addr":       {},
-		"--grpc-auth-token":        {},
-		"--tenant-id":              {},
+		"--api-key":                {},
 		"--connection-timeout-sec": {},
 		"--operation-timeout-sec":  {},
 		"--type":                   {},
@@ -496,8 +478,7 @@ func validSendArgs(overrides ...string) []string {
 	}
 	values := map[string]string{
 		"--grpc-server-addr":       "localhost:50051",
-		"--grpc-auth-token":        "token",
-		"--tenant-id":              "tenant",
+		"--api-key":                "key",
 		"--connection-timeout-sec": "5",
 		"--operation-timeout-sec":  "30",
 		"--type":                   "email",
@@ -511,8 +492,7 @@ func validSendArgs(overrides ...string) []string {
 	args := []string{"send"}
 	for _, flagName := range []string{
 		"--grpc-server-addr",
-		"--grpc-auth-token",
-		"--tenant-id",
+		"--api-key",
 		"--connection-timeout-sec",
 		"--operation-timeout-sec",
 		"--type",

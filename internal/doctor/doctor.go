@@ -12,7 +12,6 @@ import (
 	"time"
 
 	runtimeconfig "github.com/tyemirov/pinguin/internal/config"
-	"github.com/tyemirov/pinguin/internal/tenant"
 	"gopkg.in/yaml.v3"
 )
 
@@ -71,12 +70,10 @@ type pinguinConfig struct {
 	Web            pinguinWeb            `yaml:"web"`
 	SMTPSubmission pinguinSMTPSubmission `yaml:"smtpSubmission"`
 	SMTPForwarding pinguinSMTPForwarding `yaml:"smtpForwarding"`
-	Tenants        pinguinYAMLNode       `yaml:"tenants"`
 }
 
 type pinguinServer struct {
 	DatabasePath        string       `yaml:"databasePath"`
-	GRPCAuthToken       string       `yaml:"grpcAuthToken"`
 	LogLevel            string       `yaml:"logLevel"`
 	MaxRetries          int          `yaml:"maxRetries"`
 	RetryIntervalSec    int          `yaml:"retryIntervalSec"`
@@ -128,63 +125,6 @@ type pinguinSMTPForwarding struct {
 	MaxMessageBytes int64            `yaml:"maxMessageBytes"`
 	MaxRecipients   int              `yaml:"maxRecipients"`
 	Relay           pinguinSMTPRelay `yaml:"relay"`
-}
-
-type pinguinTenant = tenant.BootstrapTenant
-
-type pinguinYAMLNode struct {
-	ConfigPath string          `yaml:"configPath"`
-	Tenants    []pinguinTenant `yaml:"tenants"`
-	Raw        *yaml.Node      `yaml:"-"`
-}
-
-func (node *pinguinYAMLNode) UnmarshalYAML(value *yaml.Node) error {
-	node.Raw = value
-	switch value.Kind {
-	case yaml.SequenceNode:
-		var tenants []pinguinTenant
-		if decodeErr := value.Decode(&tenants); decodeErr != nil {
-			return fmt.Errorf("configuration: parse tenants: %w", decodeErr)
-		}
-		node.ConfigPath = ""
-		node.Tenants = tenants
-		return nil
-	case yaml.MappingNode:
-		if unknownKey := firstUnsupportedTenantMappingKey(value, "configPath", "tenants"); unknownKey != "" {
-			return fmt.Errorf("configuration: tenants.%s is not supported", unknownKey)
-		}
-		type decoded struct {
-			ConfigPath string          `yaml:"configPath"`
-			Tenants    []pinguinTenant `yaml:"tenants"`
-		}
-		var decodedConfig decoded
-		if decodeErr := value.Decode(&decodedConfig); decodeErr != nil {
-			return fmt.Errorf("configuration: parse tenants: %w", decodeErr)
-		}
-		node.ConfigPath = strings.TrimSpace(decodedConfig.ConfigPath)
-		node.Tenants = decodedConfig.Tenants
-		return nil
-	default:
-		return fmt.Errorf("configuration: tenants must be a list")
-	}
-}
-
-func firstUnsupportedTenantMappingKey(value *yaml.Node, allowedKeys ...string) string {
-	allowed := make(map[string]struct{}, len(allowedKeys))
-	for _, allowedKey := range allowedKeys {
-		allowed[allowedKey] = struct{}{}
-	}
-	for contentIndex := 0; contentIndex+1 < len(value.Content); contentIndex += 2 {
-		key := strings.TrimSpace(value.Content[contentIndex].Value)
-		if _, ok := allowed[key]; !ok {
-			return key
-		}
-	}
-	return ""
-}
-
-func (node *pinguinYAMLNode) AllTenants() []pinguinTenant {
-	return node.Tenants
 }
 
 // Run executes the doctor validation for the specified configurations.
@@ -267,15 +207,6 @@ func validateConfig(configPath string, expandEnv bool) (DiagnosticResult, *pingu
 	validateSMTPSubmissionConfig(config.SMTPSubmission, &result)
 	validateSMTPForwardingConfig(config.SMTPForwarding, &result)
 
-	tenants := tenantsForValidation(config.Tenants, &result)
-	for _, tenant := range tenants {
-		tenantID := strings.TrimSpace(tenant.ID)
-		if tenantID != "" {
-			result.TenantIDs = append(result.TenantIDs, tenantID)
-		}
-		validateTenantConfig(tenant, webEnabled, &result)
-	}
-
 	sort.Strings(result.Errors)
 	sort.Strings(result.Warnings)
 	sort.Strings(result.TenantIDs)
@@ -283,46 +214,10 @@ func validateConfig(configPath string, expandEnv bool) (DiagnosticResult, *pingu
 	return result, &config
 }
 
-func tenantsForValidation(config pinguinYAMLNode, result *DiagnosticResult) []pinguinTenant {
-	tenants := config.AllTenants()
-	if len(tenants) > 0 {
-		return tenants
-	}
-	tenantConfigPath := strings.TrimSpace(config.ConfigPath)
-	if tenantConfigPath == "" {
-		result.Valid = false
-		result.Errors = append(result.Errors, "tenants.configPath is required when no inline tenants are configured")
-		return nil
-	}
-
-	rawContents, readErr := os.ReadFile(tenantConfigPath)
-	if readErr != nil {
-		result.Valid = false
-		result.Errors = append(result.Errors, fmt.Sprintf("tenants.configPath read %s: %v", tenantConfigPath, readErr))
-		return nil
-	}
-	var bootstrapConfig tenant.BootstrapConfig
-	if parseErr := yaml.Unmarshal(rawContents, &bootstrapConfig); parseErr != nil {
-		result.Valid = false
-		result.Errors = append(result.Errors, fmt.Sprintf("tenants.configPath parse_yaml: %v", parseErr))
-		return nil
-	}
-	if len(bootstrapConfig.Tenants) == 0 {
-		result.Valid = false
-		result.Errors = append(result.Errors, fmt.Sprintf("tenants.configPath %s has no tenants configured", tenantConfigPath))
-		return nil
-	}
-	return bootstrapConfig.Tenants
-}
-
 func validateServerConfig(server pinguinServer, webEnabled bool, result *DiagnosticResult) {
 	if strings.TrimSpace(server.DatabasePath) == "" {
 		result.Valid = false
 		result.Errors = append(result.Errors, "server.databasePath is required")
-	}
-	if strings.TrimSpace(server.GRPCAuthToken) == "" {
-		result.Valid = false
-		result.Errors = append(result.Errors, "server.grpcAuthToken is required")
 	}
 	if strings.TrimSpace(server.LogLevel) == "" {
 		result.Valid = false
@@ -482,85 +377,8 @@ func normalizeSMTPDeliveryMode(value string) string {
 	return normalized
 }
 
-func validateTenantConfig(tenant pinguinTenant, webEnabled bool, result *DiagnosticResult) {
-	tenantID := strings.TrimSpace(tenant.ID)
-	tenantLabel := tenantID
-	if tenantLabel == "" {
-		tenantLabel = "(unknown)"
-	}
-
-	if strings.TrimSpace(tenant.DisplayName) == "" {
-		result.Valid = false
-		result.Errors = append(result.Errors, fmt.Sprintf("tenant[%s]: displayName is required", tenantLabel))
-	}
-
-	validDomains := 0
-	for _, domain := range tenant.Domains {
-		if strings.TrimSpace(domain) != "" {
-			validDomains++
-		}
-	}
-	if validDomains == 0 {
-		result.Valid = false
-		result.Errors = append(result.Errors, fmt.Sprintf("tenant[%s]: at least one domain is required", tenantLabel))
-	}
-
-	if webEnabled {
-		validAdmins := 0
-		for _, admin := range tenant.Admins {
-			if strings.TrimSpace(admin) != "" {
-				validAdmins++
-			}
-		}
-		if validAdmins == 0 {
-			result.Valid = false
-			result.Errors = append(result.Errors, fmt.Sprintf("tenant[%s]: at least one admin is required when web is enabled", tenantLabel))
-		}
-	}
-}
-
 func validateCrossConfigs(configsByPath map[string]*pinguinConfig) crossValidation {
-	validation := crossValidation{
-		Performed: true,
-	}
-
-	type tenantLocation struct {
-		ConfigPath string
-		TenantID   string
-	}
-
-	domainsByTenant := make(map[string]tenantLocation)
-
-	for configPath, config := range configsByPath {
-		for _, tenant := range config.Tenants.AllTenants() {
-			tenantID := strings.TrimSpace(tenant.ID)
-			location := tenantLocation{
-				ConfigPath: configPath,
-				TenantID:   tenantID,
-			}
-
-			for _, domain := range tenant.Domains {
-				normalizedDomain := strings.ToLower(strings.TrimSpace(domain))
-				if normalizedDomain == "" {
-					continue
-				}
-				if existing, exists := domainsByTenant[normalizedDomain]; exists {
-					if existing.ConfigPath != configPath || existing.TenantID != tenantID {
-						validation.Errors = append(validation.Errors,
-							fmt.Sprintf("domain %q claimed by tenant[%s] in %s conflicts with tenant[%s] in %s",
-								domain, tenantID, configPath, existing.TenantID, existing.ConfigPath))
-					}
-				} else {
-					domainsByTenant[normalizedDomain] = location
-				}
-			}
-		}
-	}
-
-	sort.Strings(validation.Errors)
-	sort.Strings(validation.Warnings)
-
-	return validation
+	return crossValidation{Performed: len(configsByPath) > 1}
 }
 
 func buildSummary(diagnostics []DiagnosticResult) reportSummary {

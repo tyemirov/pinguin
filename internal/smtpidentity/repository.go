@@ -32,8 +32,8 @@ const (
 	deletedStatusValue      = string(IdentityStatusDeleted)
 	identityIDColumn        = "id"
 	lastUsedAtColumn        = "last_used_at"
-	ownerEmailColumn        = "owner_email"
 	statusColumn            = "status"
+	tenantIDColumn          = "tenant_id"
 	updatedAtColumn         = "updated_at"
 	usernameColumn          = "username"
 )
@@ -68,7 +68,7 @@ const (
 // Identity stores SMTP submission credentials.
 type Identity struct {
 	ID             string `gorm:"primaryKey"`
-	OwnerEmail     string `gorm:"index"`
+	TenantID       string `gorm:"index;not null"`
 	EmailAddress   string `gorm:"uniqueIndex"`
 	Username       string `gorm:"uniqueIndex"`
 	PasswordSalt   []byte
@@ -109,10 +109,9 @@ type AuthenticatedIdentity struct {
 	Username     string
 }
 
-// AccessScope constrains authenticated HTTP SMTP relay management to one owner unless admin access is present.
+// AccessScope constrains SMTP relay management to one tenant.
 type AccessScope struct {
-	OwnerEmail string
-	Admin      bool
+	TenantID string
 }
 
 // Repository stores and verifies SMTP identities.
@@ -151,22 +150,14 @@ func decodeMasterKey(rawMasterKey string) ([]byte, error) {
 	return key, nil
 }
 
-// List returns active SMTP identities without secrets.
-func (repository *Repository) List(ctx context.Context) ([]PublicIdentity, error) {
-	return repository.ListForScope(ctx, AccessScope{Admin: true})
-}
-
-// ListForScope returns active SMTP identities visible to the authenticated owner scope.
+// ListForScope returns active SMTP identities owned by one tenant.
 func (repository *Repository) ListForScope(ctx context.Context, scope AccessScope) ([]PublicIdentity, error) {
 	var records []Identity
 	query := repository.db.WithContext(ctx).
 		Preload("ForwardTo", func(db *gorm.DB) *gorm.DB {
 			return db.Order(clause.OrderByColumn{Column: clause.Column{Name: "email_address"}})
 		}).
-		Where(&Identity{Status: IdentityStatusActive})
-	if !scope.Admin {
-		query = query.Where(clause.Eq{Column: clause.Column{Name: ownerEmailColumn}, Value: normalizeOwnerEmail(scope.OwnerEmail)})
-	}
+		Where(&Identity{TenantID: scope.TenantID, Status: IdentityStatusActive})
 	if err := query.
 		Order(clause.OrderByColumn{Column: clause.Column{Name: "email_address"}}).
 		Find(&records).Error; err != nil {
@@ -179,14 +170,8 @@ func (repository *Repository) ListForScope(ctx context.Context, scope AccessScop
 	return result, nil
 }
 
-// Create creates or reactivates an exact sender identity.
-func (repository *Repository) Create(ctx context.Context, address Address, forwardTo []Address) (PublicIdentity, string, error) {
-	return repository.CreateForScope(ctx, AccessScope{Admin: true}, address, forwardTo)
-}
-
-// CreateForScope creates or reactivates an exact sender identity owned by a verified sender domain.
+// CreateForScope creates or reactivates an exact sender identity owned by a tenant.
 func (repository *Repository) CreateForScope(ctx context.Context, scope AccessScope, address Address, forwardTo []Address) (PublicIdentity, string, error) {
-	ownerEmail := normalizeOwnerEmail(scope.OwnerEmail)
 	if allowedErr := repository.requireSenderDomainForScope(ctx, scope, address.Domain()); allowedErr != nil {
 		return PublicIdentity{}, "", allowedErr
 	}
@@ -212,7 +197,7 @@ func (repository *Repository) CreateForScope(ctx context.Context, scope AccessSc
 	}
 	now := repository.clockFunc()
 	if findErr == nil {
-		existing.OwnerEmail = ownerEmail
+		existing.TenantID = scope.TenantID
 		existing.Username = username
 		existing.PasswordSalt = salt
 		existing.PasswordDigest = digest
@@ -236,7 +221,7 @@ func (repository *Repository) CreateForScope(ctx context.Context, scope AccessSc
 	}
 	record := Identity{
 		ID:             uuid.NewString(),
-		OwnerEmail:     ownerEmail,
+		TenantID:       scope.TenantID,
 		EmailAddress:   address.String(),
 		Username:       username,
 		PasswordSalt:   salt,
@@ -258,12 +243,7 @@ func (repository *Repository) CreateForScope(ctx context.Context, scope AccessSc
 	return publicIdentity(record), password, nil
 }
 
-// Credentials returns the current active credentials for a sender identity.
-func (repository *Repository) Credentials(ctx context.Context, identityID string) (PublicIdentity, string, error) {
-	return repository.CredentialsForScope(ctx, AccessScope{Admin: true}, identityID)
-}
-
-// CredentialsForScope returns the current active credentials visible to the owner scope.
+// CredentialsForScope returns current active credentials owned by one tenant.
 func (repository *Repository) CredentialsForScope(ctx context.Context, scope AccessScope, identityID string) (PublicIdentity, string, error) {
 	record, fetchErr := repository.requireIdentityForScope(ctx, scope, identityID)
 	if fetchErr != nil {
@@ -276,12 +256,7 @@ func (repository *Repository) CredentialsForScope(ctx context.Context, scope Acc
 	return publicIdentity(record), password, nil
 }
 
-// UpdateForwarding replaces the forwarding recipients for an active identity.
-func (repository *Repository) UpdateForwarding(ctx context.Context, identityID string, forwardTo []Address) (PublicIdentity, error) {
-	return repository.UpdateForwardingForScope(ctx, AccessScope{Admin: true}, identityID, forwardTo)
-}
-
-// UpdateForwardingForScope replaces forwarding recipients for an identity visible to the owner scope.
+// UpdateForwardingForScope replaces forwarding recipients for a tenant identity.
 func (repository *Repository) UpdateForwardingForScope(ctx context.Context, scope AccessScope, identityID string, forwardTo []Address) (PublicIdentity, error) {
 	if recipientErr := validateForwardRecipients(forwardTo); recipientErr != nil {
 		return PublicIdentity{}, recipientErr
@@ -317,12 +292,7 @@ func (repository *Repository) UpdateForwardingForScope(ctx context.Context, scop
 	return publicIdentity(record), nil
 }
 
-// Rotate replaces credentials for an active identity.
-func (repository *Repository) Rotate(ctx context.Context, identityID string) (PublicIdentity, string, error) {
-	return repository.RotateForScope(ctx, AccessScope{Admin: true}, identityID)
-}
-
-// RotateForScope replaces credentials for an active identity visible to the owner scope.
+// RotateForScope replaces credentials for an active tenant identity.
 func (repository *Repository) RotateForScope(ctx context.Context, scope AccessScope, identityID string) (PublicIdentity, string, error) {
 	record, fetchErr := repository.requireIdentityForScope(ctx, scope, identityID)
 	if fetchErr != nil {
@@ -343,12 +313,7 @@ func (repository *Repository) RotateForScope(ctx context.Context, scope AccessSc
 	return publicIdentity(record), password, nil
 }
 
-// Delete disables an identity so it can no longer authenticate.
-func (repository *Repository) Delete(ctx context.Context, identityID string) error {
-	return repository.DeleteForScope(ctx, AccessScope{Admin: true}, identityID)
-}
-
-// DeleteForScope disables an identity visible to the owner scope so it can no longer authenticate.
+// DeleteForScope disables a tenant identity so it can no longer authenticate.
 func (repository *Repository) DeleteForScope(ctx context.Context, scope AccessScope, identityID string) error {
 	record, fetchErr := repository.requireIdentityForScope(ctx, scope, identityID)
 	if fetchErr != nil {
@@ -380,7 +345,7 @@ func (repository *Repository) ResolveForwarding(ctx context.Context, address Add
 	if len(record.ForwardTo) == 0 {
 		return Address{}, nil, false, nil
 	}
-	if domainErr := repository.requireSenderDomainForIdentity(ctx, record.OwnerEmail, address.Domain()); domainErr != nil {
+	if domainErr := repository.requireSenderDomainForIdentity(ctx, record.TenantID, address.Domain()); domainErr != nil {
 		if errors.Is(domainErr, ErrSenderDomainNotAllowed) {
 			return Address{}, nil, false, nil
 		}
@@ -417,7 +382,7 @@ func (repository *Repository) Authenticate(ctx context.Context, username string,
 	if addressErr != nil {
 		return AuthenticatedIdentity{}, fmt.Errorf("smtp identity auth: stored address: %w", addressErr)
 	}
-	if domainErr := repository.requireSenderDomainForIdentity(ctx, record.OwnerEmail, address.Domain()); domainErr != nil {
+	if domainErr := repository.requireSenderDomainForIdentity(ctx, record.TenantID, address.Domain()); domainErr != nil {
 		if errors.Is(domainErr, ErrSenderDomainNotAllowed) {
 			return AuthenticatedIdentity{}, ErrAuthenticationFailed
 		}
@@ -459,10 +424,7 @@ func (repository *Repository) requireIdentityForScope(ctx context.Context, scope
 	normalizedIdentityID := strings.TrimSpace(identityID)
 	var record Identity
 	query := repository.db.WithContext(ctx).
-		Where(&Identity{ID: normalizedIdentityID, Status: IdentityStatusActive})
-	if !scope.Admin {
-		query = query.Where(clause.Eq{Column: clause.Column{Name: ownerEmailColumn}, Value: normalizeOwnerEmail(scope.OwnerEmail)})
-	}
+		Where(&Identity{ID: normalizedIdentityID, TenantID: scope.TenantID, Status: IdentityStatusActive})
 	err := query.
 		First(&record).Error
 	if err != nil {
@@ -475,33 +437,10 @@ func (repository *Repository) requireIdentityForScope(ctx context.Context, scope
 }
 
 func (repository *Repository) requireSenderDomainForScope(ctx context.Context, scope AccessScope, domain string) error {
-	ownerEmail := normalizeOwnerEmail(scope.OwnerEmail)
 	normalizedDomain := strings.ToLower(strings.TrimSpace(domain))
 	var domainRecord SenderDomain
 	query := repository.db.WithContext(ctx).
-		Where(clause.Eq{Column: clause.Column{Name: "domain"}, Value: normalizedDomain})
-	if scope.Admin {
-		query = query.Where(
-			clause.Or(
-				clause.And(
-					clause.Eq{Column: clause.Column{Name: ownerEmailColumn}, Value: ownerEmail},
-					clause.Eq{Column: clause.Column{Name: statusColumn}, Value: senderDomainVerifiedStatus},
-				),
-				clause.And(
-					clause.Eq{Column: clause.Column{Name: ownerEmailColumn}, Value: ""},
-					clause.Or(
-						clause.Eq{Column: clause.Column{Name: statusColumn}, Value: senderDomainVerifiedStatus},
-						clause.Eq{Column: clause.Column{Name: statusColumn}, Value: ""},
-					),
-				),
-			),
-		)
-	} else {
-		query = query.Where(clause.And(
-			clause.Eq{Column: clause.Column{Name: ownerEmailColumn}, Value: ownerEmail},
-			clause.Eq{Column: clause.Column{Name: statusColumn}, Value: senderDomainVerifiedStatus},
-		))
-	}
+		Where(&SenderDomain{TenantID: scope.TenantID, Domain: normalizedDomain, Status: SenderDomainStatusVerified})
 	err := query.
 		First(&domainRecord).Error
 	if err != nil {
@@ -513,8 +452,8 @@ func (repository *Repository) requireSenderDomainForScope(ctx context.Context, s
 	return nil
 }
 
-func (repository *Repository) requireSenderDomainForIdentity(ctx context.Context, ownerEmail string, domain string) error {
-	return repository.requireSenderDomainForScope(ctx, AccessScope{OwnerEmail: ownerEmail, Admin: true}, domain)
+func (repository *Repository) requireSenderDomainForIdentity(ctx context.Context, tenantID string, domain string) error {
+	return repository.requireSenderDomainForScope(ctx, AccessScope{TenantID: tenantID}, domain)
 }
 
 func validateForwardRecipients(forwardTo []Address) error {

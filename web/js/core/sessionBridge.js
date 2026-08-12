@@ -110,12 +110,15 @@ export function createSessionBridge() {
   const handleHeaderUnauthenticated = () => {
     clearUnauthenticatedSettleTimer();
     unauthenticatedSettleTimer = setTimeout(() => {
-      const snapshot = readSharedShellSnapshot();
-      if (statusFromSnapshot(snapshot) === 'authenticated') {
-        handleHeaderAuthenticated({ detail: { profile: profileFromSnapshot(snapshot) } });
-        return;
-      }
-      resolveUnauthenticated();
+	  Promise.resolve(readAuthSnapshot())
+		.then((snapshot) => {
+		  if (statusFromSnapshot(snapshot) === 'authenticated') {
+			handleHeaderAuthenticated({ detail: { profile: profileFromSnapshot(snapshot) } });
+			return;
+		  }
+		  resolveUnauthenticated();
+		})
+		.catch(resolveUnauthenticated);
     }, AUTH_UNAUTHENTICATED_SETTLE_MS);
   };
 
@@ -195,54 +198,22 @@ export function createSessionBridge() {
       return true;
     }
     if (status === 'unauthenticated') {
-      handleHeaderUnauthenticated();
+	  resolveUnauthenticated();
       return true;
     }
     return false;
   };
 
-  const readSharedShellSnapshot = () => {
-    const header = document.querySelector('mpr-header');
-    if (!header) {
-      return null;
-    }
-    const userMenu = header.querySelector('[data-mpr-header="user-menu"]');
-    const status = (
-      userMenu?.getAttribute('data-mpr-user-status') ||
-      header.getAttribute('data-mpr-auth-status') ||
-      ''
-    ).trim();
-    if (status === 'unauthenticated') {
-      return { status };
-    }
-    if (status !== 'authenticated') {
-      return null;
-    }
-    return {
-      status,
-      profile: {
-        user_email:
-          header.getAttribute('data-user-email') ||
-          userMenu?.getAttribute('data-user-email') ||
-          '',
-        user_display_name:
-          header.getAttribute('data-user-display') ||
-          userMenu?.getAttribute('data-user-display') ||
-          '',
-        user_avatar_url:
-          header.getAttribute('data-user-avatar-url') ||
-          userMenu?.getAttribute('data-user-avatar-url') ||
-          '',
-      },
-    };
-  };
-
   const readAuthSnapshot = () => {
+    const eventSnapshot = window.__PINGUIN_AUTH_EVENT_SNAPSHOT__;
+    if (eventSnapshot && typeof eventSnapshot === 'object') {
+      return eventSnapshot;
+    }
     const namespace = window.MPRUI;
     if (namespace && typeof namespace.resolveAuthProfileSnapshot === 'function') {
       return namespace.resolveAuthProfileSnapshot(getAuthSnapshotTarget());
     }
-    return readSharedShellSnapshot();
+	return null;
   };
 
   const applyAuthSnapshotResult = (snapshotResult) => {

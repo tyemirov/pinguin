@@ -50,7 +50,7 @@ test.describe('Compact MPR UX review regressions', () => {
     page,
   }) => {
     let cancellationRequests = 0;
-    await page.route(/\/api\/notifications\/notif-1\/cancel\?/, async (route) => {
+    await page.route(/\/api\/tenants\/[^/]+\/notifications\/notif-1$/, async (route) => {
       cancellationRequests += 1;
       await new Promise((resolve) => setTimeout(resolve, DESTRUCTIVE_REQUEST_DELAY_MS));
       await route.continue();
@@ -91,7 +91,7 @@ test.describe('Compact MPR UX review regressions', () => {
       ],
     });
     let deletionRequests = 0;
-    await page.route(/\/api\/smtp-identities\/smtp-id-1$/, async (route) => {
+    await page.route(/\/api\/tenants\/[^/]+\/smtp-identities\/smtp-id-1$/, async (route) => {
       deletionRequests += 1;
       await new Promise((resolve) => setTimeout(resolve, DESTRUCTIVE_REQUEST_DELAY_MS));
       await route.continue();

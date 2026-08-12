@@ -9,13 +9,13 @@ import (
 func TestServiceWrapsRepositoryWorkflows(t *testing.T) {
 	repository, database := newIdentityRepository(t)
 	seedSenderDomain(t, database, "example.com")
-	service := NewService(repository, PublicSettings{
+	service := NewService(repository.Repository, PublicSettings{
 		Host:         "smtp.example.com",
 		Port:         587,
 		SecurityMode: "starttls",
 	})
 
-	created, createErr := service.Create(context.Background(), mustAddress(t, "alice@example.com"), defaultForwardRecipients(t))
+	created, createErr := service.CreateForScope(context.Background(), AccessScope{TenantID: defaultTestTenantID}, mustAddress(t, "alice@example.com"), defaultForwardRecipients(t))
 	if createErr != nil {
 		t.Fatalf("create identity: %v", createErr)
 	}
@@ -26,14 +26,14 @@ func TestServiceWrapsRepositoryWorkflows(t *testing.T) {
 		t.Fatalf("unexpected public settings %+v", created.SMTPSettings)
 	}
 
-	identities, listErr := service.List(context.Background())
+	identities, listErr := service.ListForScope(context.Background(), AccessScope{TenantID: defaultTestTenantID})
 	if listErr != nil {
 		t.Fatalf("list identities: %v", listErr)
 	}
 	if len(identities) != 1 {
 		t.Fatalf("expected one identity, got %d", len(identities))
 	}
-	retrieved, credentialsErr := service.Credentials(context.Background(), " "+created.Identity.ID+" ")
+	retrieved, credentialsErr := service.CredentialsForScope(context.Background(), AccessScope{TenantID: defaultTestTenantID}, " "+created.Identity.ID+" ")
 	if credentialsErr != nil {
 		t.Fatalf("retrieve credentials: %v", credentialsErr)
 	}
@@ -41,7 +41,7 @@ func TestServiceWrapsRepositoryWorkflows(t *testing.T) {
 		t.Fatalf("unexpected retrieved credentials: %+v", retrieved)
 	}
 
-	updated, updateErr := service.UpdateForwarding(context.Background(), " "+created.Identity.ID+" ", []Address{mustAddress(t, "maria@example.com")})
+	updated, updateErr := service.UpdateForwardingForScope(context.Background(), AccessScope{TenantID: defaultTestTenantID}, " "+created.Identity.ID+" ", []Address{mustAddress(t, "maria@example.com")})
 	if updateErr != nil {
 		t.Fatalf("update forwarding: %v", updateErr)
 	}
@@ -49,7 +49,7 @@ func TestServiceWrapsRepositoryWorkflows(t *testing.T) {
 		t.Fatalf("unexpected forwarding update: %+v", updated.ForwardTo)
 	}
 
-	rotated, rotateErr := service.Rotate(context.Background(), " "+created.Identity.ID+" ")
+	rotated, rotateErr := service.RotateForScope(context.Background(), AccessScope{TenantID: defaultTestTenantID}, " "+created.Identity.ID+" ")
 	if rotateErr != nil {
 		t.Fatalf("rotate identity: %v", rotateErr)
 	}
@@ -57,28 +57,28 @@ func TestServiceWrapsRepositoryWorkflows(t *testing.T) {
 		t.Fatalf("expected rotated password to change")
 	}
 
-	if deleteErr := service.Delete(context.Background(), " "+created.Identity.ID+" "); deleteErr != nil {
+	if deleteErr := service.DeleteForScope(context.Background(), AccessScope{TenantID: defaultTestTenantID}, " "+created.Identity.ID+" "); deleteErr != nil {
 		t.Fatalf("delete identity: %v", deleteErr)
 	}
 }
 
 func TestServicePropagatesRepositoryErrors(t *testing.T) {
 	repository, _ := newIdentityRepository(t)
-	service := NewService(repository, PublicSettings{})
+	service := NewService(repository.Repository, PublicSettings{})
 
-	if _, createErr := service.Create(context.Background(), mustAddress(t, "alice@example.com"), defaultForwardRecipients(t)); createErr == nil {
+	if _, createErr := service.CreateForScope(context.Background(), AccessScope{TenantID: defaultTestTenantID}, mustAddress(t, "alice@example.com"), defaultForwardRecipients(t)); createErr == nil {
 		t.Fatalf("expected create error without sender domain")
 	}
-	if _, rotateErr := service.Rotate(context.Background(), "missing"); rotateErr == nil {
+	if _, rotateErr := service.RotateForScope(context.Background(), AccessScope{TenantID: defaultTestTenantID}, "missing"); rotateErr == nil {
 		t.Fatalf("expected rotate error")
 	}
-	if _, credentialsErr := service.Credentials(context.Background(), "missing"); credentialsErr == nil {
+	if _, credentialsErr := service.CredentialsForScope(context.Background(), AccessScope{TenantID: defaultTestTenantID}, "missing"); credentialsErr == nil {
 		t.Fatalf("expected credentials error")
 	}
-	if _, updateErr := service.UpdateForwarding(context.Background(), "missing", defaultForwardRecipients(t)); updateErr == nil {
+	if _, updateErr := service.UpdateForwardingForScope(context.Background(), AccessScope{TenantID: defaultTestTenantID}, "missing", defaultForwardRecipients(t)); updateErr == nil {
 		t.Fatalf("expected update forwarding error")
 	}
-	if deleteErr := service.Delete(context.Background(), "missing"); deleteErr == nil {
+	if deleteErr := service.DeleteForScope(context.Background(), AccessScope{TenantID: defaultTestTenantID}, "missing"); deleteErr == nil {
 		t.Fatalf("expected delete error")
 	}
 }
@@ -86,12 +86,12 @@ func TestServicePropagatesRepositoryErrors(t *testing.T) {
 func TestServiceChecksSenderDomainDNS(t *testing.T) {
 	repository, _ := newIdentityRepository(t)
 	resolver := serviceFakeDNSResolver{}
-	service := NewServiceWithDNSResolver(repository, PublicSettings{
+	service := NewServiceWithDNSResolver(repository.Repository, PublicSettings{
 		Host:         "smtp.example.com",
 		Port:         465,
 		SecurityMode: "ssl",
 	}, resolver)
-	scope := AccessScope{OwnerEmail: "member@example.com"}
+	scope := AccessScope{TenantID: "member@example.com"}
 
 	created, createErr := service.CreateSenderDomain(context.Background(), scope, "Customer.Example")
 	if createErr != nil {
@@ -136,12 +136,12 @@ func TestServiceReportsMismatchedSenderDomainDNS(t *testing.T) {
 	}
 	repository, _ := newIdentityRepository(t)
 	resolver := serviceFakeDNSResolver{}
-	service := NewServiceWithDNSResolver(repository, PublicSettings{
+	service := NewServiceWithDNSResolver(repository.Repository, PublicSettings{
 		Host:         "smtp.example.com",
 		Port:         465,
 		SecurityMode: "ssl",
 	}, resolver)
-	scope := AccessScope{OwnerEmail: "member@example.com"}
+	scope := AccessScope{TenantID: "member@example.com"}
 
 	created, createErr := service.CreateSenderDomain(context.Background(), scope, "customer.example")
 	if createErr != nil {
@@ -172,12 +172,12 @@ func TestServiceReportsMismatchedSenderDomainDNS(t *testing.T) {
 
 func TestServiceScopedWorkflows(t *testing.T) {
 	repository, database := newIdentityRepository(t)
-	service := NewService(repository, PublicSettings{
+	service := NewService(repository.Repository, PublicSettings{
 		Host:         "smtp.example.com",
 		Port:         587,
 		SecurityMode: "starttls",
 	})
-	scope := AccessScope{OwnerEmail: "member@example.com"}
+	scope := AccessScope{TenantID: "member@example.com"}
 	domain, domainErr := repository.CreateSenderDomainForScope(context.Background(), scope, "customer.example")
 	if domainErr != nil {
 		t.Fatalf("create sender domain: %v", domainErr)
@@ -242,12 +242,12 @@ func TestServiceScopedWorkflows(t *testing.T) {
 
 func TestServiceScopedWorkflowErrors(t *testing.T) {
 	repository, database := newIdentityRepository(t)
-	service := NewService(repository, PublicSettings{
+	service := NewService(repository.Repository, PublicSettings{
 		Host:         "smtp.example.com",
 		Port:         587,
 		SecurityMode: "starttls",
 	})
-	scope := AccessScope{OwnerEmail: "member@example.com"}
+	scope := AccessScope{TenantID: "member@example.com"}
 
 	if _, err := service.CredentialsForScope(context.Background(), scope, "missing"); err == nil {
 		t.Fatalf("expected scoped credentials error")

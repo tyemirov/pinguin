@@ -34,8 +34,7 @@ func NewRootCommand(dependencies Dependencies) *cobra.Command {
 	}
 
 	root.PersistentFlags().String("grpc-server-addr", "localhost:50051", "Target gRPC endpoint")
-	root.PersistentFlags().String("grpc-auth-token", "", "Bearer token used for gRPC authentication")
-	root.PersistentFlags().String("tenant-id", "", "Tenant identifier used for requests")
+	root.PersistentFlags().String("api-key", "", "Tenant API key used for gRPC authentication")
 	root.PersistentFlags().Int("connection-timeout-sec", 5, "Dial timeout in seconds")
 	root.PersistentFlags().Int("operation-timeout-sec", 30, "Per-command timeout in seconds")
 	root.PersistentFlags().String("log-level", "INFO", "CLI log level (DEBUG, INFO, WARN, ERROR)")
@@ -65,21 +64,12 @@ func buildSendCommand(dependencies Dependencies) *cobra.Command {
 				return err
 			}
 
-			authToken, err := valueOrConfig(cmd, "grpc-auth-token", configDefaults.AuthToken())
+			apiKey, err := valueOrConfig(cmd, "api-key", configDefaults.APIKey())
 			if err != nil {
 				return err
 			}
-			if strings.TrimSpace(authToken) == "" {
-				return fmt.Errorf("grpc-auth-token is required")
-			}
-
-			tenantID, err := valueOrConfig(cmd, "tenant-id", configDefaults.TenantID())
-			if err != nil {
-				return err
-			}
-			tenantID = strings.TrimSpace(tenantID)
-			if tenantID == "" {
-				return fmt.Errorf("tenant-id is required")
+			if strings.TrimSpace(apiKey) == "" {
+				return fmt.Errorf("api-key is required")
 			}
 
 			connectionTimeoutSec, err := intOrConfig(cmd, "connection-timeout-sec", configDefaults.ConnectionTimeoutSeconds())
@@ -96,7 +86,7 @@ func buildSendCommand(dependencies Dependencies) *cobra.Command {
 				return err
 			}
 
-			settings, err := client.NewSettings(serverAddress, authToken, tenantID, connectionTimeoutSec, operationTimeoutSec)
+			settings, err := client.NewSettings(serverAddress, apiKey, connectionTimeoutSec, operationTimeoutSec)
 			if err != nil {
 				return fmt.Errorf("invalid client settings: %w", err)
 			}
@@ -143,7 +133,6 @@ func buildSendCommand(dependencies Dependencies) *cobra.Command {
 			}
 
 			request := &grpcapi.NotificationRequest{
-				TenantId:         tenantID,
 				NotificationType: notificationType,
 				Recipient:        recipient,
 				Subject:          subject,

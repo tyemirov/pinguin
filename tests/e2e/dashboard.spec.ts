@@ -48,6 +48,13 @@ test.describe('Authenticated pages', () => {
     await expectSharedHeaderSignInButton(page);
   });
 
+  test('redirects guests from tenant management to the landing page', async ({ page }) => {
+    await configureRuntime(page, { authenticated: false });
+    await page.goto('/tenants.html');
+    await expect(page).toHaveURL(LANDING_URL_PATTERN);
+    await expectSharedHeaderSignInButton(page);
+  });
+
   test('shows Pinguin logo brand and favicon on the event log page', async ({ page }) => {
     await configureRuntime(page, { authenticated: true });
     await page.goto('/event-log.html');
@@ -56,7 +63,7 @@ test.describe('Authenticated pages', () => {
     await expect(page.getByRole('button', { name: 'Refresh' })).toHaveCount(1);
   });
 
-  test('renders event log and SMTP relay as separate authenticated pages', async ({ page }) => {
+  test('renders tenant management, event log, and SMTP relay as separate authenticated pages', async ({ page }) => {
     await configureRuntime(page, { authenticated: true });
     await page.goto('/event-log.html');
     const workspaceNavigation = page
@@ -64,11 +71,12 @@ test.describe('Authenticated pages', () => {
       .getByRole('navigation', { name: 'Primary navigation' });
     await expect(workspaceNavigation).toBeVisible();
     const menuLinks = workspaceNavigation.locator('.workspace-navigation__link');
-    await expect(menuLinks).toHaveText(['Event log', 'SMTP relay']);
-    await expect(menuLinks.nth(0)).toHaveAttribute('href', '/event-log.html');
-    await expect(menuLinks.nth(1)).toHaveAttribute('href', '/smtp-relay.html');
+    await expect(menuLinks).toHaveText(['Tenants', 'Event log', 'SMTP relay']);
+    await expect(menuLinks.nth(0)).toHaveAttribute('href', '/tenants.html');
+    await expect(menuLinks.nth(1)).toHaveAttribute('href', '/event-log.html');
+    await expect(menuLinks.nth(2)).toHaveAttribute('href', '/smtp-relay.html');
     await expect(page.getByRole('heading', { name: 'Event log' })).toBeVisible();
-    await expect(menuLinks.nth(0)).toHaveAttribute('aria-current', 'page');
+    await expect(menuLinks.nth(1)).toHaveAttribute('aria-current', 'page');
     await expect(page.getByTestId('notifications-list')).toBeVisible();
     await expect(page.locator('[data-page-surface="smtp-workspace"]')).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Pinguin dashboard' })).toHaveCount(0);
@@ -81,10 +89,11 @@ test.describe('Authenticated pages', () => {
       .locator('mpr-header')
       .getByRole('navigation', { name: 'Primary navigation' });
     await expect(smtpMenu.locator('.workspace-navigation__link')).toHaveText([
+      'Tenants',
       'Event log',
       'SMTP relay',
     ]);
-    await expect(smtpMenu.locator('.workspace-navigation__link').nth(1)).toHaveAttribute(
+    await expect(smtpMenu.locator('.workspace-navigation__link').nth(2)).toHaveAttribute(
       'aria-current',
       'page',
     );
@@ -268,10 +277,7 @@ test.describe('Authenticated pages', () => {
         },
       ],
     });
-    await configureRuntime(page, {
-      authenticated: true,
-      tenant: { id: 'tenant-alpha', displayName: 'Alpha Corp' },
-    });
+    await configureRuntime(page, { authenticated: true });
     await page.goto('/event-log.html');
     await expect(page.getByTestId('notification-row')).toHaveCount(1);
     await expect(page.getByTestId('notifications-list')).toContainText('Alpha event');
@@ -319,10 +325,7 @@ test.describe('Authenticated pages', () => {
         },
       ],
     });
-    await configureRuntime(page, {
-      authenticated: true,
-      tenant: { id: 'ps', displayName: 'PoodleScanner' },
-    });
+    await configureRuntime(page, { authenticated: true });
     await page.goto('/event-log.html');
 
     await expect(page.getByLabel('Tenant')).toHaveValue('loopaware');

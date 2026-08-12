@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -22,21 +21,23 @@ import (
 	"github.com/tyemirov/pinguin/internal/smtpidentity"
 	"github.com/tyemirov/pinguin/internal/tenant"
 	sessionvalidator "github.com/tyemirov/tauth/pkg/sessionvalidator"
-	"gopkg.in/yaml.v3"
 	"gorm.io/gorm"
 	"log/slog"
 )
 
-func ptrBool(value bool) *bool {
-	return &value
-}
+const (
+	testOwnerID       = "owner-user"
+	testTenantID      = "11111111-1111-4111-8111-111111111111"
+	testAlphaTenantID = "22222222-2222-4222-8222-222222222222"
+	testBravoTenantID = "33333333-3333-4333-8333-333333333333"
+)
 
 func TestListNotificationsRequiresAuth(t *testing.T) {
 	t.Helper()
 
 	server := newTestHTTPServer(t, &stubNotificationService{}, &stubValidator{err: errors.New("unauthorized")})
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/notifications", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/tenants/"+testTenantID+"/notifications", nil)
 
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusUnauthorized {
@@ -56,7 +57,7 @@ func TestListNotificationsReturnsData(t *testing.T) {
 	server := newTestHTTPServer(t, stubSvc, &stubValidator{})
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-test&status=queued&status=errored", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/tenants/"+testTenantID+"/notifications?status=queued&status=errored", nil)
 
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
@@ -89,7 +90,7 @@ func TestListNotificationsParsesSearchAndPagination(t *testing.T) {
 	server := newTestHTTPServer(t, stubSvc, &stubValidator{})
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-test&status=queued&q=hidden+body&limit=25&cursor="+encodedCursor, nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/tenants/"+testTenantID+"/notifications?status=queued&q=hidden+body&limit=25&cursor="+encodedCursor, nil)
 
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
@@ -127,11 +128,11 @@ func TestListNotificationsRejectsInvalidListInputs(t *testing.T) {
 		name  string
 		query string
 	}{
-		{name: "bad limit", query: "tenant_id=tenant-test&limit=not-a-number"},
-		{name: "low limit", query: "tenant_id=tenant-test&limit=0"},
-		{name: "high limit", query: "tenant_id=tenant-test&limit=101"},
-		{name: "bad cursor", query: "tenant_id=tenant-test&cursor=not-a-cursor"},
-		{name: "long search", query: "tenant_id=tenant-test&q=" + strings.Repeat("a", 201)},
+		{name: "bad limit", query: "limit=not-a-number"},
+		{name: "low limit", query: "limit=0"},
+		{name: "high limit", query: "limit=101"},
+		{name: "bad cursor", query: "cursor=not-a-cursor"},
+		{name: "long search", query: "q=" + strings.Repeat("a", 201)},
 	}
 	for _, testCase := range testCases {
 		testCase := testCase
@@ -140,7 +141,7 @@ func TestListNotificationsRejectsInvalidListInputs(t *testing.T) {
 			server := newTestHTTPServer(t, stubSvc, &stubValidator{})
 
 			recorder := httptest.NewRecorder()
-			request := httptest.NewRequest(http.MethodGet, "/api/notifications?"+testCase.query, nil)
+			request := httptest.NewRequest(http.MethodGet, "/api/tenants/"+testTenantID+"/notifications?"+testCase.query, nil)
 
 			server.httpServer.Handler.ServeHTTP(recorder, request)
 			if recorder.Code != http.StatusBadRequest {
@@ -158,6 +159,7 @@ func TestWriteNotificationListRequestErrorDefaultsBadRequest(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	contextGin, _ := gin.CreateTestContext(recorder)
+	contextGin.Request = httptest.NewRequest(http.MethodGet, "/api/tenants/"+testTenantID+"/notifications", nil)
 	writeNotificationListRequestError(contextGin, errors.New("unexpected"))
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", recorder.Code)
@@ -173,7 +175,7 @@ func TestListNotificationsUsesSelectedTenant(t *testing.T) {
 	server := newTestHTTPServer(t, stubSvc, &stubValidator{})
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-test", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/tenants/"+testTenantID+"/notifications", nil)
 	request.Host = "unknown.localhost"
 
 	server.httpServer.Handler.ServeHTTP(recorder, request)
@@ -183,12 +185,12 @@ func TestListNotificationsUsesSelectedTenant(t *testing.T) {
 	if stubSvc.listCalls != 1 || stubSvc.listAllCalls != 0 {
 		t.Fatalf("expected selected tenant list to be used, got list=%d listAll=%d", stubSvc.listCalls, stubSvc.listAllCalls)
 	}
-	if stubSvc.lastTenantID != "tenant-test" {
-		t.Fatalf("expected tenant-test, got %s", stubSvc.lastTenantID)
+	if stubSvc.lastTenantID != testTenantID {
+		t.Fatalf("expected %s, got %s", testTenantID, stubSvc.lastTenantID)
 	}
 }
 
-func TestListNotificationsRequiresTenantID(t *testing.T) {
+func TestListNotificationsRejectsGlobalRoute(t *testing.T) {
 	t.Helper()
 
 	stubSvc := &stubNotificationService{}
@@ -198,8 +200,8 @@ func TestListNotificationsRequiresTenantID(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/api/notifications", nil)
 
 	server.httpServer.Handler.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", recorder.Code)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", recorder.Code)
 	}
 	if stubSvc.listCalls != 0 {
 		t.Fatalf("expected service not to be called")
@@ -215,29 +217,29 @@ func TestListNotificationsCanSwitchTenants(t *testing.T) {
 	}
 	server := newTestHTTPServerWithRepo(t, stubSvc, &stubValidator{}, repo)
 
-	alphaReq := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-alpha", nil)
+	alphaReq := httptest.NewRequest(http.MethodGet, "/api/tenants/"+testAlphaTenantID+"/notifications", nil)
 	alphaReq.Host = "unknown.localhost"
 	alphaRec := httptest.NewRecorder()
 	server.httpServer.Handler.ServeHTTP(alphaRec, alphaReq)
 	if alphaRec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for alpha, got %d", alphaRec.Code)
 	}
-	if stubSvc.lastTenantID != "tenant-alpha" {
-		t.Fatalf("expected tenant-alpha, got %s", stubSvc.lastTenantID)
+	if stubSvc.lastTenantID != testAlphaTenantID {
+		t.Fatalf("expected alpha tenant, got %s", stubSvc.lastTenantID)
 	}
 
-	bravoReq := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-bravo", nil)
+	bravoReq := httptest.NewRequest(http.MethodGet, "/api/tenants/"+testBravoTenantID+"/notifications", nil)
 	bravoReq.Host = "unknown.localhost"
 	bravoRec := httptest.NewRecorder()
 	server.httpServer.Handler.ServeHTTP(bravoRec, bravoReq)
 	if bravoRec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for bravo, got %d", bravoRec.Code)
 	}
-	if stubSvc.lastTenantID != "tenant-bravo" {
-		t.Fatalf("expected tenant-bravo, got %s", stubSvc.lastTenantID)
+	if stubSvc.lastTenantID != testBravoTenantID {
+		t.Fatalf("expected bravo tenant, got %s", stubSvc.lastTenantID)
 	}
 
-	unknownReq := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-missing", nil)
+	unknownReq := httptest.NewRequest(http.MethodGet, "/api/tenants/44444444-4444-4444-8444-444444444444/notifications", nil)
 	unknownReq.Host = "unknown.localhost"
 	unknownRec := httptest.NewRecorder()
 	currentCalls := stubSvc.listCalls
@@ -250,76 +252,24 @@ func TestListNotificationsCanSwitchTenants(t *testing.T) {
 	}
 }
 
-func TestListNotificationsRejectsTenantOutsideUserDomain(t *testing.T) {
+func TestListNotificationsRejectsForeignOwner(t *testing.T) {
 	t.Helper()
 
 	repo := newMultiTenantRepository(t)
 	stubSvc := &stubNotificationService{
 		listResponse: []model.NotificationResponse{},
 	}
-	server := newTestHTTPServerWithRepo(t, stubSvc, &stubValidator{email: "member@alpha.localhost", roles: []string{"user"}}, repo)
-
-	allowedRecorder := httptest.NewRecorder()
-	allowedRequest := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-alpha", nil)
-	allowedRequest.Host = "unknown.localhost"
-	server.httpServer.Handler.ServeHTTP(allowedRecorder, allowedRequest)
-	if allowedRecorder.Code != http.StatusOK {
-		t.Fatalf("expected alpha access, got %d body=%s", allowedRecorder.Code, allowedRecorder.Body.String())
-	}
-	if stubSvc.lastTenantID != "tenant-alpha" {
-		t.Fatalf("expected tenant-alpha, got %s", stubSvc.lastTenantID)
-	}
+	server := newTestHTTPServerWithRepo(t, stubSvc, &stubValidator{userID: "foreign-owner"}, repo)
 
 	deniedRecorder := httptest.NewRecorder()
-	deniedRequest := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-bravo", nil)
+	deniedRequest := httptest.NewRequest(http.MethodGet, "/api/tenants/"+testBravoTenantID+"/notifications", nil)
 	deniedRequest.Host = "unknown.localhost"
-	currentCalls := stubSvc.listCalls
 	server.httpServer.Handler.ServeHTTP(deniedRecorder, deniedRequest)
-	if deniedRecorder.Code != http.StatusForbidden {
-		t.Fatalf("expected forbidden bravo access, got %d body=%s", deniedRecorder.Code, deniedRecorder.Body.String())
-	}
-	if stubSvc.listCalls != currentCalls {
-		t.Fatalf("service should not be called for unauthorized tenant")
-	}
-}
-
-func TestListNotificationsAllowsConfiguredAdminAcrossTenants(t *testing.T) {
-	t.Helper()
-
-	repo := newMultiTenantRepository(t)
-	stubSvc := &stubNotificationService{
-		listResponse: []model.NotificationResponse{},
-	}
-	server := newTestHTTPServerWithRepo(t, stubSvc, &stubValidator{email: "admin@ops.localhost", roles: []string{"user"}}, repo)
-
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-bravo", nil)
-	request.Host = "unknown.localhost"
-	server.httpServer.Handler.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected configured admin access, got %d body=%s", recorder.Code, recorder.Body.String())
-	}
-	if stubSvc.lastTenantID != "tenant-bravo" {
-		t.Fatalf("expected tenant-bravo, got %s", stubSvc.lastTenantID)
-	}
-}
-
-func TestListNotificationsRejectsSessionWithoutEmailDomain(t *testing.T) {
-	t.Helper()
-
-	repo := newMultiTenantRepository(t)
-	stubSvc := &stubNotificationService{}
-	server := newTestHTTPServerWithRepo(t, stubSvc, &stubValidator{email: "member", roles: []string{"user"}}, repo)
-
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-alpha", nil)
-	request.Host = "unknown.localhost"
-	server.httpServer.Handler.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusForbidden {
-		t.Fatalf("expected forbidden, got %d body=%s", recorder.Code, recorder.Body.String())
+	if deniedRecorder.Code != http.StatusNotFound {
+		t.Fatalf("expected hidden foreign tenant, got %d body=%s", deniedRecorder.Code, deniedRecorder.Body.String())
 	}
 	if stubSvc.listCalls != 0 {
-		t.Fatalf("service should not be called")
+		t.Fatalf("service should not be called for unauthorized tenant")
 	}
 }
 
@@ -331,7 +281,7 @@ func TestListNotificationsReportsTenantAuthorizationStorageError(t *testing.T) {
 	server := newTestHTTPServerWithRepo(t, stubSvc, &stubValidator{email: "member@example.com", roles: []string{"user"}}, repo)
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-alpha", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/tenants/"+testAlphaTenantID+"/notifications", nil)
 	request.Host = "unknown.localhost"
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusInternalServerError {
@@ -342,31 +292,12 @@ func TestListNotificationsReportsTenantAuthorizationStorageError(t *testing.T) {
 	}
 }
 
-func TestListNotificationsReportsDomainAuthorizationStorageError(t *testing.T) {
-	t.Helper()
-
-	repo := newTenantRepositoryWithoutDomains(t)
-	stubSvc := &stubNotificationService{}
-	server := newTestHTTPServerWithRepo(t, stubSvc, &stubValidator{email: "member@example.com", roles: []string{"user"}}, repo)
-
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-alpha", nil)
-	request.Host = "unknown.localhost"
-	server.httpServer.Handler.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusInternalServerError {
-		t.Fatalf("expected internal server error, got %d body=%s", recorder.Code, recorder.Body.String())
-	}
-	if stubSvc.listCalls != 0 {
-		t.Fatalf("service should not be called")
-	}
-}
-
-func TestNotificationMutationsRejectTenantOutsideUserDomain(t *testing.T) {
+func TestNotificationMutationsRejectForeignOwner(t *testing.T) {
 	t.Helper()
 
 	repo := newMultiTenantRepository(t)
 	stubSvc := &stubNotificationService{}
-	server := newTestHTTPServerWithRepo(t, stubSvc, &stubValidator{email: "member@alpha.localhost", roles: []string{"user"}}, repo)
+	server := newTestHTTPServerWithRepo(t, stubSvc, &stubValidator{userID: "foreign-owner"}, repo)
 	scheduledTime := time.Now().UTC().Add(5 * time.Minute).Format(time.RFC3339)
 	testCases := []struct {
 		name   string
@@ -377,13 +308,14 @@ func TestNotificationMutationsRejectTenantOutsideUserDomain(t *testing.T) {
 		{
 			name:   "reschedule",
 			method: http.MethodPatch,
-			path:   "/api/notifications/notif-1/schedule?tenant_id=tenant-bravo",
+			path:   "/api/tenants/" + testBravoTenantID + "/notifications/notif-1",
 			body:   fmt.Sprintf(`{"scheduled_time":"%s"}`, scheduledTime),
 		},
 		{
 			name:   "cancel",
-			method: http.MethodPost,
-			path:   "/api/notifications/notif-1/cancel?tenant_id=tenant-bravo",
+			method: http.MethodPatch,
+			path:   "/api/tenants/" + testBravoTenantID + "/notifications/notif-1",
+			body:   `{"status":"cancelled"}`,
 		},
 	}
 	for _, testCase := range testCases {
@@ -394,8 +326,8 @@ func TestNotificationMutationsRejectTenantOutsideUserDomain(t *testing.T) {
 			request.Host = "unknown.localhost"
 			request.Header.Set("Content-Type", "application/json")
 			server.httpServer.Handler.ServeHTTP(recorder, request)
-			if recorder.Code != http.StatusForbidden {
-				t.Fatalf("expected forbidden, got %d body=%s", recorder.Code, recorder.Body.String())
+			if recorder.Code != http.StatusNotFound {
+				t.Fatalf("expected hidden foreign tenant, got %d body=%s", recorder.Code, recorder.Body.String())
 			}
 		})
 	}
@@ -419,7 +351,7 @@ func TestListTenantsReturnsActiveTenants(t *testing.T) {
 		t.Fatalf("expected 200, got %d body=%s", recorder.Code, recorder.Body.String())
 	}
 	var payload struct {
-		Tenants []runtimeConfigTenant `json:"tenants"`
+		Tenants []tenant.Resource `json:"tenants"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode tenants: %v", err)
@@ -427,16 +359,16 @@ func TestListTenantsReturnsActiveTenants(t *testing.T) {
 	if len(payload.Tenants) != 2 {
 		t.Fatalf("expected 2 tenants, got %d", len(payload.Tenants))
 	}
-	if payload.Tenants[0].ID != "tenant-alpha" || payload.Tenants[1].ID != "tenant-bravo" {
+	if payload.Tenants[0].ID != testAlphaTenantID || payload.Tenants[1].ID != testBravoTenantID {
 		t.Fatalf("unexpected tenants %+v", payload.Tenants)
 	}
 }
 
-func TestListTenantsFiltersByUserDomain(t *testing.T) {
+func TestListTenantsFiltersByOwnerUserID(t *testing.T) {
 	t.Helper()
 
 	repo := newMultiTenantRepository(t)
-	server := newTestHTTPServerWithRepo(t, &stubNotificationService{}, &stubValidator{email: "member@bravo.localhost", roles: []string{"user"}}, repo)
+	server := newTestHTTPServerWithRepo(t, &stubNotificationService{}, &stubValidator{userID: "foreign-owner"}, repo)
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/tenants", nil)
@@ -447,21 +379,21 @@ func TestListTenantsFiltersByUserDomain(t *testing.T) {
 		t.Fatalf("expected 200, got %d body=%s", recorder.Code, recorder.Body.String())
 	}
 	var payload struct {
-		Tenants []runtimeConfigTenant `json:"tenants"`
+		Tenants []tenant.Resource `json:"tenants"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode tenants: %v", err)
 	}
-	if len(payload.Tenants) != 1 || payload.Tenants[0].ID != "tenant-bravo" {
+	if len(payload.Tenants) != 0 {
 		t.Fatalf("unexpected tenants %+v", payload.Tenants)
 	}
 }
 
-func TestListTenantsAllowsConfiguredAdmin(t *testing.T) {
+func TestListTenantsDoesNotElevateRoleAcrossOwners(t *testing.T) {
 	t.Helper()
 
 	repo := newMultiTenantRepository(t)
-	server := newTestHTTPServerWithRepo(t, &stubNotificationService{}, &stubValidator{email: "admin@ops.localhost", roles: []string{"user"}}, repo)
+	server := newTestHTTPServerWithRepo(t, &stubNotificationService{}, &stubValidator{userID: "foreign-owner", roles: []string{"admin"}}, repo)
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/tenants", nil)
@@ -472,17 +404,17 @@ func TestListTenantsAllowsConfiguredAdmin(t *testing.T) {
 		t.Fatalf("expected 200, got %d body=%s", recorder.Code, recorder.Body.String())
 	}
 	var payload struct {
-		Tenants []runtimeConfigTenant `json:"tenants"`
+		Tenants []tenant.Resource `json:"tenants"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode tenants: %v", err)
 	}
-	if len(payload.Tenants) != 2 {
-		t.Fatalf("expected all tenants for configured admin, got %+v", payload.Tenants)
+	if len(payload.Tenants) != 0 {
+		t.Fatalf("expected owner-only tenant list, got %+v", payload.Tenants)
 	}
 }
 
-func TestListTenantsRejectsSessionWithoutEmailDomain(t *testing.T) {
+func TestListTenantsUsesUserIDWithoutEmail(t *testing.T) {
 	t.Helper()
 
 	repo := newMultiTenantRepository(t)
@@ -493,8 +425,8 @@ func TestListTenantsRejectsSessionWithoutEmailDomain(t *testing.T) {
 	request.Host = "unknown.localhost"
 
 	server.httpServer.Handler.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusForbidden {
-		t.Fatalf("expected forbidden, got %d body=%s", recorder.Code, recorder.Body.String())
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected owner list, got %d body=%s", recorder.Code, recorder.Body.String())
 	}
 }
 
@@ -528,27 +460,14 @@ func TestListTenantsReportsRepositoryError(t *testing.T) {
 	}
 }
 
-func TestListTenantsReportsDomainRepositoryError(t *testing.T) {
-	t.Helper()
-	repo := newClosedTenantRepository(t)
-	server := newTestHTTPServerWithRepo(t, &stubNotificationService{}, &stubValidator{email: "member@example.com", roles: []string{"user"}}, repo)
-
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/tenants", nil)
-
-	server.httpServer.Handler.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d", recorder.Code)
-	}
-}
-
 func TestSMTPIdentityLifecycle(t *testing.T) {
 	server, identityRepo := newTestHTTPServerWithSMTPIdentities(t)
 
 	createRecorder := httptest.NewRecorder()
 	createBody := bytes.NewBufferString(`{"email_address":"alice@example.com","forward_to":["owner@example.com"]}`)
-	createRequest := httptest.NewRequest(http.MethodPost, "/api/smtp-identities", createBody)
+	createRequest := httptest.NewRequest(http.MethodPost, "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities", createBody)
 	createRequest.Host = "example.com"
+	createRequest.Header.Set("Content-Type", "application/json")
 	server.httpServer.Handler.ServeHTTP(createRecorder, createRequest)
 	if createRecorder.Code != http.StatusCreated {
 		t.Fatalf("expected create 201, got %d body=%s", createRecorder.Code, createRecorder.Body.String())
@@ -565,7 +484,7 @@ func TestSMTPIdentityLifecycle(t *testing.T) {
 	}
 
 	listRecorder := httptest.NewRecorder()
-	listRequest := httptest.NewRequest(http.MethodGet, "/api/smtp-identities", nil)
+	listRequest := httptest.NewRequest(http.MethodGet, "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities", nil)
 	listRequest.Host = "example.com"
 	server.httpServer.Handler.ServeHTTP(listRecorder, listRequest)
 	if listRecorder.Code != http.StatusOK {
@@ -576,7 +495,7 @@ func TestSMTPIdentityLifecycle(t *testing.T) {
 	}
 
 	credentialsRecorder := httptest.NewRecorder()
-	credentialsPath := fmt.Sprintf("/api/smtp-identities/%s/credentials", createPayload.Identity.ID)
+	credentialsPath := fmt.Sprintf("/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities/%s/credential", createPayload.Identity.ID)
 	credentialsRequest := httptest.NewRequest(http.MethodGet, credentialsPath, nil)
 	credentialsRequest.Host = "example.com"
 	server.httpServer.Handler.ServeHTTP(credentialsRecorder, credentialsRequest)
@@ -592,7 +511,7 @@ func TestSMTPIdentityLifecycle(t *testing.T) {
 	}
 
 	updateRecorder := httptest.NewRecorder()
-	updatePath := fmt.Sprintf("/api/smtp-identities/%s/forwarding", createPayload.Identity.ID)
+	updatePath := fmt.Sprintf("/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities/%s", createPayload.Identity.ID)
 	updateRequest := httptest.NewRequest(http.MethodPatch, updatePath, strings.NewReader(`{"forward_to":["maria@example.com","owner@example.com"]}`))
 	updateRequest.Host = "example.com"
 	updateRequest.Header.Set("Content-Type", "application/json")
@@ -609,8 +528,8 @@ func TestSMTPIdentityLifecycle(t *testing.T) {
 	}
 
 	rotateRecorder := httptest.NewRecorder()
-	rotatePath := fmt.Sprintf("/api/smtp-identities/%s/rotate", createPayload.Identity.ID)
-	rotateRequest := httptest.NewRequest(http.MethodPost, rotatePath, nil)
+	rotatePath := fmt.Sprintf("/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities/%s/credential", createPayload.Identity.ID)
+	rotateRequest := httptest.NewRequest(http.MethodPut, rotatePath, nil)
 	rotateRequest.Host = "example.com"
 	server.httpServer.Handler.ServeHTTP(rotateRecorder, rotateRequest)
 	if rotateRecorder.Code != http.StatusOK {
@@ -625,7 +544,7 @@ func TestSMTPIdentityLifecycle(t *testing.T) {
 	}
 
 	deleteRecorder := httptest.NewRecorder()
-	deletePath := fmt.Sprintf("/api/smtp-identities/%s", createPayload.Identity.ID)
+	deletePath := fmt.Sprintf("/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities/%s", createPayload.Identity.ID)
 	deleteRequest := httptest.NewRequest(http.MethodDelete, deletePath, nil)
 	deleteRequest.Host = "example.com"
 	server.httpServer.Handler.ServeHTTP(deleteRecorder, deleteRequest)
@@ -646,7 +565,7 @@ func TestSMTPIdentityRoutesAllowAuthenticatedDomainVerification(t *testing.T) {
 	}, resolver, false)
 
 	blockedRecorder := httptest.NewRecorder()
-	blockedRequest := httptest.NewRequest(http.MethodPost, "/api/smtp-identities", strings.NewReader(`{"email_address":"alice@example.com","forward_to":["owner@example.com"]}`))
+	blockedRequest := httptest.NewRequest(http.MethodPost, "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities", strings.NewReader(`{"email_address":"alice@example.com","forward_to":["owner@example.com"]}`))
 	blockedRequest.Host = "example.com"
 	blockedRequest.Header.Set("Content-Type", "application/json")
 	server.httpServer.Handler.ServeHTTP(blockedRecorder, blockedRequest)
@@ -655,7 +574,7 @@ func TestSMTPIdentityRoutesAllowAuthenticatedDomainVerification(t *testing.T) {
 	}
 
 	createDomainRecorder := httptest.NewRecorder()
-	createDomainRequest := httptest.NewRequest(http.MethodPost, "/api/smtp-domains", strings.NewReader(`{"domain":"example.com"}`))
+	createDomainRequest := httptest.NewRequest(http.MethodPost, "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-domains", strings.NewReader(`{"domain":"example.com"}`))
 	createDomainRequest.Host = "example.com"
 	createDomainRequest.Header.Set("Content-Type", "application/json")
 	server.httpServer.Handler.ServeHTTP(createDomainRecorder, createDomainRequest)
@@ -671,7 +590,7 @@ func TestSMTPIdentityRoutesAllowAuthenticatedDomainVerification(t *testing.T) {
 	}
 
 	createOwnedDomainRecorder := httptest.NewRecorder()
-	createOwnedDomainRequest := httptest.NewRequest(http.MethodPost, "/api/smtp-domains", strings.NewReader(`{"domain":"customer.example"}`))
+	createOwnedDomainRequest := httptest.NewRequest(http.MethodPost, "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-domains", strings.NewReader(`{"domain":"customer.example"}`))
 	createOwnedDomainRequest.Host = "example.com"
 	createOwnedDomainRequest.Header.Set("Content-Type", "application/json")
 	server.httpServer.Handler.ServeHTTP(createOwnedDomainRecorder, createOwnedDomainRequest)
@@ -686,7 +605,7 @@ func TestSMTPIdentityRoutesAllowAuthenticatedDomainVerification(t *testing.T) {
 		t.Fatalf("unexpected sender domain payload: %+v", createdDomain)
 	}
 	listDomainsRecorder := httptest.NewRecorder()
-	listDomainsRequest := httptest.NewRequest(http.MethodGet, "/api/smtp-domains", nil)
+	listDomainsRequest := httptest.NewRequest(http.MethodGet, "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-domains", nil)
 	listDomainsRequest.Host = "example.com"
 	server.httpServer.Handler.ServeHTTP(listDomainsRecorder, listDomainsRequest)
 	if listDomainsRecorder.Code != http.StatusOK {
@@ -710,7 +629,7 @@ func TestSMTPIdentityRoutesAllowAuthenticatedDomainVerification(t *testing.T) {
 	resolver.set("_dmarc.customer.example", []string{"v=DMARC1; p=none"})
 
 	checkRecorder := httptest.NewRecorder()
-	checkPath := fmt.Sprintf("/api/smtp-domains/%d/check-dns", createdDomain.ID)
+	checkPath := fmt.Sprintf("/api/tenants/11111111-1111-4111-8111-111111111111/smtp-domains/%d/dns-checks", createdDomain.ID)
 	checkRequest := httptest.NewRequest(http.MethodPost, checkPath, nil)
 	checkRequest.Host = "example.com"
 	server.httpServer.Handler.ServeHTTP(checkRecorder, checkRequest)
@@ -727,15 +646,16 @@ func TestSMTPIdentityRoutesAllowAuthenticatedDomainVerification(t *testing.T) {
 
 	createRecorder := httptest.NewRecorder()
 	createBody := bytes.NewBufferString(`{"email_address":"alice@customer.example","forward_to":["owner@example.com"]}`)
-	createRequest := httptest.NewRequest(http.MethodPost, "/api/smtp-identities", createBody)
+	createRequest := httptest.NewRequest(http.MethodPost, "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities", createBody)
 	createRequest.Host = "example.com"
+	createRequest.Header.Set("Content-Type", "application/json")
 	server.httpServer.Handler.ServeHTTP(createRecorder, createRequest)
 	if createRecorder.Code != http.StatusCreated {
 		t.Fatalf("expected verified-domain identity create 201, got %d body=%s", createRecorder.Code, createRecorder.Body.String())
 	}
 }
 
-func TestSMTPIdentityRoutesAllowConfiguredTenantAdmin(t *testing.T) {
+func TestSMTPIdentityRoutesAllowTenantOwner(t *testing.T) {
 	t.Helper()
 	server, _ := newTestHTTPServerWithSMTPIdentitiesAndValidator(t, &stubValidator{
 		email: "admin@example.com",
@@ -743,11 +663,11 @@ func TestSMTPIdentityRoutesAllowConfiguredTenantAdmin(t *testing.T) {
 	})
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/smtp-identities", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities", nil)
 	request.Host = "unknown.example.com"
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected configured admin SMTP identity access, got %d body=%s", recorder.Code, recorder.Body.String())
+		t.Fatalf("expected tenant owner SMTP identity access, got %d body=%s", recorder.Code, recorder.Body.String())
 	}
 }
 
@@ -756,8 +676,9 @@ func TestSMTPIdentityRejectsOutsideSenderDomain(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	body := bytes.NewBufferString(`{"email_address":"alice@other.example","forward_to":["owner@example.com"]}`)
-	request := httptest.NewRequest(http.MethodPost, "/api/smtp-identities", body)
+	request := httptest.NewRequest(http.MethodPost, "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities", body)
 	request.Host = "example.com"
+	request.Header.Set("Content-Type", "application/json")
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("expected 422, got %d body=%s", recorder.Code, recorder.Body.String())
@@ -775,27 +696,27 @@ func TestSMTPIdentityValidationAndErrorMapping(t *testing.T) {
 		body         string
 		expectedCode int
 	}{
-		{name: "create invalid json", method: http.MethodPost, path: "/api/smtp-identities", body: `{`, expectedCode: http.StatusBadRequest},
-		{name: "create invalid address", method: http.MethodPost, path: "/api/smtp-identities", body: `{"email_address":"not-an-email","forward_to":["owner@example.com"]}`, expectedCode: http.StatusBadRequest},
-		{name: "create missing forwarding", method: http.MethodPost, path: "/api/smtp-identities", body: `{"email_address":"alice@example.com"}`, expectedCode: http.StatusBadRequest},
-		{name: "create invalid forwarding", method: http.MethodPost, path: "/api/smtp-identities", body: `{"email_address":"alice@example.com","forward_to":["bad address"]}`, expectedCode: http.StatusBadRequest},
-		{name: "create self forwarding", method: http.MethodPost, path: "/api/smtp-identities", body: `{"email_address":"alice@example.com","forward_to":["alice@example.com"]}`, expectedCode: http.StatusBadRequest},
-		{name: "update forwarding empty id", method: http.MethodPatch, path: "/api/smtp-identities/%20/forwarding", body: `{"forward_to":["owner@example.com"]}`, expectedCode: http.StatusBadRequest},
-		{name: "update forwarding invalid json", method: http.MethodPatch, path: "/api/smtp-identities/missing/forwarding", body: `{`, expectedCode: http.StatusBadRequest},
-		{name: "update forwarding invalid address", method: http.MethodPatch, path: "/api/smtp-identities/missing/forwarding", body: `{"forward_to":["bad address"]}`, expectedCode: http.StatusBadRequest},
-		{name: "update forwarding missing identity", method: http.MethodPatch, path: "/api/smtp-identities/missing/forwarding", body: `{"forward_to":["owner@example.com"]}`, expectedCode: http.StatusNotFound},
-		{name: "credentials empty id", method: http.MethodGet, path: "/api/smtp-identities/%20/credentials", expectedCode: http.StatusBadRequest},
-		{name: "credentials missing id", method: http.MethodGet, path: "/api/smtp-identities/missing/credentials", expectedCode: http.StatusNotFound},
-		{name: "rotate empty id", method: http.MethodPost, path: "/api/smtp-identities/%20/rotate", expectedCode: http.StatusBadRequest},
-		{name: "rotate missing id", method: http.MethodPost, path: "/api/smtp-identities/missing/rotate", expectedCode: http.StatusNotFound},
-		{name: "delete empty id", method: http.MethodDelete, path: "/api/smtp-identities/%20", expectedCode: http.StatusBadRequest},
-		{name: "delete missing id", method: http.MethodDelete, path: "/api/smtp-identities/missing", expectedCode: http.StatusNotFound},
-		{name: "create domain invalid json", method: http.MethodPost, path: "/api/smtp-domains", body: `{`, expectedCode: http.StatusBadRequest},
-		{name: "create domain invalid", method: http.MethodPost, path: "/api/smtp-domains", body: `{"domain":"bad domain"}`, expectedCode: http.StatusBadRequest},
-		{name: "check domain empty id", method: http.MethodPost, path: "/api/smtp-domains/%20/check-dns", expectedCode: http.StatusBadRequest},
-		{name: "check domain bad id", method: http.MethodPost, path: "/api/smtp-domains/not-a-number/check-dns", expectedCode: http.StatusBadRequest},
-		{name: "check domain zero id", method: http.MethodPost, path: "/api/smtp-domains/0/check-dns", expectedCode: http.StatusBadRequest},
-		{name: "check domain missing id", method: http.MethodPost, path: "/api/smtp-domains/404/check-dns", expectedCode: http.StatusNotFound},
+		{name: "create invalid json", method: http.MethodPost, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities", body: `{`, expectedCode: http.StatusBadRequest},
+		{name: "create invalid address", method: http.MethodPost, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities", body: `{"email_address":"not-an-email","forward_to":["owner@example.com"]}`, expectedCode: http.StatusBadRequest},
+		{name: "create missing forwarding", method: http.MethodPost, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities", body: `{"email_address":"alice@example.com"}`, expectedCode: http.StatusBadRequest},
+		{name: "create invalid forwarding", method: http.MethodPost, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities", body: `{"email_address":"alice@example.com","forward_to":["bad address"]}`, expectedCode: http.StatusBadRequest},
+		{name: "create self forwarding", method: http.MethodPost, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities", body: `{"email_address":"alice@example.com","forward_to":["alice@example.com"]}`, expectedCode: http.StatusBadRequest},
+		{name: "update forwarding empty id", method: http.MethodPatch, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities/%20", body: `{"forward_to":["owner@example.com"]}`, expectedCode: http.StatusBadRequest},
+		{name: "update forwarding invalid json", method: http.MethodPatch, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities/missing", body: `{`, expectedCode: http.StatusBadRequest},
+		{name: "update forwarding invalid address", method: http.MethodPatch, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities/missing", body: `{"forward_to":["bad address"]}`, expectedCode: http.StatusBadRequest},
+		{name: "update forwarding missing identity", method: http.MethodPatch, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities/missing", body: `{"forward_to":["owner@example.com"]}`, expectedCode: http.StatusNotFound},
+		{name: "credentials empty id", method: http.MethodGet, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities/%20/credential", expectedCode: http.StatusBadRequest},
+		{name: "credentials missing id", method: http.MethodGet, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities/missing/credential", expectedCode: http.StatusNotFound},
+		{name: "rotate empty id", method: http.MethodPut, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities/%20/credential", expectedCode: http.StatusBadRequest},
+		{name: "rotate missing id", method: http.MethodPut, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities/missing/credential", expectedCode: http.StatusNotFound},
+		{name: "delete empty id", method: http.MethodDelete, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities/%20", expectedCode: http.StatusBadRequest},
+		{name: "delete missing id", method: http.MethodDelete, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities/missing", expectedCode: http.StatusNotFound},
+		{name: "create domain invalid json", method: http.MethodPost, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-domains", body: `{`, expectedCode: http.StatusBadRequest},
+		{name: "create domain invalid", method: http.MethodPost, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-domains", body: `{"domain":"bad domain"}`, expectedCode: http.StatusBadRequest},
+		{name: "check domain empty id", method: http.MethodPost, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-domains/%20/dns-checks", expectedCode: http.StatusBadRequest},
+		{name: "check domain bad id", method: http.MethodPost, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-domains/not-a-number/dns-checks", expectedCode: http.StatusBadRequest},
+		{name: "check domain zero id", method: http.MethodPost, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-domains/0/dns-checks", expectedCode: http.StatusBadRequest},
+		{name: "check domain missing id", method: http.MethodPost, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-domains/404/dns-checks", expectedCode: http.StatusNotFound},
 	}
 	for _, testCase := range testCases {
 		testCase := testCase
@@ -812,7 +733,7 @@ func TestSMTPIdentityValidationAndErrorMapping(t *testing.T) {
 	}
 
 	createRecorder := httptest.NewRecorder()
-	createRequest := httptest.NewRequest(http.MethodPost, "/api/smtp-identities", strings.NewReader(`{"email_address":"dupe@example.com","forward_to":["owner@example.com"]}`))
+	createRequest := httptest.NewRequest(http.MethodPost, "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities", strings.NewReader(`{"email_address":"dupe@example.com","forward_to":["owner@example.com"]}`))
 	createRequest.Host = "example.com"
 	createRequest.Header.Set("Content-Type", "application/json")
 	server.httpServer.Handler.ServeHTTP(createRecorder, createRequest)
@@ -820,7 +741,7 @@ func TestSMTPIdentityValidationAndErrorMapping(t *testing.T) {
 		t.Fatalf("expected initial create 201, got %d", createRecorder.Code)
 	}
 	duplicateRecorder := httptest.NewRecorder()
-	duplicateRequest := httptest.NewRequest(http.MethodPost, "/api/smtp-identities", strings.NewReader(`{"email_address":"dupe@example.com","forward_to":["owner@example.com"]}`))
+	duplicateRequest := httptest.NewRequest(http.MethodPost, "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities", strings.NewReader(`{"email_address":"dupe@example.com","forward_to":["owner@example.com"]}`))
 	duplicateRequest.Host = "example.com"
 	duplicateRequest.Header.Set("Content-Type", "application/json")
 	server.httpServer.Handler.ServeHTTP(duplicateRecorder, duplicateRequest)
@@ -832,7 +753,7 @@ func TestSMTPIdentityValidationAndErrorMapping(t *testing.T) {
 		t.Fatalf("decode duplicate setup payload: %v", err)
 	}
 	selfForwardRecorder := httptest.NewRecorder()
-	selfForwardPath := fmt.Sprintf("/api/smtp-identities/%s/forwarding", duplicatePayload.Identity.ID)
+	selfForwardPath := fmt.Sprintf("/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities/%s", duplicatePayload.Identity.ID)
 	selfForwardRequest := httptest.NewRequest(http.MethodPatch, selfForwardPath, strings.NewReader(`{"forward_to":["dupe@example.com"]}`))
 	selfForwardRequest.Host = "example.com"
 	selfForwardRequest.Header.Set("Content-Type", "application/json")
@@ -844,41 +765,45 @@ func TestSMTPIdentityValidationAndErrorMapping(t *testing.T) {
 	handler := newSMTPIdentityHandler(nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	invalidAddressRecorder := httptest.NewRecorder()
 	invalidAddressContext, _ := gin.CreateTestContext(invalidAddressRecorder)
+	invalidAddressContext.Request = httptest.NewRequest(http.MethodGet, "/", nil)
 	handler.writeError(invalidAddressContext, smtpidentity.ErrInvalidAddress)
 	if invalidAddressRecorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected direct invalid address mapping to 400, got %d", invalidAddressRecorder.Code)
 	}
 	senderDomainExistsRecorder := httptest.NewRecorder()
 	senderDomainExistsContext, _ := gin.CreateTestContext(senderDomainExistsRecorder)
+	senderDomainExistsContext.Request = httptest.NewRequest(http.MethodGet, "/", nil)
 	handler.writeError(senderDomainExistsContext, smtpidentity.ErrSenderDomainExists)
 	if senderDomainExistsRecorder.Code != http.StatusConflict {
 		t.Fatalf("expected direct sender-domain duplicate mapping to 409, got %d", senderDomainExistsRecorder.Code)
 	}
 	missingForwardRecorder := httptest.NewRecorder()
 	missingForwardContext, _ := gin.CreateTestContext(missingForwardRecorder)
+	missingForwardContext.Request = httptest.NewRequest(http.MethodGet, "/", nil)
 	handler.writeError(missingForwardContext, smtpidentity.ErrForwardRecipientsRequired)
 	if missingForwardRecorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected direct missing forwarding mapping to 400, got %d", missingForwardRecorder.Code)
 	}
 	duplicateForwardRecorder := httptest.NewRecorder()
 	duplicateForwardContext, _ := gin.CreateTestContext(duplicateForwardRecorder)
+	duplicateForwardContext.Request = httptest.NewRequest(http.MethodGet, "/", nil)
 	handler.writeError(duplicateForwardContext, smtpidentity.ErrForwardRecipientDuplicate)
 	if duplicateForwardRecorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected direct duplicate forwarding mapping to 400, got %d", duplicateForwardRecorder.Code)
 	}
 	selfForwardRecorder = httptest.NewRecorder()
 	selfForwardContext, _ := gin.CreateTestContext(selfForwardRecorder)
+	selfForwardContext.Request = httptest.NewRequest(http.MethodGet, "/", nil)
 	handler.writeError(selfForwardContext, smtpidentity.ErrForwardRecipientSelf)
 	if selfForwardRecorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected direct self forwarding mapping to 400, got %d", selfForwardRecorder.Code)
 	}
 }
 
-func TestSMTPIdentityRejectsSessionWithoutUsableEmail(t *testing.T) {
+func TestSMTPIdentityRejectsForeignOwner(t *testing.T) {
 	t.Helper()
 	server, _ := newTestHTTPServerWithSMTPIdentitiesAndValidator(t, &stubValidator{
-		email: "not an email",
-		roles: []string{"user"},
+		userID: "foreign-owner",
 	})
 
 	testCases := []struct {
@@ -887,15 +812,15 @@ func TestSMTPIdentityRejectsSessionWithoutUsableEmail(t *testing.T) {
 		path   string
 		body   string
 	}{
-		{name: "list domains", method: http.MethodGet, path: "/api/smtp-domains"},
-		{name: "create domain", method: http.MethodPost, path: "/api/smtp-domains", body: `{"domain":"customer.example"}`},
-		{name: "check domain", method: http.MethodPost, path: "/api/smtp-domains/1/check-dns"},
-		{name: "list identities", method: http.MethodGet, path: "/api/smtp-identities"},
-		{name: "create identity", method: http.MethodPost, path: "/api/smtp-identities", body: `{"email_address":"alice@example.com","forward_to":["owner@example.com"]}`},
-		{name: "update forwarding", method: http.MethodPatch, path: "/api/smtp-identities/identity/forwarding", body: `{"forward_to":["owner@example.com"]}`},
-		{name: "credentials", method: http.MethodGet, path: "/api/smtp-identities/identity/credentials"},
-		{name: "rotate", method: http.MethodPost, path: "/api/smtp-identities/identity/rotate"},
-		{name: "delete", method: http.MethodDelete, path: "/api/smtp-identities/identity"},
+		{name: "list domains", method: http.MethodGet, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-domains"},
+		{name: "create domain", method: http.MethodPost, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-domains", body: `{"domain":"customer.example"}`},
+		{name: "check domain", method: http.MethodPost, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-domains/1/dns-checks"},
+		{name: "list identities", method: http.MethodGet, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities"},
+		{name: "create identity", method: http.MethodPost, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities", body: `{"email_address":"alice@example.com","forward_to":["owner@example.com"]}`},
+		{name: "update forwarding", method: http.MethodPatch, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities/identity", body: `{"forward_to":["owner@example.com"]}`},
+		{name: "credentials", method: http.MethodGet, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities/identity/credential"},
+		{name: "rotate", method: http.MethodPut, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities/identity/credential"},
+		{name: "delete", method: http.MethodDelete, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities/identity"},
 	}
 	for _, testCase := range testCases {
 		testCase := testCase
@@ -905,30 +830,31 @@ func TestSMTPIdentityRejectsSessionWithoutUsableEmail(t *testing.T) {
 			request.Host = "example.com"
 			request.Header.Set("Content-Type", "application/json")
 			server.httpServer.Handler.ServeHTTP(recorder, request)
-			if recorder.Code != http.StatusForbidden {
-				t.Fatalf("expected forbidden SMTP access, got %d body=%s", recorder.Code, recorder.Body.String())
+			if recorder.Code != http.StatusNotFound {
+				t.Fatalf("expected hidden foreign tenant, got %d body=%s", recorder.Code, recorder.Body.String())
 			}
 		})
 	}
 }
 
-func TestSMTPIdentityContinuesWhenTenantAdminLookupFails(t *testing.T) {
+func TestSMTPIdentityRejectsTenantLookupFailure(t *testing.T) {
 	t.Helper()
 	handler := newSMTPIdentityHandler(nil, newClosedTenantRepository(t), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	recorder := httptest.NewRecorder()
 	contextGin, _ := gin.CreateTestContext(recorder)
-	contextGin.Request = httptest.NewRequest(http.MethodGet, "/api/smtp-domains", nil)
+	contextGin.Request = httptest.NewRequest(http.MethodGet, "/api/tenants/"+testTenantID+"/smtp-domains", nil)
+	contextGin.Params = gin.Params{{Key: "tenant_id", Value: testTenantID}}
 	contextGin.Set(contextKeyClaims, &sessionvalidator.Claims{
+		UserID:    testOwnerID,
 		UserEmail: "member@example.com",
 		UserRoles: []string{"user"},
 	})
 
-	scope, ok := handler.requireAccessScope(contextGin)
-	if !ok {
-		t.Fatalf("expected SMTP access scope despite tenant admin lookup failure")
+	if _, ok := handler.requireAccessScope(contextGin); ok {
+		t.Fatalf("expected tenant lookup failure")
 	}
-	if scope.OwnerEmail != "member@example.com" || scope.Admin {
-		t.Fatalf("unexpected SMTP access scope: %+v", scope)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected not found, got %d", recorder.Code)
 	}
 }
 
@@ -942,15 +868,15 @@ func TestSMTPIdentityReportsStorageErrors(t *testing.T) {
 		path   string
 		body   string
 	}{
-		{name: "list", method: http.MethodGet, path: "/api/smtp-identities"},
-		{name: "create", method: http.MethodPost, path: "/api/smtp-identities", body: `{"email_address":"alice@example.com","forward_to":["owner@example.com"]}`},
-		{name: "update forwarding", method: http.MethodPatch, path: "/api/smtp-identities/identity/forwarding", body: `{"forward_to":["owner@example.com"]}`},
-		{name: "credentials", method: http.MethodGet, path: "/api/smtp-identities/identity/credentials"},
-		{name: "rotate", method: http.MethodPost, path: "/api/smtp-identities/identity/rotate"},
-		{name: "delete", method: http.MethodDelete, path: "/api/smtp-identities/identity"},
-		{name: "list domains", method: http.MethodGet, path: "/api/smtp-domains"},
-		{name: "create domain", method: http.MethodPost, path: "/api/smtp-domains", body: `{"domain":"customer.example"}`},
-		{name: "check domain", method: http.MethodPost, path: "/api/smtp-domains/1/check-dns"},
+		{name: "list", method: http.MethodGet, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities"},
+		{name: "create", method: http.MethodPost, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities", body: `{"email_address":"alice@example.com","forward_to":["owner@example.com"]}`},
+		{name: "update forwarding", method: http.MethodPatch, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities/identity", body: `{"forward_to":["owner@example.com"]}`},
+		{name: "credentials", method: http.MethodGet, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities/identity/credential"},
+		{name: "rotate", method: http.MethodPut, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities/identity/credential"},
+		{name: "delete", method: http.MethodDelete, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities/identity"},
+		{name: "list domains", method: http.MethodGet, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-domains"},
+		{name: "create domain", method: http.MethodPost, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-domains", body: `{"domain":"customer.example"}`},
+		{name: "check domain", method: http.MethodPost, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-domains/1/dns-checks"},
 	}
 	for _, testCase := range testCases {
 		testCase := testCase
@@ -977,10 +903,10 @@ func TestSMTPIdentityRoutesBypassTenantLookup(t *testing.T) {
 		body         string
 		expectedCode int
 	}{
-		{name: "list identities", method: http.MethodGet, path: "/api/smtp-identities", expectedCode: http.StatusOK},
-		{name: "list domains", method: http.MethodGet, path: "/api/smtp-domains", expectedCode: http.StatusOK},
-		{name: "create domain", method: http.MethodPost, path: "/api/smtp-domains", body: `{"domain":"customer.example"}`, expectedCode: http.StatusCreated},
-		{name: "check missing domain", method: http.MethodPost, path: "/api/smtp-domains/404/check-dns", expectedCode: http.StatusNotFound},
+		{name: "list identities", method: http.MethodGet, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-identities", expectedCode: http.StatusOK},
+		{name: "list domains", method: http.MethodGet, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-domains", expectedCode: http.StatusOK},
+		{name: "create domain", method: http.MethodPost, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-domains", body: `{"domain":"customer.example"}`, expectedCode: http.StatusCreated},
+		{name: "check missing domain", method: http.MethodPost, path: "/api/tenants/11111111-1111-4111-8111-111111111111/smtp-domains/404/dns-checks", expectedCode: http.StatusNotFound},
 	}
 	for _, testCase := range testCases {
 		testCase := testCase
@@ -1021,12 +947,12 @@ func TestRescheduleValidation(t *testing.T) {
 	server := newTestHTTPServer(t, &stubNotificationService{}, &stubValidator{})
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPatch, "/api/notifications/notif-1/schedule", bytes.NewBufferString(`{}`))
+	request := httptest.NewRequest(http.MethodPatch, "/api/tenants/"+testTenantID+"/notifications/notif-1", bytes.NewBufferString(`{}`))
 	request.Header.Set("Content-Type", "application/json")
 
 	server.httpServer.Handler.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", recorder.Code)
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d", recorder.Code)
 	}
 }
 
@@ -1038,7 +964,7 @@ func TestRescheduleNotificationRejectsEmptyID(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	requestBody := `{"scheduled_time":"2024-01-02T15:04:05Z"}`
-	request := httptest.NewRequest(http.MethodPatch, "/api/notifications/%20/schedule", bytes.NewBufferString(requestBody))
+	request := httptest.NewRequest(http.MethodPatch, "/api/tenants/"+testTenantID+"/notifications/%20", bytes.NewBufferString(requestBody))
 	request.Header.Set("Content-Type", "application/json")
 
 	server.httpServer.Handler.ServeHTTP(recorder, request)
@@ -1060,13 +986,13 @@ func TestRescheduleNotificationRejectsPastSchedule(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	pastTime := time.Now().UTC().Add(-1 * time.Minute).Format(time.RFC3339)
 	requestBody := fmt.Sprintf(`{"scheduled_time":"%s"}`, pastTime)
-	request := httptest.NewRequest(http.MethodPatch, "/api/notifications/notif-1/schedule", bytes.NewBufferString(requestBody))
+	request := httptest.NewRequest(http.MethodPatch, "/api/tenants/"+testTenantID+"/notifications/notif-1", bytes.NewBufferString(requestBody))
 	request.Header.Set("Content-Type", "application/json")
 
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", recorder.Code)
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d", recorder.Code)
 	}
 	if stubSvc.rescheduleCalls != 0 {
 		t.Fatalf("expected no service invocation, got %d", stubSvc.rescheduleCalls)
@@ -1078,27 +1004,28 @@ func TestRescheduleNotificationRejectsInvalidPayloadAndTimestamp(t *testing.T) {
 	server := newTestHTTPServer(t, &stubNotificationService{}, &stubValidator{})
 
 	testCases := []struct {
-		name string
-		body string
+		name         string
+		body         string
+		expectedCode int
 	}{
-		{name: "invalid json", body: `{`},
-		{name: "invalid timestamp", body: `{"scheduled_time":"not-a-time"}`},
+		{name: "invalid json", body: `{`, expectedCode: http.StatusBadRequest},
+		{name: "invalid timestamp", body: `{"scheduled_time":"not-a-time"}`, expectedCode: http.StatusUnprocessableEntity},
 	}
 	for _, testCase := range testCases {
 		testCase := testCase
 		t.Run(testCase.name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
-			request := httptest.NewRequest(http.MethodPatch, "/api/notifications/notif-1/schedule", strings.NewReader(testCase.body))
+			request := httptest.NewRequest(http.MethodPatch, "/api/tenants/"+testTenantID+"/notifications/notif-1", strings.NewReader(testCase.body))
 			request.Header.Set("Content-Type", "application/json")
 			server.httpServer.Handler.ServeHTTP(recorder, request)
-			if recorder.Code != http.StatusBadRequest {
-				t.Fatalf("expected 400, got %d body=%s", recorder.Code, recorder.Body.String())
+			if recorder.Code != testCase.expectedCode {
+				t.Fatalf("expected %d, got %d body=%s", testCase.expectedCode, recorder.Code, recorder.Body.String())
 			}
 		})
 	}
 }
 
-func TestRescheduleNotificationRequiresTenantID(t *testing.T) {
+func TestRescheduleNotificationRejectsGlobalRoute(t *testing.T) {
 	t.Helper()
 
 	stubSvc := &stubNotificationService{}
@@ -1110,8 +1037,8 @@ func TestRescheduleNotificationRequiresTenantID(t *testing.T) {
 	request.Header.Set("Content-Type", "application/json")
 
 	server.httpServer.Handler.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", recorder.Code)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", recorder.Code)
 	}
 	if stubSvc.rescheduleCalls != 0 {
 		t.Fatalf("expected no service invocation, got %d", stubSvc.rescheduleCalls)
@@ -1127,7 +1054,7 @@ func TestRescheduleNotificationUsesTenantID(t *testing.T) {
 
 	requestBody := fmt.Sprintf(`{"scheduled_time":"%s"}`, time.Now().UTC().Add(5*time.Minute).Format(time.RFC3339))
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPatch, "/api/notifications/notif-1/schedule?tenant_id=tenant-bravo", bytes.NewBufferString(requestBody))
+	request := httptest.NewRequest(http.MethodPatch, "/api/tenants/"+testBravoTenantID+"/notifications/notif-1", bytes.NewBufferString(requestBody))
 	request.Host = "unknown.localhost"
 	request.Header.Set("Content-Type", "application/json")
 
@@ -1135,8 +1062,8 @@ func TestRescheduleNotificationUsesTenantID(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", recorder.Code)
 	}
-	if stubSvc.lastTenantID != "tenant-bravo" {
-		t.Fatalf("expected tenant-bravo, got %s", stubSvc.lastTenantID)
+	if stubSvc.lastTenantID != testBravoTenantID {
+		t.Fatalf("expected bravo tenant, got %s", stubSvc.lastTenantID)
 	}
 }
 
@@ -1147,8 +1074,8 @@ func TestRescheduleNotificationMapsMissingIDErrorToBadRequest(t *testing.T) {
 	server := newTestHTTPServer(t, stubSvc, &stubValidator{})
 
 	recorder := httptest.NewRecorder()
-	requestBody := `{"scheduled_time":"2024-01-02T15:04:05Z"}`
-	request := httptest.NewRequest(http.MethodPatch, "/api/notifications/notif-1/schedule?tenant_id=tenant-test", bytes.NewBufferString(requestBody))
+	requestBody := fmt.Sprintf(`{"scheduled_time":"%s"}`, time.Now().UTC().Add(5*time.Minute).Format(time.RFC3339))
+	request := httptest.NewRequest(http.MethodPatch, "/api/tenants/"+testTenantID+"/notifications/notif-1", bytes.NewBufferString(requestBody))
 	request.Header.Set("Content-Type", "application/json")
 
 	server.httpServer.Handler.ServeHTTP(recorder, request)
@@ -1176,7 +1103,7 @@ func TestRescheduleNotificationErrorMapping(t *testing.T) {
 			server := newTestHTTPServer(t, stubSvc, &stubValidator{})
 			recorder := httptest.NewRecorder()
 			requestBody := fmt.Sprintf(`{"scheduled_time":"%s"}`, time.Now().UTC().Add(5*time.Minute).Format(time.RFC3339))
-			request := httptest.NewRequest(http.MethodPatch, "/api/notifications/notif-1/schedule?tenant_id=tenant-test", strings.NewReader(requestBody))
+			request := httptest.NewRequest(http.MethodPatch, "/api/tenants/"+testTenantID+"/notifications/notif-1", strings.NewReader(requestBody))
 			request.Header.Set("Content-Type", "application/json")
 
 			server.httpServer.Handler.ServeHTTP(recorder, request)
@@ -1225,7 +1152,8 @@ func TestCancelNotificationErrorMapping(t *testing.T) {
 			server := newTestHTTPServer(t, stubSvc, &stubValidator{})
 
 			recorder := httptest.NewRecorder()
-			request := httptest.NewRequest(http.MethodPost, "/api/notifications/notif-1/cancel?tenant_id=tenant-test", nil)
+			request := httptest.NewRequest(http.MethodPatch, "/api/tenants/"+testTenantID+"/notifications/notif-1", strings.NewReader(`{"status":"cancelled"}`))
+			request.Header.Set("Content-Type", "application/json")
 
 			server.httpServer.Handler.ServeHTTP(recorder, request)
 			if recorder.Code != testCase.expectedCode {
@@ -1240,7 +1168,8 @@ func TestCancelNotificationSuccess(t *testing.T) {
 	server := newTestHTTPServer(t, stubSvc, &stubValidator{})
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/notifications/notif-1/cancel?tenant_id=tenant-test", nil)
+	request := httptest.NewRequest(http.MethodPatch, "/api/tenants/"+testTenantID+"/notifications/notif-1", strings.NewReader(`{"status":"cancelled"}`))
+	request.Header.Set("Content-Type", "application/json")
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", recorder.Code)
@@ -1257,7 +1186,8 @@ func TestCancelNotificationRejectsEmptyID(t *testing.T) {
 	server := newTestHTTPServer(t, stubSvc, &stubValidator{})
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/notifications/%20/cancel", nil)
+	request := httptest.NewRequest(http.MethodPatch, "/api/tenants/"+testTenantID+"/notifications/%20", strings.NewReader(`{"status":"cancelled"}`))
+	request.Header.Set("Content-Type", "application/json")
 
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 
@@ -1269,7 +1199,7 @@ func TestCancelNotificationRejectsEmptyID(t *testing.T) {
 	}
 }
 
-func TestCancelNotificationRequiresTenantID(t *testing.T) {
+func TestCancelNotificationRejectsGlobalRoute(t *testing.T) {
 	t.Helper()
 	stubSvc := &stubNotificationService{}
 	server := newTestHTTPServer(t, stubSvc, &stubValidator{})
@@ -1278,8 +1208,8 @@ func TestCancelNotificationRequiresTenantID(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/notifications/notif-1/cancel", nil)
 
 	server.httpServer.Handler.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", recorder.Code)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", recorder.Code)
 	}
 	if stubSvc.cancelCalls != 0 {
 		t.Fatalf("expected no service invocation")
@@ -1291,7 +1221,8 @@ func TestCancelNotificationMapsTenantResolutionStorageError(t *testing.T) {
 	server := newTestHTTPServerWithRepo(t, stubSvc, &stubValidator{}, newClosedTenantRepository(t))
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/notifications/notif-1/cancel?tenant_id=tenant-test", nil)
+	request := httptest.NewRequest(http.MethodPatch, "/api/tenants/"+testTenantID+"/notifications/notif-1", strings.NewReader(`{"status":"cancelled"}`))
+	request.Header.Set("Content-Type", "application/json")
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", recorder.Code)
@@ -1306,7 +1237,7 @@ func TestListNotificationsMapsServiceError(t *testing.T) {
 	server := newTestHTTPServer(t, &stubNotificationService{listErr: errors.New("boom")}, &stubValidator{})
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/notifications?tenant_id=tenant-test", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/tenants/"+testTenantID+"/notifications", nil)
 
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusInternalServerError {
@@ -1512,12 +1443,9 @@ func TestRuntimeConfigEndpointReturnsValues(t *testing.T) {
 	}
 	var payload struct {
 		APIBaseURL   string `json:"apiBaseUrl"`
+		TenantURL    string `json:"tenantUrl"`
 		EventLogURL  string `json:"eventLogUrl"`
 		SMTPRelayURL string `json:"smtpRelayUrl"`
-		Tenant       struct {
-			ID          string `json:"id"`
-			DisplayName string `json:"displayName"`
-		} `json:"tenant"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode error: %v", err)
@@ -1525,90 +1453,8 @@ func TestRuntimeConfigEndpointReturnsValues(t *testing.T) {
 	if payload.APIBaseURL != "http://example.com/api" {
 		t.Fatalf("unexpected api base %q", payload.APIBaseURL)
 	}
-	if payload.Tenant.ID != "tenant-test" {
-		t.Fatalf("unexpected tenant payload %+v", payload.Tenant)
-	}
-	if payload.EventLogURL != "/event-log.html" || payload.SMTPRelayURL != "/smtp-relay.html" {
+	if payload.TenantURL != "/tenants.html" || payload.EventLogURL != "/event-log.html" || payload.SMTPRelayURL != "/smtp-relay.html" {
 		t.Fatalf("unexpected page links %+v", payload)
-	}
-}
-
-func TestRuntimeConfigResolvesPerHost(t *testing.T) {
-	t.Helper()
-
-	repo := newMultiTenantRepository(t)
-	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
-	server, err := NewServer(Config{
-		ListenAddr:          ":0",
-		NotificationService: &stubNotificationService{},
-		SessionValidator:    &stubValidator{},
-		TenantRepository:    repo,
-		Logger:              logger,
-	})
-	if err != nil {
-		t.Fatalf("server init error: %v", err)
-	}
-
-	checkHost := func(host string, expectedID string) {
-		recorder := httptest.NewRecorder()
-		request := httptest.NewRequest(http.MethodGet, "/runtime-config", nil)
-		request.Host = host
-		server.httpServer.Handler.ServeHTTP(recorder, request)
-		if recorder.Code != http.StatusOK {
-			t.Fatalf("expected 200 for host %s, got %d", host, recorder.Code)
-		}
-		var payload struct {
-			Tenant struct {
-				ID string `json:"id"`
-			} `json:"tenant"`
-		}
-		if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
-			t.Fatalf("decode error: %v", err)
-		}
-		if payload.Tenant.ID != expectedID {
-			t.Fatalf("host %s resolved id %s", host, payload.Tenant.ID)
-		}
-	}
-
-	checkHost("alpha.localhost", "tenant-alpha")
-	checkHost("bravo.localhost", "tenant-bravo")
-}
-
-func TestRuntimeConfigRejectsUnknownHost(t *testing.T) {
-	t.Helper()
-
-	repo := newMultiTenantRepository(t)
-	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
-	server, err := NewServer(Config{
-		ListenAddr:          ":0",
-		NotificationService: &stubNotificationService{},
-		SessionValidator:    &stubValidator{},
-		TenantRepository:    repo,
-		Logger:              logger,
-	})
-	if err != nil {
-		t.Fatalf("server init error: %v", err)
-	}
-
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/runtime-config", nil)
-	request.Host = "unknown.localhost"
-	server.httpServer.Handler.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusNotFound {
-		t.Fatalf("expected 404 for unknown host, got %d", recorder.Code)
-	}
-}
-
-func TestRuntimeConfigMissingRuntimeReturnsInternalServerError(t *testing.T) {
-	t.Helper()
-	engine := gin.New()
-	engine.GET("/runtime-config", serveRuntimeConfig())
-
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/runtime-config", nil)
-	engine.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d", recorder.Code)
 	}
 }
 
@@ -1747,41 +1593,22 @@ func newTestHTTPServerWithSMTPIdentitiesValidatorAndResolverSeeded(t *testing.T,
 		t.Fatalf("open sqlite: %v", err)
 	}
 	if err := dbInstance.AutoMigrate(
+		&model.Notification{},
+		&model.NotificationAttachment{},
 		&tenant.Tenant{},
-		&tenant.TenantDomain{},
-		&tenant.TenantAdmin{},
 		&tenant.EmailProfile{},
 		&tenant.SMSProfile{},
+		&tenant.APICredential{},
+		&tenant.IdempotencyRecord{},
 		&smtpidentity.SenderDomain{},
 		&smtpidentity.Identity{},
 		&smtpidentity.ForwardRecipient{},
 	); err != nil {
 		t.Fatalf("migrate sqlite: %v", err)
 	}
-	cfg := tenant.BootstrapConfig{
-		Tenants: []tenant.BootstrapTenant{
-			{
-				ID:           "tenant-test",
-				DisplayName:  "Test Tenant",
-				SupportEmail: "support@example.com",
-				Enabled:      ptrBool(true),
-				Domains:      []string{"example.com"},
-				Admins:       []string{"admin@example.com"},
-				EmailProfile: tenant.BootstrapEmailProfile{
-					Host:        "smtp.example.com",
-					Port:        587,
-					Username:    "smtp-user",
-					Password:    "smtp-pass",
-					FromAddress: "noreply@example.com",
-				},
-			},
-		},
-	}
-	if err := tenant.Bootstrap(context.Background(), dbInstance, keeper, cfg); err != nil {
-		t.Fatalf("bootstrap tenants: %v", err)
-	}
+	seedManagedTenant(t, dbInstance, keeper, testTenantID, testOwnerID, "Test Tenant", "support@example.com")
 	if seedVerifiedDomain {
-		seedHTTPAPISenderDomain(t, dbInstance, "user@example.com", "example.com")
+		seedHTTPAPISenderDomain(t, dbInstance, testTenantID, "example.com")
 	}
 	tenantRepo := tenant.NewRepository(dbInstance, keeper)
 	identityRepo, err := smtpidentity.NewRepository(dbInstance, secretKey)
@@ -1812,10 +1639,10 @@ func newTestHTTPServerWithSMTPIdentitiesValidatorAndResolverSeeded(t *testing.T,
 	return server, identityRepo
 }
 
-func seedHTTPAPISenderDomain(t *testing.T, dbInstance *gorm.DB, ownerEmail string, domain string) {
+func seedHTTPAPISenderDomain(t *testing.T, dbInstance *gorm.DB, tenantID string, domain string) {
 	t.Helper()
 	if err := dbInstance.Create(&smtpidentity.SenderDomain{
-		OwnerEmail:        ownerEmail,
+		TenantID:          tenantID,
 		Domain:            domain,
 		Status:            smtpidentity.SenderDomainStatusVerified,
 		VerificationToken: "test-token",
@@ -1839,7 +1666,7 @@ func newTestHTTPServerWithBrokenSMTPIdentitiesAndValidator(t *testing.T, validat
 	if err := dbInstance.AutoMigrate(&smtpidentity.SenderDomain{}, &smtpidentity.Identity{}, &smtpidentity.ForwardRecipient{}); err != nil {
 		t.Fatalf("migrate sqlite: %v", err)
 	}
-	seedHTTPAPISenderDomain(t, dbInstance, "user@example.com", "example.com")
+	seedHTTPAPISenderDomain(t, dbInstance, testTenantID, "example.com")
 	identityRepo, err := smtpidentity.NewRepository(dbInstance, secretKey)
 	if err != nil {
 		t.Fatalf("identity repository: %v", err)
@@ -1873,64 +1700,17 @@ func newTestHTTPServerWithBrokenSMTPIdentitiesAndValidator(t *testing.T, validat
 
 func newTestTenantRepository(t *testing.T) *tenant.Repository {
 	t.Helper()
-	cfg := tenant.BootstrapConfig{
-		Tenants: []tenant.BootstrapTenant{
-			{
-				ID:           "tenant-test",
-				DisplayName:  "Test Tenant",
-				SupportEmail: "support@example.com",
-				Enabled:      ptrBool(true),
-				Domains:      []string{"example.com"},
-				EmailProfile: tenant.BootstrapEmailProfile{
-					Host:        "smtp.example.com",
-					Port:        587,
-					Username:    "smtp-user",
-					Password:    "smtp-pass",
-					FromAddress: "noreply@example.com",
-				},
-			},
-		},
-	}
-	return bootstrapTenantRepository(t, cfg)
+	return newSeededTenantRepository(t, []tenantSeed{{
+		id: testTenantID, ownerUserID: testOwnerID, displayName: "Test Tenant", supportEmail: "support@example.com",
+	}})
 }
 
 func newMultiTenantRepository(t *testing.T) *tenant.Repository {
 	t.Helper()
-	cfg := tenant.BootstrapConfig{
-		Tenants: []tenant.BootstrapTenant{
-			{
-				ID:           "tenant-alpha",
-				DisplayName:  "Alpha Corp",
-				SupportEmail: "alpha@example.com",
-				Enabled:      ptrBool(true),
-				Domains:      []string{"alpha.localhost"},
-				Admins:       []string{"admin@ops.localhost"},
-				EmailProfile: tenant.BootstrapEmailProfile{
-					Host:        "smtp.alpha.localhost",
-					Port:        587,
-					Username:    "alpha-smtp",
-					Password:    "alpha-secret",
-					FromAddress: "noreply@alpha.localhost",
-				},
-			},
-			{
-				ID:           "tenant-bravo",
-				DisplayName:  "Bravo Labs",
-				SupportEmail: "bravo@example.com",
-				Enabled:      ptrBool(true),
-				Domains:      []string{"bravo.localhost"},
-				Admins:       []string{"admin@ops.localhost"},
-				EmailProfile: tenant.BootstrapEmailProfile{
-					Host:        "smtp.bravo.localhost",
-					Port:        2525,
-					Username:    "bravo-smtp",
-					Password:    "bravo-secret",
-					FromAddress: "noreply@bravo.localhost",
-				},
-			},
-		},
-	}
-	return bootstrapTenantRepository(t, cfg)
+	return newSeededTenantRepository(t, []tenantSeed{
+		{id: testAlphaTenantID, ownerUserID: testOwnerID, displayName: "Alpha Corp", supportEmail: "alpha@example.com"},
+		{id: testBravoTenantID, ownerUserID: testOwnerID, displayName: "Bravo Labs", supportEmail: "bravo@example.com"},
+	})
 }
 
 func newClosedTenantRepository(t *testing.T) *tenant.Repository {
@@ -1953,23 +1733,14 @@ func newClosedTenantRepository(t *testing.T) *tenant.Repository {
 	return tenant.NewRepository(dbInstance, keeper)
 }
 
-func newTenantRepositoryWithoutDomains(t *testing.T) *tenant.Repository {
-	t.Helper()
-	keeper, err := tenant.NewSecretKeeper(strings.Repeat("a", 64))
-	if err != nil {
-		t.Fatalf("secret keeper error: %v", err)
-	}
-	dbInstance, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "missing-domains.db")), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	if err := dbInstance.AutoMigrate(&tenant.Tenant{}, &tenant.TenantAdmin{}); err != nil {
-		t.Fatalf("migrate sqlite: %v", err)
-	}
-	return tenant.NewRepository(dbInstance, keeper)
+type tenantSeed struct {
+	id           string
+	ownerUserID  string
+	displayName  string
+	supportEmail string
 }
 
-func bootstrapTenantRepository(t *testing.T, cfg tenant.BootstrapConfig) *tenant.Repository {
+func newSeededTenantRepository(t *testing.T, seeds []tenantSeed) *tenant.Repository {
 	t.Helper()
 	keeper, err := tenant.NewSecretKeeper(strings.Repeat("a", 64))
 	if err != nil {
@@ -1981,32 +1752,53 @@ func bootstrapTenantRepository(t *testing.T, cfg tenant.BootstrapConfig) *tenant
 		t.Fatalf("open sqlite: %v", err)
 	}
 	if err := dbInstance.AutoMigrate(
+		&model.Notification{},
+		&model.NotificationAttachment{},
 		&tenant.Tenant{},
-		&tenant.TenantDomain{},
-		&tenant.TenantAdmin{},
 		&tenant.EmailProfile{},
 		&tenant.SMSProfile{},
+		&tenant.APICredential{},
+		&tenant.IdempotencyRecord{},
+		&smtpidentity.SenderDomain{},
+		&smtpidentity.Identity{},
+		&smtpidentity.ForwardRecipient{},
 	); err != nil {
 		t.Fatalf("migrate sqlite: %v", err)
 	}
-	payload, err := yaml.Marshal(cfg)
-	if err != nil {
-		t.Fatalf("marshal bootstrap config: %v", err)
-	}
-	path := filepath.Join(t.TempDir(), "tenants.yml")
-	if err := os.WriteFile(path, payload, 0o600); err != nil {
-		t.Fatalf("write bootstrap config: %v", err)
-	}
-	if err := tenant.BootstrapFromFile(context.Background(), dbInstance, keeper, path); err != nil {
-		t.Fatalf("bootstrap tenants: %v", err)
+	for _, seed := range seeds {
+		seedManagedTenant(t, dbInstance, keeper, seed.id, seed.ownerUserID, seed.displayName, seed.supportEmail)
 	}
 	return tenant.NewRepository(dbInstance, keeper)
 }
 
+func seedManagedTenant(t *testing.T, database *gorm.DB, keeper *tenant.SecretKeeper, tenantID, ownerUserID, displayName, supportEmail string) {
+	t.Helper()
+	usernameCipher, usernameErr := keeper.Encrypt("smtp-user")
+	if usernameErr != nil {
+		t.Fatalf("encrypt SMTP username: %v", usernameErr)
+	}
+	passwordCipher, passwordErr := keeper.Encrypt("smtp-pass")
+	if passwordErr != nil {
+		t.Fatalf("encrypt SMTP password: %v", passwordErr)
+	}
+	now := time.Now().UTC()
+	models := []interface{}{
+		&tenant.Tenant{ID: tenantID, OwnerUserID: ownerUserID, DisplayName: displayName, SupportEmail: supportEmail, Version: 1, CreatedAt: now, UpdatedAt: now},
+		&tenant.EmailProfile{ID: tenantID + "-email", TenantID: tenantID, Host: "smtp.example.com", Port: 587, UsernameCipher: usernameCipher, PasswordCipher: passwordCipher, FromAddress: "noreply@example.com", Version: 1, CreatedAt: now, UpdatedAt: now},
+		&tenant.APICredential{ID: strings.Replace(tenantID, "11111111", "aaaaaaaa", 1), TenantID: tenantID, SecretDigest: bytes.Repeat([]byte{1}, 32), DisplayPrefix: "pgn_1_test", Version: 1, CreatedAt: now, UpdatedAt: now},
+	}
+	for _, modelValue := range models {
+		if createErr := database.Create(modelValue).Error; createErr != nil {
+			t.Fatalf("seed managed tenant: %v", createErr)
+		}
+	}
+}
+
 type stubValidator struct {
-	err   error
-	email string
-	roles []string
+	err    error
+	userID string
+	email  string
+	roles  []string
 }
 
 func (validator *stubValidator) ValidateRequest(_ *http.Request) (*sessionvalidator.Claims, error) {
@@ -2017,11 +1809,15 @@ func (validator *stubValidator) ValidateRequest(_ *http.Request) (*sessionvalida
 	if email == "" {
 		email = "user@example.com"
 	}
+	userID := validator.userID
+	if userID == "" {
+		userID = testOwnerID
+	}
 	roles := validator.roles
 	if roles == nil {
 		roles = []string{"admin"}
 	}
-	return &sessionvalidator.Claims{UserEmail: email, UserRoles: roles}, nil
+	return &sessionvalidator.Claims{UserID: userID, UserEmail: email, UserRoles: roles}, nil
 }
 
 type fakeDNSResolver map[string][]string

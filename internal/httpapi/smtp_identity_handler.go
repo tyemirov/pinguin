@@ -37,6 +37,9 @@ func (handler *smtpIdentityHandler) listIdentities(contextGin *gin.Context) {
 }
 
 func (handler *smtpIdentityHandler) createIdentity(contextGin *gin.Context) {
+	if !requireJSON(contextGin) {
+		return
+	}
 	scope, ok := handler.requireAccessScope(contextGin)
 	if !ok {
 		return
@@ -46,17 +49,17 @@ func (handler *smtpIdentityHandler) createIdentity(contextGin *gin.Context) {
 		ForwardTo    []string `json:"forward_to"`
 	}
 	if err := contextGin.ShouldBindJSON(&payload); err != nil {
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
+		writeAPIError(contextGin, http.StatusBadRequest, "request.json.invalid", "request body is invalid JSON")
 		return
 	}
 	address, addressErr := smtpidentity.NewAddress(payload.EmailAddress)
 	if addressErr != nil {
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "email_address is invalid"})
+		writeAPIError(contextGin, http.StatusBadRequest, "smtp_identity.email_address.invalid", "email_address is invalid")
 		return
 	}
 	forwardTo, forwardToErr := parseForwardRecipients(payload.ForwardTo)
 	if forwardToErr != nil {
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": forwardToErr.Error()})
+		writeAPIError(contextGin, http.StatusBadRequest, "smtp_identity.forward_to.invalid", forwardToErr.Error())
 		return
 	}
 	credentials, err := handler.service.CreateForScope(contextGin.Request.Context(), scope, address, forwardTo)
@@ -68,25 +71,28 @@ func (handler *smtpIdentityHandler) createIdentity(contextGin *gin.Context) {
 }
 
 func (handler *smtpIdentityHandler) updateForwarding(contextGin *gin.Context) {
+	if !requireJSON(contextGin) {
+		return
+	}
 	scope, ok := handler.requireAccessScope(contextGin)
 	if !ok {
 		return
 	}
-	identityID := strings.TrimSpace(contextGin.Param("id"))
+	identityID := strings.TrimSpace(contextGin.Param("identity_id"))
 	if identityID == "" {
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "identity_id is required"})
+		writeAPIError(contextGin, http.StatusBadRequest, "smtp_identity.id.invalid", "identity_id is required")
 		return
 	}
 	var payload struct {
 		ForwardTo []string `json:"forward_to"`
 	}
 	if err := contextGin.ShouldBindJSON(&payload); err != nil {
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
+		writeAPIError(contextGin, http.StatusBadRequest, "request.json.invalid", "request body is invalid JSON")
 		return
 	}
 	forwardTo, forwardToErr := parseForwardRecipients(payload.ForwardTo)
 	if forwardToErr != nil {
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": forwardToErr.Error()})
+		writeAPIError(contextGin, http.StatusBadRequest, "smtp_identity.forward_to.invalid", forwardToErr.Error())
 		return
 	}
 	identity, err := handler.service.UpdateForwardingForScope(contextGin.Request.Context(), scope, identityID, forwardTo)
@@ -102,9 +108,9 @@ func (handler *smtpIdentityHandler) getCredentials(contextGin *gin.Context) {
 	if !ok {
 		return
 	}
-	identityID := strings.TrimSpace(contextGin.Param("id"))
+	identityID := strings.TrimSpace(contextGin.Param("identity_id"))
 	if identityID == "" {
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "identity_id is required"})
+		writeAPIError(contextGin, http.StatusBadRequest, "smtp_identity.id.invalid", "identity_id is required")
 		return
 	}
 	credentials, err := handler.service.CredentialsForScope(contextGin.Request.Context(), scope, identityID)
@@ -120,9 +126,9 @@ func (handler *smtpIdentityHandler) rotateIdentity(contextGin *gin.Context) {
 	if !ok {
 		return
 	}
-	identityID := strings.TrimSpace(contextGin.Param("id"))
+	identityID := strings.TrimSpace(contextGin.Param("identity_id"))
 	if identityID == "" {
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "identity_id is required"})
+		writeAPIError(contextGin, http.StatusBadRequest, "smtp_identity.id.invalid", "identity_id is required")
 		return
 	}
 	credentials, err := handler.service.RotateForScope(contextGin.Request.Context(), scope, identityID)
@@ -138,9 +144,9 @@ func (handler *smtpIdentityHandler) deleteIdentity(contextGin *gin.Context) {
 	if !ok {
 		return
 	}
-	identityID := strings.TrimSpace(contextGin.Param("id"))
+	identityID := strings.TrimSpace(contextGin.Param("identity_id"))
 	if identityID == "" {
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "identity_id is required"})
+		writeAPIError(contextGin, http.StatusBadRequest, "smtp_identity.id.invalid", "identity_id is required")
 		return
 	}
 	if err := handler.service.DeleteForScope(contextGin.Request.Context(), scope, identityID); err != nil {
@@ -164,6 +170,9 @@ func (handler *smtpIdentityHandler) listSenderDomains(contextGin *gin.Context) {
 }
 
 func (handler *smtpIdentityHandler) createSenderDomain(contextGin *gin.Context) {
+	if !requireJSON(contextGin) {
+		return
+	}
 	scope, ok := handler.requireAccessScope(contextGin)
 	if !ok {
 		return
@@ -172,7 +181,7 @@ func (handler *smtpIdentityHandler) createSenderDomain(contextGin *gin.Context) 
 		Domain string `json:"domain"`
 	}
 	if err := contextGin.ShouldBindJSON(&payload); err != nil {
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
+		writeAPIError(contextGin, http.StatusBadRequest, "request.json.invalid", "request body is invalid JSON")
 		return
 	}
 	domain, err := handler.service.CreateSenderDomain(contextGin.Request.Context(), scope, payload.Domain)
@@ -188,9 +197,9 @@ func (handler *smtpIdentityHandler) checkSenderDomainDNS(contextGin *gin.Context
 	if !ok {
 		return
 	}
-	domainID, parseErr := parseSenderDomainID(contextGin.Param("id"))
+	domainID, parseErr := parseSenderDomainID(contextGin.Param("domain_id"))
 	if parseErr != nil {
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "sender domain id is required"})
+		writeAPIError(contextGin, http.StatusBadRequest, "smtp_domain.id.invalid", "sender domain id is required")
 		return
 	}
 	domain, err := handler.service.CheckSenderDomainDNS(contextGin.Request.Context(), scope, domainID)
@@ -202,49 +211,43 @@ func (handler *smtpIdentityHandler) checkSenderDomainDNS(contextGin *gin.Context
 }
 
 func (handler *smtpIdentityHandler) requireAccessScope(contextGin *gin.Context) (smtpidentity.AccessScope, bool) {
-	claims := claimsFromContextGin(contextGin)
-	ownerEmail, ownerErr := smtpidentity.NewAddress(claims.GetUserEmail())
-	if ownerErr != nil {
-		contextGin.JSON(http.StatusForbidden, gin.H{"error": "authenticated email is required"})
+	ownerUserID, tenantID, identifiersErr := tenantIdentifiers(contextGin)
+	if identifiersErr != nil {
+		writeAPIError(contextGin, http.StatusNotFound, "tenant.not_found", "tenant was not found")
 		return smtpidentity.AccessScope{}, false
 	}
-	admin := sessionHasAdminRole(claims)
-	if !admin && handler.repository != nil {
-		configuredAdmin, adminErr := handler.repository.IsActiveTenantAdmin(contextGin.Request.Context(), claims.GetUserEmail())
-		if adminErr != nil {
-			handler.logger.Warn("smtp_identity_admin_lookup_unavailable", "error", adminErr)
-		} else {
-			admin = configuredAdmin
-		}
+	if _, ownedErr := handler.repository.GetOwned(contextGin.Request.Context(), ownerUserID, tenantID); ownedErr != nil {
+		writeAPIError(contextGin, http.StatusNotFound, "tenant.not_found", "tenant was not found")
+		return smtpidentity.AccessScope{}, false
 	}
-	return smtpidentity.AccessScope{OwnerEmail: ownerEmail.String(), Admin: admin}, true
+	return smtpidentity.AccessScope{TenantID: tenantID.String()}, true
 }
 
 func (handler *smtpIdentityHandler) writeError(contextGin *gin.Context, err error) {
 	switch {
 	case errors.Is(err, smtpidentity.ErrInvalidAddress):
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "email_address is invalid"})
+		writeAPIError(contextGin, http.StatusBadRequest, "smtp_identity.email_address.invalid", "email_address is invalid")
 	case errors.Is(err, smtpidentity.ErrInvalidSenderDomain):
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "sender domain is invalid"})
+		writeAPIError(contextGin, http.StatusBadRequest, "smtp_domain.invalid", "sender domain is invalid")
 	case errors.Is(err, smtpidentity.ErrSenderDomainNotAllowed):
-		contextGin.JSON(http.StatusUnprocessableEntity, gin.H{"error": "sender domain is not verified"})
+		writeAPIError(contextGin, http.StatusUnprocessableEntity, "smtp_domain.unverified", "sender domain is not verified")
 	case errors.Is(err, smtpidentity.ErrSenderDomainExists):
-		contextGin.JSON(http.StatusConflict, gin.H{"error": "sender domain is already registered"})
+		writeAPIError(contextGin, http.StatusConflict, "smtp_domain.conflict", "sender domain is already registered")
 	case errors.Is(err, smtpidentity.ErrSenderDomainNotFound):
-		contextGin.JSON(http.StatusNotFound, gin.H{"error": "sender domain not found"})
+		writeAPIError(contextGin, http.StatusNotFound, "smtp_domain.not_found", "sender domain was not found")
 	case errors.Is(err, smtpidentity.ErrIdentityExists):
-		contextGin.JSON(http.StatusConflict, gin.H{"error": "smtp identity already exists"})
+		writeAPIError(contextGin, http.StatusConflict, "smtp_identity.conflict", "SMTP identity already exists")
 	case errors.Is(err, smtpidentity.ErrIdentityNotFound), errors.Is(err, gorm.ErrRecordNotFound):
-		contextGin.JSON(http.StatusNotFound, gin.H{"error": "smtp identity not found"})
+		writeAPIError(contextGin, http.StatusNotFound, "smtp_identity.not_found", "SMTP identity was not found")
 	case errors.Is(err, smtpidentity.ErrForwardRecipientsRequired):
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "forward_to is required"})
+		writeAPIError(contextGin, http.StatusBadRequest, "smtp_identity.forward_to.required", "forward_to is required")
 	case errors.Is(err, smtpidentity.ErrForwardRecipientDuplicate):
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "forward_to contains duplicate addresses"})
+		writeAPIError(contextGin, http.StatusBadRequest, "smtp_identity.forward_to.duplicate", "forward_to contains duplicate addresses")
 	case errors.Is(err, smtpidentity.ErrForwardRecipientSelf):
-		contextGin.JSON(http.StatusBadRequest, gin.H{"error": "forward_to cannot include the shared sender address"})
+		writeAPIError(contextGin, http.StatusBadRequest, "smtp_identity.forward_to.self", "forward_to cannot include the shared sender address")
 	default:
 		handler.logger.Error("smtp_identity_handler_error", "error", err)
-		contextGin.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		writeAPIError(contextGin, http.StatusInternalServerError, "internal.error", "internal server error")
 	}
 }
 

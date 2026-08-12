@@ -20,6 +20,24 @@ if (!window.__PINGUIN_CONFIG__.apiBaseUrl) {
   window.__PINGUIN_CONFIG__.apiBaseUrl = resolvedApiBaseUrl;
 }
 
+// Capture the latest public mpr-ui auth event before the application module loads.
+// The shared header may finish session restoration during deferred orchestration.
+const rememberAuthEvent = (event) => {
+  const detail = event && event.detail && typeof event.detail === 'object' ? event.detail : {};
+  const eventStatus = event.type === 'mpr-ui:auth:authenticated'
+    ? 'authenticated'
+    : event.type === 'mpr-ui:auth:unauthenticated'
+      ? 'unauthenticated'
+      : detail.status;
+  window.__PINGUIN_AUTH_EVENT_SNAPSHOT__ = {
+    status: eventStatus || 'unknown',
+    profile: detail.profile || null,
+  };
+};
+document.addEventListener('mpr-ui:auth:authenticated', rememberAuthEvent);
+document.addEventListener('mpr-ui:auth:unauthenticated', rememberAuthEvent);
+document.addEventListener('mpr-ui:auth:status-change', rememberAuthEvent);
+
 const THEME_STORAGE_KEY = 'pinguin.theme';
 const resolveStoredTheme = () => {
   try {

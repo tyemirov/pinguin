@@ -37,6 +37,11 @@
         <span>Pinguin</span>
       </a>
       <span slot="nav-left" class="workspace-navigation__menu">
+		<a
+		  class="workspace-navigation__link"
+		  :href="RUNTIME_CONFIG.tenantUrl"
+		  x-text="STRINGS.navigation.tenants"
+		></a>
         <a
           class="workspace-navigation__link"
           :href="RUNTIME_CONFIG.eventLogUrl"
@@ -65,6 +70,14 @@
             <p class="text-muted" x-text="strings.subtitle"></p>
           </div>
         </header>
+		<label class="smtp-tenant-selector">
+		  <span x-text="strings.tenantLabel"></span>
+		  <select x-model="selectedTenantId" x-on:change="changeTenant()" :disabled="tenants.length === 0">
+			<template x-for="tenant in tenants" :key="tenant.id">
+			  <option :value="tenant.id" x-text="tenant.displayName"></option>
+			</template>
+		  </select>
+		</label>
         <template x-if="errorMessage">
           <p class="notice" data-variant="error" x-text="errorMessage"></p>
         </template>

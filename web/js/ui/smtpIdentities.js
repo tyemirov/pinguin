@@ -25,6 +25,8 @@ export function createSMTPWorkspace(options) {
     actions,
     ...domainState,
     ...credentialsDialogState,
+    tenants: [],
+    selectedTenantId: '',
     identities: /** @type {SMTPIdentity[]} */ ([]),
     editingIdentityId: '',
     identityLocalPart: '',
@@ -44,8 +46,10 @@ export function createSMTPWorkspace(options) {
         () => authStore().isAuthenticated,
         (isAuthenticated) => {
           if (isAuthenticated) {
-            this.loadWorkspace();
+            this.loadTenants();
           } else {
+			this.tenants = [];
+			this.selectedTenantId = '';
             this.identities = [];
             this.domains = [];
             this.credentials = null;
@@ -57,10 +61,35 @@ export function createSMTPWorkspace(options) {
     },
     async refreshIfAuthenticated() {
       if (authStore().isAuthenticated) {
-        await this.loadWorkspace();
+		await this.loadTenants();
       }
     },
+	async loadTenants() {
+	  this.errorMessage = '';
+	  try {
+		this.tenants = await apiClient.listTenants();
+		if (!this.tenants.some((tenant) => tenant.id === this.selectedTenantId)) {
+		  this.selectedTenantId = this.tenants[0]?.id || '';
+		}
+		await this.loadWorkspace();
+	  } catch (error) {
+		this.tenants = [];
+		this.selectedTenantId = '';
+		this.errorMessage = strings.tenantLoadError;
+		dispatchToast({ variant: 'error', message: this.errorMessage });
+	  }
+	},
+	async changeTenant() {
+	  this.identities = [];
+	  this.domains = [];
+	  await this.loadWorkspace();
+	},
     async loadWorkspace() {
+	  if (!this.selectedTenantId) {
+		this.identities = [];
+		this.domains = [];
+		return;
+	  }
       await Promise.all([this.loadDomains(), this.loadIdentities()]);
     },
     async loadIdentities() {
@@ -70,7 +99,7 @@ export function createSMTPWorkspace(options) {
       this.isLoading = true;
       this.errorMessage = '';
       try {
-        this.identities = await apiClient.listSMTPIdentities();
+        this.identities = await apiClient.listSMTPIdentities(this.selectedTenantId);
       } catch (error) {
         this.errorMessage = strings.loadError;
         dispatchToast({ variant: 'error', message: this.errorMessage });
@@ -125,7 +154,7 @@ export function createSMTPWorkspace(options) {
       this.errorMessage = '';
       try {
         const emailAddress = `${localPart}@${senderDomain}`;
-        const credentials = await apiClient.createSMTPIdentity(emailAddress, forwardTo);
+        const credentials = await apiClient.createSMTPIdentity(this.selectedTenantId, emailAddress, forwardTo);
         if (!credentials) {
           throw new Error('missing_credentials');
         }
@@ -169,7 +198,7 @@ export function createSMTPWorkspace(options) {
       this.isSubmitting = true;
       this.errorMessage = '';
       try {
-        await apiClient.updateSMTPIdentityForwarding(this.editingIdentityId, forwardTo);
+        await apiClient.updateSMTPIdentityForwarding(this.selectedTenantId, this.editingIdentityId, forwardTo);
         this.cancelForwardingEdit();
         await this.loadIdentities();
         dispatchToast({ variant: 'success', message: strings.updateForwardingSuccess });
@@ -184,7 +213,7 @@ export function createSMTPWorkspace(options) {
       this.isSubmitting = true;
       this.errorMessage = '';
       try {
-        const credentials = await apiClient.getSMTPIdentityCredentials(identity.id);
+        const credentials = await apiClient.getSMTPIdentityCredentials(this.selectedTenantId, identity.id);
         if (!credentials) {
           throw new Error('missing_credentials');
         }
@@ -202,7 +231,7 @@ export function createSMTPWorkspace(options) {
       this.isSubmitting = true;
       this.errorMessage = '';
       try {
-        const credentials = await apiClient.rotateSMTPIdentity(identity.id);
+        const credentials = await apiClient.rotateSMTPIdentity(this.selectedTenantId, identity.id);
         if (!credentials) {
           throw new Error('missing_credentials');
         }
@@ -258,7 +287,7 @@ export function createSMTPWorkspace(options) {
       this.isSubmitting = true;
       this.errorMessage = '';
       try {
-        await apiClient.deleteSMTPIdentity(identity.id);
+        await apiClient.deleteSMTPIdentity(this.selectedTenantId, identity.id);
         await this.loadIdentities();
         dispatchToast({ variant: 'success', message: strings.deleteSuccess });
         this.closeDeleteDialog();

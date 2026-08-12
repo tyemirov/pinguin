@@ -24,10 +24,11 @@ test.describe('Landing page auth flow', () => {
     await expect(page.getByLabel('Notification workspace preview')).toBeVisible();
   });
 
-  test('completes shared mpr-ui handshake and redirects to event log', async ({ page }) => {
+  test('completes shared mpr-ui handshake and redirects to tenant management', async ({ page }) => {
     await page.goto('/index.html');
     await completeHeaderLogin(page);
-    await expect(page.getByTestId('notifications-list')).toBeVisible();
+    await expect(page).toHaveURL(/\/tenants\.html$/);
+    await expect(page.getByRole('heading', { name: 'Tenants' })).toBeVisible();
   });
 
   test('starts login from the landing page header login button', async ({ page }) => {
@@ -90,44 +91,11 @@ test.describe('Landing page auth flow', () => {
     expect(refreshRequestCount).toBe(0);
   });
 
-  test('keeps the Pinguin header brand when tenant metadata is present', async ({ page }) => {
+  test('keeps the Pinguin header brand without runtime tenant metadata', async ({ page }) => {
     await page.goto('/index.html');
     await expectPinguinHeaderBrand(page);
-    await page.waitForFunction(
-      (expected) => document.documentElement.dataset.tenantId === expected,
-      'tenant-playwright',
-    );
-  });
-
-  test.describe('Tenant branding variants', () => {
-    test.beforeEach(async ({ page, request }) => {
-      await resetNotifications(request);
-      await stubExternalAssets(page);
-      await configureRuntime(page, {
-        authenticated: false,
-        tenant: {
-          id: 'ps',
-          displayName: 'PoodleScanner',
-        },
-      });
-    });
-
-    test('preserves product chrome when runtime config returns another tenant display name', async ({ page }) => {
-      await page.goto('/index.html');
-      await expectPinguinHeaderBrand(page);
-      await page.waitForFunction(
-        (expected) => document.documentElement.dataset.tenantId === expected,
-        'ps',
-      );
-      const id = await page.evaluate(() => (window as any).__PINGUIN_CONFIG__?.tenant?.id || '');
-      expect(id).toBe('ps');
-      const runtimeAuthMetadataKeys = await page.evaluate(() =>
-        Object.keys((window as any).__PINGUIN_CONFIG__ || {}).filter((key) =>
-          ['googleClientId', 'tauthBaseUrl', 'tauthTenantId'].includes(key),
-        ),
-      );
-      expect(runtimeAuthMetadataKeys).toEqual([]);
-    });
+    const tenantMetadata = await page.evaluate(() => (window as any).__PINGUIN_CONFIG__?.tenant);
+    expect(tenantMetadata).toBeUndefined();
   });
 
   const themePersistenceCases = [
@@ -174,6 +142,7 @@ test.describe('Landing page auth flow', () => {
       expect(storedTheme).toBe(scenario.expected);
 
       await completeHeaderLogin(page);
+      await page.goto('/event-log.html');
       await expect(page.getByTestId('notifications-list')).toBeVisible();
       await page.waitForFunction((expected) => {
         const activeTheme =

@@ -85,7 +85,6 @@ func TestNotificationRequestMessage(t *testing.T) {
 		Attachments: []*EmailAttachment{
 			{Filename: "a.txt"},
 		},
-		TenantId: "tenant",
 	}
 	if req.String() == "" {
 		t.Fatalf("String should not be empty")
@@ -104,9 +103,6 @@ func TestNotificationRequestMessage(t *testing.T) {
 	}
 	if len(req.GetAttachments()) != 1 {
 		t.Fatalf("expected one attachment")
-	}
-	if req.GetTenantId() != "tenant" {
-		t.Fatalf("unexpected tenant id")
 	}
 	if req.ProtoReflect().Descriptor().FullName() == "" {
 		t.Fatalf("missing descriptor")
@@ -141,7 +137,6 @@ func TestNotificationResponseMessage(t *testing.T) {
 		Attachments: []*EmailAttachment{
 			{Filename: "b.txt"},
 		},
-		TenantId: "tenant",
 	}
 	if resp.String() == "" {
 		t.Fatalf("String should not be empty")
@@ -178,9 +173,6 @@ func TestNotificationResponseMessage(t *testing.T) {
 	}
 	if len(resp.GetAttachments()) != 1 {
 		t.Fatalf("unexpected attachments")
-	}
-	if resp.GetTenantId() != "tenant" {
-		t.Fatalf("unexpected tenant id")
 	}
 	resp.ProtoMessage()
 	if desc, _ := resp.Descriptor(); len(desc) == 0 {
@@ -236,8 +228,8 @@ func TestUtilityMessages(t *testing.T) {
 	if desc, _ := re.Descriptor(); len(desc) == 0 {
 		t.Fatalf("descriptor missing")
 	}
-	cancel := &CancelNotificationRequest{NotificationId: "nid", TenantId: "tenant"}
-	if cancel.GetNotificationId() != "nid" || cancel.GetTenantId() != "tenant" {
+	cancel := &CancelNotificationRequest{NotificationId: "nid"}
+	if cancel.GetNotificationId() != "nid" {
 		t.Fatalf("unexpected cancel id")
 	}
 	if cancel.String() == "" {
@@ -274,7 +266,7 @@ func TestNilGeneratedMessageAccessors(t *testing.T) {
 	if request.GetNotificationType() != NotificationType_EMAIL || request.GetRecipient() != "" || request.GetSubject() != "" || request.GetMessage() != "" {
 		t.Fatalf("unexpected nil request scalar getters")
 	}
-	if request.GetScheduledTime() != nil || request.GetAttachments() != nil || request.GetTenantId() != "" {
+	if request.GetScheduledTime() != nil || request.GetAttachments() != nil {
 		t.Fatalf("unexpected nil request reference getters")
 	}
 	if request.ProtoReflect().Descriptor().FullName() == "" {
@@ -291,7 +283,7 @@ func TestNilGeneratedMessageAccessors(t *testing.T) {
 	if response.GetRetryCount() != 0 || response.GetCreatedAt() != "" || response.GetUpdatedAt() != "" {
 		t.Fatalf("unexpected nil response count/time getters")
 	}
-	if response.GetScheduledTime() != nil || response.GetAttachments() != nil || response.GetTenantId() != "" {
+	if response.GetScheduledTime() != nil || response.GetAttachments() != nil {
 		t.Fatalf("unexpected nil response reference getters")
 	}
 	if response.ProtoReflect().Descriptor().FullName() == "" {
@@ -299,7 +291,7 @@ func TestNilGeneratedMessageAccessors(t *testing.T) {
 	}
 
 	var statusRequest *GetNotificationStatusRequest
-	if statusRequest.GetNotificationId() != "" || statusRequest.GetTenantId() != "" {
+	if statusRequest.GetNotificationId() != "" {
 		t.Fatalf("unexpected nil status request getters")
 	}
 	if statusRequest.ProtoReflect().Descriptor().FullName() == "" {
@@ -307,7 +299,7 @@ func TestNilGeneratedMessageAccessors(t *testing.T) {
 	}
 
 	var listRequest *ListNotificationsRequest
-	if listRequest.GetStatuses() != nil || listRequest.GetTenantId() != "" {
+	if listRequest.GetStatuses() != nil {
 		t.Fatalf("unexpected nil list request getters")
 	}
 	if listRequest.ProtoReflect().Descriptor().FullName() == "" {
@@ -323,7 +315,7 @@ func TestNilGeneratedMessageAccessors(t *testing.T) {
 	}
 
 	var reschedule *RescheduleNotificationRequest
-	if reschedule.GetNotificationId() != "" || reschedule.GetScheduledTime() != nil || reschedule.GetTenantId() != "" {
+	if reschedule.GetNotificationId() != "" || reschedule.GetScheduledTime() != nil {
 		t.Fatalf("unexpected nil reschedule getters")
 	}
 	if reschedule.ProtoReflect().Descriptor().FullName() == "" {
@@ -331,7 +323,7 @@ func TestNilGeneratedMessageAccessors(t *testing.T) {
 	}
 
 	var cancel *CancelNotificationRequest
-	if cancel.GetNotificationId() != "" || cancel.GetTenantId() != "" {
+	if cancel.GetNotificationId() != "" {
 		t.Fatalf("unexpected nil cancel getters")
 	}
 	if cancel.ProtoReflect().Descriptor().FullName() == "" {
@@ -340,16 +332,16 @@ func TestNilGeneratedMessageAccessors(t *testing.T) {
 }
 
 func TestUtilityMessagesFullMethods(t *testing.T) {
-	statusRequest := &GetNotificationStatusRequest{NotificationId: "id", TenantId: "tenant"}
-	if statusRequest.String() == "" || statusRequest.GetTenantId() != "tenant" {
+	statusRequest := &GetNotificationStatusRequest{NotificationId: "id"}
+	if statusRequest.String() == "" {
 		t.Fatalf("unexpected status request")
 	}
 	if statusRequest.ProtoReflect().Descriptor().FullName() == "" {
 		t.Fatalf("missing status request descriptor")
 	}
 
-	listRequest := &ListNotificationsRequest{Statuses: []Status{Status_SENT}, TenantId: "tenant"}
-	if listRequest.String() == "" || listRequest.GetTenantId() != "tenant" {
+	listRequest := &ListNotificationsRequest{Statuses: []Status{Status_SENT}}
+	if listRequest.String() == "" {
 		t.Fatalf("unexpected list request")
 	}
 	if listRequest.ProtoReflect().Descriptor().FullName() == "" {
@@ -375,9 +367,8 @@ func TestUtilityMessagesFullMethods(t *testing.T) {
 	reschedule := &RescheduleNotificationRequest{
 		NotificationId: "id",
 		ScheduledTime:  timestamppb.New(time.Unix(10, 0)),
-		TenantId:       "tenant",
 	}
-	if reschedule.String() == "" || reschedule.GetTenantId() != "tenant" {
+	if reschedule.String() == "" {
 		t.Fatalf("unexpected reschedule request")
 	}
 	if reschedule.ProtoReflect().Descriptor().FullName() == "" {

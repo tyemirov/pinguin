@@ -13,10 +13,7 @@ test.describe('Profile Menu Integration', () => {
   });
 
   test('uses the shared mpr-ui header user menu', async ({ page }) => {
-    await configureRuntime(page, {
-      authenticated: true,
-      tenant: { id: 'tenant-test', displayName: 'Test Tenant' },
-    });
+    await configureRuntime(page, { authenticated: true });
     const restoredSession = page.waitForResponse((response) => {
       const request = response.request();
       return request.method() === 'GET' && new URL(response.url()).pathname === '/auth/session';
@@ -38,10 +35,7 @@ test.describe('Profile Menu Integration', () => {
   });
 
   test('profile menu works after landing login', async ({ page }) => {
-    await configureRuntime(page, {
-      authenticated: false,
-      tenant: { id: 'tenant-test', displayName: 'Test Tenant' },
-    });
+    await configureRuntime(page, { authenticated: false });
     await page.goto('/index.html');
     await completeHeaderLogin(page);
 

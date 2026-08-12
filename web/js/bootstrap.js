@@ -2,6 +2,7 @@
 
 const DEFAULT_CONFIG = Object.freeze({
   landingUrl: '/index.html',
+	tenantUrl: '/tenants.html',
   eventLogUrl: '/event-log.html',
   smtpRelayUrl: '/smtp-relay.html',
 });
@@ -85,23 +86,20 @@ function mergeConfig(base, overrides) {
 (async function bootstrap() {
   const preloaded = window.__PINGUIN_CONFIG__ || {};
   const skipRemote = Boolean(preloaded && preloaded.skipRemoteConfig);
-  const preloadedTenant =
-    preloaded && typeof preloaded.tenant === 'object' ? preloaded.tenant : null;
   let effectiveConfig = mergeConfig(DEFAULT_CONFIG, null);
   effectiveConfig = mergeConfig(effectiveConfig, preloaded);
-  let resolvedTenant = preloadedTenant;
   if (!skipRemote) {
     try {
       const remote = await fetchRuntimeConfig(preloaded || null, RUNTIME_CONFIG_URL_HINT);
-      if (remote && typeof remote.tenant === 'object') {
-        resolvedTenant = remote.tenant;
-      }
       const apiOverride =
         remote && typeof remote.apiBaseUrl === 'string' ? { apiBaseUrl: remote.apiBaseUrl } : {};
       const runtimeOverrides = {};
       if (remote && typeof remote.eventLogUrl === 'string') {
         runtimeOverrides.eventLogUrl = remote.eventLogUrl;
       }
+	  if (remote && typeof remote.tenantUrl === 'string') {
+		runtimeOverrides.tenantUrl = remote.tenantUrl;
+	  }
       if (remote && typeof remote.smtpRelayUrl === 'string') {
         runtimeOverrides.smtpRelayUrl = remote.smtpRelayUrl;
       }
@@ -111,27 +109,14 @@ function mergeConfig(base, overrides) {
       console.warn('runtime config fetch failed', error);
     }
   }
-  if (resolvedTenant) {
-    effectiveConfig.tenant = resolvedTenant;
-  }
   const finalConfig = {
     apiBaseUrl: effectiveConfig.apiBaseUrl,
     landingUrl: effectiveConfig.landingUrl || DEFAULT_CONFIG.landingUrl,
+	tenantUrl: effectiveConfig.tenantUrl || DEFAULT_CONFIG.tenantUrl,
     eventLogUrl: effectiveConfig.eventLogUrl || DEFAULT_CONFIG.eventLogUrl,
     smtpRelayUrl: effectiveConfig.smtpRelayUrl || DEFAULT_CONFIG.smtpRelayUrl,
-    tenant: effectiveConfig.tenant || null,
   };
   window.__PINGUIN_CONFIG__ = finalConfig;
   window.dispatchEvent(new CustomEvent('pinguin:config-updated', { detail: finalConfig }));
-  if (finalConfig.tenant) {
-    applyTenantMetadata(finalConfig.tenant);
-  }
   await import('./app.js');
 })();
-
-function applyTenantMetadata(tenantConfig) {
-  const update = () => {
-    document.documentElement.dataset.tenantId = tenantConfig?.id || '';
-  };
-  requestAnimationFrame(update);
-}

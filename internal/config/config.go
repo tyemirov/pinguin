@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/tyemirov/pinguin/internal/tenant"
 	"gopkg.in/yaml.v3"
 )
 
@@ -19,14 +18,11 @@ var defaultConfigPaths = []string{
 
 type Config struct {
 	DatabasePath     string
-	GRPCAuthToken    string
 	LogLevel         string
 	MaxRetries       int
 	RetryIntervalSec int
 
 	MasterEncryptionKey string
-	TenantConfigPath    string
-	TenantBootstrap     tenant.BootstrapConfig
 
 	WebInterfaceEnabled bool
 	HTTPListenAddr      string
@@ -37,16 +33,6 @@ type Config struct {
 
 	TAuthSigningKey string
 	TAuthCookieName string
-
-	SMTPUsername string
-	SMTPPassword string
-	SMTPHost     string
-	SMTPPort     int
-	FromEmail    string
-
-	TwilioAccountSID string
-	TwilioAuthToken  string
-	TwilioFromNumber string
 
 	// Simplified timeout settings (in seconds)
 	ConnectionTimeoutSec int
@@ -101,12 +87,10 @@ type fileConfig struct {
 	Web            webSection            `yaml:"web"`
 	SMTPSubmission smtpSubmissionSection `yaml:"smtpSubmission"`
 	SMTPForwarding smtpForwardingSection `yaml:"smtpForwarding"`
-	Tenants        tenantConfig          `yaml:"tenants"`
 }
 
 type serverSection struct {
 	DatabasePath        string       `yaml:"databasePath"`
-	GRPCAuthToken       string       `yaml:"grpcAuthToken"`
 	LogLevel            string       `yaml:"logLevel"`
 	MaxRetries          int          `yaml:"maxRetries"`
 	RetryIntervalSec    int          `yaml:"retryIntervalSec"`
@@ -167,59 +151,6 @@ type smtpForwardingRelaySection struct {
 	Password string `yaml:"password"`
 }
 
-type tenantConfig struct {
-	ConfigPath string
-	Tenants    []tenant.BootstrapTenant
-}
-
-func (cfg *tenantConfig) UnmarshalYAML(value *yaml.Node) error {
-	if value == nil {
-		*cfg = tenantConfig{}
-		return nil
-	}
-
-	switch value.Kind {
-	case yaml.SequenceNode:
-		var tenants []tenant.BootstrapTenant
-		if err := value.Decode(&tenants); err != nil {
-			return fmt.Errorf("configuration: parse tenants: %w", err)
-		}
-		cfg.ConfigPath = ""
-		cfg.Tenants = tenants
-		return nil
-	case yaml.MappingNode:
-		if unknownKey := firstUnknownYAMLMappingKey(value, "configPath", "tenants"); unknownKey != "" {
-			return fmt.Errorf("configuration: tenants.%s is not supported", unknownKey)
-		}
-		var decoded struct {
-			ConfigPath string                   `yaml:"configPath"`
-			Tenants    []tenant.BootstrapTenant `yaml:"tenants"`
-		}
-		if err := value.Decode(&decoded); err != nil {
-			return fmt.Errorf("configuration: parse tenants: %w", err)
-		}
-		cfg.ConfigPath = strings.TrimSpace(decoded.ConfigPath)
-		cfg.Tenants = decoded.Tenants
-		return nil
-	default:
-		return fmt.Errorf("configuration: tenants must be a list")
-	}
-}
-
-func firstUnknownYAMLMappingKey(value *yaml.Node, allowedKeys ...string) string {
-	allowed := make(map[string]struct{}, len(allowedKeys))
-	for _, allowedKey := range allowedKeys {
-		allowed[allowedKey] = struct{}{}
-	}
-	for index := 0; index+1 < len(value.Content); index += 2 {
-		key := strings.TrimSpace(value.Content[index].Value)
-		if _, ok := allowed[key]; !ok {
-			return key
-		}
-	}
-	return ""
-}
-
 // LoadConfig reads the YAML config file (with environment expansion) into Config.
 func LoadConfig() (Config, error) {
 	return loadConfigFromPath(defaultConfigFilePath())
@@ -257,12 +188,10 @@ func loadConfigFromPath(configPath string) (Config, error) {
 	}
 	configuration := Config{
 		DatabasePath:        strings.TrimSpace(fileCfg.Server.DatabasePath),
-		GRPCAuthToken:       strings.TrimSpace(fileCfg.Server.GRPCAuthToken),
 		LogLevel:            strings.TrimSpace(fileCfg.Server.LogLevel),
 		MaxRetries:          fileCfg.Server.MaxRetries,
 		RetryIntervalSec:    fileCfg.Server.RetryIntervalSec,
 		MasterEncryptionKey: strings.TrimSpace(fileCfg.Server.MasterEncryptionKey),
-		TenantConfigPath:    strings.TrimSpace(fileCfg.Tenants.ConfigPath),
 		WebInterfaceEnabled: webEnabled,
 		HTTPListenAddr:      strings.TrimSpace(fileCfg.Web.ListenAddr),
 		HTTPAllowedOrigins:  normalizeStrings(fileCfg.Web.AllowedOrigins),
@@ -304,9 +233,6 @@ func loadConfigFromPath(configPath string) (Config, error) {
 		TAuthCookieName:      strings.TrimSpace(fileCfg.Server.TAuth.CookieName),
 		ConnectionTimeoutSec: fileCfg.Server.ConnectionTimeout,
 		OperationTimeoutSec:  fileCfg.Server.OperationTimeout,
-		TenantBootstrap: tenant.BootstrapConfig{
-			Tenants: fileCfg.Tenants.Tenants,
-		},
 	}
 
 	if configuration.WebInterfaceEnabled {
@@ -325,10 +251,6 @@ func loadConfigFromPath(configPath string) (Config, error) {
 	}
 
 	return configuration, nil
-}
-
-func (configuration Config) TwilioConfigured() bool {
-	return configuration.TwilioAccountSID != "" && configuration.TwilioAuthToken != "" && configuration.TwilioFromNumber != ""
 }
 
 // ExpandConfigEnvironment expands shell-style placeholders and rejects absent variables.
@@ -368,14 +290,10 @@ func normalizeStrings(values []string) []string {
 func validateConfig(cfg Config) error {
 	var errors []string
 	requireString(cfg.DatabasePath, "server.databasePath", &errors)
-	requireString(cfg.GRPCAuthToken, "server.grpcAuthToken", &errors)
 	requireString(cfg.LogLevel, "server.logLevel", &errors)
 	requirePositive(cfg.MaxRetries, "server.maxRetries", &errors)
 	requirePositive(cfg.RetryIntervalSec, "server.retryIntervalSec", &errors)
 	requireString(cfg.MasterEncryptionKey, "server.masterEncryptionKey", &errors)
-	if len(cfg.TenantBootstrap.Tenants) == 0 {
-		requireString(cfg.TenantConfigPath, "tenants.configPath", &errors)
-	}
 	requirePositive(cfg.ConnectionTimeoutSec, "server.connectionTimeoutSec", &errors)
 	requirePositive(cfg.OperationTimeoutSec, "server.operationTimeoutSec", &errors)
 
@@ -425,16 +343,6 @@ func validateConfig(cfg Config) error {
 		requireString(cfg.SMTPForwarding.Relay.Password, "smtpForwarding.relay.password", &errors)
 	}
 
-	if len(cfg.TenantBootstrap.Tenants) > 0 {
-		for idx, tenantSpec := range cfg.TenantBootstrap.Tenants {
-			tenantPrefix := fmt.Sprintf("tenants[%d]", idx)
-			requireString(strings.TrimSpace(tenantSpec.DisplayName), tenantPrefix+".displayName", &errors)
-			if countNonEmptyStrings(tenantSpec.Domains) == 0 {
-				errors = append(errors, fmt.Sprintf("missing %s.domains", tenantPrefix))
-			}
-		}
-	}
-
 	if len(errors) > 0 {
 		return fmt.Errorf("configuration errors: %s", strings.Join(errors, ", "))
 	}
@@ -465,15 +373,4 @@ func requirePositiveInt64(value int64, name string, errors *[]string) {
 	if value <= 0 {
 		*errors = append(*errors, fmt.Sprintf("missing %s", name))
 	}
-}
-
-func countNonEmptyStrings(values []string) int {
-	count := 0
-	for _, value := range values {
-		if strings.TrimSpace(value) == "" {
-			continue
-		}
-		count++
-	}
-	return count
 }
