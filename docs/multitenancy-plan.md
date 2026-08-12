@@ -272,12 +272,15 @@ Tenant representations use an `ETag` that contains the tenant version.
 - `GET /api/tenants/:tenant_id/sms-profile`
 - `PUT /api/tenants/:tenant_id/sms-profile`
 - `PATCH /api/tenants/:tenant_id/sms-profile`
+- `DELETE /api/tenants/:tenant_id/sms-profile`
 
 `PUT` completely replaces a profile and requires all required provider secrets.
 
 `PATCH` changes only documented fields and keeps each omitted secret unchanged.
 
 A secret field must contain a new secret or be absent.
+
+`DELETE` removes the optional SMS profile. It requires the current profile version in `If-Match`. A repeated request with the same version succeeds when the profile is absent.
 
 The profile routes reject masked secret values.
 
@@ -631,23 +634,45 @@ Use empty SMTP lists when the database has no resources of that type.
 
 ### Run the conversion
 
-Use one write-stopped maintenance window. Stop every process that writes to the Pinguin database. Set explicit absolute paths and create a SQLite backup:
+Use one write-stopped maintenance window. Stop every process that writes to the Pinguin database. Use the published managed release image and the retained production volume.
+
+Set the published image, retained volume, and absolute private input paths on the production placement host:
 
 ```bash
-export PINGUIN_DATABASE_PATH=/absolute/path/pinguin.db
-export PINGUIN_BACKUP_PATH=/absolute/private/pinguin-before-managed.db
+export PINGUIN_MIGRATION_IMAGE=ghcr.io/tyemirov/pinguin:<published-release-tag>
+export PINGUIN_DATA_VOLUME=mprlab-nginx-gateway_pinguin-data
+export PINGUIN_DATABASE_PATH=/app/data/pinguin.db
+export PINGUIN_BACKUP_DIRECTORY=/absolute/private
+export PINGUIN_BACKUP_NAME=pinguin-before-managed-YYYYMMDDTHHMMSSZ.tar.gz
 export PINGUIN_SOURCE_PATH=/absolute/private/former-tenants.yml
 export PINGUIN_MAPPING_PATH=/absolute/private/managed-tenant-mapping.yml
-sqlite3 "$PINGUIN_DATABASE_PATH" ".backup '$PINGUIN_BACKUP_PATH'"
 ```
 
-Run the command from the release source with the same `MASTER_ENCRYPTION_KEY` that encrypted the current provider secrets:
+Create the backup from the stopped database volume:
 
 ```bash
-go run ./cmd/convert-managed-tenants \
+test ! -e "$PINGUIN_BACKUP_DIRECTORY/$PINGUIN_BACKUP_NAME"
+docker run --rm --network none \
+  --mount "type=volume,source=${PINGUIN_DATA_VOLUME},target=/app/data" \
+  --mount "type=bind,source=${PINGUIN_BACKUP_DIRECTORY},target=/backup" \
+  --entrypoint /bin/tar \
+  "$PINGUIN_MIGRATION_IMAGE" \
+  -czf "/backup/$PINGUIN_BACKUP_NAME" -C /app/data .
+```
+
+Run the packaged command with the same `MASTER_ENCRYPTION_KEY` that encrypted the current provider secrets:
+
+```bash
+docker run --rm --network none \
+  --env MASTER_ENCRYPTION_KEY \
+  --mount "type=volume,source=${PINGUIN_DATA_VOLUME},target=/app/data" \
+  --mount "type=bind,source=${PINGUIN_SOURCE_PATH},target=/run/pinguin/former-tenants.yml,readonly" \
+  --mount "type=bind,source=${PINGUIN_MAPPING_PATH},target=/run/pinguin/managed-tenant-mapping.yml,readonly" \
+  "$PINGUIN_MIGRATION_IMAGE" \
+  pinguin-convert-managed-tenants \
   --database "$PINGUIN_DATABASE_PATH" \
-  --tenant-source "$PINGUIN_SOURCE_PATH" \
-  --mapping "$PINGUIN_MAPPING_PATH" \
+  --tenant-source /run/pinguin/former-tenants.yml \
+  --mapping /run/pinguin/managed-tenant-mapping.yml \
   --master-key-env MASTER_ENCRYPTION_KEY \
   --confirm managed-tenant-conversion
 ```
