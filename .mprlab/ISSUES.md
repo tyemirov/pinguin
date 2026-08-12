@@ -4,6 +4,40 @@ Entries record newly discovered requests or changes.
 
 ## BugFixes
 
+- [x] [B001] (P1) Package the production tenant conversion command
+  Goal:
+  The published image contains the command for the production data conversion.
+  Validation:
+  - Verify the image build contract.
+  - Verify the production volume command in the conversion runbook.
+
+- [x] [B002] (P1) Keep a credential for an uncertain write result
+  Goal:
+  The tenant workspace can retry the same credential write after an uncertain response.
+  Validation:
+  - Verify that a create retry uses the same credential and idempotency key.
+  - Verify that a rotation retry uses the same credential and version.
+
+- [x] [B003] (P1) Clear tenant workspace data after logout
+  Goal:
+  The tenant workspace contains no tenant data or credential data after logout.
+  Validation:
+  - Verify the forms, dialogs, tenant list, and temporary credential state after logout.
+
+- [x] [B004] (P1) Remove a disabled SMS profile
+  Goal:
+  The tenant update removes the SMS profile when the user disables SMS delivery.
+  Validation:
+  - Verify the SMS profile deletion API.
+  - Verify the tenant update in the browser.
+
+- [x] [B005] (P1) Report credential storage errors as internal errors
+  Goal:
+  The gRPC API reports a storage fault separately from an invalid credential.
+  Validation:
+  - Verify an `Internal` result for a credential storage fault.
+  - Verify an `Unauthenticated` result for an invalid credential.
+
 ## Improvements
 
 ## Maintenance
