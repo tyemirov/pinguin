@@ -339,7 +339,10 @@ func buildCredentialInterceptor(logger *slog.Logger, repo *tenant.Repository) gr
 		runtimeCfg, authenticateErr := repo.AuthenticateAPIKey(ctx, apiKey)
 		if authenticateErr != nil {
 			logger.Error("tenant_credential_authentication_failed", "error", authenticateErr)
-			return nil, status.Error(codes.Unauthenticated, "invalid api key")
+			if errors.Is(authenticateErr, tenant.ErrCredentialAuthentication) {
+				return nil, status.Error(codes.Unauthenticated, "invalid api key")
+			}
+			return nil, status.Error(codes.Internal, "tenant credential authentication failed")
 		}
 		ctxWithTenant := tenant.WithRuntime(ctx, runtimeCfg)
 		return handler(ctxWithTenant, req)

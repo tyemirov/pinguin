@@ -192,7 +192,7 @@ func TestMapModelToGrpcResponse(t *testing.T) {
 func TestBuildCredentialInterceptor(t *testing.T) {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
-	repository, rawAPIKey := newCredentialTestRepository(t)
+	repository, rawAPIKey, database := newCredentialTestRepository(t)
 	interceptor := buildCredentialInterceptor(logger, repository)
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		runtimeConfig, ok := tenant.RuntimeFromContext(ctx)
@@ -245,6 +245,21 @@ func TestBuildCredentialInterceptor(t *testing.T) {
 		_, err := interceptor(ctx, nil, &grpc.UnaryServerInfo{}, handler)
 		if status.Code(err) != codes.Unauthenticated {
 			t.Fatalf("expected unauthenticated, got %v", err)
+		}
+	})
+
+	t.Run("CredentialStorageFailure", func(t *testing.T) {
+		sqlDatabase, databaseErr := database.DB()
+		if databaseErr != nil {
+			t.Fatalf("get SQL database: %v", databaseErr)
+		}
+		if closeErr := sqlDatabase.Close(); closeErr != nil {
+			t.Fatalf("close SQL database: %v", closeErr)
+		}
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer "+rawAPIKey))
+		_, err := interceptor(ctx, nil, &grpc.UnaryServerInfo{}, handler)
+		if status.Code(err) != codes.Internal {
+			t.Fatalf("expected internal storage error, got %v", err)
 		}
 	})
 }
@@ -978,7 +993,7 @@ func TestServeGRPCBuildsServer(testHandle *testing.T) {
 	}
 }
 
-func newCredentialTestRepository(testHandle *testing.T) (*tenant.Repository, string) {
+func newCredentialTestRepository(testHandle *testing.T) (*tenant.Repository, string, *gorm.DB) {
 	testHandle.Helper()
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
@@ -1023,7 +1038,7 @@ func newCredentialTestRepository(testHandle *testing.T) (*tenant.Repository, str
 		testHandle.Fatalf("set credential tenant id: %v", updateErr)
 	}
 	rawAPIKey := "pgn_1_" + credentialID.String() + "_" + base64.RawURLEncoding.EncodeToString(secret)
-	return repository, rawAPIKey
+	return repository, rawAPIKey, database
 }
 
 type recordingNotificationService struct {
