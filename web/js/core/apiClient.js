@@ -160,6 +160,11 @@ export function createApiClient(baseUrl = RUNTIME_CONFIG.apiBaseUrl) {
         method: 'PATCH', headers: { 'If-Match': `"${version}"` }, body: JSON.stringify(payload),
       });
     },
+    async deleteSMSProfile(tenantId, version) {
+      await request(tenantPath(tenantId, '/sms-profile'), {
+        method: 'DELETE', headers: { 'If-Match': `"${version}"` },
+      });
+    },
     async rotateTenantCredential(tenantId, version, payload) {
       return request(tenantPath(tenantId, '/api-credential'), {
         method: 'PUT', headers: { 'If-Match': `"${version}"` }, body: JSON.stringify(payload),

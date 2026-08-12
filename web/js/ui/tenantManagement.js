@@ -1,6 +1,10 @@
 // @ts-check
 import { dispatchToast } from '../core/events.js';
 
+/** @typedef {{ raw: string, id: string, secret_digest: string }} GeneratedCredential */
+/** @typedef {{ credential: GeneratedCredential, idempotencyKey: string, payload: Record<string, unknown> }} PendingTenantCreation */
+/** @typedef {{ tenantId: string, version: number, credential: GeneratedCredential }} PendingCredentialRotation */
+
 const emptyCreateForm = () => ({
   displayName: '', supportEmail: '', emailHost: '', emailPort: 587,
   emailUsername: '', emailPassword: '', emailFromAddress: '', smsEnabled: false,
@@ -24,6 +28,13 @@ async function generateAPIKey() {
   };
 }
 
+function isDefinitiveAPIError(error) {
+  const statusCode = Number(
+    error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 0,
+  );
+  return statusCode >= 400 && statusCode < 500;
+}
+
 export function createTenantManagement({ apiClient, strings, actions }) {
   const authStore = () => window.Alpine.store('auth');
   return {
@@ -40,13 +51,17 @@ export function createTenantManagement({ apiClient, strings, actions }) {
     oneTimeAPIKey: '',
     oneTimeTitle: '',
     dialogTrigger: null,
+    loadRequestID: 0,
+    workspaceGeneration: 0,
+    pendingCreate: /** @type {PendingTenantCreation | null} */ (null),
+    pendingRotation: /** @type {PendingCredentialRotation | null} */ (null),
     init() {
       this.loadIfAuthenticated();
       this.$watch(
         () => authStore().isAuthenticated,
         (authenticated) => {
           if (authenticated) this.loadTenants();
-          else this.tenants = [];
+          else this.resetWorkspace();
         },
       );
     },
@@ -54,31 +69,68 @@ export function createTenantManagement({ apiClient, strings, actions }) {
       if (authStore().isAuthenticated) await this.loadTenants();
     },
     async loadTenants() {
+      const requestID = ++this.loadRequestID;
       this.isLoading = true;
       this.errorMessage = '';
       try {
-        this.tenants = await apiClient.listTenants();
+        const tenants = await apiClient.listTenants();
+        if (requestID !== this.loadRequestID || !authStore().isAuthenticated) return;
+        this.tenants = tenants;
       } catch {
+        if (requestID !== this.loadRequestID || !authStore().isAuthenticated) return;
         this.errorMessage = strings.loadError;
         dispatchToast({ variant: 'error', message: this.errorMessage });
       } finally {
-        this.isLoading = false;
+        if (requestID === this.loadRequestID) this.isLoading = false;
       }
+    },
+    resetWorkspace() {
+      this.workspaceGeneration += 1;
+      this.loadRequestID += 1;
+      if (this.pendingCreate) this.pendingCreate.credential.raw = '';
+      if (this.pendingRotation) this.pendingRotation.credential.raw = '';
+      this.pendingCreate = null;
+      this.pendingRotation = null;
+      this.tenants = [];
+      this.isLoading = false;
+      this.isSubmitting = false;
+      this.errorMessage = '';
+      this.createForm = emptyCreateForm();
+      this.editForm = emptyCreateForm();
+      this.selectedTenant = null;
+      this.pendingDeleteTenant = null;
+      this.oneTimeAPIKey = '';
+      this.oneTimeTitle = '';
+      this.dialogTrigger = null;
+      this.$refs.createDialog?.close();
+      this.$refs.editDialog?.close();
+      this.$refs.keyDialog?.close();
+      this.$refs.deleteDialog?.close();
     },
     openCreateDialog(event) {
       this.dialogTrigger = event?.currentTarget instanceof HTMLElement ? event.currentTarget : null;
       this.createForm = emptyCreateForm();
       this.$refs.createDialog?.showModal();
     },
-    closeCreateDialog() { this.$refs.createDialog?.close(); },
+    closeCreateDialog() {
+      if (this.pendingCreate) this.pendingCreate.credential.raw = '';
+      this.pendingCreate = null;
+      this.$refs.createDialog?.close();
+    },
     async createTenant(event) {
       event?.preventDefault();
       if (this.isSubmitting) return;
       this.isSubmitting = true;
       this.errorMessage = '';
-      const credential = await generateAPIKey();
-      try {
-        const payload = {
+      const generation = this.workspaceGeneration;
+      let operation = this.pendingCreate;
+      if (!operation) {
+        const credential = await generateAPIKey();
+        if (generation !== this.workspaceGeneration) {
+          credential.raw = '';
+          return;
+        }
+        const payload = /** @type {Record<string, unknown>} */ ({
           display_name: this.createForm.displayName,
           support_email: this.createForm.supportEmail,
           email_profile: {
@@ -89,7 +141,7 @@ export function createTenantManagement({ apiClient, strings, actions }) {
             from_address: this.createForm.emailFromAddress,
           },
           api_credential: { id: credential.id, secret_digest: credential.secret_digest },
-        };
+        });
         if (this.createForm.smsEnabled) {
           payload.sms_profile = {
             account_sid: this.createForm.smsAccountSID,
@@ -97,20 +149,38 @@ export function createTenantManagement({ apiClient, strings, actions }) {
             from_number: this.createForm.smsFromNumber,
           };
         }
-        await apiClient.createTenant(payload, crypto.randomUUID());
-        this.oneTimeAPIKey = credential.raw;
+        operation = { credential, idempotencyKey: crypto.randomUUID(), payload };
+        this.pendingCreate = operation;
+      }
+      try {
+        await apiClient.createTenant(operation.payload, operation.idempotencyKey);
+        if (generation !== this.workspaceGeneration) {
+          operation.credential.raw = '';
+          if (this.pendingCreate === operation) this.pendingCreate = null;
+          return;
+        }
+        this.oneTimeAPIKey = operation.credential.raw;
         this.oneTimeTitle = strings.createdKeyTitle;
-        this.closeCreateDialog();
-        await this.loadTenants();
+        operation.credential.raw = '';
+        this.pendingCreate = null;
+        this.$refs.createDialog?.close();
         dispatchToast({ variant: 'success', message: strings.createSuccess });
         this.$nextTick(() => this.$refs.keyDialog?.showModal());
-      } catch {
-        credential.raw = '';
-        this.oneTimeAPIKey = '';
+        await this.loadTenants();
+      } catch (error) {
+        if (generation !== this.workspaceGeneration) {
+          operation.credential.raw = '';
+          if (this.pendingCreate === operation) this.pendingCreate = null;
+          return;
+        }
+        if (isDefinitiveAPIError(error)) {
+          operation.credential.raw = '';
+          this.pendingCreate = null;
+        }
         this.errorMessage = strings.createError;
         dispatchToast({ variant: 'error', message: this.errorMessage });
       } finally {
-        this.isSubmitting = false;
+        if (generation === this.workspaceGeneration) this.isSubmitting = false;
       }
     },
     openEditDialog(event, resource) {
@@ -155,6 +225,8 @@ export function createTenantManagement({ apiClient, strings, actions }) {
           } else {
             await apiClient.putSMSProfile(this.selectedTenant.id, 0, smsChanges);
           }
+        } else if (this.selectedTenant.smsProfile) {
+          await apiClient.deleteSMSProfile(this.selectedTenant.id, this.selectedTenant.smsProfile.version);
         }
         this.closeEditDialog();
         await this.loadTenants();
@@ -170,21 +242,46 @@ export function createTenantManagement({ apiClient, strings, actions }) {
       if (this.isSubmitting) return;
       this.dialogTrigger = event?.currentTarget instanceof HTMLElement ? event.currentTarget : null;
       this.isSubmitting = true;
-      const credential = await generateAPIKey();
+      const generation = this.workspaceGeneration;
+      let operation = this.pendingRotation;
+      if (!operation || operation.tenantId !== resource.id || operation.version !== resource.apiCredential.version) {
+        if (operation) operation.credential.raw = '';
+        const credential = await generateAPIKey();
+        if (generation !== this.workspaceGeneration) {
+          credential.raw = '';
+          return;
+        }
+        operation = { tenantId: resource.id, version: resource.apiCredential.version, credential };
+        this.pendingRotation = operation;
+      }
       try {
-        await apiClient.rotateTenantCredential(resource.id, resource.apiCredential.version, {
-          id: credential.id, secret_digest: credential.secret_digest,
+        await apiClient.rotateTenantCredential(operation.tenantId, operation.version, {
+          id: operation.credential.id, secret_digest: operation.credential.secret_digest,
         });
-        this.oneTimeAPIKey = credential.raw;
+        if (generation !== this.workspaceGeneration) {
+          operation.credential.raw = '';
+          if (this.pendingRotation === operation) this.pendingRotation = null;
+          return;
+        }
+        this.oneTimeAPIKey = operation.credential.raw;
         this.oneTimeTitle = strings.rotatedKeyTitle;
-        await this.loadTenants();
+        operation.credential.raw = '';
+        this.pendingRotation = null;
         this.$nextTick(() => this.$refs.keyDialog?.showModal());
-      } catch {
-        credential.raw = '';
-        this.oneTimeAPIKey = '';
+        await this.loadTenants();
+      } catch (error) {
+        if (generation !== this.workspaceGeneration) {
+          operation.credential.raw = '';
+          if (this.pendingRotation === operation) this.pendingRotation = null;
+          return;
+        }
+        if (isDefinitiveAPIError(error)) {
+          operation.credential.raw = '';
+          this.pendingRotation = null;
+        }
         dispatchToast({ variant: 'error', message: strings.rotateError });
       } finally {
-        this.isSubmitting = false;
+        if (generation === this.workspaceGeneration) this.isSubmitting = false;
       }
     },
     openDeleteDialog(event, resource) {
@@ -225,6 +322,11 @@ export function createTenantManagement({ apiClient, strings, actions }) {
       this.selectedTenant = null;
       this.pendingDeleteTenant = null;
       this.restoreDialogFocus();
+    },
+    handleCreateDialogClosed() {
+      if (this.pendingCreate) this.pendingCreate.credential.raw = '';
+      this.pendingCreate = null;
+      this.handleDialogClosed();
     },
     restoreDialogFocus() {
       const trigger = this.dialogTrigger;

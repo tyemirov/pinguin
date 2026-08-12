@@ -61,7 +61,7 @@
           </template>
         </div>
 
-        <dialog class="dialog dialog--wide" x-ref="createDialog" aria-labelledby="create-tenant-title" x-on:close="handleDialogClosed()">
+        <dialog class="dialog dialog--wide" x-ref="createDialog" aria-labelledby="create-tenant-title" x-on:close="handleCreateDialogClosed()">
           <form class="dialog__body tenant-form" x-on:submit.prevent="createTenant">
             <header class="dialog__header tenant-form__full"><h2 id="create-tenant-title" x-text="strings.createTitle"></h2></header>
             <label><span x-text="strings.displayNameLabel"></span><input x-model="createForm.displayName" required /></label>
