@@ -294,6 +294,16 @@ const server = http.createServer(async (req, res) => {
   }
 
   const profileMatch = url.pathname.match(/^\/api\/tenants\/([^/]+)\/(email-profile|sms-profile)$/);
+  if (profileMatch && req.method === 'DELETE' && profileMatch[2] === 'sms-profile') {
+    const tenant = serverState.tenants.find((item) => item.id === decodeURIComponent(profileMatch[1]));
+    if (!tenant) {
+      sendJson(res, 404, { error: { message: 'tenant was not found' } });
+      return;
+    }
+    tenant.sms_profile = null;
+    sendJson(res, 204, null);
+    return;
+  }
   if (profileMatch && (req.method === 'PATCH' || req.method === 'PUT')) {
     const tenant = serverState.tenants.find((item) => item.id === decodeURIComponent(profileMatch[1]));
     if (!tenant) {

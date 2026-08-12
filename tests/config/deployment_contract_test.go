@@ -224,8 +224,10 @@ func TestProductionImageAndPagesSourcesRemainComplete(t *testing.T) {
 	for _, requiredSnippet := range []string{
 		"go build -o /workspace/bin/pinguin ./cmd/server",
 		"go build -o /workspace/bin/pinguin-doctor ./cmd/doctor",
+		"go build -o /workspace/bin/pinguin-convert-managed-tenants ./cmd/convert-managed-tenants",
 		"COPY --from=builder /workspace/bin/pinguin /usr/local/bin/pinguin",
 		"COPY --from=builder /workspace/bin/pinguin-doctor /usr/local/bin/pinguin-doctor",
+		"COPY --from=builder /workspace/bin/pinguin-convert-managed-tenants /usr/local/bin/pinguin-convert-managed-tenants",
 		`CMD ["/usr/local/bin/pinguin"]`,
 	} {
 		if !strings.Contains(dockerfile, requiredSnippet) {
