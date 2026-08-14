@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-mpr-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>Pinguin Tenants</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.css" />
+    <link rel="stylesheet" href="/assets/css/tokens.css" />
+    <link rel="stylesheet" href="/assets/css/base.css" />
+    <link rel="stylesheet" href="/assets/css/tenants.css" />
+    <script defer src="/js/google-analytics.js"></script>
+    <script defer src="/js/runtime-config.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui-config.js"></script>
+    <script id="mpr-ui-bundle" type="application/json" data-mpr-ui-bundle-src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script defer src="https://loopaware.mprlab.com/pixel.js?site_id=e8f235c8-ddf2-46b7-ae42-022885fe8a44"></script>
+  </head>
+  <body data-page="tenants" class="theme-dark" data-theme="dark" x-data="appShell()">
+    <mpr-header id="pinguin-tenants-header" data-config-url="/config-ui.yaml" brand-label="Pinguin" brand-href="/" nav-links='[{ "label": "Docs", "href": "https://github.com/tyemirov/pinguin" }]'>
+      <a slot="brand" class="pinguin-brand" href="/" aria-label="Pinguin home">
+        <img class="pinguin-brand__mark" src="/favicon.svg" alt="" aria-hidden="true" />
+        <span>Pinguin</span>
+      </a>
+      <span slot="nav-left" class="workspace-navigation__menu">
+        <a class="workspace-navigation__link" :href="RUNTIME_CONFIG.tenantUrl" aria-current="page" x-text="STRINGS.navigation.tenants"></a>
+        <a class="workspace-navigation__link" :href="RUNTIME_CONFIG.eventLogUrl" x-text="STRINGS.navigation.eventLog"></a>
+        <a class="workspace-navigation__link" :href="RUNTIME_CONFIG.smtpRelayUrl" x-text="STRINGS.navigation.smtpRelay"></a>
+      </span>
+    </mpr-header>
+    <main class="page-main">
+      <section class="page-work-surface panel tenant-workspace" x-data="tenantManagement()" data-testid="page-work-surface">
+        <header class="panel-header">
+          <div>
+            <h1 class="section-title" x-text="strings.title"></h1>
+            <p class="text-muted" x-text="strings.subtitle"></p>
+          </div>
+          <button class="button primary" type="button" x-on:click="openCreateDialog($event)" x-text="strings.createLabel"></button>
+        </header>
+        <template x-if="errorMessage"><p class="notice" data-variant="error" x-text="errorMessage"></p></template>
+        <template x-if="isLoading"><p class="empty-state" x-text="strings.loadingState"></p></template>
+        <template x-if="!isLoading && tenants.length === 0"><p class="empty-state" data-testid="tenant-empty-state" x-text="strings.emptyState"></p></template>
+        <div class="tenant-list" role="list" tabindex="-1" x-ref="tenantList" aria-label="Tenants">
+          <template x-for="tenant in tenants" :key="tenant.id">
+            <article class="tenant-card" role="listitem" data-testid="tenant-card">
+              <div>
+                <h2 x-text="tenant.displayName"></h2>
+                <p x-text="tenant.supportEmail || '—'"></p>
+                <dl>
+                  <div><dt x-text="strings.credentialLabel"></dt><dd x-text="tenant.apiCredential?.display_prefix || '—'"></dd></div>
+                  <div><dt x-text="strings.emailFromLabel"></dt><dd x-text="tenant.emailProfile?.from_address || '—'"></dd></div>
+                </dl>
+              </div>
+              <div class="tenant-card__actions">
+                <button class="button" type="button" :disabled="isSubmitting" x-on:click="openEditDialog($event, tenant)" x-text="strings.updateLabel"></button>
+                <button class="button" type="button" :disabled="isSubmitting" x-on:click="rotateCredential($event, tenant)" x-text="strings.rotateLabel"></button>
+                <button class="button danger" type="button" :disabled="isSubmitting" x-on:click="openDeleteDialog($event, tenant)" x-text="actions.delete"></button>
+              </div>
+            </article>
+          </template>
+        </div>
+
+        <dialog class="dialog dialog--wide" x-ref="createDialog" aria-labelledby="create-tenant-title" x-on:close="handleCreateDialogClosed()">
+          <form class="dialog__body tenant-form" x-on:submit.prevent="createTenant">
+            <header class="dialog__header tenant-form__full"><h2 id="create-tenant-title" x-text="strings.createTitle"></h2></header>
+            <label><span x-text="strings.displayNameLabel"></span><input x-model="createForm.displayName" required /></label>
+            <label><span x-text="strings.supportEmailLabel"></span><input type="email" x-model="createForm.supportEmail" /></label>
+            <h3 class="tenant-form__full" x-text="strings.emailProfileTitle"></h3>
+            <label><span x-text="strings.emailHostLabel"></span><input x-model="createForm.emailHost" required /></label>
+            <label><span x-text="strings.emailPortLabel"></span><input type="number" min="1" max="65535" x-model.number="createForm.emailPort" required /></label>
+            <label><span x-text="strings.emailUsernameLabel"></span><input x-model="createForm.emailUsername" autocomplete="off" required /></label>
+            <label><span x-text="strings.emailPasswordLabel"></span><input type="password" x-model="createForm.emailPassword" autocomplete="new-password" required /></label>
+            <label class="tenant-form__full"><span x-text="strings.emailFromLabel"></span><input type="email" x-model="createForm.emailFromAddress" required /></label>
+            <label class="tenant-form__full checkbox-field"><input type="checkbox" x-model="createForm.smsEnabled" /><span x-text="strings.smsEnabledLabel"></span></label>
+            <template x-if="createForm.smsEnabled">
+              <div class="tenant-form__nested tenant-form__full">
+                <label><span x-text="strings.smsAccountSIDLabel"></span><input x-model="createForm.smsAccountSID" required /></label>
+                <label><span x-text="strings.smsAuthTokenLabel"></span><input type="password" x-model="createForm.smsAuthToken" required /></label>
+                <label><span x-text="strings.smsFromLabel"></span><input type="tel" x-model="createForm.smsFromNumber" required /></label>
+              </div>
+            </template>
+            <footer class="dialog__actions tenant-form__full">
+              <button class="button" type="button" x-on:click="closeCreateDialog()" x-text="actions.close"></button>
+              <button class="button primary" type="submit" :disabled="isSubmitting" x-text="strings.createLabel"></button>
+            </footer>
+          </form>
+        </dialog>
+
+        <dialog class="dialog dialog--wide" x-ref="editDialog" aria-labelledby="edit-tenant-title" x-on:close="handleDialogClosed()">
+          <form class="dialog__body tenant-form" x-on:submit.prevent="saveTenant">
+            <header class="dialog__header tenant-form__full"><h2 id="edit-tenant-title" x-text="strings.updateTitle"></h2></header>
+            <label><span x-text="strings.displayNameLabel"></span><input x-model="editForm.displayName" required /></label>
+            <label><span x-text="strings.supportEmailLabel"></span><input type="email" x-model="editForm.supportEmail" /></label>
+            <h3 class="tenant-form__full" x-text="strings.emailProfileTitle"></h3>
+            <label><span x-text="strings.emailHostLabel"></span><input x-model="editForm.emailHost" required /></label>
+            <label><span x-text="strings.emailPortLabel"></span><input type="number" min="1" max="65535" x-model.number="editForm.emailPort" required /></label>
+            <label><span x-text="strings.emailUsernameLabel"></span><input x-model="editForm.emailUsername" autocomplete="off" /></label>
+            <label><span x-text="strings.emailPasswordLabel"></span><input type="password" x-model="editForm.emailPassword" autocomplete="new-password" /></label>
+            <label class="tenant-form__full"><span x-text="strings.emailFromLabel"></span><input type="email" x-model="editForm.emailFromAddress" required /></label>
+            <label class="tenant-form__full checkbox-field"><input type="checkbox" x-model="editForm.smsEnabled" /><span x-text="strings.smsEnabledLabel"></span></label>
+            <template x-if="editForm.smsEnabled">
+              <div class="tenant-form__nested tenant-form__full">
+                <label><span x-text="strings.smsAccountSIDLabel"></span><input x-model="editForm.smsAccountSID" :required="!selectedTenant?.smsProfile" /></label>
+                <label><span x-text="strings.smsAuthTokenLabel"></span><input type="password" x-model="editForm.smsAuthToken" :required="!selectedTenant?.smsProfile" /></label>
+                <label><span x-text="strings.smsFromLabel"></span><input type="tel" x-model="editForm.smsFromNumber" required /></label>
+              </div>
+            </template>
+            <footer class="dialog__actions tenant-form__full">
+              <button class="button" type="button" x-on:click="closeEditDialog()" x-text="actions.close"></button>
+              <button class="button primary" type="submit" :disabled="isSubmitting" x-text="actions.saveChanges"></button>
+            </footer>
+          </form>
+        </dialog>
+
+        <dialog class="dialog" x-ref="keyDialog" aria-labelledby="api-key-title" x-on:close="handleKeyDialogClosed()">
+          <div class="dialog__body">
+            <header class="dialog__header"><h2 id="api-key-title" x-text="oneTimeTitle"></h2><p x-text="strings.keyDescription"></p></header>
+            <code class="one-time-key" data-testid="one-time-api-key" x-text="oneTimeAPIKey"></code>
+            <footer class="dialog__actions">
+              <button class="button primary" type="button" x-on:click="copyAPIKey()" x-text="actions.copy"></button>
+              <button class="button" type="button" x-on:click="closeKeyDialog()" x-text="actions.close"></button>
+            </footer>
+          </div>
+        </dialog>
+
+        <dialog class="dialog" x-ref="deleteDialog" aria-labelledby="delete-tenant-title" x-on:close="handleDialogClosed()">
+          <form class="dialog__body" x-on:submit.prevent="deleteTenant">
+            <header class="dialog__header"><h2 id="delete-tenant-title" x-text="strings.deleteTitle"></h2><p x-text="strings.deleteDescription"></p></header>
+            <footer class="dialog__actions">
+              <button class="button" type="button" x-on:click="closeDeleteDialog()" x-text="actions.close"></button>
+              <button class="button danger" type="submit" :disabled="isSubmitting" x-text="actions.delete"></button>
+            </footer>
+          </form>
+        </dialog>
+      </section>
+    </main>
+    <div class="toast-center" x-data="toastCenter()" x-init="init()" aria-live="polite">
+      <template x-for="toast in toasts" :key="toast.id"><button type="button" class="toast" :data-variant="toast.variant" x-on:click="dismissToast(toast.id)" x-text="toast.message"></button></template>
+    </div>
+    <script type="module" src="/js/bootstrap.js"></script>
+    <mpr-footer id="pinguin-tenants-footer" prefix-text="Pinguin Notification Service" privacy-link-label="Privacy &amp; Terms" privacy-modal-content="<h1>Privacy Policy — Pinguin</h1><p>Pinguin stores tenant configuration and notification delivery data to provide the service.</p>" links-collection='{"style":"drop-up","text":"Built By Marco Polo Research Lab","links":[{"label":"LLM Proxy","url":"https://llm-proxy.mprlab.com/"},{"label":"TAuth","url":"https://tauth.mprlab.com/"},{"label":"Ledger","url":"https://github.com/tyemirov/ledger"},{"label":"ISSUES.md","url":"https://issues.mprlab.com/"},{"label":"Dictator","url":"https://github.com/tyemirov/dictator"},{"label":"Pinguin","url":"https://pinguin.mprlab.com/"},{"label":"LoopAware","url":"https://loopaware.mprlab.com/"}]}' theme-switcher="toggle" theme-config='{"attribute":"data-theme","targets":["body"],"modes":[{"value":"light","attributeValue":"light","classList":["theme-light"]},{"value":"dark","attributeValue":"dark","classList":["theme-dark"]}]}'></mpr-footer>
+  </body>
+</html>
