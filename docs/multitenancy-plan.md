@@ -111,7 +111,7 @@ SMTP sender domains and identities used an owner email address instead of a tena
 
 `configs/config.production.yml` contained tenant definitions and the global gRPC token reference.
 
-The schema version 4 `.mprlab/deploy/resources.yml` file declared each tenant value and the global token as private inputs.
+The current `.mprlab/deploy/resources.yml` file declared each tenant value and the global token as private inputs.
 
 As a result, tenant changes required operator input and a new service configuration.
 

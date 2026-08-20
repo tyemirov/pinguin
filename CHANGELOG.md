@@ -14,7 +14,7 @@
 - Stabilize release browser acceptance by restoring authenticated fixtures through the real `mpr-ui` session hint and `/auth/session` boundary, and capture the landing snapshot only after anonymous session hydration settles.
 - Preserve independent SMTP identity creation and forwarding drafts, submit destructive confirmations once, restore focus to stable lists after removed actions, and label identity metadata values.
 - Route gateway-terminated public SMTPS on port 465 to Pinguin's canonical private plaintext SMTP submission listener on port 587.
-- Delete the obsolete source-owned Pages `CNAME` so the schema-v3 lifecycle remains the sole authority for generated Pages metadata.
+- Delete the obsolete source-owned Pages `CNAME` so the gateway lifecycle remains the sole authority for generated Pages metadata.
 - Align browser authentication with the current `mpr-ui@latest` config contract by removing rejected `authButton` YAML and declaring TAuth `/auth/session` restoration.
 - Make Playwright own its frontend dev server by default so release tests fail fast on an occupied port instead of reusing stale assets from another process.
 - Include trusted-proxy-aware source IP, remote peer address, and user agent in HTTP request logs for scanner attribution.
@@ -35,10 +35,11 @@
 - Publish `pinguin-doctor` in the production image and make the server the default command so gateway Compose preflight can run the doctor binary.
 
 ### Improvements
+- Remove schema versioning from the selected application manifest while preserving the explicit SemVer release policy.
 - Replace the light, table-led browser interface with the compact dark-first MPR shell, shared-header workspace navigation, responsive notification records, one-at-a-time sender-domain DNS panels, dense SMTP identity rows, and application dialogs with focus restoration.
 - Replace the generic footer Explore menu with a Built By Marco Polo Research Lab drop-up linking the seven MPR Platform services.
 - Split front-end presentation ownership across MPR tokens, shared primitives, page-scoped styles, the session bridge, the notification list, sender domains, SMTP identities, and the credential dialog; delete the superseded table and native-confirmation paths.
-- Migrate the sole production manifest to schema v3 with typed private values, service placement, retained data, HTTP/gRPC/SMTP capabilities, Caddy routes and listeners, Pages, the server binary, and the Pinguin TAuth tenant; delegate the three production lifecycle commands to the exact sibling gateway.
+- Migrate the sole production manifest to the current contract with typed private values, service placement, retained data, HTTP/gRPC/SMTP capabilities, Caddy routes and listeners, Pages, the server binary, and the Pinguin TAuth tenant; delegate the three production lifecycle commands to the exact sibling gateway.
 - Declare Pinguin's stable TAuth tenant requirements in the app-owned deployment manifest for gateway assembly.
 - Replace the old landing page with a focused Pinguin sign-in screen and notification queue preview.
 - Add a dashboard horizontal menu using `mpr-ui` header links for Event log and SMTP relay.
@@ -83,7 +84,7 @@
 - Update the dashboard docs to describe the authenticated event log and SMTP relay surfaces.
 - Update README and architecture notes to describe the split Event log and SMTP relay page destinations.
 - Document dashboard tenant authorization roles and non-admin domain scoping.
-- Document the schema-v3 gateway-owned SMTPS and MX listeners and their private runtime capabilities.
+- Document the gateway-owned SMTPS and MX listeners and their private runtime capabilities.
 
 ## [v0.4.24] - 2026-07-24
 

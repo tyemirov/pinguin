@@ -181,7 +181,7 @@ smtpSubmission:
 
 Sender domains are not configured in YAML. An authenticated owner selects a tenant and adds a sender domain. The owner publishes the displayed DNS records and clicks **Check DNS**. Pinguin creates SMTP identities only under a verified tenant domain. In `deliveryMode: direct`, Pinguin accepts the authenticated submission. It sends the raw message to each recipient domain's MX hosts with the authenticated envelope sender. Pinguin does not provide DKIM signing, bounce processing, or mailbox hosting.
 
-The schema version 4 gateway accepts public SMTPS on `pinguin-api.mprlab.com:465`. Caddy terminates TLS and sends the decrypted session to private port `587`. As a result, the production config leaves the Pinguin TLS fields empty and sets `allowInsecureAuth: true`. Publish only the gateway TLS listener.
+The gateway accepts public SMTPS on `pinguin-api.mprlab.com:465`. Caddy terminates TLS and sends the decrypted session to private port `587`. As a result, the production config leaves the Pinguin TLS fields empty and sets `allowInsecureAuth: true`. Publish only the gateway TLS listener.
 
 The public SMTPS listener uses Caddy Layer 4 and does not use the shared HTTP request limit. Pinguin applies SMTP controls in the submission server. `server.operationTimeoutSec` controls idle command and data deadlines. Session limits apply globally and to each backend-visible remote host. Authentication failure limits apply to each credential username. Message limits apply to each SMTP identity. Defaults permit 200 global sessions and 20 sessions for each remote host. Defaults also permit five authentication failures per 10 minutes and 60 accepted messages per identity per hour.
 
@@ -277,7 +277,7 @@ Domain setup verification:
    ```
 3. Send an external SMTP test to `support@help.example.com` and confirm that each configured forwarding recipient receives a copy.
 
-The schema version 4 gateway accepts public MX traffic on `mx.pinguin.mprlab.com:25`. Caddy sends the SMTP session to Pinguin's private forwarding capability.
+The gateway accepts public MX traffic on `mx.pinguin.mprlab.com:25`. Caddy sends the SMTP session to Pinguin's private forwarding capability.
 
 If forwarding through `smtpForwarding.relay` fails before Pinguin accepts `DATA`, Pinguin returns a temporary `451` SMTP response so the sender's mail server can retry. Pinguin does not provide IMAP, POP3, search, read/unread state, or retention for forwarded mail.
 
@@ -304,7 +304,7 @@ The Pinguin Docker image declares `/web` as a separate UI volume. Compose mounts
 
 ### Release, publish, then deploy
 
-GitHub Actions are disabled for Pinguin. `.mprlab/deploy/resources.yml` is the schema version 4 production declaration. It declares the server binary, container image, retained data, runtime capabilities, listeners, health check, Pages site, and TAuth tenant. `configs/config.production.yml` is the tracked production config template. The ignored mode-`0600` `.mprlab/deploy/.env` provides its private values. The Docker build context excludes this file.
+GitHub Actions are disabled for Pinguin. `.mprlab/deploy/resources.yml` is the permanent versionless production declaration. It declares the server binary, container image, retained data, runtime capabilities, listeners, health check, Pages site, and TAuth tenant. `configs/config.production.yml` is the tracked production config template. The ignored mode-`0600` `.mprlab/deploy/.env` provides its private values. The Docker build context excludes this file.
 
 The zero-argument `make release`, `make publish`, and `make deploy` commands delegate to the exact sibling `../mprlab-gateway`. The gateway validates and seals the selected manifest, publishes only the declared artifacts, and converges only Pinguin's declared runtime resources. This repository keeps `make up` and `make down` for local Compose development.
 
