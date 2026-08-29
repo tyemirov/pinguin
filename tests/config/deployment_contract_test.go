@@ -244,9 +244,9 @@ func TestProductionImageAndPagesSourcesRemainComplete(t *testing.T) {
 			t.Fatalf("Dockerfile missing production contract snippet %q", requiredSnippet)
 		}
 	}
-	for _, requiredPath := range []string{"web/.nojekyll"} {
-		if _, statErr := os.Stat(repoPath(filepath.FromSlash(requiredPath))); statErr != nil {
-			t.Fatalf("Pages source is missing %s: %v", requiredPath, statErr)
+	for _, reservedPath := range []string{"web/.nojekyll", "web/CNAME", "web/.mprlab-release.json"} {
+		if _, statErr := os.Stat(repoPath(filepath.FromSlash(reservedPath))); !errors.Is(statErr, os.ErrNotExist) {
+			t.Fatalf("Pages source contains reserved metadata path %s", reservedPath)
 		}
 	}
 }
