@@ -17,6 +17,9 @@ const PLATFORM_SERVICES = [
   { label: 'LoopAware', href: 'https://loopaware.mprlab.com/' },
 ];
 
+const LOOPAWARE_PIXEL_URL =
+  'https://loopaware.mprlab.com/pixel.js?site_id=f42bd5af-db6b-41e1-811e-5c04332ecdee';
+
 async function expectNoHorizontalOverflow(page: Page) {
   await expect
     .poll(() =>
@@ -98,6 +101,21 @@ test.describe('Compact MPR UX', () => {
       }
     });
   }
+
+  test('loads the current Pinguin LoopAware pixel on every page', async ({ page }) => {
+    const pages = [
+      { path: '/index.html', authenticated: false },
+      { path: '/tenants.html', authenticated: true },
+      { path: '/event-log.html', authenticated: true },
+      { path: '/smtp-relay.html', authenticated: true },
+    ];
+
+    for (const pageContract of pages) {
+      await configureRuntime(page, { authenticated: pageContract.authenticated });
+      await page.goto(pageContract.path);
+      await expect(page.locator(`script[src="${LOOPAWARE_PIXEL_URL}"]`)).toHaveCount(1);
+    }
+  });
 
   test('uses the compact dark shell and workspace navigation', async ({ page }) => {
     await configureRuntime(page, { authenticated: false });

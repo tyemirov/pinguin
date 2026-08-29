@@ -4,6 +4,16 @@ Entries record newly discovered requests or changes.
 
 ## BugFixes
 
+- [x] [B006] (P1) The browser pages use an obsolete LoopAware site identifier.
+  Goal:
+  Each browser page sends traffic data to the current Pinguin site.
+  Validation:
+  - Verify the LoopAware pixel URL on each browser page.
+  - Run `make ci` after the last change.
+  Resolution:
+  Each browser page now uses the current Pinguin site identifier.
+  The final CI passed all Go checks, 100 percent coverage, and 55 browser tests.
+
 - [x] [B001] (P1) Package the production tenant conversion command
   Goal:
   The published image contains the command for the production data conversion.
