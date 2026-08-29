@@ -4,6 +4,17 @@ Entries record newly discovered requests or changes.
 
 ## BugFixes
 
+- [x] [B007] (P1) The Pages source owns Gateway metadata.
+  Goal:
+  The Gateway adds the Pages metadata during release assembly.
+  Validation:
+  - Verify that the Pages source does not contain a reserved metadata path.
+  - Run `make ci` after the last change.
+  Resolution:
+  The Pages source no longer contains Gateway-owned metadata.
+  The deployment contract test rejects each reserved metadata path.
+  The final CI passed all Go checks, 100 percent coverage, and 55 browser tests.
+
 - [x] [B006] (P1) The browser pages use an obsolete LoopAware site identifier.
   Goal:
   Each browser page sends traffic data to the current Pinguin site.
@@ -49,6 +60,13 @@ Entries record newly discovered requests or changes.
   - Verify an `Unauthenticated` result for an invalid credential.
 
 ## Improvements
+
+- [ ] [I002] (P2) Normalize the managed governance sections.
+  Goal:
+  The managed governance sections match the current Governor templates.
+  Validation:
+  - Run the Governor check.
+  - Run `git diff --check`.
 
 - [x] [I001] (P0) Use the permanent versionless selected application manifest
   Goal:
