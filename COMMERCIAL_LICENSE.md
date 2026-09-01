@@ -1,5 +1,9 @@
 # Commercial Licensing
 
+This notice applies to the software and associated documentation distributed in
+the `tyemirov/pinguin` repository at
+<https://github.com/tyemirov/pinguin>.
+
 The PolyForm Noncommercial License 1.0.0 in `LICENSE` does not grant
 commercial use. A commercial license is available only through a separate
 written agreement with the licensor.
