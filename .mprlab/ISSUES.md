@@ -62,7 +62,7 @@ Entries record newly discovered requests or changes.
 ## Improvements
 
 - [!] [I003] (P1) Standardize HTTP health at `/healthz`.
-  Status:
+  Blocked:
   Full `make ci` passed, including all 56 browser tests.
   API and static endpoint changes are implemented.
   GitHub Pages cannot set the required response header. The production cache
