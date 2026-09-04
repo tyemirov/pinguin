@@ -146,6 +146,12 @@ type Repository struct {
 	runtimeCache map[string]RuntimeConfig
 }
 
+// CheckHealth verifies datastore availability without tenant operations.
+func (repository *Repository) CheckHealth(ctx context.Context) error {
+	var probe Tenant
+	return repository.database.WithContext(ctx).Clauses(clause.Select{Columns: []clause.Column{{Name: "id"}}}).Limit(1).Find(&probe).Error
+}
+
 // NewRepository constructs a managed tenant repository.
 func NewRepository(database *gorm.DB, keeper *SecretKeeper) *Repository {
 	return &Repository{

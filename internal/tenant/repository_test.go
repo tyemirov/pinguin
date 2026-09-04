@@ -138,6 +138,9 @@ func TestManagedTenantValueTypes(t *testing.T) {
 
 func TestManagedTenantRepositoryLifecycle(t *testing.T) {
 	repository, database := newRepositoryTestFixture(t)
+	if err := repository.CheckHealth(t.Context()); err != nil {
+		t.Fatalf("datastore health: %v", err)
+	}
 	created, rawAPIKey := createRepositoryTenant(t, repository, true, repositoryTenantID, repositoryCredentialID, "first-key")
 	if created.Repeated || created.Resource.ID != repositoryTenantID || created.Resource.SMSProfile == nil {
 		t.Fatalf("created tenant = %+v", created)

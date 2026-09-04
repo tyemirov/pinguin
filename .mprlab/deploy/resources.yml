@@ -287,6 +287,11 @@ mprlab_resources:
       protocol: http
       url: https://pinguin-api.mprlab.com/healthz
       expected_status: 200
+    - kind: health_check
+      id: website-health
+      protocol: http
+      url: https://pinguin.mprlab.com/healthz
+      expected_status: 200
     - kind: github_pages
       id: website
       repository: tyemirov/pinguin

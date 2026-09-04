@@ -928,16 +928,27 @@ func TestSMTPIdentityRoutesBypassTenantLookup(t *testing.T) {
 
 func TestHealthzBypassesTenantLookup(t *testing.T) {
 	t.Helper()
-	repo := newTestTenantRepository(t)
-	server := newTestHTTPServerWithRepo(t, &stubNotificationService{}, &stubValidator{}, repo)
-
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
-	request.Host = "unknown.localhost"
-
-	server.httpServer.Handler.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected 200 for healthz, got %d", recorder.Code)
+	for _, scenario := range []struct {
+		name   string
+		repo   *tenant.Repository
+		status int
+	}{
+		{"available", newTestTenantRepository(t), http.StatusOK},
+		{"unavailable", newClosedTenantRepository(t), http.StatusServiceUnavailable},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			server := newTestHTTPServerWithRepo(t, &stubNotificationService{}, &stubValidator{}, scenario.repo)
+			listener := httptest.NewServer(server.httpServer.Handler)
+			defer listener.Close()
+			response, err := listener.Client().Get(listener.URL + "/healthz")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer response.Body.Close()
+			if response.StatusCode != scenario.status || response.Header.Get("Cache-Control") != "no-store" {
+				t.Fatalf("health response: %d %v", response.StatusCode, response.Header)
+			}
+		})
 	}
 }
 
