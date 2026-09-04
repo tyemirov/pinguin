@@ -85,6 +85,14 @@ func NewServer(cfg Config) (*Server, error) {
 
 	engine.GET("/runtime-config", serveRuntimeConfig())
 	engine.GET("/healthz", func(contextGin *gin.Context) {
+		contextGin.Header("Cache-Control", "no-store")
+		ctx, cancel := context.WithTimeout(contextGin.Request.Context(), time.Second)
+		defer cancel()
+		if err := cfg.TenantRepository.CheckHealth(ctx); err != nil {
+			cfg.Logger.Error("health check failed", "error", err)
+			contextGin.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable"})
+			return
+		}
 		contextGin.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 	protected := engine.Group("/api")
@@ -156,6 +164,9 @@ func requestLogger(logger *slog.Logger) gin.HandlerFunc {
 	return func(contextGin *gin.Context) {
 		started := time.Now()
 		contextGin.Next()
+		if contextGin.Request.URL.Path == "/healthz" && contextGin.Writer.Status() == http.StatusOK {
+			return
+		}
 		logger.Info(
 			"http_request_completed",
 			"method", contextGin.Request.Method,

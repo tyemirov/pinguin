@@ -8,6 +8,13 @@ x-pinguin-service: &pinguin-service
   env_file:
     - ./configs/.env.pinguin
   pull_policy: always
+  healthcheck:
+    test: ["CMD-SHELL", "wget -O- http://127.0.0.1:8081/healthz"]
+    start_interval: 1s
+    interval: 30s
+    timeout: 2s
+    retries: 6
+    start_period: 30s
   volumes:
     - pinguin-data:/app/data
     - pinguin-web:/web:ro
@@ -24,7 +31,7 @@ services:
     pull_policy: always
     volumes:
       - pinguin-web:/web:ro
-    command: ["--directory", "/web", "8080"]
+    command: ["--directory", "/web", "--response-header", "/healthz=Cache-Control:no-store", "8080"]
     ports:
       - "8080:8080"
 

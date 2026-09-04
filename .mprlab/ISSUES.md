@@ -61,6 +61,55 @@ Entries record newly discovered requests or changes.
 
 ## Improvements
 
+- [x] [I003] (P1) Standardize HTTP health at `/healthz`.
+
+
+  Goal:
+  Make `/healthz` the canonical health endpoint for the Pinguin API and
+  static web origins. Use the endpoint for readiness without application requests.
+
+  Requirements:
+  - Keep unauthenticated `GET /healthz` on the API origin.
+  - Publish a static `/healthz` resource for the GitHub Pages origin.
+  - Return `200` only when each origin can serve its current application contract.
+  - Return a non-success status when a required runtime dependency prevents API service.
+  - Send `Cache-Control: no-store` on API and local health responses.
+  - Use the GitHub Pages cache policy for production static health responses.
+  - Keep each response free from credentials and internal state.
+  - Do not mutate application state during a probe.
+  - Do not record a probe as application usage or an audit event.
+  - Do not emit routine information-level request events for successful probes.
+  - Keep failed probe evidence in container and deployment diagnostics.
+  - Use `/healthz` for local Compose, runtime capability, and public health checks.
+  - Set `start_interval: 1s` and `interval: 30s` for Docker probes.
+  - Set a bounded `start_period` for the API startup contract.
+  - Keep protocol-native readiness for gRPC and SMTP services.
+  - Do not add HTTP mirrors for non-HTTP services.
+  - Keep the selected manifest contract unchanged.
+
+  Deliverables:
+  - Update the API, static artifact, request logging, orchestration, manifest, documentation, and black-box tests.
+
+  Validation:
+  - Verify unauthenticated `GET /healthz` returns `200` on each origin.
+  - Verify API and local health responses use `Cache-Control: no-store`.
+  - Verify a required dependency failure returns a non-success API status.
+  - Verify the static publication artifact contains `/healthz`.
+  - Verify gRPC and SMTP readiness remain protocol-native.
+  - Verify Docker probes use the required startup and steady intervals.
+  - Verify successful probes create no routine request events.
+  - Verify failed probes retain diagnostic evidence.
+  - Run `make ci`.
+
+  Cache policy:
+  The operator approved the GitHub Pages cache-policy exception on 2026-09-04.
+  This exception applies only to production static health responses.
+  API and local health responses still require `Cache-Control: no-store`.
+
+  Resolution:
+  Implemented and verified API health, the static artifact, and readiness probes.
+  Full local `make ci` passed. The approved cache exception removes the remaining blocker.
+
 - [ ] [I002] (P2) Normalize the managed governance sections.
   Goal:
   The managed governance sections match the current Governor templates.
