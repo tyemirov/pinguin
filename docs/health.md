@@ -6,8 +6,10 @@ Successful probes produce no request events. Failed probes retain diagnostic eve
 Probes do not resolve a tenant, send notifications, or change application data.
 
 The website publishes `web/healthz`. Local serving adds `Cache-Control: no-store`.
-GitHub Pages controls production response headers and does not expose a repository header setting.
-I003 retains the production cache requirement as an open hosting decision.
+GitHub Pages uses its production cache policy for the static health resource.
+The operator approved this exception on 2026-09-04. API and local health
+responses still require `Cache-Control: no-store`.
+A cached Pages response proves artifact availability, not current API readiness.
 
 Docker startup probes run every second for 30 seconds. Later probes run every 30 seconds.
 The gRPC and SMTP checks keep their existing protocol contracts.
