@@ -2,10 +2,12 @@
 import { RUNTIME_CONFIG } from '../constants.js';
 
 function getFetcher() {
-  if (typeof window !== 'undefined' && typeof window.apiFetch === 'function') {
-    return window.apiFetch;
-  }
-  return (input, init = {}) => fetch(input, { credentials: 'include', ...init });
+  return (input, init = {}) => window.MPRUI.authenticatedFetch(
+    document.querySelector('mpr-header'),
+    input,
+    { credentials: 'include', ...init },
+    { mutationReplay: 'authorization-before-domain-work' },
+  );
 }
 
 function toJson(response) {

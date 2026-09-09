@@ -9,6 +9,10 @@ The Google client identifiers, tenant identifiers, origins, and endpoint paths r
 The explicit session endpoint remains `/auth/session`.
 
 The shared library controls authentication. Pinguin consumes its documented events through `sessionBridge.js`.
+Protected requests use `MPRUI.authenticatedFetch` with the mounted header as their host.
+The HTTP API checks authentication before all protected domain handlers.
+The transport declares `mutationReplay: "authorization-before-domain-work"` to permit one retry after session recovery.
+The retry preserves the request body, credential values, and idempotency key.
 The shared footer uses `menu` for its seven-service catalog.
 
 ## Validation
@@ -24,6 +28,12 @@ The test boundary verifies each digest before it serves those bytes.
 The suite uses the application pages, real shared components, and the local API test server.
 Google responses remain controlled test inputs.
 The tests exercise authentication, session restoration, tenant operations, notification operations, SMTP operations, layout, and themes.
+Final qualification uses B069 revision `768f25936497c5aabd426197d21c2100b6e5d9a1`.
+Ten focused browser checks passed against the verified candidate assets.
+Two recovery scenarios first reproduced B008 at phone and desktop widths.
+After the correction, each recovered read succeeds and each retried create operation stores one tenant in the local API test server.
+The scenarios preserve the form payload and request identity, then verify reload and logout.
+Final `make ci` passed all 65 browser checks and 100 percent Go coverage.
 
 ## Activation
 

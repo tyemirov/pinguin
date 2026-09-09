@@ -4,6 +4,12 @@ Entries record newly discovered requests or changes.
 
 ## BugFixes
 
+- [x] [B008] (P1) Restore protected requests after session expiry.
+  Goal: Restore the tenant workspace after a recoverable authentication failure.
+  Requirements: Use the shared authenticated transport. Preserve each mutation body and request identity during its retry.
+  Validation: Both browser recovery scenarios failed after the first tenant read returned HTTP 401. Eight public candidate checks passed.
+  Validation: The correction passed all ten candidate scenarios and final `make ci`, with 65 browser checks and 100 percent Go coverage.
+
 - [x] [B007] (P1) The Pages source owns Gateway metadata.
   Goal:
   The Gateway adds the Pages metadata during release assembly.
@@ -66,6 +72,7 @@ Entries record newly discovered requests or changes.
   Requirements: Declare each provider. Preserve the session endpoint and identifiers. Replace the obsolete footer menu attribute.
   Deliverables: Prepare source changes, browser checks, integration instructions, and a pull request.
   Validation: Final `make ci` passed with 100% Go coverage and 63 browser checks. Eight candidate checks failed before migration.
+  Validation: Final B069 qualification passed `make ci`, with 65 browser checks and 100 percent Go coverage. Ten candidate scenarios verify all four pages and protected recovery. B008 preserves mutation payloads and request identities after authentication recovery.
   Blocked: mpr-ui I009 must complete coordinated publication and cache qualification. The owner must complete real Google acceptance.
 
 - [ ] [I002] (P2) Normalize the managed governance sections.
