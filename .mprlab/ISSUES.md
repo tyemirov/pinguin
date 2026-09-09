@@ -61,6 +61,13 @@ Entries record newly discovered requests or changes.
 
 ## Improvements
 
+- [!] [I004] (P1) {I009@https://github.com/MarcoPoloResearchLab/mpr-ui} Adopt the shared authentication and footer contracts.
+  Goal: Preserve the four browser pages with the current shared library.
+  Requirements: Declare each provider. Preserve the session endpoint and identifiers. Replace the obsolete footer menu attribute.
+  Deliverables: Prepare source changes, browser checks, integration instructions, and a pull request.
+  Validation: Final `make ci` passed with 100% Go coverage and 63 browser checks. Eight candidate checks failed before migration.
+  Blocked: mpr-ui I009 must complete coordinated publication and cache qualification. The owner must complete real Google acceptance.
+
 - [ ] [I002] (P2) Normalize the managed governance sections.
   Goal:
   The managed governance sections match the current Governor templates.

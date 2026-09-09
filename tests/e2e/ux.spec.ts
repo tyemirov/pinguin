@@ -179,7 +179,7 @@ test.describe('Compact MPR UX', () => {
       await toggle.click();
       await expect(toggle).toHaveAttribute('aria-expanded', 'true');
 
-      const serviceLinks = footer.locator('[data-mpr-footer="menu-link"]');
+      const serviceLinks = footer.locator('[data-mpr-dropdown="panel"] a');
       await expect(serviceLinks).toHaveText(PLATFORM_SERVICES.map((service) => service.label));
       for (const [index, service] of PLATFORM_SERVICES.entries()) {
         await expect(serviceLinks.nth(index)).toHaveAttribute('href', service.href);
