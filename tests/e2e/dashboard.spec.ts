@@ -208,12 +208,12 @@ test.describe('Authenticated pages', () => {
     await page.goto('/event-log.html');
     await expect(page.getByTestId('notification-row')).toHaveCount(2);
 
-    await page.getByLabel('Search').fill('rare launch phrase');
+    await page.getByRole('searchbox', { name: 'Search', exact: true }).fill('rare launch phrase');
     await expect(page.getByTestId('notification-row')).toHaveCount(1);
     await expect(page.getByTestId('notifications-list')).toContainText('Visible body match');
     await expect(page.getByTestId('notifications-list')).not.toContainText('Other message');
 
-    await page.getByLabel('Search').fill('');
+    await page.getByRole('searchbox', { name: 'Search', exact: true }).fill('');
     await expect(page.getByTestId('notification-row')).toHaveCount(2);
   });
 

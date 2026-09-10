@@ -12,7 +12,7 @@ LONG_TIMEOUT := timeout -k 350s -s SIGKILL 350s
 COVERAGE_PROFILE ?= coverage.out
 COVERAGE_REQUIRED_TOTAL ?= 100.0%
 
-.PHONY: format check-format lint test test-unit test-integration test-fast test-slow test-coverage test-frontend test-frontend-update build up down ci release publish deploy
+.PHONY: test-shared-ui format check-format lint test test-unit test-integration test-fast test-slow test-coverage test-frontend test-frontend-update build up down ci release publish deploy
 
 format:
 	$(SHORT_TIMEOUT) gofmt -w $(GO_SOURCES)
@@ -91,3 +91,6 @@ release publish deploy:
 	fi; \
 	$(MAKE) --no-print-directory -C "$${gateway_root}" "app-$@" \
 		MPRLAB_APP_ROOT="$${application_root}"
+
+test-shared-ui:
+	CI=1 $(LONG_TIMEOUT) npm test -- shared-ui-candidate.spec.ts
