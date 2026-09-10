@@ -56,14 +56,12 @@ test.describe('Landing page auth flow', () => {
       /mpr-ui@latest\/mpr-ui\.js$/,
     );
     await expect(page.locator('script[src*="tauth.js"]')).toHaveCount(0);
-    await expect(page.locator('mpr-header').first()).toHaveAttribute(
-      'tauth-url',
-      'http://127.0.0.1:4174',
-    );
-    await expect(page.locator('mpr-header').first()).toHaveAttribute(
-      'tauth-session-path',
-      '/auth/session',
-    );
+    const auth = JSON.parse((await page.locator('mpr-header').first().getAttribute('auth-config'))!);
+    expect(auth.tauthUrl).toBe('http://127.0.0.1:4174');
+    expect(auth.sessionPath).toBe('/auth/session');
+    expect(auth.providers.google).toEqual({ enabled: true, clientId: 'playwright-client', loginPath: '/auth/google', noncePath: '/auth/nonce' });
+    expect(auth.providers.apple).toEqual({ enabled: false });
+    expect(auth.providers.password).toEqual({ enabled: false });
   });
 
   test('keeps fresh anonymous startup on the current session boundary', async ({ page }) => {

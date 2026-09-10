@@ -588,6 +588,8 @@ Expected failures use `{ "error": { "code": "...", "message": "...", "request_id
 - The shared shell owns cross-tab authentication state. Pinguin consumes only the `mpr-ui` events and profile snapshot.
 - For local testing, start the Compose stack and visit `http://localhost:8080`. The browser uses the Pinguin API on `http://localhost:8081`.
 
+See the [shared UI migration](docs/mpr-ui-migration.md) for I004 candidate validation and activation requirements.
+
 ### Front-End Tests (Playwright)
 
 Install the Node tooling once:

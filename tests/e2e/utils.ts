@@ -1,4 +1,5 @@
 import { expect, Page } from '@playwright/test';
+import { useSharedCandidate } from './candidate-assets';
 
 type ConfigureRuntimeOptions = {
   authenticated: boolean;
@@ -58,6 +59,7 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
 }
 
 export async function stubExternalAssets(page: Page) {
+  await useSharedCandidate(page);
   await page.route('https://loopaware.mprlab.com/**', (route) => {
     route.fulfill({
       contentType: 'text/javascript',
@@ -72,7 +74,7 @@ export async function stubExternalAssets(page: Page) {
           if (!this.callback) {
             return;
           }
-          this.callback(payload || { credential: 'playwright-token' });
+          this.callback({ credential: 'playwright-token', ...payload, state: this.state });
         },
       };
       window.google = {
@@ -82,10 +84,11 @@ export async function stubExternalAssets(page: Page) {
               window.__playwrightSharedAuth.callback = config && config.callback;
             },
             renderButton(el, options) {
+              window.__playwrightSharedAuth.state = options.state;
               var label = (options && options.text) || "Sign in";
               var normalizedLabel = label.replace(/_/g, " ");
               var host = el && typeof el.closest === "function"
-                ? el.closest('[data-mpr-header="google-signin"]')
+                ? el.closest('[data-mpr-auth-action="google"]')
                 : null;
               if (host && host.style) {
                 host.style.display = "inline-flex";
@@ -114,8 +117,9 @@ export async function stubExternalAssets(page: Page) {
                 "'>" +
                 normalizedLabel +
                 "</button>";
+              el.querySelector("button").onclick = () => options.click_listener();
             },
-            prompt() {},
+            prompt() {}, disableAutoSelect() {}, cancel() {},
           },
         },
       };
@@ -147,7 +151,7 @@ async function waitForHeaderLoginButton(page: Page) {
     if (!header) {
       return false;
     }
-    const wrapper = header.querySelector('[data-mpr-header="google-signin"]');
+    const wrapper = header.querySelector('[data-mpr-auth-action="google"]');
     if (!wrapper) {
       return false;
     }
@@ -181,7 +185,7 @@ async function getHeaderButtonMetrics(page: Page) {
     if (!header) {
       return null;
     }
-    const wrapper = header.querySelector('[data-mpr-header="google-signin"]');
+    const wrapper = header.querySelector('[data-mpr-auth-action="google"]');
     if (!wrapper) {
       return null;
     }
@@ -218,8 +222,8 @@ export async function expectSharedHeaderSignInButton(page: Page) {
   const header = page.locator('mpr-header').first();
   await expect(header).toBeVisible();
   await waitForHeaderLoginButton(page);
-  const tenantId = (await header.getAttribute('tauth-tenant-id')) || '';
-  expect(tenantId.trim(), 'login button missing tauth-tenant-id').not.toBe('');
+  const auth = JSON.parse((await header.getAttribute('auth-config'))!);
+  expect(auth.tenantId).toBe(PLAYWRIGHT_TAUTH_TENANT_ID);
   const metrics = await getHeaderButtonMetrics(page);
   if (!metrics) {
     throw new Error('Unable to locate shared sign-in button inside mpr-header');
@@ -294,7 +298,7 @@ export async function clickSharedHeaderSignInButton(page: Page) {
     if (!header) {
       return;
     }
-    const container = header.querySelector('[data-mpr-header="google-signin"]');
+    const container = header.querySelector('[data-mpr-auth-action="google"]');
     if (!container) {
       return;
     }
