@@ -1,10 +1,12 @@
 package integrationtest
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"net"
 	"net/http"
-	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,7 +22,8 @@ func TestHealthzBypassesTenantResolution(t *testing.T) {
 
 	db, secretKeeper := setupTestDB(t)
 	repo := tenant.NewRepository(db, secretKeeper)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	var events bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&events, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	svc := service.NewNotificationService(db, logger, config.Config{}, repo)
 
 	addr := allocateFreeAddr(t)
@@ -54,12 +57,40 @@ func TestHealthzBypassesTenantResolution(t *testing.T) {
 			if response.StatusCode != http.StatusOK {
 				t.Fatalf("expected 200 for healthz, got %d", response.StatusCode)
 			}
+			if response.Header.Get("Cache-Control") != "no-store" {
+				t.Fatalf("health cache header: %v", response.Header)
+			}
 			break
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("healthz request error: %v", err)
 		}
 		time.Sleep(25 * time.Millisecond)
+	}
+	if events.Len() != 0 {
+		t.Fatalf("successful probe emitted events: %s", events.String())
+	}
+	pool, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.Close(); err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.Get(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusServiceUnavailable || string(body) != `{"status":"unavailable"}` || response.Header.Get("Cache-Control") != "no-store" {
+		t.Fatalf("unavailable health: %d %v %s", response.StatusCode, response.Header, body)
+	}
+	if !strings.Contains(events.String(), "health check failed") {
+		t.Fatalf("missing failure diagnostics: %s", events.String())
 	}
 }
 

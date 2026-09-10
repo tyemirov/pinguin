@@ -83,6 +83,7 @@ func TestRepositoryOwnsCompleteVersionlessDeployment(t *testing.T) {
 		"github_pages/website",
 		"github_release_binary/server",
 		"health_check/public-health",
+		"health_check/website-health",
 		"private_values/private",
 		"runtime_capability/grpc",
 		"runtime_capability/http",
