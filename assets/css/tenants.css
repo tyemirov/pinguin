@@ -1,0 +1,85 @@
+.tenant-workspace {
+  display: grid;
+  gap: 1rem;
+}
+
+.tenant-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.tenant-card {
+  align-items: center;
+  background: var(--surface-raised, #181b20);
+  border: 1px solid var(--border-subtle, #30343b);
+  border-radius: 0.65rem;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 1rem;
+}
+
+.tenant-card h2,
+.tenant-card p {
+  margin: 0 0 0.35rem;
+}
+
+.tenant-card dl,
+.tenant-card dl div {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.tenant-card dl {
+  flex-wrap: wrap;
+}
+
+.tenant-card dt {
+  color: var(--text-muted, #9ca3af);
+}
+
+.tenant-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.tenant-form {
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.tenant-form__full {
+  grid-column: 1 / -1;
+}
+
+.tenant-form__nested {
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.checkbox-field {
+  align-items: center;
+  display: flex;
+  gap: 0.55rem;
+}
+
+.one-time-key {
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+@media (max-width: 720px) {
+  .tenant-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tenant-form,
+  .tenant-form__nested {
+    grid-template-columns: 1fr;
+  }
+}
