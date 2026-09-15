@@ -29,6 +29,7 @@
         <a class="workspace-navigation__link" :href="RUNTIME_CONFIG.eventLogUrl" x-text="STRINGS.navigation.eventLog"></a>
         <a class="workspace-navigation__link" :href="RUNTIME_CONFIG.smtpRelayUrl" x-text="STRINGS.navigation.smtpRelay"></a>
       </span>
+      <mpr-user slot="aux" display-mode="avatar" logout-url="/" logout-label="Sign out"></mpr-user>
     </mpr-header>
     <main class="page-main">
       <section class="page-work-surface panel tenant-workspace" x-data="tenantManagement()" data-testid="page-work-surface">
