@@ -72,6 +72,8 @@ for (const width of [390, 1280]) {
       await expect(page.locator('mpr-header')).toHaveAttribute('auth-config', /"providers"/);
       await expect(page).toHaveURL(new RegExp(path.replace('.', '\\.') + '$'));
       const footer = page.locator('mpr-footer');
+      await expect.soft(footer).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect.soft(footer).toHaveCSS('border-top-width', '0px');
       const menu = footer.getByRole('button', { name: 'Built By Marco Polo Research Lab', exact: true });
       await expect(menu).toBeVisible();
       await menu.focus();

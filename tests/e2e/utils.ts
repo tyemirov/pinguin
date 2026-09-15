@@ -261,7 +261,7 @@ export async function expectSharedHeaderUserMenu(page: Page) {
   await expect(userMenu).toBeVisible();
   await expect(userMenu).toHaveAttribute('data-mpr-user-status', 'authenticated');
   await expect(userMenu.locator('[data-mpr-user="trigger"]')).toBeVisible();
-  await expect(userMenu.locator('[data-mpr-user="name"]')).toContainText('Playwright');
+  await expect(userMenu.locator('[data-mpr-user="trigger"]')).toHaveAccessibleName('Playwright User');
   await expect(userMenu).toHaveAttribute('data-user-display', 'Playwright User');
   await expect(userMenu.locator('[data-mpr-user="avatar"]')).toBeVisible();
 }
