@@ -1,6 +1,5 @@
 .tenant-workspace {
   display: grid;
-  gap: 1rem;
 }
 
 .tenant-list {
@@ -9,14 +8,28 @@
 }
 
 .tenant-card {
-  align-items: center;
+  align-items: start;
   background: var(--surface-raised, #181b20);
   border: 1px solid var(--border-subtle, #30343b);
   border-radius: 0.65rem;
-  display: flex;
-  gap: 1rem;
-  justify-content: space-between;
+  display: grid;
+  gap: 0.75rem 1rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto 1fr;
   padding: 1rem;
+}
+
+.tenant-card__details {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tenant-card__delete {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
 }
 
 .tenant-card h2,
@@ -40,9 +53,13 @@
 }
 
 .tenant-card__actions {
+  align-self: end;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+  grid-column: 2;
+  grid-row: 2;
+  justify-content: flex-end;
 }
 
 .tenant-form {
@@ -73,9 +90,12 @@
 }
 
 @media (max-width: 720px) {
-  .tenant-card {
-    align-items: stretch;
-    flex-direction: column;
+  .tenant-card__details {
+    grid-row: 1;
+  }
+
+  .tenant-card__actions {
+    grid-column: 1 / -1;
   }
 
   .tenant-form,
