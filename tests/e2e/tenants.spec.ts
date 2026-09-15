@@ -9,6 +9,31 @@ test.describe('Managed tenant configuration', () => {
   });
 
   for (const width of [802, 390]) {
+    test(`uses a circular avatar-only account control at ${width}px`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 998 });
+      await page.goto('/tenants.html');
+      await expect(page.getByTestId('tenant-card').first()).toBeVisible();
+      const user = page.locator('mpr-header mpr-user');
+      const trigger = user.locator('[data-mpr-user="trigger"]');
+      const avatar = user.locator('[data-mpr-user="avatar"]');
+      await expect(trigger).toBeVisible();
+      await expect(trigger).toHaveAccessibleName('Playwright User');
+      await expect.soft(user.locator('[data-mpr-user="name"]')).toBeHidden();
+      await expect.soft(trigger).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect.soft(trigger).toHaveCSS('border-top-width', '0px');
+      await expect(avatar).toHaveCSS('border-radius', '50%');
+      const triggerBox = await trigger.boundingBox();
+      const avatarBox = await avatar.boundingBox();
+      expect(triggerBox && avatarBox).toBeTruthy();
+      expect.soft(triggerBox!.width).toBeCloseTo(triggerBox!.height, 0);
+      expect.soft(triggerBox!.width).toBeCloseTo(avatarBox!.width, 0);
+      await trigger.click();
+      await expect(user.getByRole('menuitem', { name: 'Sign out' })).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(trigger).toBeFocused();
+      await page.screenshot({ path: testInfo.outputPath('tenant-shell.png'), fullPage: true });
+    });
+
     test(`places tenant actions in the right corners without a header gap at ${width}px`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width, height: 998 });
       await page.goto('/tenants.html');
