@@ -8,6 +8,46 @@ test.describe('Managed tenant configuration', () => {
     await configureRuntime(page, { authenticated: true });
   });
 
+  for (const width of [802, 390]) {
+    test(`places tenant actions in the right corners without a header gap at ${width}px`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 998 });
+      await page.goto('/tenants.html');
+      const card = page.getByTestId('tenant-card').first();
+      await expect(card).toBeVisible();
+      const deleteButton = card.getByRole('button', { name: 'Delete', exact: true });
+      const manageButton = card.getByRole('button', { name: 'Manage tenant', exact: true });
+      const rotateButton = card.getByRole('button', { name: 'Rotate API key', exact: true });
+      const [headerBox, cardBox, deleteBox, manageBox, rotateBox] = await Promise.all([
+        page.getByTestId('page-work-surface').locator('.panel-header').boundingBox(),
+        card.boundingBox(),
+        deleteButton.boundingBox(),
+        manageButton.boundingBox(),
+        rotateButton.boundingBox(),
+      ]);
+      expect(headerBox && cardBox && deleteBox && manageBox && rotateBox).toBeTruthy();
+      if (!headerBox || !cardBox || !deleteBox || !manageBox || !rotateBox) return;
+
+      expect.soft(cardBox.y - (headerBox.y + headerBox.height)).toBeLessThanOrEqual(1);
+      expect.soft(deleteBox.y - cardBox.y).toBeLessThanOrEqual(18);
+      expect.soft(cardBox.x + cardBox.width - (deleteBox.x + deleteBox.width)).toBeLessThanOrEqual(18);
+      expect.soft(manageBox.y).toBeGreaterThanOrEqual(deleteBox.y + deleteBox.height);
+      expect.soft(Math.abs(manageBox.y + manageBox.height - (rotateBox.y + rotateBox.height))).toBeLessThanOrEqual(1);
+      expect.soft(cardBox.y + cardBox.height - (rotateBox.y + rotateBox.height)).toBeLessThanOrEqual(18);
+      expect.soft(Math.abs(rotateBox.x + rotateBox.width - (deleteBox.x + deleteBox.width))).toBeLessThanOrEqual(1);
+      expect.soft(cardBox.x + cardBox.width).toBeLessThanOrEqual(width);
+      await expect.soft(deleteButton).toHaveText('');
+      await expect.soft(deleteButton.locator('svg')).toBeVisible();
+      await expect.soft(deleteButton).toHaveCSS('color', 'rgb(204, 75, 75)');
+      await page.screenshot({ path: testInfo.outputPath('tenants.png'), fullPage: true });
+
+      await deleteButton.click();
+      const dialog = page.getByRole('dialog', { name: 'Permanently delete tenant' });
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+      await expect(deleteButton).toBeFocused();
+    });
+  }
+
   test('creates, updates, rotates, and permanently deletes a tenant', async ({ page }) => {
     await page.goto('/tenants.html');
     await expect(page.getByRole('heading', { name: 'Tenants' })).toBeVisible();
