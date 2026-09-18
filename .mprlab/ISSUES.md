@@ -91,4 +91,40 @@ Resolved non-recurring issues are in [ISSUES.archive.md](ISSUES.archive.md).
   - The production operator must run the conversion and accept the managed runtime.
   - After acceptance, remove the bounded conversion command and archive F001.
 
+- [ ] [F002] (P1) {F001} Add provider-backed tenant mailboxes
+  Goal:
+  Let a tenant provision user mailboxes for send and receive operations on a verified domain.
+  Requirements:
+  - Keep Pinguin focused on tenant email identity and delivery infrastructure.
+  - Use one selected mailbox provider as the canonical storage and protocol boundary.
+  - Require a verified sender domain before mailbox creation.
+  - Create each mailbox for one exact address and one mailbox user.
+  - Provision inbound delivery, persistent storage, and the provider access interface.
+  - Provision authenticated SMTP submission for the mailbox address.
+  - Keep message bodies and mailbox retention in the selected provider.
+  - Do not add a Pinguin webmail client in the first release.
+  - Keep mailbox users separate from shared forwarding addresses.
+  - Keep notification delivery independent from mailbox delivery.
+  - Store provider identifiers and credentials under the current tenant encryption and secret-response rules.
+  - Define one-time activation and credential recovery without logging raw credentials.
+  - Remove each provider mailbox during permanent tenant deletion.
+  - Reject unsupported provider capabilities at the API boundary.
+  Deliverables:
+  - Define the canonical mailbox domain types, persistence schema, HTTP routes, and browser workflow.
+  - Implement one mailbox provider adapter and its tenant-scoped lifecycle operations.
+  - Add provider sandbox or local protocol integration tests for provisioning, sending, receiving, isolation, failure, and deletion.
+  - Define quota, retention, abuse, bounce, and provider-outage operational rules.
+  - Update `README.md` and `ARCHITECTURE.md` with the mailbox contract and scope boundary.
+  - Add live provider qualification steps after local validation passes.
+  Validation:
+  - Verify that an unverified domain cannot create a mailbox.
+  - Verify that one tenant can create, use, and delete one mailbox through public API entry points.
+  - Verify that inbound mail reaches persistent mailbox storage.
+  - Verify that a mailbox user can send mail through authenticated submission.
+  - Verify tenant isolation and mailbox authorization.
+  - Verify that provider failures return contextual errors and create no partial mailbox state.
+  - Verify that secrets do not appear in API responses or logs.
+  - Verify that shared forwarding and notification delivery remain unchanged.
+  - Run `make ci`.
+
 ## Planning
