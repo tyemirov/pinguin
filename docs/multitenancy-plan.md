@@ -393,6 +393,9 @@ Replace the CLI `--grpc-auth-token` and `--tenant-id` flags with `--api-key`.
 
 Update the `grpcurl`, CLI, and Go client examples.
 
+Return `Unauthenticated` for a missing, malformed, or invalid API key.
+Return `Internal` when credential storage lookup fails.
+
 ## Browser Work
 
 Keep the current shared header, footer, authentication events, and session snapshot.
@@ -415,6 +418,8 @@ Add semantic Alpine components for these tasks:
 - Manage tenant-owned SMTP domains, identities, credentials, and forwarding routes.
 
 Clear the raw key from component state when the one-time dialog closes.
+
+When authentication ends, clear tenant data, forms, open dialogs, pending operations, selected tenant state, and one-time API keys before redirecting to the landing page.
 
 Use a single-flight state for destructive requests.
 
