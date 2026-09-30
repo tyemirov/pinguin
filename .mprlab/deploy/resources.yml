@@ -4,8 +4,8 @@ mprlab_resources:
   release:
     scheme: semver
   resources:
-    - kind: private_values
-      id: private
+    private:
+      kind: private_values
       bindings:
         connection-timeout-sec: CONNECTION_TIMEOUT_SEC
         database-path: DATABASE_PATH
@@ -42,22 +42,21 @@ mprlab_resources:
         tauth-cookie-name: TAUTH_COOKIE_NAME
         tauth-google-web-client-id: TAUTH_TENANT_GOOGLE_WEB_CLIENT_ID_PINGUIN
         tauth-signing-key: TAUTH_SIGNING_KEY
-    - kind: compose_project
-      id: runtime
+    runtime:
+      kind: compose_project
       retired_services:
-        - project: mprlab-nginx-gateway
-          service: pinguin-api
+        mprlab-nginx-gateway/pinguin-api: {}
       images:
-        - id: pinguin-image
+        pinguin-image:
           repository: ghcr.io/tyemirov/pinguin
           build:
             context: .
             dockerfile: Dockerfile
             platforms:
-              - linux/amd64
-              - linux/arm64
+            - linux/amd64
+            - linux/arm64
       services:
-        - id: pinguin-api
+        pinguin-api:
           image: pinguin-image
           placement:
             group: gateway
@@ -166,29 +165,29 @@ mprlab_resources:
               resource: private
               output: tauth-signing-key
           assets:
-            - source: configs/config.production.yml
-              target: /config/config.yml
-              mode: "0444"
+            /config/config.yml:
+              source: configs/config.production.yml
+              mode: '0444'
           mounts:
-            - volume: data
-              target: /app/data
+            /app/data:
+              volume: data
               read_only: false
           ports:
-            - container_port: 25
-            - container_port: 587
-            - container_port: 8080
-            - container_port: 50051
+            '25': {}
+            '587': {}
+            '8080': {}
+            '50051': {}
           readiness:
             protocol: http
             port: 8080
             path: /healthz
             expected_status: 200
       volumes:
-        - id: data
+        data:
           name: mprlab-nginx-gateway_pinguin-data
           retention: retain
-    - kind: runtime_capability
-      id: http
+    http:
+      kind: runtime_capability
       name: pinguin.http
       version: 1
       project: runtime
@@ -202,8 +201,8 @@ mprlab_resources:
         protocol: http
         path: /healthz
         expected_status: 200
-    - kind: runtime_capability
-      id: grpc
+    grpc:
+      kind: runtime_capability
       name: pinguin.grpc
       version: 1
       project: runtime
@@ -215,8 +214,8 @@ mprlab_resources:
         port: 50051
       health:
         protocol: tcp
-    - kind: runtime_capability
-      id: smtp-submission
+    smtp-submission:
+      kind: runtime_capability
       name: pinguin.smtp-submission
       version: 1
       project: runtime
@@ -228,8 +227,8 @@ mprlab_resources:
         port: 587
       health:
         protocol: smtp
-    - kind: runtime_capability
-      id: smtp-forwarding
+    smtp-forwarding:
+      kind: runtime_capability
       name: pinguin.smtp-forwarding
       version: 1
       project: runtime
@@ -241,12 +240,12 @@ mprlab_resources:
         port: 25
       health:
         protocol: smtp
-    - kind: caddy_route
-      id: public-api
+    public-api:
+      kind: caddy_route
       hostname: pinguin-api.mprlab.com
       listener: https
       handlers:
-        - id: default
+        default:
           path_prefix: /
           upstream: pinguin.http
           transport:
@@ -260,8 +259,8 @@ mprlab_resources:
         rate_limit:
           events: 300
           window_seconds: 10
-    - kind: caddy_listener
-      id: public-smtp-submission
+    public-smtp-submission:
+      kind: caddy_listener
       port: 465
       transport: tcp
       hostname: pinguin-api.mprlab.com
@@ -271,8 +270,8 @@ mprlab_resources:
       caddy:
         capability: caddy.layer4.tls
         version: 1
-    - kind: caddy_listener
-      id: public-smtp-forwarding
+    public-smtp-forwarding:
+      kind: caddy_listener
       port: 25
       transport: tcp
       hostname: mx.pinguin.mprlab.com
@@ -282,18 +281,18 @@ mprlab_resources:
       caddy:
         capability: caddy.layer4.tcp
         version: 1
-    - kind: health_check
-      id: public-health
+    public-health:
+      kind: health_check
       protocol: http
       url: https://pinguin-api.mprlab.com/healthz
       expected_status: 200
-    - kind: health_check
-      id: website-health
+    website-health:
+      kind: health_check
       protocol: http
       url: https://pinguin.mprlab.com/healthz
       expected_status: 200
-    - kind: github_pages
-      id: website
+    website:
+      kind: github_pages
       repository: tyemirov/pinguin
       branch: gh-pages
       domain: pinguin.mprlab.com
@@ -303,27 +302,27 @@ mprlab_resources:
         path: web
       verification:
         path: /.mprlab-release.json
-    - kind: github_release_binary
-      id: server
+    server:
+      kind: github_release_binary
       repository: tyemirov/pinguin
       build:
         system: go
         package: ./cmd/server
         binary: pinguin
         platforms:
-          - linux/amd64
-          - linux/arm64
-          - darwin/amd64
-          - darwin/arm64
-    - kind: tauth_tenant
-      id: authentication
+        - linux/amd64
+        - linux/arm64
+        - darwin/amd64
+        - darwin/arm64
+    authentication:
+      kind: tauth_tenant
       capability: tauth.tenants
       version: 1
       tenant:
         id: pinguin
         display_name: Pinguin
         origins:
-          - https://pinguin.mprlab.com
+        - https://pinguin.mprlab.com
         google_web_client_id:
           resource: private
           output: tauth-google-web-client-id
