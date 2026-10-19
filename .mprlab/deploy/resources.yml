@@ -217,7 +217,9 @@ mprlab_resources:
             '25': {}
             '587': {}
             '8080': {}
-            '50051': {}
+            '50051':
+              host_port: 50052
+              scope: private_lan
           readiness:
             protocol: http
             port: 8080
@@ -253,6 +255,18 @@ mprlab_resources:
         scheme: grpc
         alias: pinguin-grpc
         port: 50051
+      health:
+        protocol: tcp
+    grpc-private-lan:
+      kind: runtime_capability
+      name: pinguin.grpc.private-lan
+      version: 1
+      project: runtime
+      service: pinguin-api
+      endpoint:
+        scope: private_lan
+        scheme: grpc
+        port: 50052
       health:
         protocol: tcp
     smtp-submission:
