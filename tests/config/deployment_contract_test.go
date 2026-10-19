@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -50,8 +51,25 @@ func TestRepositoryOwnsCompleteVersionlessDeployment(t *testing.T) {
 		resourceKeys = append(resourceKeys, resourceKey)
 	}
 	slices.Sort(resourceKeys)
-	if !slices.Equal(resourceKeys, []string{"owner", "release", "resources"}) {
+	if !slices.Equal(resourceKeys, []string{"ci", "defaults", "operations", "owner", "release", "resources"}) {
 		t.Fatalf("deployment manifest root is not the exact versionless contract: %#v", resourceKeys)
+	}
+	manifest := manifestRoot["mprlab_resources"]
+	expectedDefaults := map[string]any{"timeouts": map[string]any{
+		"startup": "30s", "completion": "30m", "readiness": "30s", "request": "15s", "shutdown": "5s",
+	}}
+	if !reflect.DeepEqual(manifest["defaults"], expectedDefaults) {
+		t.Fatalf("unexpected lifecycle timeout policy: %#v", manifest["defaults"])
+	}
+	expectedPolling := map[string]any{
+		"initial": "1s", "maximum": "5s", "increment": "0s", "multiplier": 2, "attempt_limit": 360,
+	}
+	expectedOperations := map[string]any{}
+	for _, operation := range []string{"app_lifecycle.repository_read", "app-release", "app-publish", "app-deploy"} {
+		expectedOperations[operation] = map[string]any{"polling": expectedPolling}
+	}
+	if !reflect.DeepEqual(manifest["operations"], expectedOperations) {
+		t.Fatalf("unexpected lifecycle observation policy: %#v", manifest["operations"])
 	}
 	var document deploymentDocument
 	if unmarshalErr := yaml.Unmarshal(manifestData, &document); unmarshalErr != nil {
