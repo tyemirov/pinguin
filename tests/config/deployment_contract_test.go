@@ -4,7 +4,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -34,7 +36,7 @@ type deploymentDocument struct {
 		Release struct {
 			Scheme string `yaml:"scheme"`
 		} `yaml:"release"`
-		Items []map[string]any `yaml:"resources"`
+		Items map[string]map[string]any `yaml:"resources"`
 	} `yaml:"mprlab_resources"`
 }
 
@@ -49,8 +51,25 @@ func TestRepositoryOwnsCompleteVersionlessDeployment(t *testing.T) {
 		resourceKeys = append(resourceKeys, resourceKey)
 	}
 	slices.Sort(resourceKeys)
-	if !slices.Equal(resourceKeys, []string{"owner", "release", "resources"}) {
+	if !slices.Equal(resourceKeys, []string{"ci", "defaults", "operations", "owner", "release", "resources"}) {
 		t.Fatalf("deployment manifest root is not the exact versionless contract: %#v", resourceKeys)
+	}
+	manifest := manifestRoot["mprlab_resources"]
+	expectedDefaults := map[string]any{"timeouts": map[string]any{
+		"startup": "30s", "completion": "30m", "readiness": "30s", "request": "15s", "shutdown": "5s",
+	}}
+	if !reflect.DeepEqual(manifest["defaults"], expectedDefaults) {
+		t.Fatalf("unexpected lifecycle timeout policy: %#v", manifest["defaults"])
+	}
+	expectedPolling := map[string]any{
+		"initial": "1s", "maximum": "5s", "increment": "0s", "multiplier": 2, "attempt_limit": 360,
+	}
+	expectedOperations := map[string]any{}
+	for _, operation := range []string{"app_lifecycle.repository_read", "app-release", "app-publish", "app-deploy"} {
+		expectedOperations[operation] = map[string]any{"polling": expectedPolling}
+	}
+	if !reflect.DeepEqual(manifest["operations"], expectedOperations) {
+		t.Fatalf("unexpected lifecycle observation policy: %#v", manifest["operations"])
 	}
 	var document deploymentDocument
 	if unmarshalErr := yaml.Unmarshal(manifestData, &document); unmarshalErr != nil {
@@ -69,8 +88,8 @@ func TestRepositoryOwnsCompleteVersionlessDeployment(t *testing.T) {
 
 	identities := make([]string, 0, len(document.Resources.Items))
 	resources := make(map[string]map[string]any, len(document.Resources.Items))
-	for _, resource := range document.Resources.Items {
-		identity := deploymentString(t, resource, "kind") + "/" + deploymentString(t, resource, "id")
+	for resourceID, resource := range document.Resources.Items {
+		identity := deploymentString(t, resource, "kind") + "/" + resourceID
 		identities = append(identities, identity)
 		resources[identity] = resource
 	}
@@ -113,11 +132,11 @@ func TestRepositoryOwnsCompleteVersionlessDeployment(t *testing.T) {
 	if _, exists := project["placement"]; exists {
 		t.Fatal("placement must be declared by each service")
 	}
-	services := deploymentList(t, project, "services")
+	services := deploymentMap(t, project, "services")
 	if len(services) != 1 {
 		t.Fatalf("runtime must contain one service: %#v", services)
 	}
-	service := services[0].(map[string]any)
+	service := services["pinguin-api"].(map[string]any)
 	placement := deploymentMap(t, service, "placement")
 	if deploymentString(t, placement, "group") != "gateway" || deploymentString(t, placement, "cardinality") != "one" {
 		t.Fatalf("unexpected runtime placement: %#v", placement)
@@ -144,13 +163,14 @@ func TestRepositoryOwnsCompleteVersionlessDeployment(t *testing.T) {
 		t.Fatalf("service environment does not exactly cover production config: %#v", actualEnvironment)
 	}
 
-	servicePorts := deploymentList(t, service, "ports")
+	servicePorts := deploymentMap(t, service, "ports")
 	actualContainerPorts := make([]int, 0, len(servicePorts))
-	for _, servicePort := range servicePorts {
-		actualContainerPorts = append(
-			actualContainerPorts,
-			deploymentInt(t, servicePort.(map[string]any), "container_port"),
-		)
+	for portKey := range servicePorts {
+		containerPort, parseErr := strconv.Atoi(portKey)
+		if parseErr != nil {
+			t.Fatalf("invalid container port key %q: %v", portKey, parseErr)
+		}
+		actualContainerPorts = append(actualContainerPorts, containerPort)
 	}
 	slices.Sort(actualContainerPorts)
 	expectedContainerPorts := []int{25, 587, 8080, 50051}
@@ -257,15 +277,6 @@ func deploymentMap(t *testing.T, document map[string]any, key string) map[string
 	value, available := document[key].(map[string]any)
 	if !available {
 		t.Fatalf("deployment field %s is not a mapping: %#v", key, document[key])
-	}
-	return value
-}
-
-func deploymentList(t *testing.T, document map[string]any, key string) []any {
-	t.Helper()
-	value, available := document[key].([]any)
-	if !available {
-		t.Fatalf("deployment field %s is not a list: %#v", key, document[key])
 	}
 	return value
 }
