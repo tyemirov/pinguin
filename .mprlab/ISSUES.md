@@ -7,6 +7,11 @@ Resolved non-recurring issues are in [ISSUES.archive.md](ISSUES.archive.md).
 
 ## Improvements
 
+- [x] [I006] (P1) Use the `theme-control` contract
+  Goal: Use the `mpr-ui` contract on each page.
+  Requirements: Keep each mode, position, label, and initial selection.
+  Validation: The browser suite and `make ci` passed with `mpr-ui` assets from `v4.3.5`. All 70 browser scenarios passed.
+
 - [!] [I004] (P1) {I009@https://github.com/MarcoPoloResearchLab/mpr-ui} Adopt the shared authentication and footer contracts.
   Goal: Preserve the four browser pages with the current shared library.
   Requirements: Declare each provider. Preserve the session endpoint and identifiers. Replace the obsolete footer menu attribute.
