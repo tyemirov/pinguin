@@ -105,6 +105,7 @@ func TestRepositoryOwnsCompleteVersionlessDeployment(t *testing.T) {
 		"health_check/website-health",
 		"private_values/private",
 		"runtime_capability/grpc",
+		"runtime_capability/grpc-private-lan",
 		"runtime_capability/http",
 		"runtime_capability/smtp-forwarding",
 		"runtime_capability/smtp-submission",
@@ -177,6 +178,28 @@ func TestRepositoryOwnsCompleteVersionlessDeployment(t *testing.T) {
 	slices.Sort(expectedContainerPorts)
 	if !slices.Equal(actualContainerPorts, expectedContainerPorts) {
 		t.Fatalf("unexpected production container ports: %#v", actualContainerPorts)
+	}
+
+	grpcPublication := deploymentMap(t, servicePorts, "50051")
+	if deploymentInt(t, grpcPublication, "host_port") != 50052 || deploymentString(t, grpcPublication, "scope") != "private_lan" {
+		t.Fatalf("unexpected private LAN gRPC publication: %#v", grpcPublication)
+	}
+	grpcLAN := resources["runtime_capability/grpc-private-lan"]
+	if deploymentString(t, grpcLAN, "name") != "pinguin.grpc.private-lan" || deploymentInt(t, grpcLAN, "version") != 1 || deploymentString(t, grpcLAN, "project") != "runtime" || deploymentString(t, grpcLAN, "service") != "pinguin-api" {
+		t.Fatalf("unexpected private LAN gRPC capability: %#v", grpcLAN)
+	}
+	grpcEndpoint := deploymentMap(t, grpcLAN, "endpoint")
+	if len(grpcEndpoint) != 3 || deploymentString(t, grpcEndpoint, "scope") != "private_lan" || deploymentString(t, grpcEndpoint, "scheme") != "grpc" || deploymentInt(t, grpcEndpoint, "port") != 50052 {
+		t.Fatalf("unexpected private LAN gRPC endpoint: %#v", grpcEndpoint)
+	}
+	grpcHealth := deploymentMap(t, grpcLAN, "health")
+	if len(grpcHealth) != 1 || deploymentString(t, grpcHealth, "protocol") != "tcp" {
+		t.Fatalf("unexpected private LAN gRPC health: %#v", grpcHealth)
+	}
+	originalGRPC := resources["runtime_capability/grpc"]
+	expectedOriginalEndpoint := map[string]any{"scope": "same_host", "scheme": "grpc", "alias": "pinguin-grpc", "port": 50051}
+	if deploymentString(t, originalGRPC, "name") != "pinguin.grpc" || !reflect.DeepEqual(originalGRPC["endpoint"], expectedOriginalEndpoint) {
+		t.Fatalf("unexpected original gRPC capability: %#v", originalGRPC)
 	}
 
 	privateSMTPSubmission := deploymentMap(
