@@ -28,12 +28,12 @@ The test boundary verifies each digest before it serves those bytes.
 The suite uses the application pages, real shared components, and the local API test server.
 Google responses remain controlled test inputs.
 The tests exercise authentication, session restoration, tenant operations, notification operations, SMTP operations, layout, and themes.
-Final qualification uses B069 revision `768f25936497c5aabd426197d21c2100b6e5d9a1`.
+The historical I004 qualification used B069 revision `768f25936497c5aabd426197d21c2100b6e5d9a1`.
 Ten focused browser checks passed against the verified candidate assets.
 Two recovery scenarios first reproduced B008 at phone and desktop widths.
 After the correction, each recovered read succeeds and each retried create operation stores one tenant in the local API test server.
 The scenarios preserve the form payload and request identity, then verify reload and logout.
-Final `make ci` passed all 65 browser checks and 100 percent Go coverage.
+For I004, `make ci` passed all 65 browser checks and 100 percent Go coverage.
 
 ## Activation
 
@@ -48,3 +48,15 @@ The [public asset record](mpr-ui/public-assets-2026-09-09.json) contains eight H
 The application pages and configuration declare `max-age=600`.
 The shared assets declare `max-age=604800` and `s-maxage=43200`.
 Browser cache qualification remains a separate acceptance requirement.
+
+## Theme Control
+
+The footer uses the `theme-control` contract.
+`mpr-ui` keeps the selected mode under `pinguin.theme`.
+The browser tests use `mpr-ui` commit `d29f43b96991ff409db968f56e6b3fc57b6d20e0` (`v4.3.5`).
+Production asset URLs retain `@latest`.
+The four pages use the explicit light/dark switch and one `pinguin.theme` storage key.
+The shared theme manager owns storage writes.
+The application no longer writes the same selection after a theme event.
+Central browser acceptance verified pointer selection, keyboard selection, and reload for each mode.
+Repository CI verifies the real pages with the pinned `v4.3.5` assets.
