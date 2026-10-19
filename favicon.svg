@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<defs>
+<linearGradient id="brand-field" x2="0" y2="1"><stop stop-color="#0063b9"/><stop offset="1" stop-color="#009bd5"/></linearGradient>
+<filter id="brand-ink" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feFlood flood-color="#ffd369"/><feComposite in2="SourceGraphic" operator="in"/></filter>
+</defs>
+<rect width="512" height="512" fill="url(#brand-field)"/>
+<g filter="url(#brand-ink)"><svg width="512" height="512" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title">
+  <title id="title">Pinguin penguin and envelope logo</title>
+  <path fill="#000" fill-rule="evenodd" d="M128 21c62 0 107 48 107 107s-45 107-107 107S21 187 21 128 66 21 128 21ZM119 117v-16c0-44-48-48-67-7-29 66 14 119 76 119s105-53 76-119c-19-41-67-37-67 7v16Z"/>
+  <circle cx="87" cy="108" r="10" fill="#000"/>
+  <circle cx="169" cy="108" r="10" fill="#000"/>
+  <defs>
+    <mask id="fold"><rect width="256" height="256" fill="#fff"/><path d="m80 139 48 35 48-35-35 30 34 23-34-18-13 10-13-10-34 18 34-23Z" fill="#000"/></mask>
+  </defs>
+  <rect x="72" y="131" width="112" height="70" rx="14" fill="#000" mask="url(#fold)"/>
+</svg>
+</g>
+</svg>
