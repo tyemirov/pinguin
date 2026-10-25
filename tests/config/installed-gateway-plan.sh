@@ -49,4 +49,55 @@ git -C "$application_root" config branch.master.merge refs/heads/master
 git -C "$application_root" fetch --quiet origin
 git -C "$application_root" remote set-head origin master
 
+# Supply private inputs only in this owned fixture after its tracked-source commit.
+selected_input_file="$application_root/.mprlab/deploy/.env"
+cat >"$selected_input_file" <<'INPUTS'
+CONNECTION_TIMEOUT_SEC=5
+DATABASE_PATH=/app/data/fixture.db
+HTTP_ALLOWED_ORIGIN1=https://pinguin.fixture.invalid
+HTTP_ALLOWED_ORIGIN2=http://127.0.0.1:4174
+HTTP_ALLOWED_ORIGIN3=http://localhost:4174
+HTTP_LISTEN_ADDR=:8080
+LOG_LEVEL=info
+MASTER_ENCRYPTION_KEY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+MAX_RETRIES=2
+OPERATION_TIMEOUT_SEC=15
+RETRY_INTERVAL_SEC=1
+SMTP_FORWARDING_ENABLED=false
+SMTP_FORWARDING_HOSTNAME=mx.fixture.invalid
+SMTP_FORWARDING_LISTEN_ADDR=:25
+SMTP_FORWARDING_MAX_MESSAGE_BYTES=1048576
+SMTP_FORWARDING_MAX_RECIPIENTS=10
+SMTP_FORWARDING_RELAY_HOST=relay.fixture.invalid
+SMTP_FORWARDING_RELAY_PASSWORD=fixture-forward-password
+SMTP_FORWARDING_RELAY_PORT=587
+SMTP_FORWARDING_RELAY_USERNAME=fixture-forward-user
+SMTP_SUBMISSION_ALLOW_INSECURE_AUTH=true
+SMTP_SUBMISSION_DELIVERY_MODE=upstream
+SMTP_SUBMISSION_HOSTNAME=smtp.fixture.invalid
+SMTP_SUBMISSION_LISTEN_ADDR=:587
+SMTP_SUBMISSION_MAX_MESSAGE_BYTES=1048576
+SMTP_SUBMISSION_MAX_RECIPIENTS=10
+SMTP_SUBMISSION_PUBLIC_PORT=465
+SMTP_SUBMISSION_PUBLIC_SECURITY_MODE=ssl
+SMTP_SUBMISSION_RELAY_HOST=relay.fixture.invalid
+SMTP_SUBMISSION_RELAY_PASSWORD=fixture-submit-password
+SMTP_SUBMISSION_RELAY_PORT=587
+SMTP_SUBMISSION_RELAY_USERNAME=fixture-submit-user
+TAUTH_COOKIE_NAME=app_session_pinguin_fixture
+TAUTH_SIGNING_KEY=fixture-signing-key-with-at-least-32-bytes
+TAUTH_TENANT_GOOGLE_WEB_CLIENT_ID_PINGUIN=fixture-client.apps.googleusercontent.com
+DEPLOY_SUDO_PASSWORD_TUTOSH=fixture-not-used-for-planning
+MPRLAB_TAUTH_MANAGEMENT_URL=https://tauth.fixture.invalid
+MPRLAB_TAUTH_PROVISIONING_CREDENTIALS='{"pinguin":{"authentication":"tauthp_fixture"}}'
+INPUTS
+while IFS='=' read -r fixture_input_name fixture_input_value; do
+  unset "$fixture_input_name"
+done <"$selected_input_file"
+git -C "$application_root" check-ignore --quiet .mprlab/deploy/.env
+if [ -n "$(git -C "$application_root" status --porcelain)" ]; then
+  printf 'synthetic selected inputs changed the tracked-source fixture\n' >&2
+  exit 2
+fi
+
 "$gateway_command" app-plan-release --app-root "$application_root" --operator-root "$fixture_root/operator" --ansible-inventory localhost,

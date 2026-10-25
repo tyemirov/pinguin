@@ -304,9 +304,24 @@ The Pinguin Docker image declares `/web` as a separate UI volume. Compose mounts
 
 ### Release, publish, then deploy
 
-GitHub Actions are disabled for Pinguin. `.mprlab/deploy/resources.yml` is the permanent versionless production declaration. It declares the server binary, container image, retained data, runtime capabilities, listeners, health check, Pages site, and TAuth tenant. `configs/config.production.yml` is the tracked production config template. The ignored mode-`0600` `.mprlab/deploy/.env` provides its private values. The Docker build context excludes this file.
+GitHub Actions are disabled for Pinguin.
+`.mprlab/deploy/resources.yml` is the permanent versionless production declaration.
+It declares the server binary, container image, retained data, runtime capabilities, listeners, health check, Pages site, and TAuth tenant.
+`configs/config.production.yml` is the tracked production config template.
+The manifest selects the ignored `.mprlab/deploy/.env` file with `environment_file`.
+This field is optional when the process supplies all declared inputs.
+If the process and selected file supply the same input, Gateway uses the process value.
+The Docker build context excludes this file.
 
-The zero-argument `make release`, `make publish`, and `make deploy` commands delegate to the exact sibling `../mprlab-gateway`. The gateway validates and seals the selected manifest, publishes only the declared artifacts, and converges only Pinguin's declared runtime resources. This repository keeps `make up` and `make down` for local Compose development.
+The zero-argument `make release`, `make publish`, and `make deploy` commands use the installed Gateway runtime.
+
+Use `MPRLAB_GATEWAY_EXECUTABLE` to select the installed command.
+Each operation selects this repository's Git root through `--app-root`.
+Each wrapper sets `CI=1` and closes standard input.
+Gateway reads operator files from `MPRLAB_GATEWAY_OPERATOR_ROOT`.
+The default operator root is `$HOME/.config/mprlab-gateway`.
+
+The gateway validates and seals the selected manifest, publishes only the declared artifacts, and converges only Pinguin's declared runtime resources. This repository keeps `make up` and `make down` for local Compose development.
 
 The first managed release requires the bounded [production data conversion](docs/multitenancy-plan.md#production-data-conversion) before deployment.
 
@@ -320,13 +335,14 @@ make release
 make publish
 ```
 
-The gateway requires clean application and gateway checkouts at their exact remote revisions. `release` prepares the declared artifacts. `publish` publishes the sealed release. `deploy` converges the declared runtime resources. Use this operator command:
+A clean application checkout on the remote default branch is necessary.
+The checkout must be synchronized with that branch. `release` prepares the declared artifacts. `publish` publishes the sealed release. `deploy` converges the declared runtime resources. Use this operator command:
 
 ```bash
 make deploy
 ```
 
-Pinguin declares public SMTPS on `pinguin-api.mprlab.com:465` and public MX delivery on `mx.pinguin.mprlab.com:25`. The sibling gateway owns physical listeners, the shared network, Caddy reconciliation, and lifecycle receipts. Pinguin owns no separate Pages activation command.
+Pinguin declares public SMTPS on `pinguin-api.mprlab.com:465` and public MX delivery on `mx.pinguin.mprlab.com:25`. The installed Gateway runtime owns physical listeners, the shared network, Caddy reconciliation, and lifecycle receipts. Pinguin owns no separate Pages activation command.
 
 1. Create private environment files. Use the tracked examples to review variable names. Add operational values to the private files. Use the same signing key in both files.
 

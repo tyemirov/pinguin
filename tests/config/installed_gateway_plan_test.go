@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestInstalledGatewayPlansCurrentTrackedManifest(t *testing.T) {
@@ -41,6 +43,17 @@ func TestInstalledGatewayPlansCurrentTrackedManifest(t *testing.T) {
 		"GIT_CONFIG_VALUE_0=git@github.com:",
 		"GIT_CONFIG_GLOBAL="+globalConfigPath,
 	)
+	var declaration struct {
+		Resources struct {
+			Inputs map[string]string `yaml:"inputs"`
+		} `yaml:"mprlab_resources"`
+	}
+	if err := yaml.Unmarshal(readRepoFile(t, filepath.FromSlash(deploymentManifestPath)), &declaration); err != nil {
+		t.Fatalf("read declared fixture input names: %v", err)
+	}
+	for name := range declaration.Resources.Inputs {
+		command.Env = append(command.Env, name+"=fixture-inherited-input-must-not-escape")
+	}
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("installed Gateway selected-manifest plan: %v\n%s", err, output)

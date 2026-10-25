@@ -3,8 +3,10 @@ package tests
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -14,21 +16,6 @@ import (
 )
 
 const deploymentManifestPath = ".mprlab/deploy/resources.yml"
-
-var expectedGatewayWrapper = strings.Join([]string{
-	".PHONY: release publish deploy",
-	"",
-	"release publish deploy:",
-	"\t@application_root=\"$$(git rev-parse --show-toplevel)\"; \\",
-	"\tgateway_root=\"$$(dirname \"$${application_root}\")/mprlab-gateway\"; \\",
-	"\tif [ ! -d \"$${gateway_root}\" ]; then \\",
-	"\t\tprintf \"required sibling gateway is missing: %s; clone mprlab-gateway at exactly %s\\n\" \\",
-	"\t\t\t\"$${gateway_root}\" \"$${gateway_root}\" >&2; \\",
-	"\t\texit 2; \\",
-	"\tfi; \\",
-	"\t$(MAKE) --no-print-directory -C \"$${gateway_root}\" \"app-$@\" \\",
-	"\t\tMPRLAB_APP_ROOT=\"$${application_root}\"",
-}, "\n")
 
 type deploymentDocument struct {
 	Resources struct {
@@ -51,7 +38,7 @@ func TestRepositoryOwnsCompleteVersionlessDeployment(t *testing.T) {
 		resourceKeys = append(resourceKeys, resourceKey)
 	}
 	slices.Sort(resourceKeys)
-	if !slices.Equal(resourceKeys, []string{"ci", "defaults", "operations", "owner", "release", "resources"}) {
+	if !slices.Equal(resourceKeys, []string{"ci", "defaults", "environment_file", "hosts", "inputs", "operations", "owner", "release", "resources"}) {
 		t.Fatalf("deployment manifest root is not the exact versionless contract: %#v", resourceKeys)
 	}
 	manifest := manifestRoot["mprlab_resources"]
@@ -127,6 +114,37 @@ func TestRepositoryOwnsCompleteVersionlessDeployment(t *testing.T) {
 	slices.Sort(actualPrivateKeys)
 	if !slices.Equal(actualPrivateKeys, expectedPrivateKeys) {
 		t.Fatalf("private bindings do not exactly cover production inputs: %#v", actualPrivateKeys)
+	}
+
+	if deploymentString(t, manifest, "environment_file") != ".mprlab/deploy/.env" {
+		t.Fatal("manifest must explicitly select the ignored deployment input file")
+	}
+	inputNames := append(slices.Clone(expectedPrivateKeys), "DEPLOY_SUDO_PASSWORD_TUTOSH", "MPRLAB_TAUTH_MANAGEMENT_URL", "MPRLAB_TAUTH_PROVISIONING_CREDENTIALS")
+	slices.Sort(inputNames)
+	inputs := deploymentMap(t, manifest, "inputs")
+	actualInputNames := make([]string, 0, len(inputs))
+	for name, reference := range inputs {
+		actualInputNames = append(actualInputNames, name)
+		if reference != "${"+name+"}" {
+			t.Fatalf("input %s does not use its exact process reference", name)
+		}
+	}
+	slices.Sort(actualInputNames)
+	if !slices.Equal(actualInputNames, inputNames) {
+		t.Fatalf("declared inputs do not exactly cover resource and host consumers: %#v", actualInputNames)
+	}
+	expectedHosts := map[string]any{"tutosh": map[string]any{"ansible_become_password": "DEPLOY_SUDO_PASSWORD_TUTOSH"}}
+	if !reflect.DeepEqual(manifest["hosts"], expectedHosts) {
+		t.Fatal("host authentication must reference its declared input")
+	}
+	planFixture := string(readRepoFile(t, "tests", "config", "installed-gateway-plan.sh"))
+	fixtureNames := make([]string, 0, len(inputNames))
+	for _, match := range regexp.MustCompile(`(?m)^([A-Z][A-Z0-9_]*)=`).FindAllStringSubmatch(planFixture, -1) {
+		fixtureNames = append(fixtureNames, match[1])
+	}
+	slices.Sort(fixtureNames)
+	if !slices.Equal(fixtureNames, inputNames) {
+		t.Fatalf("installed plan fixture does not supply each declared synthetic input: %#v", fixtureNames)
 	}
 
 	project := resources["compose_project/runtime"]
@@ -216,11 +234,17 @@ func TestRepositoryOwnsCompleteVersionlessDeployment(t *testing.T) {
 	}
 }
 
-func TestProductionLifecycleDelegatesOnlyToSiblingGateway(t *testing.T) {
-	makefile := string(readRepoFile(t, "Makefile"))
-	if !strings.Contains(makefile, expectedGatewayWrapper) {
-		t.Fatal("Makefile does not expose the exact sibling-gateway lifecycle wrapper")
+func TestProductionLifecycleUsesInstalledGateway(t *testing.T) {
+	root, rootErr := filepath.Abs(repoPath())
+	if rootErr != nil {
+		t.Fatalf("resolve application root: %v", rootErr)
 	}
+	command := exec.Command("bash", filepath.Join(root, "tests", "installed-gateway.sh"))
+	command.Dir = root
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("installed Gateway Make integration: %v\n%s", err, output)
+	}
+	makefile := string(readRepoFile(t, "Makefile"))
 	for _, obsoleteTarget := range []string{"\npages-deploy:", "\npublish-release:", "\ncontainer-artifacts:", "\nrelease-artifacts:"} {
 		if strings.Contains(makefile, obsoleteTarget) {
 			t.Fatalf("Makefile retains obsolete production target %q", obsoleteTarget)

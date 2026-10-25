@@ -1,3 +1,4 @@
+MPRLAB_GATEWAY_EXECUTABLE ?= mprlab-gateway
 GO_SOURCES := $(shell find . -name '*.go' -not -path "./vendor/*" -not -path "./.git/*" -not -path "*/.git/*")
 ROOT_FAST_PACKAGES := $(shell go list ./... | grep -v '/tests/integration$$')
 ROOT_SLOW_PACKAGES := $(shell go list ./... | grep '/tests/integration$$')
@@ -82,15 +83,24 @@ ci: check-format lint test test-coverage test-frontend
 .PHONY: release publish deploy
 
 release publish deploy:
-	@application_root="$$(git rev-parse --show-toplevel)"; \
-	gateway_root="$$(dirname "$${application_root}")/mprlab-gateway"; \
-	if [ ! -d "$${gateway_root}" ]; then \
-		printf "required sibling gateway is missing: %s; clone mprlab-gateway at exactly %s\n" \
-			"$${gateway_root}" "$${gateway_root}" >&2; \
+	@set -eu; \
+	exec </dev/null; export CI=1; \
+	application_root="$$(git rev-parse --show-toplevel)"; \
+	if ! command -v "$(MPRLAB_GATEWAY_EXECUTABLE)" >/dev/null 2>&1; then \
+		printf 'Gateway runtime is unavailable: %s. Install a released runtime and add its command directory to PATH.\n' "$(MPRLAB_GATEWAY_EXECUTABLE)" >&2; \
 		exit 2; \
 	fi; \
-	$(MAKE) --no-print-directory -C "$${gateway_root}" "app-$@" \
-		MPRLAB_APP_ROOT="$${application_root}"
+	exec "$(MPRLAB_GATEWAY_EXECUTABLE)" "app-$@" --app-root "$${application_root}"
 
 test-shared-ui:
 	CI=1 $(LONG_TIMEOUT) npm test -- shared-ui-candidate.spec.ts
+
+.PHONY: test-installed-gateway test-deployment-contract test-installed-plan
+test-installed-gateway:
+	bash tests/installed-gateway.sh
+
+test-deployment-contract:
+	$(LONG_TIMEOUT) go test ./tests/config -run '^(TestProductionLifecycleUsesInstalledGateway|TestRepositoryOwnsCompleteVersionlessDeployment)$$' -count=1
+
+test-installed-plan:
+	$(LONG_TIMEOUT) go test ./tests/config -run '^TestInstalledGatewayPlansCurrentTrackedManifest$$' -count=1
