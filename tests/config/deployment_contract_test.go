@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -17,126 +16,39 @@ import (
 
 const deploymentManifestPath = ".mprlab/deploy/resources.yml"
 
-type deploymentDocument struct {
-	Resources struct {
-		Owner   string `yaml:"owner"`
-		Release struct {
-			Scheme string `yaml:"scheme"`
-		} `yaml:"release"`
-		Items map[string]map[string]any `yaml:"resources"`
-	} `yaml:"mprlab_resources"`
-}
-
 func TestRepositoryOwnsCompleteVersionlessDeployment(t *testing.T) {
 	manifestData := readRepoFile(t, filepath.FromSlash(deploymentManifestPath))
-	var manifestRoot map[string]map[string]any
-	if unmarshalErr := yaml.Unmarshal(manifestData, &manifestRoot); unmarshalErr != nil {
-		t.Fatalf("decode deployment manifest root: %v", unmarshalErr)
-	}
-	resourceKeys := make([]string, 0, len(manifestRoot["mprlab_resources"]))
-	for resourceKey := range manifestRoot["mprlab_resources"] {
-		resourceKeys = append(resourceKeys, resourceKey)
-	}
-	slices.Sort(resourceKeys)
-	if !slices.Equal(resourceKeys, []string{"ci", "defaults", "environment_file", "hosts", "inputs", "operations", "owner", "release", "resources"}) {
-		t.Fatalf("deployment manifest root is not the exact versionless contract: %#v", resourceKeys)
-	}
-	manifest := manifestRoot["mprlab_resources"]
-	expectedDefaults := map[string]any{"timeouts": map[string]any{
-		"startup": "30s", "completion": "30m", "readiness": "30s", "request": "15s", "shutdown": "5s",
-	}}
-	if !reflect.DeepEqual(manifest["defaults"], expectedDefaults) {
-		t.Fatalf("unexpected lifecycle timeout policy: %#v", manifest["defaults"])
-	}
-	expectedPolling := map[string]any{
-		"initial": "1s", "maximum": "5s", "increment": "0s", "multiplier": 2, "attempt_limit": 360,
-	}
-	expectedOperations := map[string]any{}
-	for _, operation := range []string{"app_lifecycle.repository_read", "app-release", "app-publish", "app-deploy"} {
-		expectedOperations[operation] = map[string]any{"polling": expectedPolling}
-	}
-	if !reflect.DeepEqual(manifest["operations"], expectedOperations) {
-		t.Fatalf("unexpected lifecycle observation policy: %#v", manifest["operations"])
-	}
-	var document deploymentDocument
-	if unmarshalErr := yaml.Unmarshal(manifestData, &document); unmarshalErr != nil {
-		t.Fatalf("decode deployment manifest: %v", unmarshalErr)
-	}
-	if document.Resources.Owner != "pinguin" || document.Resources.Release.Scheme != "semver" {
-		t.Fatalf(
-			"unexpected manifest identity: owner=%q scheme=%q",
-			document.Resources.Owner,
-			document.Resources.Release.Scheme,
-		)
-	}
+	manifest := currentManifestContract(t, manifestData)
+	requireCurrentContractYAML(t, "owner", manifest["owner"], `pinguin`)
+	requireCurrentContractYAML(t, "release", manifest["release"], `scheme: semver`)
+	lifecycle := currentContractMap(t, manifest["lifecycle"])
+	requireCurrentContractYAML(t, "lifecycle.defaults", lifecycle["defaults"], `timeouts: {startup: 30s, completion: 30m, readiness: 30s, request: 15s, shutdown: 5s}`)
+	requireCurrentContractYAML(t, "lifecycle.operations", lifecycle["operations"], `
+- {name: app_lifecycle.repository_read, polling: {initial: 1s, maximum: 5s, increment: 0s, multiplier: 2, attempt_limit: 360}}
+- {name: app-release, polling: {initial: 1s, maximum: 5s, increment: 0s, multiplier: 2, attempt_limit: 360}}
+- {name: app-publish, polling: {initial: 1s, maximum: 5s, increment: 0s, multiplier: 2, attempt_limit: 360}}
+- {name: app-deploy, polling: {initial: 1s, maximum: 5s, increment: 0s, multiplier: 2, attempt_limit: 360}}
+`)
 	if strings.Contains(string(manifestData), "visibility:") {
-		t.Fatal("deployment manifest retains retired package visibility")
+		t.Fatal("deployment retains retired package visibility")
 	}
-
-	identities := make([]string, 0, len(document.Resources.Items))
-	resources := make(map[string]map[string]any, len(document.Resources.Items))
-	for resourceID, resource := range document.Resources.Items {
-		identity := deploymentString(t, resource, "kind") + "/" + resourceID
-		identities = append(identities, identity)
-		resources[identity] = resource
-	}
-	slices.Sort(identities)
-	expectedIdentities := []string{
-		"caddy_listener/public-smtp-forwarding",
-		"caddy_listener/public-smtp-submission",
-		"caddy_route/public-api",
-		"compose_project/runtime",
-		"github_pages/website",
-		"github_release_binary/server",
-		"health_check/public-health",
-		"health_check/website-health",
-		"private_values/private",
-		"runtime_capability/grpc",
-		"runtime_capability/grpc-private-lan",
-		"runtime_capability/http",
-		"runtime_capability/smtp-forwarding",
-		"runtime_capability/smtp-submission",
-		"tauth_tenant/authentication",
-	}
-	slices.Sort(expectedIdentities)
-	if !slices.Equal(identities, expectedIdentities) {
-		t.Fatalf("unexpected deployment resource graph: %#v", identities)
-	}
-
-	privateBindings := deploymentMap(t, resources["private_values/private"], "bindings")
+	environment := currentContractMap(t, manifest["environment"])
+	requireCurrentContractYAML(t, "environment.source", environment["source"], `.mprlab/deploy/.env`)
+	declarations := currentContractIndex(t, environment["private_inputs"], "id")
 	requiredEnvironment := parseTemplateEnvKeys(string(readRepoFile(t, "configs", "config.production.yml")))
 	expectedPrivateKeys := append(slices.Clone(requiredEnvironment), "TAUTH_TENANT_GOOGLE_WEB_CLIENT_ID_PINGUIN")
-	slices.Sort(expectedPrivateKeys)
-	actualPrivateKeys := make([]string, 0, len(privateBindings))
-	for _, privateKey := range privateBindings {
-		actualPrivateKeys = append(actualPrivateKeys, privateKey.(string))
-	}
-	slices.Sort(actualPrivateKeys)
-	if !slices.Equal(actualPrivateKeys, expectedPrivateKeys) {
-		t.Fatalf("private bindings do not exactly cover production inputs: %#v", actualPrivateKeys)
-	}
-
-	if deploymentString(t, manifest, "environment_file") != ".mprlab/deploy/.env" {
-		t.Fatal("manifest must explicitly select the ignored deployment input file")
-	}
 	inputNames := append(slices.Clone(expectedPrivateKeys), "DEPLOY_SUDO_PASSWORD_TUTOSH", "MPRLAB_TAUTH_MANAGEMENT_URL", "MPRLAB_TAUTH_PROVISIONING_CREDENTIALS")
 	slices.Sort(inputNames)
-	inputs := deploymentMap(t, manifest, "inputs")
-	actualInputNames := make([]string, 0, len(inputs))
-	for name, reference := range inputs {
-		actualInputNames = append(actualInputNames, name)
-		if reference != "${"+name+"}" {
-			t.Fatalf("input %s does not use its exact process reference", name)
-		}
+	actualInputNames := make([]string, 0, len(declarations))
+	for _, declaration := range declarations {
+		actualInputNames = append(actualInputNames, deploymentString(t, declaration, "variable"))
 	}
 	slices.Sort(actualInputNames)
 	if !slices.Equal(actualInputNames, inputNames) {
-		t.Fatalf("declared inputs do not exactly cover resource and host consumers: %#v", actualInputNames)
+		t.Fatalf("private inputs do not exactly cover config and host consumers: %#v", actualInputNames)
 	}
-	expectedHosts := map[string]any{"tutosh": map[string]any{"ansible_become_password": "DEPLOY_SUDO_PASSWORD_TUTOSH"}}
-	if !reflect.DeepEqual(manifest["hosts"], expectedHosts) {
-		t.Fatal("host authentication must reference its declared input")
-	}
+	targets := currentContractMap(t, manifest["targets"])
+	requireCurrentContractYAML(t, "targets.access", targets["access"], `hosts: [{host: tutosh, elevation_password: {input: deploy-sudo-password-tutosh}}]`)
 	planFixture := string(readRepoFile(t, "tests", "config", "installed-gateway-plan.sh"))
 	fixtureNames := make([]string, 0, len(inputNames))
 	for _, match := range regexp.MustCompile(`(?m)^([A-Z][A-Z0-9_]*)=`).FindAllStringSubmatch(planFixture, -1) {
@@ -144,36 +56,46 @@ func TestRepositoryOwnsCompleteVersionlessDeployment(t *testing.T) {
 	}
 	slices.Sort(fixtureNames)
 	if !slices.Equal(fixtureNames, inputNames) {
-		t.Fatalf("installed plan fixture does not supply each declared synthetic input: %#v", fixtureNames)
+		t.Fatalf("installed plan fixture lacks declared synthetic inputs: %#v", fixtureNames)
 	}
-
-	project := resources["compose_project/runtime"]
+	artifacts := currentContractMap(t, manifest["artifacts"])
+	for catalog, identity := range map[string]string{"binaries": "server", "container_images": "pinguin-image", "web_bundles": "website"} {
+		entries := currentContractIndex(t, artifacts[catalog], "id")
+		if len(entries) != 1 || entries[identity] == nil {
+			t.Fatalf("unexpected %s artifacts: %#v", catalog, entries)
+		}
+	}
+	publications := currentContractMap(t, manifest["publications"])
+	for provider, catalog := range map[string]string{"ghcr": "images", "github_pages": "sites", "github_releases": "binaries"} {
+		if len(currentContractIndex(t, currentContractMap(t, publications[provider])[catalog], "id")) != 1 {
+			t.Fatalf("unexpected %s publications", provider)
+		}
+	}
+	projects := currentContractIndex(t, currentContractMap(t, targets["docker_compose"])["projects"], "id")
+	if len(projects) != 1 {
+		t.Fatalf("unexpected Compose projects: %#v", projects)
+	}
+	project := projects["runtime"]
 	if _, exists := project["placement"]; exists {
 		t.Fatal("placement must be declared by each service")
 	}
-	services := deploymentMap(t, project, "services")
-	if len(services) != 1 {
-		t.Fatalf("runtime must contain one service: %#v", services)
+	services := currentContractIndex(t, project["services"], "id")
+	if len(services) != 1 || services["pinguin-api"] == nil {
+		t.Fatalf("unexpected services: %#v", services)
 	}
-	service := services["pinguin-api"].(map[string]any)
-	placement := deploymentMap(t, service, "placement")
-	if deploymentString(t, placement, "group") != "gateway" || deploymentString(t, placement, "cardinality") != "one" {
-		t.Fatalf("unexpected runtime placement: %#v", placement)
-	}
+	service := services["pinguin-api"]
+	requireCurrentContractYAML(t, "pinguin-api.placement", service["placement"], `group: gateway
+cardinality: one`)
 	if _, exists := service["environment_files"]; exists {
-		t.Fatal("runtime must use typed environment projections, not environment files")
+		t.Fatal("runtime must use typed environment projections")
 	}
-	environment := deploymentMap(t, service, "environment")
-	actualEnvironment := make([]string, 0, len(environment))
-	for environmentKey, referenceValue := range environment {
-		actualEnvironment = append(actualEnvironment, environmentKey)
-		reference := referenceValue.(map[string]any)
-		if deploymentString(t, reference, "resource") != "private" {
-			t.Fatalf("environment %s does not reference the private resource", environmentKey)
-		}
-		output := deploymentString(t, reference, "output")
-		if privateBindings[output] != environmentKey {
-			t.Fatalf("environment %s does not match private output %s", environmentKey, output)
+	runtimeEnvironment := currentContractIndex(t, service["environment"], "name")
+	actualEnvironment := make([]string, 0, len(runtimeEnvironment))
+	for name, reference := range runtimeEnvironment {
+		actualEnvironment = append(actualEnvironment, name)
+		input := deploymentString(t, reference, "input")
+		if declarations[input] == nil || declarations[input]["variable"] != name {
+			t.Fatalf("environment %s does not match its native private input %s", name, input)
 		}
 	}
 	slices.Sort(actualEnvironment)
@@ -181,56 +103,50 @@ func TestRepositoryOwnsCompleteVersionlessDeployment(t *testing.T) {
 	if !slices.Equal(actualEnvironment, requiredEnvironment) {
 		t.Fatalf("service environment does not exactly cover production config: %#v", actualEnvironment)
 	}
-
-	servicePorts := deploymentMap(t, service, "ports")
-	actualContainerPorts := make([]int, 0, len(servicePorts))
-	for portKey := range servicePorts {
-		containerPort, parseErr := strconv.Atoi(portKey)
-		if parseErr != nil {
-			t.Fatalf("invalid container port key %q: %v", portKey, parseErr)
-		}
+	ports, ok := service["ports"].([]any)
+	if !ok {
+		t.Fatal("service ports require an explicit list")
+	}
+	actualContainerPorts := make([]int, 0, len(ports))
+	for _, value := range ports {
+		port := currentContractMap(t, value)
+		containerPort := deploymentInt(t, port, "container_port")
 		actualContainerPorts = append(actualContainerPorts, containerPort)
+		if containerPort == 50051 && (deploymentInt(t, port, "host_port") != 50052 || deploymentString(t, port, "scope") != "private_lan") {
+			t.Fatalf("unexpected private LAN gRPC port: %#v", port)
+		}
 	}
 	slices.Sort(actualContainerPorts)
-	expectedContainerPorts := []int{25, 587, 8080, 50051}
-	slices.Sort(expectedContainerPorts)
-	if !slices.Equal(actualContainerPorts, expectedContainerPorts) {
-		t.Fatalf("unexpected production container ports: %#v", actualContainerPorts)
+	if !slices.Equal(actualContainerPorts, []int{25, 587, 8080, 50051}) {
+		t.Fatalf("unexpected container ports: %#v", actualContainerPorts)
 	}
-
-	grpcPublication := deploymentMap(t, servicePorts, "50051")
-	if deploymentInt(t, grpcPublication, "host_port") != 50052 || deploymentString(t, grpcPublication, "scope") != "private_lan" {
-		t.Fatalf("unexpected private LAN gRPC publication: %#v", grpcPublication)
+	endpoints := currentContractIndex(t, service["endpoints"], "id")
+	if len(endpoints) != 6 {
+		t.Fatalf("unexpected service endpoints: %#v", endpoints)
 	}
-	grpcLAN := resources["runtime_capability/grpc-private-lan"]
-	if deploymentString(t, grpcLAN, "name") != "pinguin.grpc.private-lan" || deploymentInt(t, grpcLAN, "version") != 1 || deploymentString(t, grpcLAN, "project") != "runtime" || deploymentString(t, grpcLAN, "service") != "pinguin-api" {
-		t.Fatalf("unexpected private LAN gRPC capability: %#v", grpcLAN)
+	requireCurrentContractYAML(t, "grpc-private-lan", endpoints["grpc-private-lan"], `{id: grpc-private-lan, name: pinguin.grpc.private-lan, version: 1, endpoint: {scope: private_lan, scheme: grpc, port: 50052}, health: {protocol: tcp}}`)
+	requireCurrentContractYAML(t, "grpc.endpoint", endpoints["grpc"]["endpoint"], `{scope: same_host, scheme: grpc, alias: pinguin-grpc, port: 50051}`)
+	requireCurrentContractYAML(t, "grpc.name", endpoints["grpc"]["name"], `pinguin.grpc`)
+	requireCurrentContractYAML(t, "smtp-submission.port", currentContractMap(t, endpoints["smtp-submission"]["endpoint"])["port"], `587`)
+	caddy := currentContractMap(t, currentContractMap(t, targets["ingress"])["caddy"])
+	listeners := currentContractIndex(t, caddy["listeners"], "id")
+	if len(listeners) != 2 || listeners["public-smtp-forwarding"] == nil {
+		t.Fatalf("unexpected public listeners: %#v", listeners)
 	}
-	grpcEndpoint := deploymentMap(t, grpcLAN, "endpoint")
-	if len(grpcEndpoint) != 3 || deploymentString(t, grpcEndpoint, "scope") != "private_lan" || deploymentString(t, grpcEndpoint, "scheme") != "grpc" || deploymentInt(t, grpcEndpoint, "port") != 50052 {
-		t.Fatalf("unexpected private LAN gRPC endpoint: %#v", grpcEndpoint)
+	requireCurrentContractYAML(t, "public-smtp-submission.port", listeners["public-smtp-submission"]["port"], `465`)
+	routes := currentContractIndex(t, caddy["routes"], "id")
+	if len(routes) != 1 || routes["public-api"] == nil {
+		t.Fatalf("unexpected API routes: %#v", routes)
 	}
-	grpcHealth := deploymentMap(t, grpcLAN, "health")
-	if len(grpcHealth) != 1 || deploymentString(t, grpcHealth, "protocol") != "tcp" {
-		t.Fatalf("unexpected private LAN gRPC health: %#v", grpcHealth)
+	observations := currentContractIndex(t, currentContractMap(t, lifecycle["observations"])["http"], "id")
+	if len(observations) != 2 || observations["public-health"] == nil || observations["website-health"] == nil {
+		t.Fatalf("unexpected health observations: %#v", observations)
 	}
-	originalGRPC := resources["runtime_capability/grpc"]
-	expectedOriginalEndpoint := map[string]any{"scope": "same_host", "scheme": "grpc", "alias": "pinguin-grpc", "port": 50051}
-	if deploymentString(t, originalGRPC, "name") != "pinguin.grpc" || !reflect.DeepEqual(originalGRPC["endpoint"], expectedOriginalEndpoint) {
-		t.Fatalf("unexpected original gRPC capability: %#v", originalGRPC)
+	if len(currentContractIndex(t, currentContractMap(t, targets["github_pages"])["sites"], "id")) != 1 {
+		t.Fatal("unexpected Pages target count")
 	}
-
-	privateSMTPSubmission := deploymentMap(
-		t,
-		resources["runtime_capability/smtp-submission"],
-		"endpoint",
-	)
-	if deploymentInt(t, privateSMTPSubmission, "port") != 587 {
-		t.Fatalf("private SMTP submission must use Pinguin listener 587: %#v", privateSMTPSubmission)
-	}
-	publicSMTPSubmission := resources["caddy_listener/public-smtp-submission"]
-	if deploymentInt(t, publicSMTPSubmission, "port") != 465 {
-		t.Fatalf("public SMTPS submission must remain on port 465: %#v", publicSMTPSubmission)
+	if currentContractDeclaration(t, currentContractMap(t, targets["github_pages"])["sites"], "website")["publication"] != "website" {
+		t.Fatal("website target must use its declared publication")
 	}
 }
 
@@ -319,15 +235,6 @@ func TestProductionImageAndPagesSourcesRemainComplete(t *testing.T) {
 	}
 }
 
-func deploymentMap(t *testing.T, document map[string]any, key string) map[string]any {
-	t.Helper()
-	value, available := document[key].(map[string]any)
-	if !available {
-		t.Fatalf("deployment field %s is not a mapping: %#v", key, document[key])
-	}
-	return value
-}
-
 func deploymentString(t *testing.T, document map[string]any, key string) string {
 	t.Helper()
 	value, available := document[key].(string)
@@ -344,4 +251,136 @@ func deploymentInt(t *testing.T, document map[string]any, key string) int {
 		t.Fatalf("deployment field %s is not a positive integer: %#v", key, document[key])
 	}
 	return value
+}
+
+func currentContractMap(t *testing.T, value any) map[string]any {
+	t.Helper()
+	result, ok := value.(map[string]any)
+	if !ok {
+		t.Fatalf("expected native declaration mapping, got %#v", value)
+	}
+	return result
+}
+
+func currentManifestContract(t *testing.T, content []byte) map[string]any {
+	t.Helper()
+	var envelope map[string]any
+	if err := yaml.Unmarshal(content, &envelope); err != nil {
+		t.Fatalf("parse selected manifest: %v", err)
+	}
+	if len(envelope) != 1 {
+		t.Fatalf("unexpected manifest envelope: %#v", envelope)
+	}
+	actual := currentContractMap(t, envelope["mprlab_resources"])
+	keys := make([]string, 0, len(actual))
+	for key := range actual {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	expected := []string{"artifacts", "environment", "lifecycle", "owner", "publications", "release", "targets"}
+	if !reflect.DeepEqual(keys, expected) {
+		t.Fatalf("selected manifest root keys=%v want=%v", keys, expected)
+	}
+	return actual
+}
+
+func currentContractDeclaration(t *testing.T, value any, identity string) map[string]any {
+	t.Helper()
+	items, ok := value.([]any)
+	if !ok {
+		t.Fatalf("expected explicit declaration list, got %#v", value)
+	}
+	var found map[string]any
+	for _, item := range items {
+		declaration := currentContractMap(t, item)
+		if declaration["id"] == identity {
+			if found != nil {
+				t.Fatalf("duplicate declaration %s", identity)
+			}
+			found = declaration
+		}
+	}
+	if found == nil {
+		t.Fatalf("missing native declaration %s", identity)
+	}
+	return found
+}
+
+func currentContractIndex(t *testing.T, value any, identityKey string) map[string]map[string]any {
+	t.Helper()
+	items, ok := value.([]any)
+	if !ok {
+		t.Fatalf("expected native declaration list, got %#v", value)
+	}
+	result := make(map[string]map[string]any, len(items))
+	for _, item := range items {
+		declaration := currentContractMap(t, item)
+		identity, ok := declaration[identityKey].(string)
+		if !ok || identity == "" || result[identity] != nil {
+			t.Fatalf("invalid or duplicate %s in %#v", identityKey, value)
+		}
+		result[identity] = declaration
+	}
+	return result
+}
+
+func requireCurrentContractYAML(t *testing.T, path string, actual any, expectedText string) {
+	t.Helper()
+	var expected any
+	if err := yaml.Unmarshal([]byte(expectedText), &expected); err != nil {
+		t.Fatalf("parse expected %s: %v", path, err)
+	}
+	requireCurrentContractValue(t, path, actual, expected)
+}
+
+func requireCurrentContractValue(t *testing.T, path string, actual, expected any) {
+	t.Helper()
+	switch wanted := expected.(type) {
+	case map[string]any:
+		mapping, ok := actual.(map[string]any)
+		if !ok {
+			t.Fatalf("%s requires a mapping, got %#v", path, actual)
+		}
+		if !strings.HasSuffix(path, ".assets[]") && len(mapping) != len(wanted) {
+			t.Fatalf("%s has unexpected fields: %#v", path, actual)
+		}
+		for key, value := range wanted {
+			observed, exists := mapping[key]
+			if !exists {
+				t.Fatalf("%s lacks %s", path, key)
+			}
+			requireCurrentContractValue(t, path+"."+key, observed, value)
+		}
+	case []any:
+		items, ok := actual.([]any)
+		if !ok || len(items) != len(wanted) {
+			t.Fatalf("%s list=%#v want=%#v", path, actual, wanted)
+		}
+		for index, value := range wanted {
+			observed := items[index]
+			if declaration, isMapping := value.(map[string]any); isMapping {
+				identityKey := "id"
+				if _, exists := declaration[identityKey]; !exists {
+					identityKey = "name"
+				}
+				if identity, exists := declaration[identityKey]; exists {
+					matches := 0
+					for _, candidate := range items {
+						if entry, valid := candidate.(map[string]any); valid && entry[identityKey] == identity {
+							observed = candidate
+							matches++
+						}
+					}
+					if matches != 1 {
+						t.Fatalf("%s requires one %s=%v, got %d", path, identityKey, identity, matches)
+					}
+				}
+			}
+			requireCurrentContractValue(t, path+"[]", observed, value)
+		}
+	default:
+		if !reflect.DeepEqual(actual, expected) {
+			t.Fatalf("%s=%#v want=%#v", path, actual, expected)
+		}
+	}
 }
