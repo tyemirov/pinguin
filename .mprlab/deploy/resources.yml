@@ -1,433 +1,403 @@
----
 mprlab_resources:
-  owner: pinguin
-  environment_file: .mprlab/deploy/.env
-  inputs:
-    CONNECTION_TIMEOUT_SEC: ${CONNECTION_TIMEOUT_SEC}
-    DATABASE_PATH: ${DATABASE_PATH}
-    HTTP_ALLOWED_ORIGIN1: ${HTTP_ALLOWED_ORIGIN1}
-    HTTP_ALLOWED_ORIGIN2: ${HTTP_ALLOWED_ORIGIN2}
-    HTTP_ALLOWED_ORIGIN3: ${HTTP_ALLOWED_ORIGIN3}
-    HTTP_LISTEN_ADDR: ${HTTP_LISTEN_ADDR}
-    LOG_LEVEL: ${LOG_LEVEL}
-    MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY}
-    MAX_RETRIES: ${MAX_RETRIES}
-    OPERATION_TIMEOUT_SEC: ${OPERATION_TIMEOUT_SEC}
-    RETRY_INTERVAL_SEC: ${RETRY_INTERVAL_SEC}
-    SMTP_FORWARDING_ENABLED: ${SMTP_FORWARDING_ENABLED}
-    SMTP_FORWARDING_HOSTNAME: ${SMTP_FORWARDING_HOSTNAME}
-    SMTP_FORWARDING_LISTEN_ADDR: ${SMTP_FORWARDING_LISTEN_ADDR}
-    SMTP_FORWARDING_MAX_MESSAGE_BYTES: ${SMTP_FORWARDING_MAX_MESSAGE_BYTES}
-    SMTP_FORWARDING_MAX_RECIPIENTS: ${SMTP_FORWARDING_MAX_RECIPIENTS}
-    SMTP_FORWARDING_RELAY_HOST: ${SMTP_FORWARDING_RELAY_HOST}
-    SMTP_FORWARDING_RELAY_PASSWORD: ${SMTP_FORWARDING_RELAY_PASSWORD}
-    SMTP_FORWARDING_RELAY_PORT: ${SMTP_FORWARDING_RELAY_PORT}
-    SMTP_FORWARDING_RELAY_USERNAME: ${SMTP_FORWARDING_RELAY_USERNAME}
-    SMTP_SUBMISSION_ALLOW_INSECURE_AUTH: ${SMTP_SUBMISSION_ALLOW_INSECURE_AUTH}
-    SMTP_SUBMISSION_DELIVERY_MODE: ${SMTP_SUBMISSION_DELIVERY_MODE}
-    SMTP_SUBMISSION_HOSTNAME: ${SMTP_SUBMISSION_HOSTNAME}
-    SMTP_SUBMISSION_LISTEN_ADDR: ${SMTP_SUBMISSION_LISTEN_ADDR}
-    SMTP_SUBMISSION_MAX_MESSAGE_BYTES: ${SMTP_SUBMISSION_MAX_MESSAGE_BYTES}
-    SMTP_SUBMISSION_MAX_RECIPIENTS: ${SMTP_SUBMISSION_MAX_RECIPIENTS}
-    SMTP_SUBMISSION_PUBLIC_PORT: ${SMTP_SUBMISSION_PUBLIC_PORT}
-    SMTP_SUBMISSION_PUBLIC_SECURITY_MODE: ${SMTP_SUBMISSION_PUBLIC_SECURITY_MODE}
-    SMTP_SUBMISSION_RELAY_HOST: ${SMTP_SUBMISSION_RELAY_HOST}
-    SMTP_SUBMISSION_RELAY_PASSWORD: ${SMTP_SUBMISSION_RELAY_PASSWORD}
-    SMTP_SUBMISSION_RELAY_PORT: ${SMTP_SUBMISSION_RELAY_PORT}
-    SMTP_SUBMISSION_RELAY_USERNAME: ${SMTP_SUBMISSION_RELAY_USERNAME}
-    TAUTH_COOKIE_NAME: ${TAUTH_COOKIE_NAME}
-    TAUTH_SIGNING_KEY: ${TAUTH_SIGNING_KEY}
-    TAUTH_TENANT_GOOGLE_WEB_CLIENT_ID_PINGUIN: ${TAUTH_TENANT_GOOGLE_WEB_CLIENT_ID_PINGUIN}
-    DEPLOY_SUDO_PASSWORD_TUTOSH: ${DEPLOY_SUDO_PASSWORD_TUTOSH}
-    MPRLAB_TAUTH_MANAGEMENT_URL: ${MPRLAB_TAUTH_MANAGEMENT_URL}
-    MPRLAB_TAUTH_PROVISIONING_CREDENTIALS: ${MPRLAB_TAUTH_PROVISIONING_CREDENTIALS}
-  hosts:
-    tutosh:
-      ansible_become_password: DEPLOY_SUDO_PASSWORD_TUTOSH
-  release:
-    scheme: semver
-  ci:
-    enabled: true
-    command:
-      '0': make
-      '1': ci
-  defaults:
-    timeouts:
-      startup: 30s
-      completion: 30m
-      readiness: 30s
-      request: 15s
-      shutdown: 5s
-  operations:
-    app_lifecycle.repository_read:
-      polling:
-        initial: 1s
-        maximum: 5s
-        increment: 0s
-        multiplier: 2
-        attempt_limit: 360
-    app-release:
-      polling:
-        initial: 1s
-        maximum: 5s
-        increment: 0s
-        multiplier: 2
-        attempt_limit: 360
-    app-publish:
-      polling:
-        initial: 1s
-        maximum: 5s
-        increment: 0s
-        multiplier: 2
-        attempt_limit: 360
-    app-deploy:
-      polling:
-        initial: 1s
-        maximum: 5s
-        increment: 0s
-        multiplier: 2
-        attempt_limit: 360
-  resources:
-    private:
-      kind: private_values
-      bindings:
-        connection-timeout-sec: CONNECTION_TIMEOUT_SEC
-        database-path: DATABASE_PATH
-        http-allowed-origin1: HTTP_ALLOWED_ORIGIN1
-        http-allowed-origin2: HTTP_ALLOWED_ORIGIN2
-        http-allowed-origin3: HTTP_ALLOWED_ORIGIN3
-        http-listen-addr: HTTP_LISTEN_ADDR
-        log-level: LOG_LEVEL
-        master-encryption-key: MASTER_ENCRYPTION_KEY
-        max-retries: MAX_RETRIES
-        operation-timeout-sec: OPERATION_TIMEOUT_SEC
-        retry-interval-sec: RETRY_INTERVAL_SEC
-        smtp-forwarding-enabled: SMTP_FORWARDING_ENABLED
-        smtp-forwarding-hostname: SMTP_FORWARDING_HOSTNAME
-        smtp-forwarding-listen-addr: SMTP_FORWARDING_LISTEN_ADDR
-        smtp-forwarding-max-message-bytes: SMTP_FORWARDING_MAX_MESSAGE_BYTES
-        smtp-forwarding-max-recipients: SMTP_FORWARDING_MAX_RECIPIENTS
-        smtp-forwarding-relay-host: SMTP_FORWARDING_RELAY_HOST
-        smtp-forwarding-relay-password: SMTP_FORWARDING_RELAY_PASSWORD
-        smtp-forwarding-relay-port: SMTP_FORWARDING_RELAY_PORT
-        smtp-forwarding-relay-username: SMTP_FORWARDING_RELAY_USERNAME
-        smtp-submission-allow-insecure-auth: SMTP_SUBMISSION_ALLOW_INSECURE_AUTH
-        smtp-submission-delivery-mode: SMTP_SUBMISSION_DELIVERY_MODE
-        smtp-submission-hostname: SMTP_SUBMISSION_HOSTNAME
-        smtp-submission-listen-addr: SMTP_SUBMISSION_LISTEN_ADDR
-        smtp-submission-max-message-bytes: SMTP_SUBMISSION_MAX_MESSAGE_BYTES
-        smtp-submission-max-recipients: SMTP_SUBMISSION_MAX_RECIPIENTS
-        smtp-submission-public-port: SMTP_SUBMISSION_PUBLIC_PORT
-        smtp-submission-public-security-mode: SMTP_SUBMISSION_PUBLIC_SECURITY_MODE
-        smtp-submission-relay-host: SMTP_SUBMISSION_RELAY_HOST
-        smtp-submission-relay-password: SMTP_SUBMISSION_RELAY_PASSWORD
-        smtp-submission-relay-port: SMTP_SUBMISSION_RELAY_PORT
-        smtp-submission-relay-username: SMTP_SUBMISSION_RELAY_USERNAME
-        tauth-cookie-name: TAUTH_COOKIE_NAME
-        tauth-google-web-client-id: TAUTH_TENANT_GOOGLE_WEB_CLIENT_ID_PINGUIN
-        tauth-signing-key: TAUTH_SIGNING_KEY
-    runtime:
-      kind: compose_project
-      retired_services:
-        mprlab-nginx-gateway/pinguin-api: {}
-      images:
-        pinguin-image:
-          repository: ghcr.io/tyemirov/pinguin
-          build:
-            context: .
-            dockerfile: Dockerfile
-            platforms:
-            - linux/amd64
-            - linux/arm64
-      services:
-        pinguin-api:
-          image: pinguin-image
-          placement:
-            group: gateway
-            cardinality: one
-          environment:
-            CONNECTION_TIMEOUT_SEC:
-              resource: private
-              output: connection-timeout-sec
-            DATABASE_PATH:
-              resource: private
-              output: database-path
-            HTTP_ALLOWED_ORIGIN1:
-              resource: private
-              output: http-allowed-origin1
-            HTTP_ALLOWED_ORIGIN2:
-              resource: private
-              output: http-allowed-origin2
-            HTTP_ALLOWED_ORIGIN3:
-              resource: private
-              output: http-allowed-origin3
-            HTTP_LISTEN_ADDR:
-              resource: private
-              output: http-listen-addr
-            LOG_LEVEL:
-              resource: private
-              output: log-level
-            MASTER_ENCRYPTION_KEY:
-              resource: private
-              output: master-encryption-key
-            MAX_RETRIES:
-              resource: private
-              output: max-retries
-            OPERATION_TIMEOUT_SEC:
-              resource: private
-              output: operation-timeout-sec
-            RETRY_INTERVAL_SEC:
-              resource: private
-              output: retry-interval-sec
-            SMTP_FORWARDING_ENABLED:
-              resource: private
-              output: smtp-forwarding-enabled
-            SMTP_FORWARDING_HOSTNAME:
-              resource: private
-              output: smtp-forwarding-hostname
-            SMTP_FORWARDING_LISTEN_ADDR:
-              resource: private
-              output: smtp-forwarding-listen-addr
-            SMTP_FORWARDING_MAX_MESSAGE_BYTES:
-              resource: private
-              output: smtp-forwarding-max-message-bytes
-            SMTP_FORWARDING_MAX_RECIPIENTS:
-              resource: private
-              output: smtp-forwarding-max-recipients
-            SMTP_FORWARDING_RELAY_HOST:
-              resource: private
-              output: smtp-forwarding-relay-host
-            SMTP_FORWARDING_RELAY_PASSWORD:
-              resource: private
-              output: smtp-forwarding-relay-password
-            SMTP_FORWARDING_RELAY_PORT:
-              resource: private
-              output: smtp-forwarding-relay-port
-            SMTP_FORWARDING_RELAY_USERNAME:
-              resource: private
-              output: smtp-forwarding-relay-username
-            SMTP_SUBMISSION_ALLOW_INSECURE_AUTH:
-              resource: private
-              output: smtp-submission-allow-insecure-auth
-            SMTP_SUBMISSION_DELIVERY_MODE:
-              resource: private
-              output: smtp-submission-delivery-mode
-            SMTP_SUBMISSION_HOSTNAME:
-              resource: private
-              output: smtp-submission-hostname
-            SMTP_SUBMISSION_LISTEN_ADDR:
-              resource: private
-              output: smtp-submission-listen-addr
-            SMTP_SUBMISSION_MAX_MESSAGE_BYTES:
-              resource: private
-              output: smtp-submission-max-message-bytes
-            SMTP_SUBMISSION_MAX_RECIPIENTS:
-              resource: private
-              output: smtp-submission-max-recipients
-            SMTP_SUBMISSION_PUBLIC_PORT:
-              resource: private
-              output: smtp-submission-public-port
-            SMTP_SUBMISSION_PUBLIC_SECURITY_MODE:
-              resource: private
-              output: smtp-submission-public-security-mode
-            SMTP_SUBMISSION_RELAY_HOST:
-              resource: private
-              output: smtp-submission-relay-host
-            SMTP_SUBMISSION_RELAY_PASSWORD:
-              resource: private
-              output: smtp-submission-relay-password
-            SMTP_SUBMISSION_RELAY_PORT:
-              resource: private
-              output: smtp-submission-relay-port
-            SMTP_SUBMISSION_RELAY_USERNAME:
-              resource: private
-              output: smtp-submission-relay-username
-            TAUTH_COOKIE_NAME:
-              resource: private
-              output: tauth-cookie-name
-            TAUTH_SIGNING_KEY:
-              resource: private
-              output: tauth-signing-key
-          assets:
-            /config/config.yml:
-              source: configs/config.production.yml
-              mode: '0444'
-          mounts:
-            /app/data:
-              volume: data
-              read_only: false
-          ports:
-            '25': {}
-            '587': {}
-            '8080': {}
-            '50051':
-              host_port: 50052
-              scope: private_lan
-          readiness:
-            protocol: http
-            port: 8080
-            path: /healthz
-            expected_status: 200
-      volumes:
-        data:
-          name: mprlab-nginx-gateway_pinguin-data
-          retention: retain
-    http:
-      kind: runtime_capability
-      name: pinguin.http
-      version: 1
-      project: runtime
-      service: pinguin-api
-      endpoint:
-        scope: same_host
-        scheme: http
-        alias: pinguin-api
-        port: 8080
-      health:
-        protocol: http
-        path: /healthz
-        expected_status: 200
-    grpc:
-      kind: runtime_capability
-      name: pinguin.grpc
-      version: 1
-      project: runtime
-      service: pinguin-api
-      endpoint:
-        scope: same_host
-        scheme: grpc
-        alias: pinguin-grpc
-        port: 50051
-      health:
-        protocol: tcp
-    grpc-private-lan:
-      kind: runtime_capability
-      name: pinguin.grpc.private-lan
-      version: 1
-      project: runtime
-      service: pinguin-api
-      endpoint:
-        scope: private_lan
-        scheme: grpc
-        port: 50052
-      health:
-        protocol: tcp
-    smtp-submission:
-      kind: runtime_capability
-      name: pinguin.smtp-submission
-      version: 1
-      project: runtime
-      service: pinguin-api
-      endpoint:
-        scope: same_host
-        scheme: smtp
-        alias: pinguin-smtp-submission
-        port: 587
-      health:
-        protocol: smtp
-    smtp-forwarding:
-      kind: runtime_capability
-      name: pinguin.smtp-forwarding
-      version: 1
-      project: runtime
-      service: pinguin-api
-      endpoint:
-        scope: same_host
-        scheme: smtp
-        alias: pinguin-smtp-forwarding
-        port: 25
-      health:
-        protocol: smtp
-    public-api:
-      kind: caddy_route
-      hostname: pinguin-api.mprlab.com
-      listener: https
-      handlers:
-        default:
-          path_prefix: /
-          upstream: pinguin.http
-          transport:
-            protocol: http
-            dial_timeout_seconds: 10
-            response_header_timeout_seconds: 60
-            read_timeout_seconds: 60
-      tls:
-        mode: automatic
-      access:
-        rate_limit:
-          events: 300
-          window_seconds: 10
-    public-smtp-submission:
-      kind: caddy_listener
-      port: 465
-      transport: tcp
-      hostname: pinguin-api.mprlab.com
-      upstream: pinguin.smtp-submission
-      tls:
-        mode: automatic
-      caddy:
-        capability: caddy.layer4.tls
-        version: 1
-    public-smtp-forwarding:
-      kind: caddy_listener
-      port: 25
-      transport: tcp
-      hostname: mx.pinguin.mprlab.com
-      upstream: pinguin.smtp-forwarding
-      tls:
-        mode: disabled
-      caddy:
-        capability: caddy.layer4.tcp
-        version: 1
-    public-health:
-      kind: health_check
-      protocol: http
-      url: https://pinguin-api.mprlab.com/healthz
-      expected_status: 200
-    website-health:
-      kind: health_check
-      protocol: http
-      url: https://pinguin.mprlab.com/healthz
-      expected_status: 200
-    website:
-      kind: github_pages
-      repository: tyemirov/pinguin
-      branch: gh-pages
-      domain: pinguin.mprlab.com
-      url: https://pinguin.mprlab.com/
-      source:
-        kind: directory
-        path: web
-      verification:
-        path: /.mprlab-release.json
-    server:
-      kind: github_release_binary
-      repository: tyemirov/pinguin
-      build:
-        system: go
-        package: ./cmd/server
-        binary: pinguin
-        platforms:
-        - linux/amd64
-        - linux/arm64
-        - darwin/amd64
-        - darwin/arm64
-    authentication:
-      kind: tauth_tenant
-      capability: tauth.tenants
-      version: 1
-      tenant:
-        id: pinguin
-        display_name: Pinguin
-        origins:
-        - https://pinguin.mprlab.com
-        google_web_client_id:
-          resource: private
-          output: tauth-google-web-client-id
-        jwt_signing_key:
-          resource: private
-          output: tauth-signing-key
-        cookie:
-          domain: .mprlab.com
-          session_name: app_session_pinguin
-          refresh_name: app_refresh_pinguin
+    artifacts:
+        binaries:
+            - build:
+                binary: pinguin
+                package: ./cmd/server
+                platforms:
+                    - linux/amd64
+                    - linux/arm64
+                    - darwin/amd64
+                    - darwin/arm64
+                system: go
+              id: server
+        container_images:
+            - build:
+                context: .
+                dockerfile: Dockerfile
+                platforms:
+                    - linux/amd64
+                    - linux/arm64
+              id: pinguin-image
+        web_bundles:
+            - format: directory
+              id: website
+              source:
+                kind: directory
+                path: web
+    environment:
+        private_inputs:
+            - id: connection-timeout-sec
+              variable: CONNECTION_TIMEOUT_SEC
+            - id: database-path
+              variable: DATABASE_PATH
+            - id: deploy-sudo-password-tutosh
+              variable: DEPLOY_SUDO_PASSWORD_TUTOSH
+            - id: http-allowed-origin1
+              variable: HTTP_ALLOWED_ORIGIN1
+            - id: http-allowed-origin2
+              variable: HTTP_ALLOWED_ORIGIN2
+            - id: http-allowed-origin3
+              variable: HTTP_ALLOWED_ORIGIN3
+            - id: http-listen-addr
+              variable: HTTP_LISTEN_ADDR
+            - id: log-level
+              variable: LOG_LEVEL
+            - id: master-encryption-key
+              variable: MASTER_ENCRYPTION_KEY
+            - id: max-retries
+              variable: MAX_RETRIES
+            - id: mprlab-tauth-management-url
+              variable: MPRLAB_TAUTH_MANAGEMENT_URL
+            - id: mprlab-tauth-provisioning-credentials
+              variable: MPRLAB_TAUTH_PROVISIONING_CREDENTIALS
+            - id: operation-timeout-sec
+              variable: OPERATION_TIMEOUT_SEC
+            - id: retry-interval-sec
+              variable: RETRY_INTERVAL_SEC
+            - id: smtp-forwarding-enabled
+              variable: SMTP_FORWARDING_ENABLED
+            - id: smtp-forwarding-hostname
+              variable: SMTP_FORWARDING_HOSTNAME
+            - id: smtp-forwarding-listen-addr
+              variable: SMTP_FORWARDING_LISTEN_ADDR
+            - id: smtp-forwarding-max-message-bytes
+              variable: SMTP_FORWARDING_MAX_MESSAGE_BYTES
+            - id: smtp-forwarding-max-recipients
+              variable: SMTP_FORWARDING_MAX_RECIPIENTS
+            - id: smtp-forwarding-relay-host
+              variable: SMTP_FORWARDING_RELAY_HOST
+            - id: smtp-forwarding-relay-password
+              variable: SMTP_FORWARDING_RELAY_PASSWORD
+            - id: smtp-forwarding-relay-port
+              variable: SMTP_FORWARDING_RELAY_PORT
+            - id: smtp-forwarding-relay-username
+              variable: SMTP_FORWARDING_RELAY_USERNAME
+            - id: smtp-submission-allow-insecure-auth
+              variable: SMTP_SUBMISSION_ALLOW_INSECURE_AUTH
+            - id: smtp-submission-delivery-mode
+              variable: SMTP_SUBMISSION_DELIVERY_MODE
+            - id: smtp-submission-hostname
+              variable: SMTP_SUBMISSION_HOSTNAME
+            - id: smtp-submission-listen-addr
+              variable: SMTP_SUBMISSION_LISTEN_ADDR
+            - id: smtp-submission-max-message-bytes
+              variable: SMTP_SUBMISSION_MAX_MESSAGE_BYTES
+            - id: smtp-submission-max-recipients
+              variable: SMTP_SUBMISSION_MAX_RECIPIENTS
+            - id: smtp-submission-public-port
+              variable: SMTP_SUBMISSION_PUBLIC_PORT
+            - id: smtp-submission-public-security-mode
+              variable: SMTP_SUBMISSION_PUBLIC_SECURITY_MODE
+            - id: smtp-submission-relay-host
+              variable: SMTP_SUBMISSION_RELAY_HOST
+            - id: smtp-submission-relay-password
+              variable: SMTP_SUBMISSION_RELAY_PASSWORD
+            - id: smtp-submission-relay-port
+              variable: SMTP_SUBMISSION_RELAY_PORT
+            - id: smtp-submission-relay-username
+              variable: SMTP_SUBMISSION_RELAY_USERNAME
+            - id: tauth-cookie-name
+              variable: TAUTH_COOKIE_NAME
+            - id: tauth-signing-key
+              variable: TAUTH_SIGNING_KEY
+            - id: tauth-tenant-google-web-client-id-pinguin
+              variable: TAUTH_TENANT_GOOGLE_WEB_CLIENT_ID_PINGUIN
+        source: .mprlab/deploy/.env
+    lifecycle:
+        ci:
+            command:
+                - make
+                - ci
+            enabled: true
+        defaults:
+            timeouts:
+                completion: 30m
+                readiness: 30s
+                request: 15s
+                shutdown: 5s
+                startup: 30s
+        observations:
+            http:
+                - expected_status: 200
+                  id: public-health
+                  protocol: http
+                  url: https://pinguin-api.mprlab.com/healthz
+                - expected_status: 200
+                  id: website-health
+                  protocol: http
+                  url: https://pinguin.mprlab.com/healthz
+        operations:
+            - name: app-deploy
+              polling:
+                attempt_limit: 360
+                increment: 0s
+                initial: 1s
+                maximum: 5s
+                multiplier: 2
+            - name: app-publish
+              polling:
+                attempt_limit: 360
+                increment: 0s
+                initial: 1s
+                maximum: 5s
+                multiplier: 2
+            - name: app-release
+              polling:
+                attempt_limit: 360
+                increment: 0s
+                initial: 1s
+                maximum: 5s
+                multiplier: 2
+            - name: app_lifecycle.repository_read
+              polling:
+                attempt_limit: 360
+                increment: 0s
+                initial: 1s
+                maximum: 5s
+                multiplier: 2
+        private_inputs:
+            operations: []
+    owner: pinguin
+    publications:
+        ghcr:
+            images:
+                - artifact: pinguin-image
+                  id: pinguin-image
+                  repository: ghcr.io/tyemirov/pinguin
+        github_pages:
+            sites:
+                - artifact: website
+                  branch: gh-pages
+                  domain: pinguin.mprlab.com
+                  id: website
+                  marker:
+                    path: /.mprlab-release.json
+                  repository: tyemirov/pinguin
+        github_releases:
+            binaries:
+                - artifact: server
+                  id: server
+                  repository: tyemirov/pinguin
+    release:
+        scheme: semver
+    targets:
+        access:
+            hosts:
+                - elevation_password:
+                    input: deploy-sudo-password-tutosh
+                  host: tutosh
+        docker_compose:
+            projects:
+                - id: runtime
+                  retired_services:
+                    - project: mprlab-nginx-gateway
+                      service: pinguin-api
+                  services:
+                    - assets:
+                        - mode: "0444"
+                          source: configs/config.production.yml
+                          target: /config/config.yml
+                      endpoints:
+                        - endpoint:
+                            alias: pinguin-grpc
+                            port: 50051
+                            scheme: grpc
+                            scope: same_host
+                          health:
+                            protocol: tcp
+                          id: grpc
+                          name: pinguin.grpc
+                          version: 1
+                        - endpoint:
+                            port: 50052
+                            scheme: grpc
+                            scope: private_lan
+                          health:
+                            protocol: tcp
+                          id: grpc-private-lan
+                          name: pinguin.grpc.private-lan
+                          version: 1
+                        - endpoint:
+                            alias: pinguin-api
+                            port: 8080
+                            scheme: http
+                            scope: same_host
+                          health:
+                            expected_status: 200
+                            path: /healthz
+                            protocol: http
+                          id: http
+                          name: pinguin.http
+                          version: 1
+                        - endpoint:
+                            alias: pinguin-smtp-forwarding
+                            port: 25
+                            scheme: smtp
+                            scope: same_host
+                          health:
+                            protocol: smtp
+                          id: smtp-forwarding
+                          name: pinguin.smtp-forwarding
+                          version: 1
+                        - endpoint:
+                            alias: pinguin-smtp-submission
+                            port: 587
+                            scheme: smtp
+                            scope: same_host
+                          health:
+                            protocol: smtp
+                          id: smtp-submission
+                          name: pinguin.smtp-submission
+                          version: 1
+                        - endpoint:
+                            alias: runtime-pinguin-api-readiness
+                            port: 8080
+                            scheme: http
+                            scope: same_host
+                          health:
+                            expected_status: 200
+                            path: /healthz
+                            protocol: http
+                          id: readiness
+                          name: pinguin.readiness.runtime.pinguin-api
+                          version: 1
+                      environment:
+                        - input: connection-timeout-sec
+                          name: CONNECTION_TIMEOUT_SEC
+                        - input: database-path
+                          name: DATABASE_PATH
+                        - input: http-allowed-origin1
+                          name: HTTP_ALLOWED_ORIGIN1
+                        - input: http-allowed-origin2
+                          name: HTTP_ALLOWED_ORIGIN2
+                        - input: http-allowed-origin3
+                          name: HTTP_ALLOWED_ORIGIN3
+                        - input: http-listen-addr
+                          name: HTTP_LISTEN_ADDR
+                        - input: log-level
+                          name: LOG_LEVEL
+                        - input: master-encryption-key
+                          name: MASTER_ENCRYPTION_KEY
+                        - input: max-retries
+                          name: MAX_RETRIES
+                        - input: operation-timeout-sec
+                          name: OPERATION_TIMEOUT_SEC
+                        - input: retry-interval-sec
+                          name: RETRY_INTERVAL_SEC
+                        - input: smtp-forwarding-enabled
+                          name: SMTP_FORWARDING_ENABLED
+                        - input: smtp-forwarding-hostname
+                          name: SMTP_FORWARDING_HOSTNAME
+                        - input: smtp-forwarding-listen-addr
+                          name: SMTP_FORWARDING_LISTEN_ADDR
+                        - input: smtp-forwarding-max-message-bytes
+                          name: SMTP_FORWARDING_MAX_MESSAGE_BYTES
+                        - input: smtp-forwarding-max-recipients
+                          name: SMTP_FORWARDING_MAX_RECIPIENTS
+                        - input: smtp-forwarding-relay-host
+                          name: SMTP_FORWARDING_RELAY_HOST
+                        - input: smtp-forwarding-relay-password
+                          name: SMTP_FORWARDING_RELAY_PASSWORD
+                        - input: smtp-forwarding-relay-port
+                          name: SMTP_FORWARDING_RELAY_PORT
+                        - input: smtp-forwarding-relay-username
+                          name: SMTP_FORWARDING_RELAY_USERNAME
+                        - input: smtp-submission-allow-insecure-auth
+                          name: SMTP_SUBMISSION_ALLOW_INSECURE_AUTH
+                        - input: smtp-submission-delivery-mode
+                          name: SMTP_SUBMISSION_DELIVERY_MODE
+                        - input: smtp-submission-hostname
+                          name: SMTP_SUBMISSION_HOSTNAME
+                        - input: smtp-submission-listen-addr
+                          name: SMTP_SUBMISSION_LISTEN_ADDR
+                        - input: smtp-submission-max-message-bytes
+                          name: SMTP_SUBMISSION_MAX_MESSAGE_BYTES
+                        - input: smtp-submission-max-recipients
+                          name: SMTP_SUBMISSION_MAX_RECIPIENTS
+                        - input: smtp-submission-public-port
+                          name: SMTP_SUBMISSION_PUBLIC_PORT
+                        - input: smtp-submission-public-security-mode
+                          name: SMTP_SUBMISSION_PUBLIC_SECURITY_MODE
+                        - input: smtp-submission-relay-host
+                          name: SMTP_SUBMISSION_RELAY_HOST
+                        - input: smtp-submission-relay-password
+                          name: SMTP_SUBMISSION_RELAY_PASSWORD
+                        - input: smtp-submission-relay-port
+                          name: SMTP_SUBMISSION_RELAY_PORT
+                        - input: smtp-submission-relay-username
+                          name: SMTP_SUBMISSION_RELAY_USERNAME
+                        - input: tauth-cookie-name
+                          name: TAUTH_COOKIE_NAME
+                        - input: tauth-signing-key
+                          name: TAUTH_SIGNING_KEY
+                      id: pinguin-api
+                      image:
+                        publication: pinguin-image
+                      mounts:
+                        - read_only: false
+                          target: /app/data
+                          volume: data
+                      placement:
+                        cardinality: one
+                        group: gateway
+                      ports:
+                        - container_port: 25
+                        - container_port: 50051
+                          host_port: 50052
+                          scope: private_lan
+                        - container_port: 587
+                        - container_port: 8080
+                      readiness:
+                        endpoint: readiness
+                  volumes:
+                    - id: data
+                      name: mprlab-nginx-gateway_pinguin-data
+                      retention: retain
+        github_pages:
+            sites:
+                - id: website
+                  publication: website
+                  url: https://pinguin.mprlab.com/
+        ingress:
+            caddy:
+                listeners:
+                    - caddy:
+                        capability: caddy.layer4.tcp
+                        version: 1
+                      hostname: mx.pinguin.mprlab.com
+                      id: public-smtp-forwarding
+                      port: 25
+                      tls:
+                        mode: disabled
+                      transport: tcp
+                      upstream: pinguin.smtp-forwarding
+                    - caddy:
+                        capability: caddy.layer4.tls
+                        version: 1
+                      hostname: pinguin-api.mprlab.com
+                      id: public-smtp-submission
+                      port: 465
+                      tls:
+                        mode: automatic
+                      transport: tcp
+                      upstream: pinguin.smtp-submission
+                routes:
+                    - access:
+                        rate_limit:
+                            events: 300
+                            window_seconds: 10
+                      handlers:
+                        - id: default
+                          path_prefix: /
+                          transport:
+                            dial_timeout_seconds: 10
+                            protocol: http
+                            read_timeout_seconds: 60
+                            response_header_timeout_seconds: 60
+                          upstream: pinguin.http
+                      hostname: pinguin-api.mprlab.com
+                      id: public-api
+                      listener: https
+                      tls:
+                        mode: automatic
