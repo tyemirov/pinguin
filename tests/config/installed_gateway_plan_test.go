@@ -45,13 +45,18 @@ func TestInstalledGatewayPlansCurrentTrackedManifest(t *testing.T) {
 	)
 	var declaration struct {
 		Resources struct {
-			Inputs map[string]string `yaml:"inputs"`
+			Environment struct {
+				PrivateInputs []struct {
+					Variable string `yaml:"variable"`
+				} `yaml:"private_inputs"`
+			} `yaml:"environment"`
 		} `yaml:"mprlab_resources"`
 	}
 	if err := yaml.Unmarshal(readRepoFile(t, filepath.FromSlash(deploymentManifestPath)), &declaration); err != nil {
 		t.Fatalf("read declared fixture input names: %v", err)
 	}
-	for name := range declaration.Resources.Inputs {
+	for _, input := range declaration.Resources.Environment.PrivateInputs {
+		name := input.Variable
 		command.Env = append(command.Env, name+"=fixture-inherited-input-must-not-escape")
 	}
 	output, err := command.CombinedOutput()
