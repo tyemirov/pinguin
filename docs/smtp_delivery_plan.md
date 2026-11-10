@@ -1,73 +1,134 @@
-# SMTP Delivery Plan
+# Delivery behavior
 
-Pinguin delivers email notifications through `SMTPEmailSender`, a provider-agnostic implementation that speaks the SMTP protocol directly. This document captures the agreed plan for how the sender is configured, how it connects to remote servers, and how we will extend and test the functionality.
+Pingwin has three delivery paths: gRPC notifications, authenticated SMTP submission, and inbound SMTP forwarding.
+Their storage and retry behavior differ.
 
-Pinguin can also expose an authenticated SMTP submission listener for Gmail Send-As. That listener validates the authenticated exact sender, preserves the raw submitted message, and either relays it through the independent `smtpSubmission.relay` upstream profile or delivers it directly to recipient-domain MX hosts.
+## Notification delivery
 
-Pinguin can separately expose an inbound SMTP forwarding listener for shared addresses. That listener is MX-facing, unauthenticated, accepts only active SMTP identities with forwarding owners, forwards the raw message immediately through `smtpForwarding.relay`, and stores no mailbox state.
+A tenant email profile supplies SMTP host, port, username, password, and from address.
+The notification service resolves the tenant profile from SQLite before dispatch.
+An optional tenant Twilio profile supplies SMS account credentials and a from number.
+Shared SMTP listener profiles do not replace the tenant notification profile.
 
-## Components
+The gRPC boundary validates the request and constructs the domain request.
+A future schedule produces a persisted `queued` record.
+An immediate request attempts delivery before database insertion.
+Successful provider handoff produces `sent`.
+An initial provider error produces an `errored` record when persistence succeeds.
+A database failure can occur after provider acceptance.
 
-- **SMTPEmailSender** wraps all SMTP interactions. It accepts an `SMTPConfig` that contains the target host, port, credentials, `From` address, and timeout budget.
-- **NotificationService** provisions a new `SMTPEmailSender` for each service instance using the values supplied through `config.Config`.
-- **config.Config** exposes the following SMTP-specific settings:
-  - `SMTP_HOST`
-  - `SMTP_PORT`
-  - `SMTP_USERNAME`
-  - `SMTP_PASSWORD`
-  - `FROM_EMAIL`
-  - `CONNECTION_TIMEOUT_SEC`
-  - `OPERATION_TIMEOUT_SEC`
-- **smtpSubmission.deliveryMode** selects `upstream` provider relay or `direct` recipient-MX delivery for authenticated SMTP submissions.
-- **smtpSubmission.relay** exposes the upstream SMTP account used only when `smtpSubmission.deliveryMode` is `upstream`.
-- **Sender-domain DNS verification** is API-backed. Authenticated users create sender domains from the SMTP relay page, Pinguin stores owner-scoped records in SQLite, and verified records gate exact sender identities and shared-address forwarding routes.
-- **smtpSubmission.publicPort** and **smtpSubmission.publicSecurityMode** control the Gmail-facing settings shown with one-time SMTP identity credentials. These differ from the private listener in production: the gateway exposes `pinguin-api.mprlab.com:465`, terminates TLS in Caddy, and forwards plaintext SMTP to Pinguin's private submission capability.
-- **SMTP identities** map exact shared addresses such as `support@help.example.com` to one or more persisted forwarding recipients.
-- **smtpForwarding.relay** exposes the outbound SMTP account used to deliver forwarded copies.
+The worker selects due `queued` and `errored` records below the configured retry limit.
+The worker uses `github.com/tyemirov/utils/scheduler` through repository and dispatcher adapters.
+It uses exponential backoff and resolves current tenant credentials for each retry.
+Status `errored` can be transient or exhausted.
+The retry count and configured limit distinguish those conditions.
+Neither `sent` nor the provider response establishes final receipt.
 
-## Delivery Sequence
+SQLite stores notification metadata, recipients, subjects, message text, schedules, retry state, and attachment bytes.
+Provider secrets and SMTP identity passwords have encryption at rest.
+That protection does not encrypt notification content or attachment bytes in the application schema.
+Ambiguous provider responses or a client retry after a failed database write can produce duplicate delivery.
+The service does not promise exactly-once delivery.
 
-1. **Input validation** happens in `NotificationService` before dispatch. Requests missing a recipient or message are rejected immediately.
-2. **Message composition** uses `buildEmailMessage` to generate a MIME-compliant payload containing the headers (`From`, `To`, `Subject`) and body. When attachments are present, the helper emits a `multipart/mixed` body, base64-encodes each attachment, and adds `Content-Disposition` metadata so SMTP relays understand filenames and MIME types.
-3. **Connection setup** selects the transport based on the configured port:
-   - Port `465` triggers an implicit TLS connection with `tls.DialWithDialer`. The dialer respects `CONNECTION_TIMEOUT_SEC`, and the connection is established before issuing SMTP commands.
-   - Any other port uses the standard `smtp.SendMail` helper, which negotiates STARTTLS when the server advertises support.
-4. **Authentication** relies on `smtp.PlainAuth`, passing through the configured username and password. The host component from `SMTP_HOST` is used for the authentication scope.
-5. **Envelope commands** (`MAIL FROM`, `RCPT TO`, `DATA`) are issued sequentially. The implementation writes the composed message bytes to the SMTP data stream and closes the writer to finalize the transaction.
-6. **Error handling** wraps failures with context using `%w` so callers receive actionable diagnostics (e.g., connect failures, auth failures, write failures). Failures propagate back to the notification worker so they can trigger retries.
-7. **Cleanup** always closes the SMTP client or TLS connection to free sockets quickly.
+## Email composition and transport
 
-For authenticated SMTP submission in direct mode, Pinguin groups recipients by domain, resolves MX records, falls back to the domain host when no MX is present, connects to each target on port `25`, uses the authenticated identity as `MAIL FROM`, and writes the exact submitted RFC 5322 payload through SMTP `DATA`. Domains using this mode must publish SPF records that authorize the gateway IP so DMARC can align with the RFC 5322 `From` domain.
+`SMTPEmailSender` implements the SMTP provider boundary.
+Its config contains the SMTP target, credentials, from address, and timeout inputs.
+The service creates a sender from the current tenant email profile.
 
-For inbound forwarding, customer DNS should normally point a dedicated mail subdomain at `mx.pinguin.mprlab.com`:
+`buildEmailMessage` creates a MIME message with `From`, `To`, `Subject`, and body content.
+Attachments produce `multipart/mixed` messages with base64 data and `Content-Disposition` metadata.
+Email permits 10 attachments, 5 MiB per attachment, and 25 MiB combined attachment bytes.
+Validation occurs at the request boundary.
+Persisted attachment bytes are reused for scheduled sends and retries.
 
-```dns
-help.example.com. MX 10 mx.pinguin.mprlab.com.
-```
+Port `465` uses an implicit TLS connection through `tls.DialWithDialer`.
+That path respects `CONNECTION_TIMEOUT_SEC` for connection establishment.
+Its current TLS config sets `InsecureSkipVerify: true`.
+Certificate verification on this path remains an implementation limitation.
 
-The gateway accepts public SMTP on `mx.pinguin.mprlab.com:25` and proxies it through Caddy to Pinguin's private forwarding capability.
+Other ports use `smtp.SendMail`.
+That helper negotiates STARTTLS when the server advertises support.
+This path does not establish a universal enforced-TLS policy.
+`OPERATION_TIMEOUT_SEC` does not impose a full SMTP operation deadline on this helper path.
+Caller context alone does not bound that helper's I/O.
 
-Pinguin accepts `MAIL FROM:<>` null reverse-path traffic for DSNs and other auto-generated mail, rejects unknown `RCPT TO` addresses before `DATA`, enforces configured size and recipient limits, and returns a temporary SMTP failure when route lookup or forwarding through `smtpForwarding.relay` fails before acceptance. Forwarded copies preserve the original message headers and use the shared address as the outbound SMTP envelope sender. Because Pinguin stores no message body, operators should treat forwarding retries and duplicate delivery risk as part of the no-mailbox tradeoff.
+SMTP authentication uses `smtp.PlainAuth` with the tenant username, password, and host.
+Delivery issues `MAIL FROM`, `RCPT TO`, and `DATA` in sequence.
+The writer closes to finish the data transaction.
+Errors return to the service and worker for the applicable failure behavior.
+The SMTP client or TLS connection closes after the operation.
 
-## Timeout Strategy
+## Authenticated SMTP submission
 
-- `CONNECTION_TIMEOUT_SEC` bounds how long we wait to establish TCP/TLS connections.
-- `OPERATION_TIMEOUT_SEC` is reserved for future I/O deadlines; until then we rely on context cancellation supplied by the caller.
-- The background worker respects the same configuration when retrying emails.
+The optional submission listener authenticates an exact SMTP identity under a verified tenant sender domain.
+The login, envelope sender, and RFC 5322 `From` header must match that identity.
+The listener preserves the raw submitted message.
+Delivery completes synchronously before the final SMTP success response.
+This path has no persisted notification retry record.
 
-## Attachment Limits
+`smtpSubmission.deliveryMode` selects `upstream` or `direct`.
+Upstream mode uses the independent `smtpSubmission.relay` profile.
+Direct mode permits one recipient domain per message.
+It resolves that domain's MX hosts and connects on port `25`.
 
-- Each email may include up to **10 attachments**.
-- Individual attachments are capped at **5 MiB**, and the combined payload must remain under **25 MiB**.
-- Attachments are validated at the service edge and persisted in a dedicated table so retries use the original bytes.
+When no MX record exists, SMTP domain-host resolution applies.
+A null MX record is rejected.
+The authenticated identity remains the envelope sender.
 
-## Testing Strategy
+Direct mode applies the operation budget to DNS lookup and SMTP I/O.
+It uses STARTTLS when the remote server advertises support.
+A direct sender domain needs SPF authorization for the gateway address to support DMARC alignment.
+Pingwin supplies no DKIM signer, bounce processor, or mailbox service.
 
-- **Unit tests** validate that `NotificationService` wires the SMTP sender with the exact configuration values (added in `notification_service_email_sender_test.go`) and that `buildEmailMessage` produces correct MIME boundaries for attachments.
-- **Integration tests** (future work) should use a fake SMTP server to assert protocol exchanges without reaching the public internet.
+`smtpSubmission.publicPort` and `publicSecurityMode` describe the external client settings.
+Production declares SMTPS on `pingwin-api.mprlab.com:465`.
+Caddy terminates TLS and forwards to Pingwin's private plaintext port `587`.
+The [SMTP setup guide](smtp-setup.md) defines DNS, identities, listener limits, and Gmail settings.
 
-## Future Enhancements
+## Inbound forwarding
 
-- Support STARTTLS enforcement by checking the server extension list and failing when encryption is required but unavailable.
-- Expose optional per-request overrides for the `From` address when business rules require branding-specific senders.
-- Add structured logging around each SMTP stage so operators can diagnose delivery issues without enabling verbose debugging.
+The optional MX listener accepts only active SMTP identities with forwarding recipients.
+It accepts `MAIL FROM:<>` for DSNs and other messages with a null reverse path.
+Unknown recipients are rejected before `DATA`.
+Message-size and recipient limits apply.
+
+Each accepted route forwards through `smtpForwarding.relay`.
+For parsed messages, the relay rewrites `From` to the shared address and preserves the body bytes.
+It keeps an existing `Reply-To`, or uses the original `From` address for replies.
+It records the original `From` in `X-Pingwin-Original-From` when present.
+
+The rewrite removes previous DKIM, DomainKey, ARC, and authentication-result headers.
+It also removes `Bcc`, `Return-Path`, and `Sender`.
+If header rewriting fails, the current code logs `smtp_forwarding_rewrite_skipped` and relays the original message bytes.
+
+The shared address becomes the outbound envelope sender.
+The relay profile is independent of tenant notification and SMTP submission profiles.
+Forwarding stores no message body, mailbox state, search index, read state, or retention data.
+It provides no IMAP or POP3 access.
+
+The listener waits for forwarding before its final success response.
+A route or relay failure returns a temporary SMTP failure when acceptance is incomplete.
+The sender's mail server can then retry.
+Partial fanout or uncertain SMTP responses can produce duplicate copies.
+
+Customer MX records normally use a dedicated mail subdomain, such as `help.example.com`.
+Production declares `mx.pingwin.mprlab.com:25` through the Gateway listener.
+The [SMTP setup procedure](smtp-setup.md#inbound-smtp-forwarding-for-shared-addresses) includes the exact DNS examples.
+
+## Validation scope
+
+The repository contains SMTP protocol tests and public-entry-point integration tests.
+The scheduled email integration test exercises worker dispatch through an injected recording sender.
+Separate protocol tests exercise SMTP exchanges against local test servers.
+Managed tenant tests exercise notification isolation and tenant HTTP operations.
+Direct relay tests exercise recipient-MX delivery, the one-domain restriction, DNS deadlines, and SMTP failures.
+
+Browser tests use local API and authentication boundaries.
+Live provider connectivity and hosted authentication require their separate acceptance procedures.
+
+## Future enhancements
+
+The former SMTP plan identified enforced STARTTLS, per-request from-address overrides, and more SMTP-stage diagnostics as future work.
+Those items remain proposals, rather than current capabilities or committed release scope.
+The current tenant profile controls the notification from address.

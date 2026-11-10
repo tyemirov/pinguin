@@ -1,6 +1,6 @@
 # Shared UI Migration
 
-I004 prepares Pinguin for the shared authentication and footer contracts under mpr-ui I009.
+I004 prepares Pingwin for the shared authentication and footer contracts under mpr-ui I009.
 The four pages retain their declarative bootstrap and literal `@latest` assets.
 The application owns `web/config-ui.yaml`.
 Each environment declares `auth.providers.google`, `auth.providers.apple`, and `auth.providers.password`.
@@ -8,7 +8,7 @@ Google is enabled. Apple and password are disabled.
 The Google client identifiers, tenant identifiers, origins, and endpoint paths retain their configured values.
 The explicit session endpoint remains `/auth/session`.
 
-The shared library controls authentication. Pinguin consumes its documented events through `sessionBridge.js`.
+The shared library controls authentication. Pingwin consumes its documented events through `sessionBridge.js`.
 Protected requests use `MPRUI.authenticatedFetch` with the mounted header as their host.
 The HTTP API checks authentication before all protected domain handlers.
 The transport declares `mutationReplay: "authorization-before-domain-work"` to permit one retry after session recovery.
@@ -52,10 +52,10 @@ Browser cache qualification remains a separate acceptance requirement.
 ## Theme Control
 
 The footer uses the `theme-control` contract.
-`mpr-ui` keeps the selected mode under `pinguin.theme`.
+`mpr-ui` keeps the selected mode under `pingwin.theme`.
 The browser tests use `mpr-ui` commit `d29f43b96991ff409db968f56e6b3fc57b6d20e0` (`v4.3.5`).
 Production asset URLs retain `@latest`.
-The four pages use the explicit light/dark switch and one `pinguin.theme` storage key.
+The four pages use the explicit light/dark switch and one `pingwin.theme` storage key.
 The shared theme manager owns storage writes.
 The application no longer writes the same selection after a theme event.
 Central browser acceptance verified pointer selection, keyboard selection, and reload for each mode.
