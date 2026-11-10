@@ -21,9 +21,12 @@ application_root="$fixture_root/application"
 mkdir -p "$application_root"
 
 while IFS= read -r -d '' relative_path; do
+  if [ ! -e "$repository_root/$relative_path" ]; then
+    continue
+  fi
   mkdir -p "$application_root/$(dirname "$relative_path")"
   cp -P "$repository_root/$relative_path" "$application_root/$relative_path"
-done < <(git -C "$repository_root" ls-files -z)
+done < <(git -C "$repository_root" ls-files -z --cached --others --exclude-standard)
 
 git -C "$application_root" init --quiet --initial-branch=master
 git -C "$application_root" add --all
@@ -54,7 +57,7 @@ selected_input_file="$application_root/.mprlab/deploy/.env"
 cat >"$selected_input_file" <<'INPUTS'
 CONNECTION_TIMEOUT_SEC=5
 DATABASE_PATH=/app/data/fixture.db
-HTTP_ALLOWED_ORIGIN1=https://pinguin.fixture.invalid
+HTTP_ALLOWED_ORIGIN1=https://pingwin.fixture.invalid
 HTTP_ALLOWED_ORIGIN2=http://127.0.0.1:4174
 HTTP_ALLOWED_ORIGIN3=http://localhost:4174
 HTTP_LISTEN_ADDR=:8080
@@ -84,12 +87,12 @@ SMTP_SUBMISSION_RELAY_HOST=relay.fixture.invalid
 SMTP_SUBMISSION_RELAY_PASSWORD=fixture-submit-password
 SMTP_SUBMISSION_RELAY_PORT=587
 SMTP_SUBMISSION_RELAY_USERNAME=fixture-submit-user
-TAUTH_COOKIE_NAME=app_session_pinguin_fixture
+TAUTH_COOKIE_NAME=app_session_pingwin_fixture
 TAUTH_SIGNING_KEY=fixture-signing-key-with-at-least-32-bytes
-TAUTH_TENANT_GOOGLE_WEB_CLIENT_ID_PINGUIN=fixture-client.apps.googleusercontent.com
+TAUTH_TENANT_GOOGLE_WEB_CLIENT_ID_PINGWIN=fixture-client.apps.googleusercontent.com
 DEPLOY_SUDO_PASSWORD_TUTOSH=fixture-not-used-for-planning
 MPRLAB_TAUTH_MANAGEMENT_URL=https://tauth.fixture.invalid
-MPRLAB_TAUTH_PROVISIONING_CREDENTIALS='{"pinguin":{"authentication":"tauthp_fixture"}}'
+MPRLAB_TAUTH_PROVISIONING_CREDENTIALS='{"pingwin":{"authentication":"tauthp_fixture"}}'
 INPUTS
 while IFS='=' read -r fixture_input_name fixture_input_value; do
   unset "$fixture_input_name"

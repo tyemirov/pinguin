@@ -12,6 +12,7 @@ import (
 
 	"github.com/tyemirov/pinguin/pkg/grpcapi"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -19,6 +20,31 @@ type recordingNotificationServer struct {
 	grpcapi.UnimplementedNotificationServiceServer
 	lastRequest  *grpcapi.NotificationRequest
 	lastMetadata metadata.MD
+}
+
+func TestNotificationServiceUsesPingwinNamespace(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	server := grpc.NewServer()
+	grpcapi.RegisterNotificationServiceServer(server, &recordingNotificationServer{})
+	go server.Serve(listener)
+	t.Cleanup(server.Stop)
+	connection, err := grpc.NewClient(listener.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("connect to notification service: %v", err)
+	}
+	t.Cleanup(func() { _ = connection.Close() })
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	response := new(grpcapi.NotificationResponse)
+	if err := connection.Invoke(ctx, "/pingwin.NotificationService/SendNotification", &grpcapi.NotificationRequest{}, response); err != nil {
+		t.Fatalf("invoke Pingwin notification service: %v", err)
+	}
+	if response.GetNotificationId() != "test-id" {
+		t.Fatalf("unexpected notification response: %v", response)
+	}
 }
 
 func (s *recordingNotificationServer) SendNotification(ctx context.Context, req *grpcapi.NotificationRequest) (*grpcapi.NotificationResponse, error) {
@@ -231,7 +257,7 @@ func buildCLIBinary(t *testing.T) string {
 
 	repositoryRoot := filepath.Dir(filepath.Dir(workingDirectory))
 	temporaryBinaryDirectory := t.TempDir()
-	temporaryBinaryPath := filepath.Join(temporaryBinaryDirectory, "pinguin-cli")
+	temporaryBinaryPath := filepath.Join(temporaryBinaryDirectory, "pingwin-cli")
 
 	buildCommand := exec.Command("go", "build", "-o", temporaryBinaryPath, "./cmd/client")
 	buildCommand.Dir = repositoryRoot

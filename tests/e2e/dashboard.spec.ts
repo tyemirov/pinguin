@@ -5,7 +5,7 @@ import {
   stubExternalAssets,
   expectToast,
   expectSharedHeaderSignInButton,
-  expectPinguinHeaderBrand,
+  expectPingwinHeaderBrand,
 } from './utils';
 
 const LANDING_URL_PATTERN = /\/(?:index\.html)?$/;
@@ -55,10 +55,10 @@ test.describe('Authenticated pages', () => {
     await expectSharedHeaderSignInButton(page);
   });
 
-  test('shows Pinguin logo brand and favicon on the event log page', async ({ page }) => {
+  test('shows Pingwin logo brand and favicon on the event log page', async ({ page }) => {
     await configureRuntime(page, { authenticated: true });
     await page.goto('/event-log.html');
-    await expectPinguinHeaderBrand(page);
+    await expectPingwinHeaderBrand(page);
     await expect(page.getByTestId('notifications-list')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Refresh' })).toHaveCount(1);
   });
@@ -79,7 +79,7 @@ test.describe('Authenticated pages', () => {
     await expect(menuLinks.nth(1)).toHaveAttribute('aria-current', 'page');
     await expect(page.getByTestId('notifications-list')).toBeVisible();
     await expect(page.locator('[data-page-surface="smtp-workspace"]')).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: 'Pinguin dashboard' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Pingwin dashboard' })).toHaveCount(0);
     await expect(
       page.getByText('Monitor notification delivery events and manage SMTP relay access from one shared shell.'),
     ).toHaveCount(0);
@@ -100,7 +100,7 @@ test.describe('Authenticated pages', () => {
     await expect(page.getByRole('heading', { name: 'SMTP relay' })).toBeVisible();
     await expect(page.locator('[data-page-surface="smtp-workspace"]')).toBeVisible();
     await expect(page.getByTestId('notifications-list')).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: 'Pinguin dashboard' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Pingwin dashboard' })).toHaveCount(0);
     await expect(
       page.getByText('Monitor notification delivery events and manage SMTP relay access from one shared shell.'),
     ).toHaveCount(0);
@@ -418,8 +418,8 @@ test.describe('Authenticated pages', () => {
     await panel.getByLabel('Sending domain').fill('example.com');
     await panel.getByRole('button', { name: 'Add domain' }).click();
     const domainCard = panel.getByTestId('smtp-domain-card');
-    await expect(domainCard).toContainText('_pinguin-challenge.example.com');
-    await expect(domainCard).toContainText('v=spf1 a:smtp.pinguin.test ~all');
+    await expect(domainCard).toContainText('_pingwin-challenge.example.com');
+    await expect(domainCard).toContainText('v=spf1 a:smtp.pingwin.test ~all');
     await expect(panel.getByRole('button', { name: 'Create identity' })).toBeDisabled();
     await domainCard.getByRole('button', { name: 'Check DNS' }).click();
     await expect(domainCard.getByText('Verified').first()).toBeVisible();
@@ -439,7 +439,7 @@ test.describe('Authenticated pages', () => {
     const credentialInputs = credentials.locator('input');
     await expect(credentialInputs).toHaveCount(4);
     await expect(credentials.locator('input:not([readonly])')).toHaveCount(0);
-    await expect(credentialInputs.nth(0)).toHaveValue('smtp.pinguin.test');
+    await expect(credentialInputs.nth(0)).toHaveValue('smtp.pingwin.test');
     await expect(credentialInputs.nth(1)).toHaveValue('465');
     await expect(credentialInputs.nth(2)).toHaveValue('ssl');
     await expect(credentialInputs.nth(3)).toHaveValue('smtp_JAYbQkNwQvT-LZI1');
@@ -455,7 +455,7 @@ test.describe('Authenticated pages', () => {
     await expect(credentialNotice).toHaveText('SMTP identity created');
     await expect(page.locator('.toast', { hasText: 'SMTP identity created' })).toHaveCount(0);
     await credentials.getByRole('button', { name: 'Copy SMTP server' }).click();
-    await expectClipboardText(page, 'smtp.pinguin.test');
+    await expectClipboardText(page, 'smtp.pingwin.test');
     await expect(credentialNotice).toHaveText('SMTP server copied');
     await expect(page.locator('.toast', { hasText: 'SMTP server copied' })).toHaveCount(0);
     await credentials.getByRole('button', { name: 'Copy username' }).click();

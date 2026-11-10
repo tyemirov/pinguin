@@ -7,7 +7,7 @@ type ConfigureRuntimeOptions = {
 
 const PLAYWRIGHT_AVATAR_URL =
   'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"%3E%3Crect width="40" height="40" rx="20" fill="%232563eb"/%3E%3Ctext x="20" y="25" text-anchor="middle" font-size="16" font-family="Arial" fill="white"%3EP%3C/text%3E%3C/svg%3E';
-const PLAYWRIGHT_AUTH_COOKIE = 'pinguin_playwright_auth';
+const PLAYWRIGHT_AUTH_COOKIE = 'pingwin_playwright_auth';
 const PLAYWRIGHT_TAUTH_TENANT_ID = 'tauth-devserver';
 
 export async function configureRuntime(page: Page, options: ConfigureRuntimeOptions) {
@@ -33,7 +33,7 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
           return [cookieName, cookieValue];
         }),
       );
-      window.__PINGUIN_CONFIG__ = {
+      window.__PINGWIN_CONFIG__ = {
         apiBaseUrl: '/api',
 		landingUrl: '/index.html',
 		tenantUrl: '/tenants.html',
@@ -42,7 +42,7 @@ export async function configureRuntime(page: Page, options: ConfigureRuntimeOpti
         runtimeConfigUrl: '/runtime-config',
         skipRemoteConfig: true,
       };
-      window.__PINGUIN_RUNTIME_CONFIG_URL = '/runtime-config';
+      window.__PINGWIN_RUNTIME_CONFIG_URL = '/runtime-config';
       const restoreHintKey = `tauth.restore.v1:${encodeURIComponent(tauthBaseUrl)}:${encodeURIComponent(tauthTenantId)}`;
       if (cookieValues[authCookieName] === '1') {
         window.localStorage.setItem(restoreHintKey, '1');
@@ -233,14 +233,14 @@ export async function expectSharedHeaderSignInButton(page: Page) {
   expect(metrics.label.toLowerCase()).toContain('sign');
 }
 
-export async function expectPinguinHeaderBrand(page: Page) {
+export async function expectPingwinHeaderBrand(page: Page) {
   const header = page.locator('mpr-header').first();
   await expect(header).toBeVisible();
-  await expect(header).toHaveAttribute('brand-label', 'Pinguin');
-  const brand = header.locator('.pinguin-brand').first();
+  await expect(header).toHaveAttribute('brand-label', 'Pingwin');
+  const brand = header.locator('.pingwin-brand').first();
   await expect(brand).toBeVisible();
-  await expect(brand).toHaveText('Pinguin');
-  await expect(brand.locator('img.pinguin-brand__mark')).toHaveAttribute(
+  await expect(brand).toHaveText('Pingwin');
+  await expect(brand.locator('img.pingwin-brand__mark')).toHaveAttribute(
     'src',
     '/favicon.svg',
   );

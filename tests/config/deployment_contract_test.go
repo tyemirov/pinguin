@@ -19,7 +19,7 @@ const deploymentManifestPath = ".mprlab/deploy/resources.yml"
 func TestRepositoryOwnsCompleteVersionlessDeployment(t *testing.T) {
 	manifestData := readRepoFile(t, filepath.FromSlash(deploymentManifestPath))
 	manifest := currentManifestContract(t, manifestData)
-	requireCurrentContractYAML(t, "owner", manifest["owner"], `pinguin`)
+	requireCurrentContractYAML(t, "owner", manifest["owner"], `pingwin`)
 	requireCurrentContractYAML(t, "release", manifest["release"], `scheme: semver`)
 	lifecycle := currentContractMap(t, manifest["lifecycle"])
 	requireCurrentContractYAML(t, "lifecycle.defaults", lifecycle["defaults"], `timeouts: {startup: 30s, completion: 30m, readiness: 30s, request: 15s, shutdown: 5s}`)
@@ -36,7 +36,7 @@ func TestRepositoryOwnsCompleteVersionlessDeployment(t *testing.T) {
 	requireCurrentContractYAML(t, "environment.source", environment["source"], `.mprlab/deploy/.env`)
 	declarations := currentContractIndex(t, environment["private_inputs"], "id")
 	requiredEnvironment := parseTemplateEnvKeys(string(readRepoFile(t, "configs", "config.production.yml")))
-	expectedPrivateKeys := append(slices.Clone(requiredEnvironment), "TAUTH_TENANT_GOOGLE_WEB_CLIENT_ID_PINGUIN")
+	expectedPrivateKeys := append(slices.Clone(requiredEnvironment), "TAUTH_TENANT_GOOGLE_WEB_CLIENT_ID_PINGWIN")
 	inputNames := append(slices.Clone(expectedPrivateKeys), "DEPLOY_SUDO_PASSWORD_TUTOSH", "MPRLAB_TAUTH_MANAGEMENT_URL", "MPRLAB_TAUTH_PROVISIONING_CREDENTIALS")
 	slices.Sort(inputNames)
 	actualInputNames := make([]string, 0, len(declarations))
@@ -59,7 +59,7 @@ func TestRepositoryOwnsCompleteVersionlessDeployment(t *testing.T) {
 		t.Fatalf("installed plan fixture lacks declared synthetic inputs: %#v", fixtureNames)
 	}
 	artifacts := currentContractMap(t, manifest["artifacts"])
-	for catalog, identity := range map[string]string{"binaries": "server", "container_images": "pinguin-image", "web_bundles": "website"} {
+	for catalog, identity := range map[string]string{"binaries": "server", "container_images": "pingwin-image", "web_bundles": "website"} {
 		entries := currentContractIndex(t, artifacts[catalog], "id")
 		if len(entries) != 1 || entries[identity] == nil {
 			t.Fatalf("unexpected %s artifacts: %#v", catalog, entries)
@@ -76,15 +76,17 @@ func TestRepositoryOwnsCompleteVersionlessDeployment(t *testing.T) {
 		t.Fatalf("unexpected Compose projects: %#v", projects)
 	}
 	project := projects["runtime"]
+	requireCurrentContractYAML(t, "runtime.volumes", project["volumes"], `[{id: data, name: mprlab-nginx-gateway_pinguin-data, retention: retain}]`)
+	requireCurrentContractYAML(t, "runtime.retired_services", project["retired_services"], `[{project: mprlab-nginx-gateway, service: pinguin-api}]`)
 	if _, exists := project["placement"]; exists {
 		t.Fatal("placement must be declared by each service")
 	}
 	services := currentContractIndex(t, project["services"], "id")
-	if len(services) != 1 || services["pinguin-api"] == nil {
+	if len(services) != 1 || services["pingwin-api"] == nil {
 		t.Fatalf("unexpected services: %#v", services)
 	}
-	service := services["pinguin-api"]
-	requireCurrentContractYAML(t, "pinguin-api.placement", service["placement"], `group: gateway
+	service := services["pingwin-api"]
+	requireCurrentContractYAML(t, "pingwin-api.placement", service["placement"], `group: gateway
 cardinality: one`)
 	if _, exists := service["environment_files"]; exists {
 		t.Fatal("runtime must use typed environment projections")
@@ -124,9 +126,9 @@ cardinality: one`)
 	if len(endpoints) != 6 {
 		t.Fatalf("unexpected service endpoints: %#v", endpoints)
 	}
-	requireCurrentContractYAML(t, "grpc-private-lan", endpoints["grpc-private-lan"], `{id: grpc-private-lan, name: pinguin.grpc.private-lan, version: 1, endpoint: {scope: private_lan, scheme: grpc, port: 50052}, health: {protocol: tcp}}`)
-	requireCurrentContractYAML(t, "grpc.endpoint", endpoints["grpc"]["endpoint"], `{scope: same_host, scheme: grpc, alias: pinguin-grpc, port: 50051}`)
-	requireCurrentContractYAML(t, "grpc.name", endpoints["grpc"]["name"], `pinguin.grpc`)
+	requireCurrentContractYAML(t, "grpc-private-lan", endpoints["grpc-private-lan"], `{id: grpc-private-lan, name: pingwin.grpc.private-lan, version: 1, endpoint: {scope: private_lan, scheme: grpc, port: 50052}, health: {protocol: tcp}}`)
+	requireCurrentContractYAML(t, "grpc.endpoint", endpoints["grpc"]["endpoint"], `{scope: same_host, scheme: grpc, alias: pingwin-grpc, port: 50051}`)
+	requireCurrentContractYAML(t, "grpc.name", endpoints["grpc"]["name"], `pingwin.grpc`)
 	requireCurrentContractYAML(t, "smtp-submission.port", currentContractMap(t, endpoints["smtp-submission"]["endpoint"])["port"], `587`)
 	caddy := currentContractMap(t, currentContractMap(t, targets["ingress"])["caddy"])
 	listeners := currentContractIndex(t, caddy["listeners"], "id")
@@ -216,13 +218,13 @@ func TestGitHubActionsWorkflowsAreDisabled(t *testing.T) {
 func TestProductionImageAndPagesSourcesRemainComplete(t *testing.T) {
 	dockerfile := string(readRepoFile(t, "Dockerfile"))
 	for _, requiredSnippet := range []string{
-		"go build -o /workspace/bin/pinguin ./cmd/server",
-		"go build -o /workspace/bin/pinguin-doctor ./cmd/doctor",
-		"go build -o /workspace/bin/pinguin-convert-managed-tenants ./cmd/convert-managed-tenants",
-		"COPY --from=builder /workspace/bin/pinguin /usr/local/bin/pinguin",
-		"COPY --from=builder /workspace/bin/pinguin-doctor /usr/local/bin/pinguin-doctor",
-		"COPY --from=builder /workspace/bin/pinguin-convert-managed-tenants /usr/local/bin/pinguin-convert-managed-tenants",
-		`CMD ["/usr/local/bin/pinguin"]`,
+		"go build -o /workspace/bin/pingwin ./cmd/server",
+		"go build -o /workspace/bin/pingwin-doctor ./cmd/doctor",
+		"go build -o /workspace/bin/pingwin-convert-managed-tenants ./cmd/convert-managed-tenants",
+		"COPY --from=builder /workspace/bin/pingwin /usr/local/bin/pingwin",
+		"COPY --from=builder /workspace/bin/pingwin-doctor /usr/local/bin/pingwin-doctor",
+		"COPY --from=builder /workspace/bin/pingwin-convert-managed-tenants /usr/local/bin/pingwin-convert-managed-tenants",
+		`CMD ["/usr/local/bin/pingwin"]`,
 	} {
 		if !strings.Contains(dockerfile, requiredSnippet) {
 			t.Fatalf("Dockerfile missing production contract snippet %q", requiredSnippet)

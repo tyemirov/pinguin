@@ -79,7 +79,7 @@ for (const width of [390, 1280]) {
       await menu.focus();
       await page.keyboard.press('Enter');
       await expect(menu).toHaveAttribute('aria-expanded', 'true');
-      await expect(footer.getByRole('link', { name: 'Pinguin', exact: true })).toHaveAttribute('href', 'https://pinguin.mprlab.com/');
+      await expect(footer.getByRole('link', { name: 'Pingwin', exact: true })).toHaveAttribute('href', 'https://pingwin.mprlab.com/');
       await page.keyboard.press('Escape');
       await expect(menu).toBeFocused();
       const theme = await page.locator('body').getAttribute('data-theme');

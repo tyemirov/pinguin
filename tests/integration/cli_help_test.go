@@ -16,7 +16,7 @@ func TestCLIHelpWorksWithoutEnv(t *testing.T) {
 
 	repositoryRoot := filepath.Dir(filepath.Dir(workingDirectory))
 	temporaryBinaryDirectory := t.TempDir()
-	temporaryBinaryPath := filepath.Join(temporaryBinaryDirectory, "pinguin-cli")
+	temporaryBinaryPath := filepath.Join(temporaryBinaryDirectory, "pingwin-cli")
 
 	buildCommand := exec.Command("go", "build", "-o", temporaryBinaryPath, "./cmd/client")
 	buildCommand.Dir = repositoryRoot
@@ -33,5 +33,8 @@ func TestCLIHelpWorksWithoutEnv(t *testing.T) {
 	}
 	if !strings.Contains(string(helpOutput), "send") {
 		t.Fatalf("expected help output to mention send subcommand, got:\n%s", string(helpOutput))
+	}
+	if !strings.Contains(string(helpOutput), "pingwin-cli [command]") {
+		t.Fatalf("expected Pingwin CLI usage, got:\n%s", string(helpOutput))
 	}
 }

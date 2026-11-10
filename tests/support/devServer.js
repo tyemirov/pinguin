@@ -8,7 +8,7 @@ const crypto = require('crypto');
 const HOST = '127.0.0.1';
 const PORT = process.env.PLAYWRIGHT_PORT ? Number(process.env.PLAYWRIGHT_PORT) : 4174;
 const WEB_ROOT = path.resolve(__dirname, '../../web');
-const AUTH_COOKIE = 'pinguin_playwright_auth';
+const AUTH_COOKIE = 'pingwin_playwright_auth';
 const PLAYWRIGHT_AVATAR_URL =
   'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"%3E%3Crect width="40" height="40" rx="20" fill="%232563eb"/%3E%3Ctext x="20" y="25" text-anchor="middle" font-size="16" font-family="Arial" fill="white"%3EP%3C/text%3E%3C/svg%3E';
 const AUTH_PROFILE = {
@@ -691,15 +691,15 @@ function dnsRecordsForDomain(domain, token) {
   return [
     {
       type: 'TXT',
-      host: `_pinguin-challenge.${domain}`,
-      value: `pinguin-domain-verification=${token}`,
+      host: `_pingwin-challenge.${domain}`,
+      value: `pingwin-domain-verification=${token}`,
       purpose: 'Verify domain ownership',
     },
     {
       type: 'TXT',
       host: domain,
-      value: 'v=spf1 a:smtp.pinguin.test ~all',
-      purpose: 'Authorize Pinguin SMTP relay',
+      value: 'v=spf1 a:smtp.pingwin.test ~all',
+      purpose: 'Authorize Pingwin SMTP relay',
     },
     {
       type: 'TXT',
@@ -714,7 +714,7 @@ function dnsChecksForDomain(domain, passed) {
   return domain.dns_records.map((record) => ({
     type: record.type,
     host: record.host,
-    expected: record.type === 'TXT' && record.host === domain.domain ? 'a:smtp.pinguin.test' : record.value,
+    expected: record.type === 'TXT' && record.host === domain.domain ? 'a:smtp.pingwin.test' : record.value,
     passed,
     message: passed ? 'DNS record matched' : 'DNS record is missing',
   }));
@@ -746,7 +746,7 @@ function credentialsForIdentity(identity, password = identity.password) {
   return {
     identity: publicSMTPIdentity(identity),
     smtp_settings: {
-      host: 'smtp.pinguin.test',
+      host: 'smtp.pingwin.test',
       port: 465,
       security_mode: 'ssl',
     },

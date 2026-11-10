@@ -11,8 +11,8 @@ func TestServiceEnvExamplesCoverConfigTemplates(t *testing.T) {
 	t.Helper()
 
 	requiredByExample := map[string][]string{
-		"configs/.env.pinguin.example": {
-			"configs/config.pinguin.yml",
+		"configs/.env.pingwin.example": {
+			"configs/config.pingwin.yml",
 		},
 		"configs/.env.tauth.example": {
 			"configs/config.tauth.yml",
@@ -31,8 +31,8 @@ func TestServiceEnvExamplesCoverConfigTemplates(t *testing.T) {
 	}
 }
 
-func TestLocalPinguinEnvCoversConfigTemplateWhenPresent(t *testing.T) {
-	envPath := "configs/.env.pinguin"
+func TestLocalPingwinEnvCoversConfigTemplateWhenPresent(t *testing.T) {
+	envPath := "configs/.env.pingwin"
 	if _, statErr := os.Stat(repoPath(envPath)); statErr != nil {
 		if os.IsNotExist(statErr) {
 			t.Skipf("%s is local-only and not present", envPath)
@@ -41,9 +41,9 @@ func TestLocalPinguinEnvCoversConfigTemplateWhenPresent(t *testing.T) {
 	}
 
 	envKeys := parseEnvExampleKeys(string(readRepoFile(t, envPath)))
-	for _, requiredKey := range parseTemplateEnvKeys(string(readRepoFile(t, "configs/config.pinguin.yml"))) {
+	for _, requiredKey := range parseTemplateEnvKeys(string(readRepoFile(t, "configs/config.pingwin.yml"))) {
 		if !envKeys[requiredKey] {
-			t.Fatalf("%s does not define %s required by configs/config.pinguin.yml", envPath, requiredKey)
+			t.Fatalf("%s does not define %s required by configs/config.pingwin.yml", envPath, requiredKey)
 		}
 	}
 }

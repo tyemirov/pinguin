@@ -4,7 +4,7 @@ import {
   configureRuntime,
   expectSharedHeaderUserMenu,
   expectSharedHeaderSignInButton,
-  expectPinguinHeaderBrand,
+  expectPingwinHeaderBrand,
   resetNotifications,
   stubExternalAssets,
 } from './utils';
@@ -18,8 +18,8 @@ test.describe('Landing page auth flow', () => {
 
   test('shows a focused sign-in page and login button', async ({ page }) => {
     await page.goto('/index.html');
-    await expect(page.getByRole('heading', { name: 'Pinguin notification workspace' })).toBeVisible();
-    await expectPinguinHeaderBrand(page);
+    await expect(page.getByRole('heading', { name: 'Pingwin notification workspace' })).toBeVisible();
+    await expectPingwinHeaderBrand(page);
     await expectSharedHeaderSignInButton(page);
     await expect(page.getByLabel('Notification workspace preview')).toBeVisible();
   });
@@ -89,10 +89,10 @@ test.describe('Landing page auth flow', () => {
     expect(refreshRequestCount).toBe(0);
   });
 
-  test('keeps the Pinguin header brand without runtime tenant metadata', async ({ page }) => {
+  test('keeps the Pingwin header brand without runtime tenant metadata', async ({ page }) => {
     await page.goto('/index.html');
-    await expectPinguinHeaderBrand(page);
-    const tenantMetadata = await page.evaluate(() => (window as any).__PINGUIN_CONFIG__?.tenant);
+    await expectPingwinHeaderBrand(page);
+    const tenantMetadata = await page.evaluate(() => (window as any).__PINGWIN_CONFIG__?.tenant);
     expect(tenantMetadata).toBeUndefined();
   });
 
@@ -107,7 +107,7 @@ test.describe('Landing page auth flow', () => {
         if (!theme) {
           return;
         }
-        const key = 'pinguin.theme';
+        const key = 'pingwin.theme';
         if (!window.localStorage.getItem(key)) {
           window.localStorage.setItem(key, theme);
         }
@@ -135,7 +135,7 @@ test.describe('Landing page auth flow', () => {
       }, scenario.expected);
 
       const storedTheme = await page.evaluate(
-        () => window.localStorage.getItem('pinguin.theme') || '',
+        () => window.localStorage.getItem('pingwin.theme') || '',
       );
       expect(storedTheme).toBe(scenario.expected);
 

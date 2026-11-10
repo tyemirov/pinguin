@@ -17,7 +17,7 @@ func TestServerRejectsObsoleteTenantBootstrapConfiguration(t *testing.T) {
 		t.Fatalf("mkdir config directory: %v", mkdirErr)
 	}
 	configPath := filepath.Join(configDirectory, "config.yml")
-	dbPath := filepath.Join(temporaryBinaryDirectory, "pinguin.db")
+	dbPath := filepath.Join(temporaryBinaryDirectory, "pingwin.db")
 	configYAML := `
 server:
   databasePath: ` + dbPath + `
@@ -108,7 +108,7 @@ func buildServerBinary(t *testing.T, outputDirectory string) string {
 		t.Fatalf("failed to get working directory: %v", err)
 	}
 	repositoryRoot := filepath.Dir(filepath.Dir(workingDirectory))
-	temporaryBinaryPath := filepath.Join(outputDirectory, "pinguin-server")
+	temporaryBinaryPath := filepath.Join(outputDirectory, "pingwin-server")
 
 	buildCommand := exec.Command("go", "build", "-o", temporaryBinaryPath, "./cmd/server")
 	buildCommand.Dir = repositoryRoot
