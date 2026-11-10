@@ -3,7 +3,7 @@ GO_SOURCES := $(shell find . -name '*.go' -not -path "./vendor/*" -not -path "./
 ROOT_FAST_PACKAGES := $(shell go list ./... | grep -v '/tests/integration$$')
 ROOT_SLOW_PACKAGES := $(shell go list ./... | grep '/tests/integration$$')
 MODULE_DIRS := .
-BINARY_NAME := pinguin
+BINARY_NAME := pingwin
 COMPOSE_PROFILE ?= dev
 DOCKER_COMPOSE ?= docker compose
 STATICCHECK_MODULE := honnef.co/go/tools/cmd/staticcheck@master
@@ -66,11 +66,15 @@ test-frontend:
 	CI=1 $(LONG_TIMEOUT) npm test
 
 test-frontend-update:
-	CI=1 $(LONG_TIMEOUT) npm test -- --update-snapshots
+	CI=1 $(LONG_TIMEOUT) npm test -- --update-snapshots=all
 
 build:
 	mkdir -p bin
 	$(LONG_TIMEOUT) go build -o bin/$(BINARY_NAME) ./cmd/server
+
+.PHONY: generate-proto
+generate-proto:
+	$(SHORT_TIMEOUT) protoc --go_out=. --go_opt=module=github.com/tyemirov/pinguin --go-grpc_out=. --go-grpc_opt=module=github.com/tyemirov/pinguin pkg/proto/pingwin.proto
 
 up:
 	$(LONG_TIMEOUT) $(DOCKER_COMPOSE) --profile $(COMPOSE_PROFILE) up -d --build
