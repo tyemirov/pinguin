@@ -1,5 +1,7 @@
 .git
 .mprlab/deploy/.env
+configs/.env.*
+!configs/.env.*.example
 .pages-dist
 bin
 coverage.out
