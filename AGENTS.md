@@ -8,9 +8,9 @@ Repeat for emphasis because this rule is binding: no fallbacks, no backward comp
 
 One-off data migrations are allowed only when they move existing persisted data into the current schema in a bounded operation. After migration, remove the bridge and keep only the current contract.
 
-## Pinguin Notification Service
+## Pingwin Notification Service
 
-Pinguin is a production‑quality notification service written in Go. It exposes a gRPC interface for sending **email** and **SMS** notifications on a schedule. See README.md for details
+Pingwin is a production‑quality notification service written in Go. It exposes a gRPC interface for sending **email** and **SMS** notifications on a schedule. See README.md for details
 
 ## Document Roles
 
@@ -38,7 +38,7 @@ All rules for validation, error handling, invariants, and “confident programmi
 
 ### Legacy & Compatibility Policy
 
-Pinguin does not support backward compatibility. Legacy data, schemas, config keys, endpoints, users, and historical behavior are invalid state. Delete or reject them rather than preserving, migrating, translating, or routing around them. The application supports one current code path only; do not add compatibility branches, fallbacks, or migration shims.
+Pingwin does not support backward compatibility. Legacy data, schemas, config keys, endpoints, users, and historical behavior are invalid state. Delete or reject them rather than preserving, migrating, translating, or routing around them. The application supports one current code path only; do not add compatibility branches, fallbacks, or migration shims.
 
 ### Build & Test Commands
 
