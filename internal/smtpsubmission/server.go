@@ -238,7 +238,7 @@ func (server *Server) handleConnection(ctx context.Context, connection net.Conn,
 	session := &sessionState{secure: implicitTLS}
 	reader := bufio.NewReader(connection)
 	writer := bufio.NewWriter(connection)
-	if writeErr := writeSMTPLine(writer, "220 "+server.config.Hostname+" Pinguin SMTP submission ready"); writeErr != nil {
+	if writeErr := writeSMTPLine(writer, "220 "+server.config.Hostname+" Pingwin SMTP submission ready"); writeErr != nil {
 		return
 	}
 	for {

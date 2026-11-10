@@ -139,7 +139,7 @@ func (server *Server) handleConnection(ctx context.Context, connection net.Conn)
 	session := newSessionState()
 	reader := bufio.NewReader(connection)
 	writer := bufio.NewWriter(connection)
-	if writeSMTPLine(writer, "220 "+server.config.Hostname+" Pinguin SMTP forwarding ready") != nil {
+	if writeSMTPLine(writer, "220 "+server.config.Hostname+" Pingwin SMTP forwarding ready") != nil {
 		return
 	}
 	for {

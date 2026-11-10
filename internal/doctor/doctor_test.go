@@ -219,7 +219,7 @@ func TestRunExpandsEnvWhenEnabled(t *testing.T) {
 	configPath := filepath.Join(tempDir, "config.yml")
 	writeTestConfig(t, configPath, configWithEnvVarsYAML)
 
-	t.Setenv("TEST_DB_PATH", "/data/pinguin.db")
+	t.Setenv("TEST_DB_PATH", "/data/pingwin.db")
 	t.Setenv("TEST_GRPC_TOKEN", "test-token-123")
 	t.Setenv("TEST_LOG_LEVEL", "INFO")
 	t.Setenv("TEST_ENCRYPTION_KEY", "test-encryption-key-at-least-32")
@@ -314,7 +314,7 @@ func TestFormatSummaryIncludesInvalidAndCleanCrossValidation(t *testing.T) {
 
 func TestDoctorValidationHelpersCoverErrorBranches(t *testing.T) {
 	smtpResult := DiagnosticResult{Valid: true}
-	validateSMTPSubmissionConfig(pinguinSMTPSubmission{Enabled: true}, &smtpResult)
+	validateSMTPSubmissionConfig(pingwinSMTPSubmission{Enabled: true}, &smtpResult)
 	for _, expected := range []string{
 		"smtpSubmission.hostname",
 		"smtpSubmission.listenAddr",
@@ -332,7 +332,7 @@ func TestDoctorValidationHelpersCoverErrorBranches(t *testing.T) {
 		}
 	}
 	invalidSMTPResult := DiagnosticResult{Valid: true}
-	validateSMTPSubmissionConfig(pinguinSMTPSubmission{
+	validateSMTPSubmissionConfig(pingwinSMTPSubmission{
 		Enabled:            true,
 		Hostname:           "smtp.example.com",
 		ListenAddr:         ":587",
@@ -424,7 +424,7 @@ func TestFormatSummaryProducesReadableOutput(t *testing.T) {
 	if summary == "" {
 		t.Fatalf("expected non-empty summary")
 	}
-	if !strings.Contains(summary, "Pinguin Doctor Report") {
+	if !strings.Contains(summary, "Pingwin Doctor Report") {
 		t.Fatalf("expected summary to contain header")
 	}
 	if !strings.Contains(summary, "VALID") {
@@ -450,7 +450,7 @@ func containsDiagnosticError(errorMessages []string, expected string) bool {
 
 const currentServerTAuthConfigYAML = `
 server:
-  databasePath: /data/pinguin.db
+  databasePath: /data/pingwin.db
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 60
@@ -471,7 +471,7 @@ web:
 
 const validConfigYAML = `
 server:
-  databasePath: /data/pinguin.db
+  databasePath: /data/pingwin.db
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 60
@@ -494,7 +494,7 @@ const timeNowForDoctorTest = "2026-05-03T00:00:00Z"
 
 const validConfig2YAML = `
 server:
-  databasePath: /data/pinguin2.db
+  databasePath: /data/pingwin2.db
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 60
@@ -526,7 +526,7 @@ server:
 
 const invalidSMTPSubmissionConfigYAML = `
 server:
-  databasePath: /data/pinguin.db
+  databasePath: /data/pingwin.db
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 60
@@ -548,7 +548,7 @@ smtpSubmission:
 
 const directSMTPSubmissionConfigYAML = `
 server:
-  databasePath: /data/pinguin.db
+  databasePath: /data/pingwin.db
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 60
@@ -561,7 +561,7 @@ web:
 
 smtpSubmission:
   enabled: true
-  hostname: pinguin-api.mprlab.com
+  hostname: pingwin-api.mprlab.com
   listenAddr: ":587"
   publicPort: 465
   publicSecurityMode: ssl
@@ -574,7 +574,7 @@ smtpSubmission:
 
 const validSMTPForwardingConfigYAML = `
 server:
-  databasePath: /data/pinguin.db
+  databasePath: /data/pingwin.db
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 60
@@ -587,7 +587,7 @@ web:
 
 smtpForwarding:
   enabled: true
-  hostname: mx.pinguin.mprlab.com
+  hostname: mx.pingwin.mprlab.com
   listenAddr: ":25"
   maxMessageBytes: 26214400
   maxRecipients: 100
@@ -601,7 +601,7 @@ smtpForwarding:
 
 const unknownSMTPSubmissionConfigYAML = `
 server:
-  databasePath: /data/pinguin.db
+  databasePath: /data/pingwin.db
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 60
@@ -614,7 +614,7 @@ web:
 
 smtpSubmission:
   enabled: true
-  hostname: pinguin-api.mprlab.com
+  hostname: pingwin-api.mprlab.com
   listenAddr: ":587"
   maxMessageBytes: 26214400
   maxRecipients: 100
@@ -630,7 +630,7 @@ smtpSubmission:
 
 const dynamicForwardingConfigYAML = `
 server:
-  databasePath: /data/pinguin.db
+  databasePath: /data/pingwin.db
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 60
@@ -643,7 +643,7 @@ web:
 
 smtpForwarding:
   enabled: true
-  hostname: mx.pinguin.mprlab.com
+  hostname: mx.pingwin.mprlab.com
   listenAddr: ":25"
   maxMessageBytes: 26214400
   maxRecipients: 100
@@ -657,7 +657,7 @@ smtpForwarding:
 
 const invalidSMTPForwardingConfigYAML = `
 server:
-  databasePath: /data/pinguin.db
+  databasePath: /data/pingwin.db
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 60

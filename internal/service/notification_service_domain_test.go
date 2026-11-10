@@ -697,7 +697,7 @@ func closeDatabase(t *testing.T, database *gorm.DB) {
 
 func registerNotificationUpdateError(t *testing.T, database *gorm.DB) {
 	t.Helper()
-	callbackName := "pinguin:force_notification_update_error"
+	callbackName := "pingwin:force_notification_update_error"
 	if err := database.Callback().Update().Before("gorm:update").Register(callbackName, func(tx *gorm.DB) {
 		if tx.Statement != nil && tx.Statement.Schema != nil && tx.Statement.Schema.Name == "Notification" {
 			tx.AddError(errors.New("forced notification update failure"))

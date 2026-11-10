@@ -173,7 +173,7 @@ func buildEmailMessage(fromAddress string, toAddress string, subject string, bod
 		return builder.String()
 	}
 
-	boundary := fmt.Sprintf("PinguinBoundary-%d", time.Now().UnixNano())
+	boundary := fmt.Sprintf("PingwinBoundary-%d", time.Now().UnixNano())
 	builder.WriteString(fmt.Sprintf("Content-Type: multipart/mixed; boundary=\"%s\"\r\n", boundary))
 	builder.WriteString("\r\n")
 

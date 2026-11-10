@@ -27,7 +27,7 @@ func TestDirectMXRelayDeliversToRecipientMX(t *testing.T) {
 	dialer := &fakeSMTPDialer{targetAddress: smtpServer.address}
 	relay := &DirectMXRelay{
 		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
-		hostname:         "pinguin-api.mprlab.com",
+		hostname:         "pingwin-api.mprlab.com",
 		resolver:         resolver,
 		dialer:           dialer,
 		operationTimeout: time.Second,
@@ -47,7 +47,7 @@ func TestDirectMXRelayDeliversToRecipientMX(t *testing.T) {
 	}
 
 	commands, data := smtpServer.result(t)
-	if !stringListContains(commands, "EHLO pinguin-api.mprlab.com") {
+	if !stringListContains(commands, "EHLO pingwin-api.mprlab.com") {
 		t.Fatalf("expected EHLO command, got %v", commands)
 	}
 	if !stringListContains(commands, "MAIL FROM:<alice@example.com>") {
@@ -68,7 +68,7 @@ func TestDirectMXRelayRejectsMultipleRecipientDomainsBeforeDelivery(t *testing.T
 	dialer := &fakeSMTPDialer{err: errors.New("should not dial multiple recipient domains")}
 	relay := &DirectMXRelay{
 		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
-		hostname:         "pinguin-api.mprlab.com",
+		hostname:         "pingwin-api.mprlab.com",
 		resolver:         fakeMXResolver{records: map[string][]*net.MX{}},
 		dialer:           dialer,
 		operationTimeout: time.Second,
@@ -96,7 +96,7 @@ func TestDirectMXRelayFallsBackToDomainWhenMXIsAbsent(t *testing.T) {
 	smtpServer := startFakeDirectSMTPServer(t, fakeSMTPBehavior{})
 	relay := &DirectMXRelay{
 		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
-		hostname:         "pinguin-api.mprlab.com",
+		hostname:         "pingwin-api.mprlab.com",
 		resolver:         fakeMXResolver{lookupErr: &net.DNSError{Err: "no such host", Name: "example.net", IsNotFound: true}},
 		dialer:           &fakeSMTPDialer{targetAddress: smtpServer.address},
 		operationTimeout: time.Second,
@@ -117,7 +117,7 @@ func TestDirectMXRelayBoundsMXLookupWithOperationTimeout(t *testing.T) {
 	dialer := &fakeSMTPDialer{err: errors.New("should not dial after lookup timeout")}
 	relay := &DirectMXRelay{
 		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
-		hostname:         "pinguin-api.mprlab.com",
+		hostname:         "pingwin-api.mprlab.com",
 		resolver:         blockingMXResolver{},
 		dialer:           dialer,
 		operationTimeout: 10 * time.Millisecond,
@@ -161,7 +161,7 @@ func TestDirectMXRelayMapsFailures(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			relay := &DirectMXRelay{
 				logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
-				hostname:         "pinguin-api.mprlab.com",
+				hostname:         "pingwin-api.mprlab.com",
 				resolver:         fakeMXResolver{records: map[string][]*net.MX{"example.net": {{Host: "mx.example.net.", Pref: 10}}}},
 				dialer:           &fakeSMTPDialer{targetAddress: testCase.address},
 				operationTimeout: time.Second,
@@ -183,7 +183,7 @@ func TestDirectMXRelayTreatsAcceptedDataAsDeliveredWhenQuitFails(t *testing.T) {
 	smtpServer := startFakeDirectSMTPServer(t, fakeSMTPBehavior{quitResponse: "421 closing"})
 	relay := &DirectMXRelay{
 		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
-		hostname:         "pinguin-api.mprlab.com",
+		hostname:         "pingwin-api.mprlab.com",
 		resolver:         fakeMXResolver{records: map[string][]*net.MX{"example.net": {{Host: "mx.example.net.", Pref: 10}}}},
 		dialer:           &fakeSMTPDialer{targetAddress: smtpServer.address},
 		operationTimeout: time.Second,
@@ -215,7 +215,7 @@ func TestDirectMXRelayCoversTargetAndLookupErrorBranches(t *testing.T) {
 			name: "blank mx records",
 			relay: &DirectMXRelay{
 				logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
-				hostname:         "pinguin-api.mprlab.com",
+				hostname:         "pingwin-api.mprlab.com",
 				resolver:         fakeMXResolver{records: map[string][]*net.MX{"example.net": {{Host: " "}}}},
 				dialer:           &fakeSMTPDialer{err: errors.New("should not dial")},
 				operationTimeout: time.Second,
@@ -226,7 +226,7 @@ func TestDirectMXRelayCoversTargetAndLookupErrorBranches(t *testing.T) {
 			name: "null mx records",
 			relay: &DirectMXRelay{
 				logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
-				hostname:         "pinguin-api.mprlab.com",
+				hostname:         "pingwin-api.mprlab.com",
 				resolver:         fakeMXResolver{records: map[string][]*net.MX{"example.net": {{Host: ".", Pref: 0}}}},
 				dialer:           &fakeSMTPDialer{err: errors.New("should not dial null mx")},
 				operationTimeout: time.Second,
@@ -237,7 +237,7 @@ func TestDirectMXRelayCoversTargetAndLookupErrorBranches(t *testing.T) {
 			name: "dial error",
 			relay: &DirectMXRelay{
 				logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
-				hostname:         "pinguin-api.mprlab.com",
+				hostname:         "pingwin-api.mprlab.com",
 				resolver:         fakeMXResolver{records: map[string][]*net.MX{"example.net": {{Host: "mx.example.net.", Pref: 10}}}},
 				dialer:           &fakeSMTPDialer{err: errors.New("dial failed")},
 				operationTimeout: time.Second,
@@ -248,7 +248,7 @@ func TestDirectMXRelayCoversTargetAndLookupErrorBranches(t *testing.T) {
 			name: "deadline error",
 			relay: &DirectMXRelay{
 				logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
-				hostname: "pinguin-api.mprlab.com",
+				hostname: "pingwin-api.mprlab.com",
 				resolver: fakeMXResolver{records: map[string][]*net.MX{"example.net": {{Host: "mx.example.net.", Pref: 10}}}},
 				dialer: &fakeSMTPDialer{
 					connection: newDeadlineFailingConn(),
@@ -292,7 +292,7 @@ func TestDirectMXRelayCoversSMTPCommandErrorBranches(t *testing.T) {
 			smtpServer := startFakeDirectSMTPServer(t, testCase.behavior)
 			relay := &DirectMXRelay{
 				logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
-				hostname:         "pinguin-api.mprlab.com",
+				hostname:         "pingwin-api.mprlab.com",
 				resolver:         fakeMXResolver{records: map[string][]*net.MX{"example.net": {{Host: "mx.example.net.", Pref: 10}}}},
 				dialer:           &fakeSMTPDialer{targetAddress: smtpServer.address},
 				operationTimeout: time.Second,
@@ -314,7 +314,7 @@ func TestDirectMXRelayMapsDataWriteError(t *testing.T) {
 	connection := newClosingAfterDataConn(t)
 	relay := &DirectMXRelay{
 		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
-		hostname:         "pinguin-api.mprlab.com",
+		hostname:         "pingwin-api.mprlab.com",
 		resolver:         fakeMXResolver{records: map[string][]*net.MX{"example.net": {{Host: "mx.example.net.", Pref: 10}}}},
 		dialer:           &fakeSMTPDialer{connection: connection},
 		operationTimeout: time.Second,
@@ -333,7 +333,7 @@ func TestDirectMXRelayMapsDataWriteError(t *testing.T) {
 func TestDirectMXRelayLookupSortingAndDefaults(t *testing.T) {
 	relay := &DirectMXRelay{
 		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
-		hostname: "pinguin-api.mprlab.com",
+		hostname: "pingwin-api.mprlab.com",
 		resolver: fakeMXResolver{records: map[string][]*net.MX{
 			"example.net": {
 				{Host: "mx-b.example.net.", Pref: 20},
@@ -384,13 +384,13 @@ func TestDirectMXRelayBuildsProductionDependencies(t *testing.T) {
 		ConnectionTimeoutSec: 5,
 		OperationTimeoutSec:  7,
 		SMTPSubmission: config.SMTPSubmissionConfig{
-			Hostname: "pinguin-api.mprlab.com",
+			Hostname: "pingwin-api.mprlab.com",
 		},
 	})
 	if relay.logger == nil || relay.resolver == nil || relay.dialer == nil {
 		t.Fatalf("expected production direct relay dependencies")
 	}
-	if relay.hostname != "pinguin-api.mprlab.com" || relay.operationTimeout != 7*time.Second {
+	if relay.hostname != "pingwin-api.mprlab.com" || relay.operationTimeout != 7*time.Second {
 		t.Fatalf("unexpected relay config: %+v", relay)
 	}
 	defaultRelay := NewDirectMXRelay(slog.New(slog.NewTextHandler(io.Discard, nil)), config.Config{

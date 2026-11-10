@@ -1,4 +1,4 @@
-// Package doctor provides validation utilities for Pinguin configurations across projects.
+// Package doctor provides validation utilities for Pingwin configurations across projects.
 package doctor
 
 import (
@@ -15,7 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const reportSchemaVersion = "pinguin.doctor.v1"
+const reportSchemaVersion = "pingwin.doctor.v1"
 
 var errDoctor = errors.New("doctor.invalid")
 
@@ -64,15 +64,15 @@ type Options struct {
 	ExpandEnv            bool
 }
 
-// pinguinConfig mirrors the Pinguin configuration file structure for validation.
-type pinguinConfig struct {
-	Server         pinguinServer         `yaml:"server"`
-	Web            pinguinWeb            `yaml:"web"`
-	SMTPSubmission pinguinSMTPSubmission `yaml:"smtpSubmission"`
-	SMTPForwarding pinguinSMTPForwarding `yaml:"smtpForwarding"`
+// pingwinConfig mirrors the Pingwin configuration file structure for validation.
+type pingwinConfig struct {
+	Server         pingwinServer         `yaml:"server"`
+	Web            pingwinWeb            `yaml:"web"`
+	SMTPSubmission pingwinSMTPSubmission `yaml:"smtpSubmission"`
+	SMTPForwarding pingwinSMTPForwarding `yaml:"smtpForwarding"`
 }
 
-type pinguinServer struct {
+type pingwinServer struct {
 	DatabasePath        string       `yaml:"databasePath"`
 	LogLevel            string       `yaml:"logLevel"`
 	MaxRetries          int          `yaml:"maxRetries"`
@@ -80,22 +80,22 @@ type pinguinServer struct {
 	MasterEncryptionKey string       `yaml:"masterEncryptionKey"`
 	ConnectionTimeout   int          `yaml:"connectionTimeoutSec"`
 	OperationTimeout    int          `yaml:"operationTimeoutSec"`
-	TAuth               pinguinTAuth `yaml:"tauth"`
+	TAuth               pingwinTAuth `yaml:"tauth"`
 }
 
-type pinguinWeb struct {
+type pingwinWeb struct {
 	Enabled        *bool    `yaml:"enabled"`
 	ListenAddr     string   `yaml:"listenAddr"`
 	AllowedOrigins []string `yaml:"allowedOrigins"`
 	TrustedProxies []string `yaml:"trustedProxies"`
 }
 
-type pinguinTAuth struct {
+type pingwinTAuth struct {
 	SigningKey string `yaml:"signingKey"`
 	CookieName string `yaml:"cookieName"`
 }
 
-type pinguinSMTPSubmission struct {
+type pingwinSMTPSubmission struct {
 	Enabled            bool             `yaml:"enabled"`
 	Hostname           string           `yaml:"hostname"`
 	ListenAddr         string           `yaml:"listenAddr"`
@@ -108,23 +108,23 @@ type pinguinSMTPSubmission struct {
 	MaxMessageBytes    int64            `yaml:"maxMessageBytes"`
 	MaxRecipients      int              `yaml:"maxRecipients"`
 	AllowInsecureAuth  bool             `yaml:"allowInsecureAuth"`
-	Relay              pinguinSMTPRelay `yaml:"relay"`
+	Relay              pingwinSMTPRelay `yaml:"relay"`
 }
 
-type pinguinSMTPRelay struct {
+type pingwinSMTPRelay struct {
 	Host     string `yaml:"host"`
 	Port     int    `yaml:"port"`
 	Username string `yaml:"username"`
 	Password string `yaml:"password"`
 }
 
-type pinguinSMTPForwarding struct {
+type pingwinSMTPForwarding struct {
 	Enabled         bool             `yaml:"enabled"`
 	Hostname        string           `yaml:"hostname"`
 	ListenAddr      string           `yaml:"listenAddr"`
 	MaxMessageBytes int64            `yaml:"maxMessageBytes"`
 	MaxRecipients   int              `yaml:"maxRecipients"`
-	Relay           pinguinSMTPRelay `yaml:"relay"`
+	Relay           pingwinSMTPRelay `yaml:"relay"`
 }
 
 // Run executes the doctor validation for the specified configurations.
@@ -137,13 +137,13 @@ func Run(_ context.Context, options Options) (*Report, error) {
 		SchemaVersion: reportSchemaVersion,
 		Timestamp:     time.Now().UTC().Format(time.RFC3339),
 		Service: serviceInfo{
-			Name:    "pinguin",
+			Name:    "pingwin",
 			Version: "doctor-v1",
 		},
 		Diagnostics: make([]DiagnosticResult, 0, len(options.ConfigPaths)),
 	}
 
-	allConfigsByPath := make(map[string]*pinguinConfig)
+	allConfigsByPath := make(map[string]*pingwinConfig)
 
 	for _, configPath := range options.ConfigPaths {
 		diagnostic, config := validateConfig(configPath, options.ExpandEnv)
@@ -162,7 +162,7 @@ func Run(_ context.Context, options Options) (*Report, error) {
 	return report, nil
 }
 
-func validateConfig(configPath string, expandEnv bool) (DiagnosticResult, *pinguinConfig) {
+func validateConfig(configPath string, expandEnv bool) (DiagnosticResult, *pingwinConfig) {
 	result := DiagnosticResult{
 		ConfigPath: configPath,
 		Valid:      true,
@@ -186,7 +186,7 @@ func validateConfig(configPath string, expandEnv bool) (DiagnosticResult, *pingu
 		contents = expandedContents
 	}
 
-	var config pinguinConfig
+	var config pingwinConfig
 	decoder := yaml.NewDecoder(strings.NewReader(contents))
 	decoder.KnownFields(true)
 	if decodeErr := decoder.Decode(&config); decodeErr != nil {
@@ -214,7 +214,7 @@ func validateConfig(configPath string, expandEnv bool) (DiagnosticResult, *pingu
 	return result, &config
 }
 
-func validateServerConfig(server pinguinServer, webEnabled bool, result *DiagnosticResult) {
+func validateServerConfig(server pingwinServer, webEnabled bool, result *DiagnosticResult) {
 	if strings.TrimSpace(server.DatabasePath) == "" {
 		result.Valid = false
 		result.Errors = append(result.Errors, "server.databasePath is required")
@@ -250,21 +250,21 @@ func validateServerConfig(server pinguinServer, webEnabled bool, result *Diagnos
 	}
 }
 
-func validateServerTAuthConfig(tauth pinguinTAuth, result *DiagnosticResult) {
+func validateServerTAuthConfig(tauth pingwinTAuth, result *DiagnosticResult) {
 	if strings.TrimSpace(tauth.SigningKey) == "" {
 		result.Valid = false
 		result.Errors = append(result.Errors, "server.tauth.signingKey is required when web is enabled")
 	}
 }
 
-func validateWebConfig(web pinguinWeb, result *DiagnosticResult) {
+func validateWebConfig(web pingwinWeb, result *DiagnosticResult) {
 	if strings.TrimSpace(web.ListenAddr) == "" {
 		result.Valid = false
 		result.Errors = append(result.Errors, "web.listenAddr is required when web is enabled")
 	}
 }
 
-func validateSMTPSubmissionConfig(submission pinguinSMTPSubmission, result *DiagnosticResult) {
+func validateSMTPSubmissionConfig(submission pingwinSMTPSubmission, result *DiagnosticResult) {
 	if !submission.Enabled {
 		return
 	}
@@ -331,7 +331,7 @@ func validateSMTPSubmissionConfig(submission pinguinSMTPSubmission, result *Diag
 	}
 }
 
-func validateSMTPForwardingConfig(forwarding pinguinSMTPForwarding, result *DiagnosticResult) {
+func validateSMTPForwardingConfig(forwarding pingwinSMTPForwarding, result *DiagnosticResult) {
 	if !forwarding.Enabled {
 		return
 	}
@@ -377,7 +377,7 @@ func normalizeSMTPDeliveryMode(value string) string {
 	return normalized
 }
 
-func validateCrossConfigs(configsByPath map[string]*pinguinConfig) crossValidation {
+func validateCrossConfigs(configsByPath map[string]*pingwinConfig) crossValidation {
 	return crossValidation{Performed: len(configsByPath) > 1}
 }
 
@@ -405,7 +405,7 @@ func FormatReport(report *Report) ([]byte, error) {
 // FormatSummary formats a human-readable summary of the report.
 func FormatSummary(report *Report) string {
 	var builder strings.Builder
-	builder.WriteString(fmt.Sprintf("Pinguin Doctor Report (%s)\n", report.Timestamp))
+	builder.WriteString(fmt.Sprintf("Pingwin Doctor Report (%s)\n", report.Timestamp))
 	builder.WriteString(strings.Repeat("=", 60))
 	builder.WriteString("\n\n")
 

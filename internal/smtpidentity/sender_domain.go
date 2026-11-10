@@ -22,7 +22,7 @@ type SenderDomainStatus string
 const (
 	// SenderDomainStatusPending means DNS has not yet verified for SMTP relay use.
 	SenderDomainStatusPending SenderDomainStatus = "pending"
-	// SenderDomainStatusVerified means DNS matched the Pinguin sender-domain specification.
+	// SenderDomainStatusVerified means DNS matched the Pingwin sender-domain specification.
 	SenderDomainStatusVerified SenderDomainStatus = "verified"
 )
 

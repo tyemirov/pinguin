@@ -177,7 +177,7 @@ web:
   enabled: false
 smtpSubmission:
   enabled: true
-  hostname: pinguin-api.mprlab.com
+  hostname: pingwin-api.mprlab.com
   listenAddr: :587
   publicPort: 465
   publicSecurityMode: ssl
@@ -217,7 +217,7 @@ web:
   enabled: false
 smtpForwarding:
   enabled: true
-  hostname: mx.pinguin.mprlab.com
+  hostname: mx.pingwin.mprlab.com
   listenAddr: :25
   maxMessageBytes: 26214400
   maxRecipients: 25
@@ -235,7 +235,7 @@ smtpForwarding:
 	}
 	expected := SMTPForwardingConfig{
 		Enabled:         true,
-		Hostname:        "mx.pinguin.mprlab.com",
+		Hostname:        "mx.pingwin.mprlab.com",
 		ListenAddr:      ":25",
 		MaxMessageBytes: 26214400,
 		MaxRecipients:   25,
@@ -395,7 +395,7 @@ func TestValidateConfigAllowsSMTPForwardingWithoutStaticSenderDomains(t *testing
 		WebInterfaceEnabled:  false,
 		SMTPForwarding: SMTPForwardingConfig{
 			Enabled:         true,
-			Hostname:        "mx.pinguin.mprlab.com",
+			Hostname:        "mx.pingwin.mprlab.com",
 			ListenAddr:      ":25",
 			MaxMessageBytes: 26214400,
 			MaxRecipients:   25,

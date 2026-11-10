@@ -24,7 +24,7 @@ const (
 	headerReplyTo                  = "Reply-To"
 	headerReturnPath               = "Return-Path"
 	headerSender                   = "Sender"
-	headerXOriginalFrom            = "X-Pinguin-Original-From"
+	headerXOriginalFrom            = "X-Pingwin-Original-From"
 )
 
 var forwardingRewriteDroppedHeaders = map[string]struct{}{
