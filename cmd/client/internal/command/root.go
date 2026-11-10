@@ -28,7 +28,7 @@ type Dependencies struct {
 
 func NewRootCommand(dependencies Dependencies) *cobra.Command {
 	root := &cobra.Command{
-		Use:           "pinguin-cli",
+		Use:           "pingwin-cli",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -55,7 +55,7 @@ func buildSendCommand(dependencies Dependencies) *cobra.Command {
 
 	command := &cobra.Command{
 		Use:   "send",
-		Short: "Submit a notification to the Pinguin service",
+		Short: "Submit a notification to the Pingwin service",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configDefaults, _ := cliConfig.Load(viper.New())
 

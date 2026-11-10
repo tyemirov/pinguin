@@ -47,7 +47,7 @@ func TestMainReturnsForHelp(t *testing.T) {
 	if pipeErr != nil {
 		t.Fatalf("create stdout pipe: %v", pipeErr)
 	}
-	os.Args = []string{"pinguin-cli", "--help"}
+	os.Args = []string{"pingwin-cli", "--help"}
 	os.Stdout = writePipe
 	defer func() {
 		os.Args = oldArgs

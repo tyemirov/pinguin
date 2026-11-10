@@ -114,7 +114,7 @@ func TestSendCommandSubmitsEmailWithScheduleAndAttachment(t *testing.T) {
 
 func TestSendCommandUsesExplicitFlagsForSMS(t *testing.T) {
 	t.Setenv("GRPC_SERVER_ADDR", "env.local:50051")
-	t.Setenv("PINGUIN_API_KEY", "env-key")
+	t.Setenv("PINGWIN_API_KEY", "env-key")
 	t.Setenv("CONNECTION_TIMEOUT_SEC", "6")
 	t.Setenv("OPERATION_TIMEOUT_SEC", "8")
 	t.Setenv("LOG_LEVEL", "warn")

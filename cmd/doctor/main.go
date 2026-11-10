@@ -1,4 +1,4 @@
-// Command pinguin-doctor validates Pinguin configurations across projects.
+// Command pingwin-doctor validates Pingwin configurations across projects.
 package main
 
 import (
@@ -38,9 +38,9 @@ func run(arguments []string, stdout io.Writer, stderr io.Writer) error {
 
 func newRootCommand() *cobra.Command {
 	command := &cobra.Command{
-		Use:   "pinguin-doctor [config-paths...]",
-		Short: "Validate Pinguin configurations and report issues",
-		Long: `Validate one or more Pinguin configuration files and report any issues.
+		Use:   "pingwin-doctor [config-paths...]",
+		Short: "Validate Pingwin configurations and report issues",
+		Long: `Validate one or more Pingwin configuration files and report any issues.
 
 The doctor command performs comprehensive validation including:
 - Configuration file syntax and structure
@@ -50,10 +50,10 @@ The doctor command performs comprehensive validation including:
 - Cross-config validation (when multiple configs are provided)
 
 Examples:
-  pinguin-doctor config.yml
-  pinguin-doctor config.yml other-config.yml --cross-validate
-  pinguin-doctor ./configs/*.yml --json
-  pinguin-doctor config.yml --expand-env`,
+  pingwin-doctor config.yml
+  pingwin-doctor config.yml other-config.yml --cross-validate
+  pingwin-doctor ./configs/*.yml --json
+  pingwin-doctor config.yml --expand-env`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: runDoctor,
 	}
