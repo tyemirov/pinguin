@@ -4,7 +4,7 @@ const AUTH_STATUS_TIMEOUT_MS = 12000;
 const AUTH_UNAUTHENTICATED_SETTLE_MS = 350;
 
 /**
- * Normalizes the shared-shell profile fields used by Pinguin.
+ * Normalizes the shared-shell profile fields used by Pingwin.
  *
  * @param {Record<string, any> | null} profile
  * @returns {Record<string, any> | null}
@@ -205,7 +205,7 @@ export function createSessionBridge() {
   };
 
   const readAuthSnapshot = () => {
-    const eventSnapshot = window.__PINGUIN_AUTH_EVENT_SNAPSHOT__;
+    const eventSnapshot = window.__PINGWIN_AUTH_EVENT_SNAPSHOT__;
     if (eventSnapshot && typeof eventSnapshot === 'object') {
       return eventSnapshot;
     }
