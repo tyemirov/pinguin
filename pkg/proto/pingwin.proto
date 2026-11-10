@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package pinguin;
+package pingwin;
 
 option go_package = "github.com/tyemirov/pinguin/pkg/grpcapi;grpcapi";
 import "google/protobuf/timestamp.proto";
