@@ -1,5 +1,5 @@
 {
-  "name": "pinguin-web-tests",
+  "name": "pingwin-web-tests",
   "private": true,
   "scripts": {
     "test": "playwright test"
