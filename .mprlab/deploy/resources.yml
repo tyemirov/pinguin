@@ -158,7 +158,7 @@ mprlab_resources:
                 multiplier: 2
         private_inputs:
             operations: []
-    owner: pingwin
+    owner: pinguin
     publications:
         ghcr:
             images:
@@ -191,7 +191,7 @@ mprlab_resources:
             projects:
                 - id: runtime
                   retired_services:
-                    - project: mprlab-nginx-gateway
+                    - project: mprlab-pinguin-runtime
                       service: pinguin-api
                   services:
                     - assets:

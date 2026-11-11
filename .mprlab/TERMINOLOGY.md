@@ -95,6 +95,7 @@ Give each term one meaning. Use the same term for the same concept in all docume
 
 ## Repository Technical Nouns
 
+- `deployment owner`: The permanent Gateway identity that owns this application's runtime resources and lifecycle history.
 - `API credential`: A tenant-bound record that authenticates a programmatic client.
 - `API key`: The bearer value that contains an API credential ID and secret.
 - `base64url`: The URL-safe Base64 encoding without padding.

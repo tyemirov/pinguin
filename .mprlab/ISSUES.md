@@ -5,6 +5,16 @@ Resolved non-recurring issues are in [ISSUES.archive.md](ISSUES.archive.md).
 
 ## BugFixes
 
+- [-] [B009] (P1) {I007} Preserve the deployment owner during the Pingwin rename
+  Goal: Deploy Pingwin through the current Gateway command without a second application owner.
+  Requirements: Keep the permanent owner `pinguin`, retained volume, database path, and encryption key.
+  Requirements: Keep the current Pingwin service names and public interfaces.
+  Deliverables: Correct the manifest, retirement declaration, contract test, and deployment guide.
+  Validation: The v1.1.4 deployment reproduced a shared SMTP listener conflict at state revision 765.
+  Validation: State inspection found owner `pinguin` generation 5 and runtime service `pinguin-api` in project `mprlab-pinguin-runtime`.
+  Validation: The contract test failed before the manifest correction and passed after it.
+  Validation: `make ci` passed with 100 percent Go coverage and 70 browser tests. Runtime activation remains pending.
+
 ## Improvements
 
 - [x] [I007] (P1) Change the service name to Pingwin

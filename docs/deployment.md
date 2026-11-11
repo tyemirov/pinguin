@@ -37,6 +37,10 @@ The name change did not activate production.
 The source repository and Go module remain `github.com/tyemirov/pinguin`.
 The current runtime uses the Pingwin service names, browser keys, SMTP headers, and gRPC namespace.
 
+The permanent deployment owner remains `pinguin`.
+This identity preserves the existing Gateway resource history during the public service rename.
+Native convergence replaces that owner's routes and listeners with the current Pingwin declarations.
+
 Before production deployment:
 
 1. Configure DNS for all three hostnames.
@@ -44,7 +48,7 @@ Before production deployment:
 3. Authorize the new origin in the Google OAuth client.
 4. Update private origins, SMTP hostnames, cookies, and `TAUTH_TENANT_GOOGLE_WEB_CLIENT_ID_PINGWIN`.
 5. Publish new `_pingwin-challenge` TXT records and relay SPF records for each sender domain.
-6. Confirm the Gateway owner transition from `pinguin` to `pingwin` against current lifecycle records.
+6. Preserve deployment owner `pinguin` and retire `mprlab-pinguin-runtime/pinguin-api` before the replacement starts.
 7. Preserve volume `mprlab-nginx-gateway_pinguin-data`, the database path, and the encryption key.
 8. Stop the previous runtime before the new runtime opens the same SQLite database.
 9. Complete release, publication, deployment, and public acceptance in that order.

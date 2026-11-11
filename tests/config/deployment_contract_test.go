@@ -19,7 +19,7 @@ const deploymentManifestPath = ".mprlab/deploy/resources.yml"
 func TestRepositoryOwnsCompleteVersionlessDeployment(t *testing.T) {
 	manifestData := readRepoFile(t, filepath.FromSlash(deploymentManifestPath))
 	manifest := currentManifestContract(t, manifestData)
-	requireCurrentContractYAML(t, "owner", manifest["owner"], `pingwin`)
+	requireCurrentContractYAML(t, "owner", manifest["owner"], `pinguin`)
 	requireCurrentContractYAML(t, "release", manifest["release"], `scheme: semver`)
 	lifecycle := currentContractMap(t, manifest["lifecycle"])
 	requireCurrentContractYAML(t, "lifecycle.defaults", lifecycle["defaults"], `timeouts: {startup: 30s, completion: 30m, readiness: 30s, request: 15s, shutdown: 5s}`)
@@ -77,7 +77,7 @@ func TestRepositoryOwnsCompleteVersionlessDeployment(t *testing.T) {
 	}
 	project := projects["runtime"]
 	requireCurrentContractYAML(t, "runtime.volumes", project["volumes"], `[{id: data, name: mprlab-nginx-gateway_pinguin-data, retention: retain}]`)
-	requireCurrentContractYAML(t, "runtime.retired_services", project["retired_services"], `[{project: mprlab-nginx-gateway, service: pinguin-api}]`)
+	requireCurrentContractYAML(t, "runtime.retired_services", project["retired_services"], `[{project: mprlab-pinguin-runtime, service: pinguin-api}]`)
 	if _, exists := project["placement"]; exists {
 		t.Fatal("placement must be declared by each service")
 	}
