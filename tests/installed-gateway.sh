@@ -50,7 +50,19 @@ unset MPRLAB_GATEWAY_EXECUTABLE MAKEFLAGS MFLAGS MAKEOVERRIDES TEST_GATEWAY_FAIL
 export CI=0
 export MPRLAB_GATEWAY_OPERATOR_ROOT="$fixture_root/operator with spaces"
 
-for operation in release publish deploy; do
+for obsolete_target in release publish; do
+  status=0
+  PATH="$runtime_bin:$tools_bin" "$make_command" --no-print-directory -s -C "$application_root" "$obsolete_target" ROOT_FAST_PACKAGES= ROOT_SLOW_PACKAGES= > "$fixture_root/obsolete.log" 2>&1 || status=$?
+  if [ "$status" -ne 2 ]; then
+    cat "$fixture_root/obsolete.log" >&2
+    printf '%s: expected an unsupported target, got Make status %s\n' "$obsolete_target" "$status" >&2
+    exit 1
+  fi
+  grep -F 'No rule to make target' "$fixture_root/obsolete.log" >/dev/null
+  if grep -F 'arg=' "$fixture_root/obsolete.log"; then exit 1; fi
+done
+
+for operation in deploy; do
   expected="$(printf 'cwd=%s\narg=%s\narg=--app-root\narg=%s\nci=1\ninput=closed\noperator=%s' \
     "$application_root" "$operation" "$application_root" "$MPRLAB_GATEWAY_OPERATOR_ROOT")"
   for selection in path explicit; do

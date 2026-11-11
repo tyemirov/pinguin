@@ -21,7 +21,7 @@ The static browser frontend uses GitHub Pages.
 Pingwin has no separate Pages activation command.
 
 `make up` and `make down` operate the local Compose stack.
-Production lifecycle operations use `make release`, `make publish`, and `make deploy`.
+The production entry point is `make deploy`.
 
 ## Production name change
 
@@ -52,7 +52,7 @@ For the complete name change:
 6. Preserve deployment owner `pinguin` and retire `mprlab-pinguin-runtime/pinguin-api` before the replacement starts.
 7. Preserve volume `mprlab-nginx-gateway_pinguin-data`, the database path, and the encryption key.
 8. Stop the previous runtime before the new runtime opens the same SQLite database.
-9. Complete release, publication, deployment, and public acceptance in that order.
+9. Run `make deploy`. Then complete public acceptance.
 
 The local Compose volume declaration keeps its existing `pinguin-data` identity.
 
@@ -89,45 +89,29 @@ F001 remains active until the operator accepts the managed runtime and the bound
 The [managed tenant contract](multitenancy-plan.md) contains the complete conversion inputs, commands, and acceptance criteria.
 The [shared UI migration](mpr-ui-migration.md#activation) retains separate publication, cache, and hosted Google acceptance requirements.
 
-## Release, publish, and deploy
+## Production deployment
 
 A clean application checkout must be synchronized with the remote default branch.
 The Gateway runtime and required operator credentials must be available.
 
 Use `MPRLAB_GATEWAY_EXECUTABLE` to select the installed Gateway command.
-Each Makefile wrapper selects this repository's Git root through `--app-root`.
-The wrappers set `CI=1` and close standard input.
+The Makefile calls the installed `mprlab-gateway deploy` command.
+It selects this repository's Git root through `--app-root`.
+It sets `CI=1` and closes standard input.
 Gateway reads operator files from `MPRLAB_GATEWAY_OPERATOR_ROOT`.
 Its default operator root is `$HOME/.config/mprlab-gateway`.
 
-Authenticate to the image registry when required:
-
-```bash
-docker login ghcr.io
-```
-
-Prepare the declared artifacts locally:
-
-```bash
-make release
-```
-
-Publish that sealed release:
-
-```bash
-make publish
-```
-
-After the conversion and other production prerequisites, activate the declared runtime:
+After the conversion and other production prerequisites, run the complete pipeline:
 
 ```bash
 make deploy
 ```
 
-Release prepares artifacts.
-Publication exposes the sealed artifacts.
-Deployment converges the declared runtime resources.
-Each operation has a separate result.
+Gateway runs the required CI, artifact preparation, publication, deployment, and health checks.
+It owns phase selection and resumes incomplete work through the same command.
+Each phase has a separate result.
+The manifest retains `app-release`, `app-publish`, and `app-deploy` as internal policy identifiers.
+These identifiers are separate from the public CLI command.
 
 The manifest declares public SMTPS at `pingwin-api.mprlab.com:465` and MX traffic at `mx.pingwin.mprlab.com:25`.
 The manifest's `host_port` fields declare the production host bindings:

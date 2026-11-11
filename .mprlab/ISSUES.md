@@ -36,6 +36,17 @@ Resolved non-recurring issues are in [ISSUES.archive.md](ISSUES.archive.md).
 
 ## Improvements
 
+- [x] [I008] (P1) Use one production deployment command
+  Goal: Use `make deploy` for the complete Gateway pipeline.
+  Requirements: Call the installed `deploy` command. Remove the separate release and publication targets.
+  Requirements: Preserve the current manifest, internal policy identifiers, private inputs, and runtime resources.
+  Deliverables: Update the Makefile, command test, and deployment instructions.
+  Validation: Gateway v9.2.1 exposes `deploy` and retains the internal `app-*` policy identifiers.
+  Validation: The command test failed because `make release` remained available.
+  Validation: The corrected command test passed. It verifies Gateway selection, closed standard input, CI mode, and failure propagation.
+  Validation: The installed Gateway planner accepted the current manifest. The manifest required no changes.
+  Validation: `make ci` passed with 100 percent Go coverage and 70 browser tests.
+
 - [x] [I007] (P1) Change the service name to Pingwin
   Goal: Use `pingwin` for the current service contract.
   Requirements: Preserve source repository paths, retained data identities, and historical records.

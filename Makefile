@@ -13,7 +13,7 @@ LONG_TIMEOUT := timeout -k 350s -s SIGKILL 350s
 COVERAGE_PROFILE ?= coverage.out
 COVERAGE_REQUIRED_TOTAL ?= 100.0%
 
-.PHONY: test-shared-ui format check-format lint test test-unit test-integration test-fast test-slow test-coverage test-frontend test-frontend-update build up down ci release publish deploy
+.PHONY: test-shared-ui format check-format lint test test-unit test-integration test-fast test-slow test-coverage test-frontend test-frontend-update build up down ci deploy
 
 format:
 	$(SHORT_TIMEOUT) gofmt -w $(GO_SOURCES)
@@ -84,9 +84,9 @@ down:
 
 ci: check-format lint test test-coverage test-frontend
 
-.PHONY: release publish deploy
+.PHONY: deploy
 
-release publish deploy:
+deploy:
 	@set -eu; \
 	export CI=1; \
 	application_root="$$(git rev-parse --show-toplevel)"; \
@@ -94,7 +94,7 @@ release publish deploy:
 		printf 'Gateway runtime is unavailable: %s. Install a released runtime and add its command directory to PATH.\n' "$(MPRLAB_GATEWAY_EXECUTABLE)" >&2; \
 		exit 2; \
 	fi; \
-	exec "$(MPRLAB_GATEWAY_EXECUTABLE)" "$@" --app-root "$${application_root}" </dev/null
+	exec "$(MPRLAB_GATEWAY_EXECUTABLE)" deploy --app-root "$${application_root}" </dev/null
 
 test-shared-ui:
 	CI=1 $(LONG_TIMEOUT) npm test -- shared-ui-candidate.spec.ts
