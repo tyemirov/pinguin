@@ -137,7 +137,7 @@ cardinality: one`)
 	}
 	requireCurrentContractYAML(t, "public-smtp-submission.port", listeners["public-smtp-submission"]["port"], `465`)
 	routes := currentContractIndex(t, caddy["routes"], "id")
-	if len(routes) != 1 || routes["public-api"] == nil {
+	if len(routes) != 1 || routes["pingwin-public-api"] == nil {
 		t.Fatalf("unexpected API routes: %#v", routes)
 	}
 	observations := currentContractIndex(t, currentContractMap(t, lifecycle["observations"])["http"], "id")
