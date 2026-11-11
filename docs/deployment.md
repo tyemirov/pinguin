@@ -33,7 +33,7 @@ The tracked configuration declares these current production names:
 | HTTP API and SMTPS | `pingwin-api.mprlab.com` |
 | Inbound MX | `mx.pingwin.mprlab.com` |
 
-Native `make deploy` activated `v1.1.7` on November 11, 2026.
+Native `make deploy` activated `v1.1.8` on November 11, 2026.
 The source repository and Go module remain `github.com/tyemirov/pinguin`.
 The current runtime uses the Pingwin service names, browser keys, SMTP headers, and gRPC namespace.
 
@@ -58,23 +58,23 @@ The local Compose volume declaration keeps its existing `pinguin-data` identity.
 
 ## Current operational status
 
-The November 11, 2026 deployment completed for `v1.1.7`.
-Native state revision `770` contains six verified resources for owner `pinguin`, generation `1`.
+The November 11, 2026 deployment completed for `v1.1.8`.
+Native state revision `774` contains six verified resources for owner `pinguin`, generation `2`.
 The API and website health endpoints returned `200`.
-The public `/.mprlab-release.json` marker reported `v1.1.7`.
+The public `/.mprlab-release.json` marker reported `v1.1.8`.
 The private capability is `pingwin.grpc.private-lan`.
 The current gRPC interface returned `Unauthenticated` when the request contained no credentials.
 
 The existing production database has the current managed schema.
 The volume name, database path, encryption key, and TAuth key match the previous runtime.
-SMTP checks through the deployment host returned `250` on ports `25` and `465`.
+SMTP checks through the public hostnames returned `250` on ports `25` and `465`.
 TLS certificate verification passed on port `465`.
 
-From the macOS CLI, connections to the public IP address failed on ports `25` and `465`.
-The errors were `Connection refused`.
-Caddy publishes both host ports.
-The cause of this public connection failure is unknown.
-The operator must examine the public network path before public SMTP acceptance.
+The previous refusal came from omitted host-port declarations.
+The router targets host ports `8025` and `8465`, but Caddy published host ports `25` and `465`.
+B010 set the manifest's `host_port` fields to match the existing router rules.
+Public SMTP and SMTPS checks now pass from the macOS CLI.
+All ten router rules and both HTTPS host bindings remained unchanged.
 Authenticated browser access and message delivery retain their separate acceptance procedures below.
 
 ## Managed tenant conversion
@@ -130,6 +130,14 @@ Deployment converges the declared runtime resources.
 Each operation has a separate result.
 
 The manifest declares public SMTPS at `pingwin-api.mprlab.com:465` and MX traffic at `mx.pingwin.mprlab.com:25`.
+The manifest's `host_port` fields declare the production host bindings:
+
+| Listener | Public port | Host port | Caddy port |
+| --- | --- | --- | --- |
+| SMTP forwarding | `25` | `8025` | `25` |
+| SMTPS | `465` | `8465` | `465` |
+
+The public gateway forwards each public port to its declared host port.
 Caddy terminates SMTPS TLS and forwards plaintext SMTP to private port `587`.
 The shared HTTP request limit does not control this SMTP listener.
 The [SMTP setup guide](smtp-setup.md) preserves listener limits and DNS procedures.

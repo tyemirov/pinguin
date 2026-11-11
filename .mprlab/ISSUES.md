@@ -18,15 +18,21 @@ Resolved non-recurring issues are in [ISSUES.archive.md](ISSUES.archive.md).
   Validation: The manifest uses route `pingwin-public-api` and the deployed Caddy execution policy.
   Validation: Native `make deploy` deployed `v1.1.7` at state revision `770`. API and website health checks returned `200`.
   Validation: The volume name, `DATABASE_PATH`, `MASTER_ENCRYPTION_KEY`, and `TAUTH_SIGNING_KEY` matched the previous runtime.
-  Validation: The deployment guide records the separate public SMTP acceptance limit.
+  Validation: B010 records the later public SMTP host-port correction.
 
-- [-] [B010] (P1) Correct public SMTP host ports
+- [x] [B010] (P1) Correct public SMTP host ports
   Goal: Expose the current SMTP listeners.
   Requirements: Keep public ports `25` and `465`. Publish host ports `8025` and `8465` through the manifest.
   Requirements: Preserve the router rules, HTTPS bindings, application data, and keys.
   Deliverables: Correct the listener declarations, contract test, and operational record.
   Validation: Public SMTP connections failed. Direct host connections returned `250` on ports `25` and `465`.
   Validation: The router forwards to host ports `8025` and `8465`. The manifest omitted both host ports.
+  Validation: The contract test failed before the correction and passed after it. The installed Gateway plan accepted both host ports.
+  Validation: `make ci` passed with 100 percent Go coverage and 70 browser tests.
+  Validation: Native `make deploy` deployed `v1.1.8` at state revision `774`.
+  Validation: Public SMTP and SMTPS `NOOP` commands returned `250`. TLS certificate verification passed on port `465`.
+  Validation: API and website health returned `200`. All ten router rules and HTTPS bindings remained unchanged.
+  Validation: The database volume, database path, and protected inputs were preserved.
 
 ## Improvements
 
