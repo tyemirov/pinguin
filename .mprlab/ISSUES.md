@@ -5,15 +5,20 @@ Resolved non-recurring issues are in [ISSUES.archive.md](ISSUES.archive.md).
 
 ## BugFixes
 
-- [-] [B009] (P1) {I007} Preserve the deployment owner during the Pingwin rename
-  Goal: Deploy Pingwin through the current Gateway command without a second application owner.
+- [x] [B009] (P1) {I007} Preserve the deployment owner during the Pingwin rename
+  Goal: Deploy Pingwin with one permanent owner.
   Requirements: Keep the permanent owner `pinguin`, retained volume, database path, and encryption key.
   Requirements: Keep the current Pingwin service names and public interfaces.
   Deliverables: Correct the manifest, retirement declaration, contract test, and deployment guide.
   Validation: The v1.1.4 deployment reproduced a shared SMTP listener conflict at state revision 765.
   Validation: State inspection found owner `pinguin` generation 5 and runtime service `pinguin-api` in project `mprlab-pinguin-runtime`.
   Validation: The contract test failed before the manifest correction and passed after it.
-  Validation: `make ci` passed with 100 percent Go coverage and 70 browser tests. Runtime activation remains pending.
+  Validation: `make ci` passed with 100 percent Go coverage and 70 browser tests.
+  Validation: The user authorized removal of Pingwin deployment records. The cleanup preserved application data and all other application records.
+  Validation: The manifest uses route `pingwin-public-api` and the deployed Caddy execution policy.
+  Validation: Native `make deploy` deployed `v1.1.7` at state revision `770`. API and website health checks returned `200`.
+  Validation: The volume name, `DATABASE_PATH`, `MASTER_ENCRYPTION_KEY`, and `TAUTH_SIGNING_KEY` matched the previous runtime.
+  Validation: The deployment guide records the separate public SMTP acceptance limit.
 
 ## Improvements
 
@@ -22,7 +27,7 @@ Resolved non-recurring issues are in [ISSUES.archive.md](ISSUES.archive.md).
   Requirements: Preserve source repository paths, retained data identities, and historical records.
   Deliverables: Update executable names, gRPC definitions, browser assets, SMTP names, configuration, and deployment declarations.
   Validation: `make ci` passed with 100 percent Go coverage and 70 browser tests. CLI, gRPC, container health, doctor, and installed Gateway checks passed.
-  Validation: The Governor check reported the same 16 findings before and after this change. Production deployment remains pending.
+  Validation: The Governor check reported the same 16 findings before and after this change. Native `make deploy` deployed `v1.1.7`.
 
 - [x] [I006] (P1) Use the `theme-control` contract
   Goal: Use the `mpr-ui` contract on each page.

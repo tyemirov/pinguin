@@ -25,7 +25,7 @@ Production lifecycle operations use `make release`, `make publish`, and `make de
 
 ## Production name change
 
-The tracked configuration declares these names for the next deployment:
+The tracked configuration declares these current production names:
 
 | Role | Hostname |
 | --- | --- |
@@ -33,15 +33,16 @@ The tracked configuration declares these names for the next deployment:
 | HTTP API and SMTPS | `pingwin-api.mprlab.com` |
 | Inbound MX | `mx.pingwin.mprlab.com` |
 
-The name change did not activate production.
+Native `make deploy` activated `v1.1.7` on November 11, 2026.
 The source repository and Go module remain `github.com/tyemirov/pinguin`.
 The current runtime uses the Pingwin service names, browser keys, SMTP headers, and gRPC namespace.
 
 The permanent deployment owner remains `pinguin`.
-This identity preserves the existing Gateway resource history during the public service rename.
+This identity selects the current Gateway application graph during the public service rename.
 Native convergence replaces that owner's routes and listeners with the current Pingwin declarations.
+The operator authorized removal of Pingwin deployment records on November 11, 2026.
 
-Before production deployment:
+For the complete name change:
 
 1. Configure DNS for all three hostnames.
 2. Configure the TAuth tenant `pingwin` and its browser origin.
@@ -54,6 +55,27 @@ Before production deployment:
 9. Complete release, publication, deployment, and public acceptance in that order.
 
 The local Compose volume declaration keeps its existing `pinguin-data` identity.
+
+## Current operational status
+
+The November 11, 2026 deployment completed for `v1.1.7`.
+Native state revision `770` contains six verified resources for owner `pinguin`, generation `1`.
+The API and website health endpoints returned `200`.
+The public `/.mprlab-release.json` marker reported `v1.1.7`.
+The private capability is `pingwin.grpc.private-lan`.
+The current gRPC interface returned `Unauthenticated` when the request contained no credentials.
+
+The existing production database has the current managed schema.
+The volume name, database path, encryption key, and TAuth key match the previous runtime.
+SMTP checks through the deployment host returned `250` on ports `25` and `465`.
+TLS certificate verification passed on port `465`.
+
+From the macOS CLI, connections to the public IP address failed on ports `25` and `465`.
+The errors were `Connection refused`.
+Caddy publishes both host ports.
+The cause of this public connection failure is unknown.
+The operator must examine the public network path before public SMTP acceptance.
+Authenticated browser access and message delivery retain their separate acceptance procedures below.
 
 ## Managed tenant conversion
 
@@ -122,4 +144,4 @@ Verify Send-As and forwarding with the configured domains and destination inboxe
 Record the active release, lifecycle receipts, completed actions, and remaining acceptance items.
 
 Source changes and local test results do not establish production activation.
-The [issue tracker](../.mprlab/ISSUES.md) records the remaining F001, I004, and I007 work.
+The [issue tracker](../.mprlab/ISSUES.md) records the remaining F001 and I004 work.
