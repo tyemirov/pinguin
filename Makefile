@@ -88,13 +88,13 @@ ci: check-format lint test test-coverage test-frontend
 
 release publish deploy:
 	@set -eu; \
-	exec </dev/null; export CI=1; \
+	export CI=1; \
 	application_root="$$(git rev-parse --show-toplevel)"; \
 	if ! command -v "$(MPRLAB_GATEWAY_EXECUTABLE)" >/dev/null 2>&1; then \
 		printf 'Gateway runtime is unavailable: %s. Install a released runtime and add its command directory to PATH.\n' "$(MPRLAB_GATEWAY_EXECUTABLE)" >&2; \
 		exit 2; \
 	fi; \
-	exec "$(MPRLAB_GATEWAY_EXECUTABLE)" "app-$@" --app-root "$${application_root}"
+	exec "$(MPRLAB_GATEWAY_EXECUTABLE)" "$@" --app-root "$${application_root}" </dev/null
 
 test-shared-ui:
 	CI=1 $(LONG_TIMEOUT) npm test -- shared-ui-candidate.spec.ts
