@@ -20,6 +20,14 @@ Resolved non-recurring issues are in [ISSUES.archive.md](ISSUES.archive.md).
   Validation: The volume name, `DATABASE_PATH`, `MASTER_ENCRYPTION_KEY`, and `TAUTH_SIGNING_KEY` matched the previous runtime.
   Validation: The deployment guide records the separate public SMTP acceptance limit.
 
+- [-] [B010] (P1) Correct public SMTP host ports
+  Goal: Expose the current SMTP listeners.
+  Requirements: Keep public ports `25` and `465`. Publish host ports `8025` and `8465` through the manifest.
+  Requirements: Preserve the router rules, HTTPS bindings, application data, and keys.
+  Deliverables: Correct the listener declarations, contract test, and operational record.
+  Validation: Public SMTP connections failed. Direct host connections returned `250` on ports `25` and `465`.
+  Validation: The router forwards to host ports `8025` and `8465`. The manifest omitted both host ports.
+
 ## Improvements
 
 - [x] [I007] (P1) Change the service name to Pingwin

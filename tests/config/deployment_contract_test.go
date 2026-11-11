@@ -136,6 +136,8 @@ cardinality: one`)
 		t.Fatalf("unexpected public listeners: %#v", listeners)
 	}
 	requireCurrentContractYAML(t, "public-smtp-submission.port", listeners["public-smtp-submission"]["port"], `465`)
+	requireCurrentContractYAML(t, "public-smtp-forwarding.host_port", listeners["public-smtp-forwarding"]["host_port"], `8025`)
+	requireCurrentContractYAML(t, "public-smtp-submission.host_port", listeners["public-smtp-submission"]["host_port"], `8465`)
 	routes := currentContractIndex(t, caddy["routes"], "id")
 	if len(routes) != 1 || routes["pingwin-public-api"] == nil {
 		t.Fatalf("unexpected API routes: %#v", routes)

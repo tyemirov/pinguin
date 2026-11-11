@@ -366,6 +366,7 @@ mprlab_resources:
                         capability: caddy.layer4.tcp
                         version: 1
                       hostname: mx.pingwin.mprlab.com
+                      host_port: 8025
                       id: public-smtp-forwarding
                       operations:
                         - name: app-deploy
@@ -390,6 +391,7 @@ mprlab_resources:
                         capability: caddy.layer4.tls
                         version: 1
                       hostname: pingwin-api.mprlab.com
+                      host_port: 8465
                       id: public-smtp-submission
                       operations:
                         - name: app-deploy
