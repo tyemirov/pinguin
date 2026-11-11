@@ -2,9 +2,9 @@
 
 ## System Overview
 
-- Pinguin runs a gRPC notification service and an optional Gin HTTP API in one Go process.
-- The gRPC service uses port `50051`. The HTTP API uses port `8080`.
-- Static browser assets run separately. Production uses GitHub Pages at `https://pinguin.mprlab.com`. Local development uses the ghttp container on port `8080` and the Pinguin HTTP API on port `8081`.
+- Pingwin runs a gRPC notification service and an optional Gin HTTP API in one Go process.
+- The gRPC service uses port `50051`. The local HTTP API uses port `8081`.
+- Static browser assets run separately. Production declares GitHub Pages at `https://pingwin.mprlab.com`. Local development uses the ghttp container on port `8080` and the Pingwin HTTP API on port `8081`.
 - SQLite stores tenants, delivery profiles, API credential digests, notifications, attachments, SMTP sender domains, SMTP identities, and forwarding routes.
 - A new database can start with zero tenants. The server creates the exact managed schema for an empty database.
 - The server rejects a non-empty database that does not have the exact current schema.
@@ -12,11 +12,11 @@
 
 ## Ownership and Authentication
 
-- TAuth owns browser authentication. The `<mpr-header>` component starts sign-in, TAuth issues the HttpOnly session cookie, and Pinguin validates that cookie for each `/api` request.
-- Pinguin uses the validated TAuth user ID as `owner_user_id`. Each browser tenant query contains both the owner user ID and tenant ID.
+- TAuth owns browser authentication. The `<mpr-header>` component starts sign-in, TAuth issues the HttpOnly session cookie, and Pingwin validates that cookie for each `/api` request.
+- Pingwin uses the validated TAuth user ID as `owner_user_id`. Each browser tenant query contains both the owner user ID and tenant ID.
 - A user can own more than one tenant. A foreign tenant ID returns `404` and does not disclose that tenant.
 - Each tenant has exactly one API credential. The API key format is `pgn_1_<credential-uuid>_<secret>`.
-- Pinguin stores only the SHA-256 digest of the 32-byte API secret. The browser shows the raw key once during tenant creation or rotation and clears it when the dialog closes.
+- Pingwin stores only the SHA-256 digest of the 32-byte API secret. The browser shows the raw key once during tenant creation or rotation and clears it when the dialog closes.
 - The gRPC interceptor validates one bearer API key and resolves its tenant.
 - The interceptor adds the tenant runtime data to the request context. gRPC messages and metadata contain no caller-selected tenant ID.
 
@@ -46,7 +46,7 @@
 ## Notification Runtime
 
 - The gRPC API credential defines the tenant for each programmatic notification request.
-- The retry worker lists current tenant IDs and resolves fresh tenant provider data before dispatch.
+- The retry worker resolves fresh tenant provider data before each retry.
 - Email uses the tenant external SMTP profile. SMS uses the optional tenant Twilio profile.
 - Scheduled and errored notifications remain in SQLite for retry processing.
 
@@ -58,7 +58,7 @@
 - `smtpSubmission` and `smtpForwarding` remain service configuration because their listeners and upstream relays are shared infrastructure.
 - The optional submission listener authenticates an exact SMTP identity. It relays through `smtpSubmission.relay` or delivers to recipient MX hosts when `deliveryMode` is `direct`.
 - The optional forwarding listener accepts mail only for active identities that have forwarding recipients. It stores no mailbox or message body.
-- The schema version 4 manifest publishes SMTPS on `pinguin-api.mprlab.com:465` and MX delivery on `mx.pinguin.mprlab.com:25` through gateway-owned listeners.
+- The versionless manifest declares SMTPS on `pingwin-api.mprlab.com:465` and MX delivery on `mx.pingwin.mprlab.com:25` through gateway-owned listeners.
 
 ## Browser Structure
 
@@ -69,12 +69,26 @@
 - `web/js/ui/tenantManagement.js` owns tenant creation, update, credential rotation, and permanent deletion.
 - Event log and SMTP relay require a selected owner tenant.
 - Each page uses the shared MPR header, three workspace destinations, and the seven-service MPR footer.
+- The shared header contains the brand, Tenants, Event log, SMTP relay, Docs, authentication, profile, and theme controls.
+- The active destination uses `aria-current="page"`.
+- The shared footer opens the seven-service **Built By Marco Polo Research Lab** catalog.
+- The workspace uses compact MPR styles with dark surfaces, dense controls, status chips, and a narrow work surface.
+- Event log uses responsive records and dialogs for queued actions.
+- SMTP relay keeps sender domains collapsed and expands one DNS setup at a time.
+- Identity creation and forwarding edits use separate forms.
+- Each section uses one Alpine component with shared events and centralized strings.
+- `web/js/ui/notificationsList.js` owns Event log behavior.
+- `smtpDomains.js`, `smtpIdentities.js`, and `smtpCredentialsDialog.js` own SMTP workflows.
+- The shared shell owns cross-tab authentication state.
+- Pingwin consumes the public `mpr-ui` events and optional profile snapshot.
+- Tenant API keys are displayed once during creation or rotation.
+- Detailed setup and runtime procedures are in the [documentation index](README.md#documentation).
 
 ## Configuration and Deployment
 
-- `configs/config.pinguin.yml` contains only service settings: database, logging, encryption, TAuth validation, HTTP, SMTP submission, and SMTP forwarding.
+- `configs/config.pingwin.yml` contains only service settings: database, logging, encryption, TAuth validation, HTTP, SMTP submission, and SMTP forwarding.
 - Runtime configuration and `.mprlab/deploy/resources.yml` contain no tenant definitions, tenant provider values, or global gRPC token.
-- `.mprlab/deploy/resources.yml` is the schema version 4 production declaration.
+- `.mprlab/deploy/resources.yml` is the versionless production declaration.
 - The bounded `cmd/convert-managed-tenants` command converts the former schema during one write-stopped maintenance window.
 - The conversion assigns all current production tenants to the TAuth account for `temirov@gmail.com`.
 - Server startup never runs this conversion.

@@ -383,7 +383,7 @@ type serverDependencies struct {
 	exit                      func(int)
 }
 
-const grpcReadinessEvent = "pinguin.grpc.ready"
+const grpcReadinessEvent = "pingwin.grpc.ready"
 
 func main() {
 	runServerAndExit(os.Args[1:], productionServerDependencies())
@@ -445,7 +445,7 @@ func productionServerDependencies() serverDependencies {
 
 func runServer(args []string, dependencies serverDependencies) int {
 	dependencies = withServerDependencyDefaults(dependencies)
-	flags := flag.NewFlagSet("pinguin-server", flag.ContinueOnError)
+	flags := flag.NewFlagSet("pingwin-server", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	if parseErr := flags.Parse(args); parseErr != nil {
 		if errors.Is(parseErr, flag.ErrHelp) {

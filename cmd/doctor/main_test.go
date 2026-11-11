@@ -22,7 +22,7 @@ func TestRootCommandWritesSummaryForValidConfig(t *testing.T) {
 	if err := command.Execute(); err != nil {
 		t.Fatalf("execute doctor: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "Pinguin Doctor Report") {
+	if !strings.Contains(stdout.String(), "Pingwin Doctor Report") {
 		t.Fatalf("expected summary output, got %q", stdout.String())
 	}
 }
@@ -130,7 +130,7 @@ func TestRunReturnsForHelp(t *testing.T) {
 	if err := run([]string{"--help"}, &stdout, io.Discard); err != nil {
 		t.Fatalf("help should not error: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "Validate one or more Pinguin configuration files") {
+	if !strings.Contains(stdout.String(), "Validate one or more Pingwin configuration files") {
 		t.Fatalf("unexpected help output %q", stdout.String())
 	}
 }
@@ -142,7 +142,7 @@ func TestDoctorMainHelpReturns(t *testing.T) {
 	if pipeErr != nil {
 		t.Fatalf("create pipe: %v", pipeErr)
 	}
-	os.Args = []string{"pinguin-doctor", "--help"}
+	os.Args = []string{"pingwin-doctor", "--help"}
 	os.Stdout = writePipe
 	defer func() {
 		os.Args = oldArgs
@@ -156,7 +156,7 @@ func TestDoctorMainHelpReturns(t *testing.T) {
 	if readErr != nil {
 		t.Fatalf("read stdout: %v", readErr)
 	}
-	if !strings.Contains(string(output), "Validate one or more Pinguin configuration files") {
+	if !strings.Contains(string(output), "Validate one or more Pingwin configuration files") {
 		t.Fatalf("unexpected help output %q", string(output))
 	}
 }
@@ -178,7 +178,7 @@ func writeDoctorConfig(t *testing.T, content string) string {
 
 const validDoctorConfig = `
 server:
-  databasePath: /data/pinguin.db
+  databasePath: /data/pingwin.db
   logLevel: INFO
   maxRetries: 3
   retryIntervalSec: 60

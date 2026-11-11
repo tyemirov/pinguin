@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <title>Pinguin Tenants</title>
+    <title>Pingwin Tenants</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.css" />
     <link rel="stylesheet" href="/assets/css/tokens.css" />
     <link rel="stylesheet" href="/assets/css/base.css" />
@@ -19,10 +19,10 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 </head>
   <body data-page="tenants" class="theme-dark" data-theme="dark" x-data="appShell()">
-    <mpr-header id="pinguin-tenants-header" data-config-url="/config-ui.yaml" brand-label="Pinguin" brand-href="/" nav-links='[{ "label": "Docs", "href": "https://github.com/tyemirov/pinguin" }]'>
-      <a slot="brand" class="pinguin-brand" href="/" aria-label="Pinguin home">
-        <img class="pinguin-brand__mark" src="/favicon.svg" alt="" aria-hidden="true" />
-        <span>Pinguin</span>
+    <mpr-header id="pingwin-tenants-header" data-config-url="/config-ui.yaml" brand-label="Pingwin" brand-href="/" nav-links='[{ "label": "Docs", "href": "https://github.com/tyemirov/pinguin" }]'>
+      <a slot="brand" class="pingwin-brand" href="/" aria-label="Pingwin home">
+        <img class="pingwin-brand__mark" src="/favicon.svg" alt="" aria-hidden="true" />
+        <span>Pingwin</span>
       </a>
       <span slot="nav-left" class="workspace-navigation__menu">
         <a class="workspace-navigation__link" :href="RUNTIME_CONFIG.tenantUrl" aria-current="page" x-text="STRINGS.navigation.tenants"></a>
@@ -145,6 +145,6 @@
       <template x-for="toast in toasts" :key="toast.id"><button type="button" class="toast" :data-variant="toast.variant" x-on:click="dismissToast(toast.id)" x-text="toast.message"></button></template>
     </div>
     <script type="module" src="/js/bootstrap.js"></script>
-    <mpr-footer id="pinguin-tenants-footer" prefix-text="Pinguin Notification Service" privacy-link-label="Privacy &amp; Terms" privacy-modal-content="<h1>Privacy Policy — Pinguin</h1><p>Pinguin stores tenant configuration and notification delivery data to provide the service.</p>" menu='{&quot;label&quot;:&quot;Built By Marco Polo Research Lab&quot;,&quot;placement&quot;:&quot;top&quot;,&quot;sections&quot;:[{&quot;id&quot;:&quot;links&quot;,&quot;label&quot;:&quot;Built By Marco Polo Research Lab&quot;,&quot;mode&quot;:&quot;static&quot;,&quot;links&quot;:[{&quot;label&quot;:&quot;LLM Proxy&quot;,&quot;href&quot;:&quot;https://llm-proxy.mprlab.com/&quot;},{&quot;label&quot;:&quot;TAuth&quot;,&quot;href&quot;:&quot;https://tauth.mprlab.com/&quot;},{&quot;label&quot;:&quot;Ledger&quot;,&quot;href&quot;:&quot;https://github.com/tyemirov/ledger&quot;},{&quot;label&quot;:&quot;ISSUES.md&quot;,&quot;href&quot;:&quot;https://issues.mprlab.com/&quot;},{&quot;label&quot;:&quot;Dictator&quot;,&quot;href&quot;:&quot;https://github.com/tyemirov/dictator&quot;},{&quot;label&quot;:&quot;Pinguin&quot;,&quot;href&quot;:&quot;https://pinguin.mprlab.com/&quot;},{&quot;label&quot;:&quot;LoopAware&quot;,&quot;href&quot;:&quot;https://loopaware.mprlab.com/&quot;}]}]}' theme-control='{"kind":"switch","choices":{"off":"light","on":"dark"}}' theme-config='{"storageKey":"pinguin.theme","initialMode":"dark","attribute":"data-theme","targets":["body"],"modes":[{"value":"light","attributeValue":"light","classList":["theme-light"]},{"value":"dark","attributeValue":"dark","classList":["theme-dark"]}]}'></mpr-footer>
+    <mpr-footer id="pingwin-tenants-footer" prefix-text="Pingwin Notification Service" privacy-link-label="Privacy &amp; Terms" privacy-modal-content="<h1>Privacy Policy — Pingwin</h1><p>Pingwin stores tenant configuration and notification delivery data to provide the service.</p>" menu='{&quot;label&quot;:&quot;Built By Marco Polo Research Lab&quot;,&quot;placement&quot;:&quot;top&quot;,&quot;sections&quot;:[{&quot;id&quot;:&quot;links&quot;,&quot;label&quot;:&quot;Built By Marco Polo Research Lab&quot;,&quot;mode&quot;:&quot;static&quot;,&quot;links&quot;:[{&quot;label&quot;:&quot;LLM Proxy&quot;,&quot;href&quot;:&quot;https://llm-proxy.mprlab.com/&quot;},{&quot;label&quot;:&quot;TAuth&quot;,&quot;href&quot;:&quot;https://tauth.mprlab.com/&quot;},{&quot;label&quot;:&quot;Ledger&quot;,&quot;href&quot;:&quot;https://github.com/tyemirov/ledger&quot;},{&quot;label&quot;:&quot;ISSUES.md&quot;,&quot;href&quot;:&quot;https://issues.mprlab.com/&quot;},{&quot;label&quot;:&quot;Dictator&quot;,&quot;href&quot;:&quot;https://github.com/tyemirov/dictator&quot;},{&quot;label&quot;:&quot;Pingwin&quot;,&quot;href&quot;:&quot;https://pingwin.mprlab.com/&quot;},{&quot;label&quot;:&quot;LoopAware&quot;,&quot;href&quot;:&quot;https://loopaware.mprlab.com/&quot;}]}]}' theme-control='{"kind":"switch","choices":{"off":"light","on":"dark"}}' theme-config='{"storageKey":"pingwin.theme","initialMode":"dark","attribute":"data-theme","targets":["body"],"modes":[{"value":"light","attributeValue":"light","classList":["theme-light"]},{"value":"dark","attributeValue":"dark","classList":["theme-dark"]}]}'></mpr-footer>
   </body>
 </html>

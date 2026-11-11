@@ -1,6 +1,6 @@
 // @ts-check
 
-const PRODUCTION_API_ORIGIN = 'https://pinguin-api.mprlab.com';
+const PRODUCTION_API_ORIGIN = 'https://pingwin-api.mprlab.com';
 const LOCAL_API_ORIGIN = 'http://localhost:8081';
 const currentHostname = window.location.hostname || '';
 const isProductionHost = currentHostname.endsWith('.mprlab.com');
@@ -8,16 +8,16 @@ const resolvedApiOrigin = isProductionHost ? PRODUCTION_API_ORIGIN : LOCAL_API_O
 const resolvedRuntimeConfigUrl = `${resolvedApiOrigin}/runtime-config`;
 const resolvedApiBaseUrl = `${resolvedApiOrigin}/api`;
 
-if (!window.__PINGUIN_CONFIG__) {
-  window.__PINGUIN_CONFIG__ = {};
+if (!window.__PINGWIN_CONFIG__) {
+  window.__PINGWIN_CONFIG__ = {};
 }
 
-if (!window.__PINGUIN_CONFIG__.runtimeConfigUrl) {
-  window.__PINGUIN_CONFIG__.runtimeConfigUrl = resolvedRuntimeConfigUrl;
+if (!window.__PINGWIN_CONFIG__.runtimeConfigUrl) {
+  window.__PINGWIN_CONFIG__.runtimeConfigUrl = resolvedRuntimeConfigUrl;
 }
 
-if (!window.__PINGUIN_CONFIG__.apiBaseUrl) {
-  window.__PINGUIN_CONFIG__.apiBaseUrl = resolvedApiBaseUrl;
+if (!window.__PINGWIN_CONFIG__.apiBaseUrl) {
+  window.__PINGWIN_CONFIG__.apiBaseUrl = resolvedApiBaseUrl;
 }
 
 // Capture the latest public mpr-ui auth event before the application module loads.
@@ -29,7 +29,7 @@ const rememberAuthEvent = (event) => {
     : event.type === 'mpr-ui:auth:unauthenticated'
       ? 'unauthenticated'
       : detail.status;
-  window.__PINGUIN_AUTH_EVENT_SNAPSHOT__ = {
+  window.__PINGWIN_AUTH_EVENT_SNAPSHOT__ = {
     status: eventStatus || 'unknown',
     profile: detail.profile || null,
   };
@@ -38,7 +38,7 @@ document.addEventListener('mpr-ui:auth:authenticated', rememberAuthEvent);
 document.addEventListener('mpr-ui:auth:unauthenticated', rememberAuthEvent);
 document.addEventListener('mpr-ui:auth:status-change', rememberAuthEvent);
 
-const THEME_STORAGE_KEY = 'pinguin.theme';
+const THEME_STORAGE_KEY = 'pingwin.theme';
 const resolveStoredTheme = () => {
   try {
     return window.localStorage.getItem(THEME_STORAGE_KEY);

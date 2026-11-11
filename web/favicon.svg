@@ -5,7 +5,7 @@
 </defs>
 <rect width="512" height="512" fill="url(#brand-field)"/>
 <g filter="url(#brand-ink)"><svg width="512" height="512" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title">
-  <title id="title">Pinguin penguin and envelope logo</title>
+  <title id="title">Pingwin penguin and envelope logo</title>
   <path fill="#000" fill-rule="evenodd" d="M128 21c62 0 107 48 107 107s-45 107-107 107S21 187 21 128 66 21 128 21ZM119 117v-16c0-44-48-48-67-7-29 66 14 119 76 119s105-53 76-119c-19-41-67-37-67 7v16Z"/>
   <circle cx="87" cy="108" r="10" fill="#000"/>
   <circle cx="169" cy="108" r="10" fill="#000"/>

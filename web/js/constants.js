@@ -1,8 +1,8 @@
 // @ts-check
 
-/** @type {Window & typeof globalThis & { __PINGUIN_CONFIG__?: Record<string, unknown> }} */
+/** @type {Window & typeof globalThis & { __PINGWIN_CONFIG__?: Record<string, unknown> }} */
 const runtimeWindow = window;
-const rawConfig = runtimeWindow.__PINGUIN_CONFIG__ ?? {};
+const rawConfig = runtimeWindow.__PINGWIN_CONFIG__ ?? {};
 
 const normalizeUrl = (value) => {
   if (!value || typeof value !== "string") {
@@ -35,7 +35,7 @@ export const RUNTIME_CONFIG = Object.freeze({
 });
 
 export const STRINGS = Object.freeze({
-  appName: "Pinguin Notification Service",
+  appName: "Pingwin Notification Service",
   navigation: {
 	tenants: "Tenants",
     eventLog: "Event log",
@@ -43,7 +43,7 @@ export const STRINGS = Object.freeze({
   },
   landing: {
     eyebrow: "Delivery operations",
-    headline: "Pinguin notification workspace",
+    headline: "Pingwin notification workspace",
     subheadline:
       "Review delivery events, manage schedules, and configure SMTP relay access from one compact workspace.",
     previewLabel: "Notification workspace preview",

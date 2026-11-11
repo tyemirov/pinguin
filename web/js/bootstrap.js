@@ -7,8 +7,8 @@ const DEFAULT_CONFIG = Object.freeze({
   smtpRelayUrl: '/smtp-relay.html',
 });
 const RUNTIME_CONFIG_URL_HINT =
-  typeof window.__PINGUIN_RUNTIME_CONFIG_URL === 'string'
-    ? window.__PINGUIN_RUNTIME_CONFIG_URL.trim()
+  typeof window.__PINGWIN_RUNTIME_CONFIG_URL === 'string'
+    ? window.__PINGWIN_RUNTIME_CONFIG_URL.trim()
     : '';
 
 function deriveApiOriginFromConfig(config) {
@@ -84,7 +84,7 @@ function mergeConfig(base, overrides) {
 
 
 (async function bootstrap() {
-  const preloaded = window.__PINGUIN_CONFIG__ || {};
+  const preloaded = window.__PINGWIN_CONFIG__ || {};
   const skipRemote = Boolean(preloaded && preloaded.skipRemoteConfig);
   let effectiveConfig = mergeConfig(DEFAULT_CONFIG, null);
   effectiveConfig = mergeConfig(effectiveConfig, preloaded);
@@ -116,7 +116,7 @@ function mergeConfig(base, overrides) {
     eventLogUrl: effectiveConfig.eventLogUrl || DEFAULT_CONFIG.eventLogUrl,
     smtpRelayUrl: effectiveConfig.smtpRelayUrl || DEFAULT_CONFIG.smtpRelayUrl,
   };
-  window.__PINGUIN_CONFIG__ = finalConfig;
-  window.dispatchEvent(new CustomEvent('pinguin:config-updated', { detail: finalConfig }));
+  window.__PINGWIN_CONFIG__ = finalConfig;
+  window.dispatchEvent(new CustomEvent('pingwin:config-updated', { detail: finalConfig }));
   await import('./app.js');
 })();

@@ -1,10 +1,10 @@
 environments:
   - description: Production
     origins:
-      - https://pinguin.mprlab.com
+      - https://pingwin.mprlab.com
     auth:
       tauthUrl: https://tauth-api.mprlab.com
-      tenantId: pinguin
+      tenantId: pingwin
       logoutPath: /auth/logout
       sessionPath: /auth/session
       providers:
@@ -22,7 +22,7 @@ environments:
       - http://localhost:8080
     auth:
       tauthUrl: http://localhost:8082
-      tenantId: pinguin
+      tenantId: pingwin
       logoutPath: /auth/logout
       sessionPath: /auth/session
       providers:

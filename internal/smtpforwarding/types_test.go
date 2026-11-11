@@ -165,8 +165,8 @@ func TestRelayForwarder(testHandle *testing.T) {
 	if parsedMessage.Header.Get("Reply-To") != "Sender <sender@example.net>" {
 		testHandle.Fatalf("expected original From as Reply-To, got %q", parsedMessage.Header.Get("Reply-To"))
 	}
-	if parsedMessage.Header.Get("X-Pinguin-Original-From") != "Sender <sender@example.net>" {
-		testHandle.Fatalf("expected original From trace header, got %q", parsedMessage.Header.Get("X-Pinguin-Original-From"))
+	if parsedMessage.Header.Get("X-Pingwin-Original-From") != "Sender <sender@example.net>" {
+		testHandle.Fatalf("expected original From trace header, got %q", parsedMessage.Header.Get("X-Pingwin-Original-From"))
 	}
 	if parsedMessage.Header.Get("To") != "support@help.example.com" {
 		testHandle.Fatalf("expected original To header, got %q", parsedMessage.Header.Get("To"))
@@ -229,15 +229,15 @@ func TestRelayForwarderPreservesOriginalReplyTo(testHandle *testing.T) {
 	if parsedMessage.Header.Get("Reply-To") != "Reply Channel <reply-channel@example.net>" {
 		testHandle.Fatalf("expected original Reply-To to be preserved, got %q", parsedMessage.Header.Get("Reply-To"))
 	}
-	if parsedMessage.Header.Get("X-Pinguin-Original-From") != "Sender <sender@example.net>" {
-		testHandle.Fatalf("expected original From trace header, got %q", parsedMessage.Header.Get("X-Pinguin-Original-From"))
+	if parsedMessage.Header.Get("X-Pingwin-Original-From") != "Sender <sender@example.net>" {
+		testHandle.Fatalf("expected original From trace header, got %q", parsedMessage.Header.Get("X-Pingwin-Original-From"))
 	}
 }
 
 func TestRelayForwarderPreservesTraceAndResentHeaderOrder(testHandle *testing.T) {
 	route := mustRoute(testHandle)
 	message := Message{Data: []byte(strings.Join([]string{
-		"Received: from mx-two.example by mx.pinguin.example",
+		"Received: from mx-two.example by mx.pingwin.example",
 		"Received: from mx-one.example by mx-two.example",
 		"Resent-Date: Thu, 14 May 2026 18:00:00 +0000",
 		"Resent-From: Relay <relay@example.net>",
@@ -258,13 +258,13 @@ func TestRelayForwarderPreservesTraceAndResentHeaderOrder(testHandle *testing.T)
 	}
 
 	wantHeaderLines := []string{
-		"Received: from mx-two.example by mx.pinguin.example",
+		"Received: from mx-two.example by mx.pingwin.example",
 		"Received: from mx-one.example by mx-two.example",
 		"Resent-Date: Thu, 14 May 2026 18:00:00 +0000",
 		"Resent-From: Relay <relay@example.net>",
 		`From: "Sender" <support@help.example.com>`,
 		"Reply-To: Sender <sender@example.net>",
-		"X-Pinguin-Original-From: Sender <sender@example.net>",
+		"X-Pingwin-Original-From: Sender <sender@example.net>",
 		"To: support@help.example.com",
 		"Subject: Hello",
 	}

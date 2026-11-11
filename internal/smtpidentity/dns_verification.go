@@ -34,7 +34,7 @@ func senderDomainDNSRecords(settings PublicSettings, domain SenderDomain) []DNSR
 			Type:    dnsRecordTypeTXT,
 			Host:    domain.Domain,
 			Value:   spfStarterValue(settings),
-			Purpose: "Authorize Pinguin SMTP relay",
+			Purpose: "Authorize Pingwin SMTP relay",
 		},
 		{
 			Type:    dnsRecordTypeTXT,
@@ -48,7 +48,7 @@ func senderDomainDNSRecords(settings PublicSettings, domain SenderDomain) []DNSR
 func (service *Service) checkSenderDomainDNS(ctx context.Context, domain SenderDomain) []DNSCheck {
 	return []DNSCheck{
 		service.checkTXT(ctx, challengeHost(domain.Domain), challengeValue(domain.VerificationToken), exactTXTMatch, "ownership TXT matched", "ownership TXT is missing"),
-		service.checkTXT(ctx, domain.Domain, spfMechanism(service.settings), spfTXTMatch, "SPF authorizes Pinguin relay", "SPF is missing the Pinguin relay mechanism"),
+		service.checkTXT(ctx, domain.Domain, spfMechanism(service.settings), spfTXTMatch, "SPF authorizes Pingwin relay", "SPF is missing the Pingwin relay mechanism"),
 		service.checkTXT(ctx, dmarcHost(domain.Domain), "v=DMARC1", dmarcTXTMatch, "DMARC policy found", "DMARC policy is missing"),
 	}
 }
@@ -139,7 +139,7 @@ func publicSenderDomain(settings PublicSettings, domain SenderDomain, checks []D
 }
 
 func challengeHost(domain string) string {
-	return "_pinguin-challenge." + domain
+	return "_pingwin-challenge." + domain
 }
 
 func dmarcHost(domain string) string {
@@ -147,7 +147,7 @@ func dmarcHost(domain string) string {
 }
 
 func challengeValue(token string) string {
-	return "pinguin-domain-verification=" + strings.TrimSpace(token)
+	return "pingwin-domain-verification=" + strings.TrimSpace(token)
 }
 
 func spfMechanism(settings PublicSettings) string {

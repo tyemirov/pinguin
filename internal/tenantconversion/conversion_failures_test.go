@@ -198,7 +198,7 @@ func TestLegacySchemaAndLoadFailures(t *testing.T) {
 	})
 	t.Run("load query", func(t *testing.T) {
 		database := newLegacyDatabase(t)
-		callbackName := "pinguin:force_conversion_load_error"
+		callbackName := "pingwin:force_conversion_load_error"
 		if err := database.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
 			if tx.Statement.Table == "tenants" {
 				tx.AddError(errors.New("forced load failure"))
@@ -480,7 +480,7 @@ func closeConversionDatabase(t *testing.T, database *gorm.DB) {
 
 func registerConversionCreateError(t *testing.T, database *gorm.DB, tableName string) {
 	t.Helper()
-	callbackName := "pinguin:force_conversion_create_error_" + tableName
+	callbackName := "pingwin:force_conversion_create_error_" + tableName
 	if err := database.Callback().Create().Before("gorm:create").Register(callbackName, func(tx *gorm.DB) {
 		if tx.Statement.Table == tableName {
 			tx.AddError(errors.New("forced conversion create failure"))

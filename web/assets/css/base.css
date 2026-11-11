@@ -94,7 +94,7 @@ mpr-header .mpr-header__inner {
   gap: var(--gap-md);
 }
 
-.pinguin-brand {
+.pingwin-brand {
   display: inline-flex;
   align-items: center;
   gap: var(--gap-sm);
@@ -104,7 +104,7 @@ mpr-header .mpr-header__inner {
   text-decoration: none;
 }
 
-.pinguin-brand__mark {
+.pingwin-brand__mark {
   display: block;
   width: 1.45rem;
   height: 1.45rem;

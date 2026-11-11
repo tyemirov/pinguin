@@ -53,7 +53,7 @@ This section controls when validation targets run.
 
 ## Legacy & Compatibility Policy
 
-Pinguin does not support backward compatibility. Historical data, schemas, config shapes, feature flags, routes, users, or behavior that no longer match the current product contract are legacy state. Legacy state must not be preserved, translated, or kept alive through fallback code.
+Pingwin does not support backward compatibility. Historical data, schemas, config shapes, feature flags, routes, users, or behavior that no longer match the current product contract are legacy state. Legacy state must not be preserved, translated, or kept alive through fallback code.
 
 When legacy state is discovered:
 

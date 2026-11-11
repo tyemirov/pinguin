@@ -2,7 +2,7 @@ mprlab_resources:
     artifacts:
         binaries:
             - build:
-                binary: pinguin
+                binary: pingwin
                 package: ./cmd/server
                 platforms:
                     - linux/amd64
@@ -18,7 +18,7 @@ mprlab_resources:
                 platforms:
                     - linux/amd64
                     - linux/arm64
-              id: pinguin-image
+              id: pingwin-image
         web_bundles:
             - format: directory
               id: website
@@ -101,8 +101,8 @@ mprlab_resources:
               variable: TAUTH_COOKIE_NAME
             - id: tauth-signing-key
               variable: TAUTH_SIGNING_KEY
-            - id: tauth-tenant-google-web-client-id-pinguin
-              variable: TAUTH_TENANT_GOOGLE_WEB_CLIENT_ID_PINGUIN
+            - id: tauth-tenant-google-web-client-id-pingwin
+              variable: TAUTH_TENANT_GOOGLE_WEB_CLIENT_ID_PINGWIN
         source: .mprlab/deploy/.env
     lifecycle:
         ci:
@@ -122,11 +122,11 @@ mprlab_resources:
                 - expected_status: 200
                   id: public-health
                   protocol: http
-                  url: https://pinguin-api.mprlab.com/healthz
+                  url: https://pingwin-api.mprlab.com/healthz
                 - expected_status: 200
                   id: website-health
                   protocol: http
-                  url: https://pinguin.mprlab.com/healthz
+                  url: https://pingwin.mprlab.com/healthz
         operations:
             - name: app-deploy
               polling:
@@ -158,18 +158,18 @@ mprlab_resources:
                 multiplier: 2
         private_inputs:
             operations: []
-    owner: pinguin
+    owner: pingwin
     publications:
         ghcr:
             images:
-                - artifact: pinguin-image
-                  id: pinguin-image
-                  repository: ghcr.io/tyemirov/pinguin
+                - artifact: pingwin-image
+                  id: pingwin-image
+                  repository: ghcr.io/tyemirov/pingwin
         github_pages:
             sites:
                 - artifact: website
                   branch: gh-pages
-                  domain: pinguin.mprlab.com
+                  domain: pingwin.mprlab.com
                   id: website
                   marker:
                     path: /.mprlab-release.json
@@ -200,14 +200,14 @@ mprlab_resources:
                           target: /config/config.yml
                       endpoints:
                         - endpoint:
-                            alias: pinguin-grpc
+                            alias: pingwin-grpc
                             port: 50051
                             scheme: grpc
                             scope: same_host
                           health:
                             protocol: tcp
                           id: grpc
-                          name: pinguin.grpc
+                          name: pingwin.grpc
                           version: 1
                         - endpoint:
                             port: 50052
@@ -216,10 +216,10 @@ mprlab_resources:
                           health:
                             protocol: tcp
                           id: grpc-private-lan
-                          name: pinguin.grpc.private-lan
+                          name: pingwin.grpc.private-lan
                           version: 1
                         - endpoint:
-                            alias: pinguin-api
+                            alias: pingwin-api
                             port: 8080
                             scheme: http
                             scope: same_host
@@ -228,30 +228,30 @@ mprlab_resources:
                             path: /healthz
                             protocol: http
                           id: http
-                          name: pinguin.http
+                          name: pingwin.http
                           version: 1
                         - endpoint:
-                            alias: pinguin-smtp-forwarding
+                            alias: pingwin-smtp-forwarding
                             port: 25
                             scheme: smtp
                             scope: same_host
                           health:
                             protocol: smtp
                           id: smtp-forwarding
-                          name: pinguin.smtp-forwarding
+                          name: pingwin.smtp-forwarding
                           version: 1
                         - endpoint:
-                            alias: pinguin-smtp-submission
+                            alias: pingwin-smtp-submission
                             port: 587
                             scheme: smtp
                             scope: same_host
                           health:
                             protocol: smtp
                           id: smtp-submission
-                          name: pinguin.smtp-submission
+                          name: pingwin.smtp-submission
                           version: 1
                         - endpoint:
-                            alias: runtime-pinguin-api-readiness
+                            alias: runtime-pingwin-api-readiness
                             port: 8080
                             scheme: http
                             scope: same_host
@@ -260,7 +260,7 @@ mprlab_resources:
                             path: /healthz
                             protocol: http
                           id: readiness
-                          name: pinguin.readiness.runtime.pinguin-api
+                          name: pingwin.readiness.runtime.pingwin-api
                           version: 1
                       environment:
                         - input: connection-timeout-sec
@@ -331,9 +331,9 @@ mprlab_resources:
                           name: TAUTH_COOKIE_NAME
                         - input: tauth-signing-key
                           name: TAUTH_SIGNING_KEY
-                      id: pinguin-api
+                      id: pingwin-api
                       image:
-                        publication: pinguin-image
+                        publication: pingwin-image
                       mounts:
                         - read_only: false
                           target: /app/data
@@ -358,30 +358,30 @@ mprlab_resources:
             sites:
                 - id: website
                   publication: website
-                  url: https://pinguin.mprlab.com/
+                  url: https://pingwin.mprlab.com/
         ingress:
             caddy:
                 listeners:
                     - caddy:
                         capability: caddy.layer4.tcp
                         version: 1
-                      hostname: mx.pinguin.mprlab.com
+                      hostname: mx.pingwin.mprlab.com
                       id: public-smtp-forwarding
                       port: 25
                       tls:
                         mode: disabled
                       transport: tcp
-                      upstream: pinguin.smtp-forwarding
+                      upstream: pingwin.smtp-forwarding
                     - caddy:
                         capability: caddy.layer4.tls
                         version: 1
-                      hostname: pinguin-api.mprlab.com
+                      hostname: pingwin-api.mprlab.com
                       id: public-smtp-submission
                       port: 465
                       tls:
                         mode: automatic
                       transport: tcp
-                      upstream: pinguin.smtp-submission
+                      upstream: pingwin.smtp-submission
                 routes:
                     - access:
                         rate_limit:
@@ -395,8 +395,8 @@ mprlab_resources:
                             protocol: http
                             read_timeout_seconds: 60
                             response_header_timeout_seconds: 60
-                          upstream: pinguin.http
-                      hostname: pinguin-api.mprlab.com
+                          upstream: pingwin.http
+                      hostname: pingwin-api.mprlab.com
                       id: public-api
                       listener: https
                       tls:

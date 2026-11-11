@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Service name
+- Changed the service name to Pingwin in the CLI, gRPC contract, browser workspace, SMTP headers, container commands, and deployment declarations.
+- Preserved source repository paths and retained data identities. Production activation remains pending.
+
 ### Features
 - Add authenticated sender-domain DNS setup for SMTP relay, including exact DNS records, manual DNS checks, verified-domain identity creation, and owner-scoped relay management for non-admin users.
 - Allow admins to reopen existing SMTP relay credentials in the Gmail SMTP settings modal, with passwords stored encrypted at rest and rotation available inside the modal.

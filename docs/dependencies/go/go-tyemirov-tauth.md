@@ -1439,7 +1439,7 @@ tenants:
     display_name: "Production tenant"
     tenant_origins:
       - "https://gravity.mprlab.com"
-      - "https://pinguin.mprlab.com"
+      - "https://pingwin.mprlab.com"
     google_web_client_id: "your_web_client_id.apps.googleusercontent.com"
     jwt_signing_key: "replace-with-your-tenant-signing-key"
     cookie_domain: ".mprlab.com"

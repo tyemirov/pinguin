@@ -1,4 +1,4 @@
-x-pinguin-service: &pinguin-service
+x-pingwin-service: &pingwin-service
   restart: unless-stopped
   ports:
     - "8081:8081"
@@ -6,7 +6,7 @@ x-pinguin-service: &pinguin-service
     - "1587:587"
     - "8465:465"
   env_file:
-    - ./configs/.env.pinguin
+    - ./configs/.env.pingwin
   pull_policy: always
   healthcheck:
     test: ["CMD-SHELL", "wget -O- http://127.0.0.1:8081/healthz"]
@@ -17,8 +17,8 @@ x-pinguin-service: &pinguin-service
     start_period: 30s
   volumes:
     - pinguin-data:/app/data
-    - pinguin-web:/web:ro
-    - ./configs/config.pinguin.yml:/config/config.yml:ro
+    - pingwin-web:/web:ro
+    - ./configs/config.pingwin.yml:/config/config.yml:ro
 
 services:
   ghttp:
@@ -30,7 +30,7 @@ services:
     restart: unless-stopped
     pull_policy: always
     volumes:
-      - pinguin-web:/web:ro
+      - pingwin-web:/web:ro
     command: ["--directory", "/web", "--response-header", "/healthz=Cache-Control:no-store", "8080"]
     ports:
       - "8080:8080"
@@ -51,30 +51,30 @@ services:
       - tauth-data:/data
       - ./configs/config.tauth.yml:/config/config.yml:ro
 
-  pinguin-dev:
-    <<: *pinguin-service
+  pingwin-dev:
+    <<: *pingwin-service
     profiles:
       - dev
-    container_name: pinguin-dev
+    container_name: pingwin-dev
     depends_on:
       - tauth
     build:
       context: .
       dockerfile: Dockerfile
 
-  pinguin:
-    <<: *pinguin-service
+  pingwin:
+    <<: *pingwin-service
     profiles:
       - docker
-    container_name: pinguin
+    container_name: pingwin
     depends_on:
       - tauth
-    image: ghcr.io/tyemirov/pinguin:latest
+    image: ghcr.io/tyemirov/pingwin:latest
 
 volumes:
   pinguin-data:
   tauth-data:
-  pinguin-web:
+  pingwin-web:
     driver: local
     driver_opts:
       type: none

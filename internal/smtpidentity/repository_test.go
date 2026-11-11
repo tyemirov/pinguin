@@ -1060,7 +1060,7 @@ func closeIdentityDatabase(t *testing.T, database *gorm.DB) {
 
 func registerIdentityUpdateError(t *testing.T, database *gorm.DB) {
 	t.Helper()
-	callbackName := "pinguin:force_identity_update_error"
+	callbackName := "pingwin:force_identity_update_error"
 	if err := database.Callback().Update().Before("gorm:update").Register(callbackName, func(tx *gorm.DB) {
 		tx.AddError(errors.New("forced identity update failure"))
 	}); err != nil {
@@ -1075,7 +1075,7 @@ func registerIdentityUpdateError(t *testing.T, database *gorm.DB) {
 
 func registerSenderDomainUpdateError(t *testing.T, database *gorm.DB) {
 	t.Helper()
-	callbackName := "pinguin:force_sender_domain_update_error"
+	callbackName := "pingwin:force_sender_domain_update_error"
 	if err := database.Callback().Update().Before("gorm:update").Register(callbackName, func(tx *gorm.DB) {
 		if _, ok := tx.Statement.Dest.(*SenderDomain); ok {
 			tx.AddError(errors.New("forced sender domain update failure"))
@@ -1092,7 +1092,7 @@ func registerSenderDomainUpdateError(t *testing.T, database *gorm.DB) {
 
 func registerSenderDomainCreateError(t *testing.T, database *gorm.DB) {
 	t.Helper()
-	callbackName := "pinguin:force_sender_domain_create_error"
+	callbackName := "pingwin:force_sender_domain_create_error"
 	if err := database.Callback().Create().Before("gorm:create").Register(callbackName, func(tx *gorm.DB) {
 		if _, ok := tx.Statement.Dest.(*SenderDomain); ok {
 			tx.AddError(errors.New("forced sender domain create failure"))
@@ -1109,7 +1109,7 @@ func registerSenderDomainCreateError(t *testing.T, database *gorm.DB) {
 
 func registerSenderDomainConcurrentClaim(t *testing.T, database *gorm.DB, claimedTenant string) {
 	t.Helper()
-	callbackName := "pinguin:force_sender_domain_concurrent_claim"
+	callbackName := "pingwin:force_sender_domain_concurrent_claim"
 	if err := database.Callback().Create().Before("gorm:create").Register(callbackName, func(tx *gorm.DB) {
 		if _, ok := tx.Statement.Dest.(*SenderDomain); !ok {
 			return
@@ -1140,7 +1140,7 @@ func registerSenderDomainConcurrentClaim(t *testing.T, database *gorm.DB, claime
 
 func registerForwardRecipientCreateError(t *testing.T, database *gorm.DB) {
 	t.Helper()
-	callbackName := "pinguin:force_forward_recipient_create_error"
+	callbackName := "pingwin:force_forward_recipient_create_error"
 	if err := database.Callback().Create().Before("gorm:create").Register(callbackName, func(tx *gorm.DB) {
 		if _, ok := tx.Statement.Dest.(*ForwardRecipient); ok {
 			tx.AddError(errors.New("forced forward recipient create failure"))

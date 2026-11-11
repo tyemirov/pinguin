@@ -14,18 +14,19 @@ The source implementation and automated acceptance suite are completed.
 
 ## Purpose
 
-Pinguin currently reads tenant definitions from YAML during service start.
+Pingwin stores tenant definitions in SQLite.
+The former YAML tenant contract is obsolete.
 
-The managed product lets an authenticated user create and manage tenant configuration in Pinguin.
+The managed product lets an authenticated user create and manage tenant configuration in Pingwin.
 
 The managed product does not require an operator to edit tenant YAML or restart the service.
 
 ## Confirmed Requirements
 
 - Keep the current TAuth and `mpr-ui` authentication integration.
-- Use the validated TAuth user ID as the Pinguin owner identity.
-- Let each authenticated user establish their Pinguin tenants.
-- Store tenant configuration in the Pinguin database.
+- Use the validated TAuth user ID as the Pingwin owner identity.
+- Let each authenticated user establish their Pingwin tenants.
+- Store tenant configuration in the Pingwin database.
 - Remove tenant definitions from the runtime configuration file.
 - Require one complete external email delivery profile during tenant creation.
 - Permit an optional complete SMS delivery profile during tenant creation.
@@ -45,13 +46,13 @@ TAuth remains the authentication service.
 
 TAuth already provides login, logout, session restoration, and session validation.
 
-Pinguin consumes the validated session and owns tenant authorization.
+Pingwin consumes the validated session and owns tenant authorization.
 
-This plan does not add Pinguin login code, TAuth account code, or browser token code.
+This plan does not add Pingwin login code, TAuth account code, or browser token code.
 
 This plan removes tenant data from YAML.
 
-Pinguin still uses service configuration for listeners, the database, logging, TAuth validation, and the master encryption key.
+Pingwin still uses service configuration for listeners, the database, logging, TAuth validation, and the master encryption key.
 
 A separate change can replace the service configuration transport if that outcome becomes necessary.
 
@@ -101,9 +102,9 @@ The database stored tenants, notifications, email profiles, and SMS profiles.
 
 `internal/db/db.go` ran GORM `AutoMigrate` during each service start.
 
-Pinguin encrypts provider credentials with the service master key.
+Pingwin encrypts provider credentials with the service master key.
 
-Pinguin must decrypt provider credentials to deliver email and SMS messages.
+Pingwin must decrypt provider credentials to deliver email and SMS messages.
 
 SMTP sender domains and identities used an owner email address instead of a tenant ID.
 
@@ -117,9 +118,9 @@ As a result, tenant changes required operator input and a new service configurat
 
 ## Ownership Model
 
-The HTTP session gives Pinguin a validated TAuth user ID.
+The HTTP session gives Pingwin a validated TAuth user ID.
 
-Pinguin uses that value as `owner_user_id`.
+Pingwin uses that value as `owner_user_id`.
 
 The browser does not submit `owner_user_id`.
 
@@ -129,7 +130,7 @@ One owner can have more than one tenant.
 
 Every tenant query includes both `owner_user_id` and `tenant_id`.
 
-Pinguin returns `404` when the tenant does not exist or belongs to a different owner.
+Pingwin returns `404` when the tenant does not exist or belongs to a different owner.
 
 This response does not disclose the existence of another owner's tenant.
 
@@ -155,7 +156,7 @@ Remove host and email-domain authorization from the managed contract.
 
 Keep `EmailProfile` and `SMSProfile` as tenant-owned records.
 
-The email delivery profile contains the external SMTP connection that Pinguin uses to send notifications.
+The email delivery profile contains the external SMTP connection that Pingwin uses to send notifications.
 
 Require one complete email delivery profile in each tenant creation request.
 
@@ -196,15 +197,15 @@ The browser calculates SHA-256 from the decoded secret bytes.
 
 The browser submits the credential ID and digest with the tenant creation request.
 
-Pinguin derives the display prefix from the validated credential ID.
+Pingwin derives the display prefix from the validated credential ID.
 
 Each tenant always has one API credential.
 
 Credential rotation atomically replaces the credential ID and digest.
 
-Pinguin stores the digest and compares it in constant time.
+Pingwin stores the digest and compares it in constant time.
 
-Pinguin never stores, returns, or logs the raw API secret.
+Pingwin never stores, returns, or logs the raw API secret.
 
 The gRPC server receives the bearer value during request authentication.
 
@@ -317,7 +318,7 @@ Authenticated management responses use `Cache-Control: private, no-store`.
 - `PUT /api/tenants/:tenant_id/smtp-identities/:identity_id/credential`
 - `DELETE /api/tenants/:tenant_id/smtp-identities/:identity_id`
 
-These routes manage the optional Pinguin SMTP submission and forwarding capability.
+These routes manage the optional Pingwin SMTP submission and forwarding capability.
 
 These resources are separate from the required external email delivery profile and do not block tenant creation.
 
@@ -466,7 +467,7 @@ Move all SMTP relay API calls under the selected tenant path.
 1. Remove `GRPCAuthToken`, `TenantConfigPath`, and `TenantBootstrap` from `internal/config`.
 2. Remove tenant bootstrap from `cmd/server/main.go`.
 3. Let the service start with zero tenants.
-4. Remove tenant and token validation from `pinguin-doctor`.
+4. Remove tenant and token validation from `pingwin-doctor`.
 5. Remove tenant and token values from tracked configuration templates.
 6. Remove tenant and token private inputs from `.mprlab/deploy/resources.yml`.
 7. Keep only service-level runtime configuration in the files.
@@ -578,8 +579,8 @@ Generate one credential record for each source tenant. Store each result in a pr
 
 ```bash
 umask 077
-export PINGUIN_CREDENTIAL_FILE=/absolute/private/tenant-acme-credential.txt
-python3 - <<'PY' > "$PINGUIN_CREDENTIAL_FILE"
+export PINGWIN_CREDENTIAL_FILE=/absolute/private/tenant-acme-credential.txt
+python3 - <<'PY' > "$PINGWIN_CREDENTIAL_FILE"
 import base64
 import hashlib
 import secrets
@@ -595,7 +596,7 @@ print(f"apiCredentialDigest={digest}")
 PY
 ```
 
-Sign in to Pinguin with `temirov@gmail.com` before the maintenance window.
+Sign in to Pingwin with `temirov@gmail.com` before the maintenance window.
 
 Read `user_email` and `user_id` from the authenticated TAuth session response.
 
@@ -639,30 +640,30 @@ Use empty SMTP lists when the database has no resources of that type.
 
 ### Run the conversion
 
-Use one write-stopped maintenance window. Stop every process that writes to the Pinguin database. Use the published managed release image and the retained production volume.
+Use one write-stopped maintenance window. Stop every process that writes to the Pingwin database. Use the published managed release image and the retained production volume.
 
 Set the published image, retained volume, and absolute private input paths on the production placement host:
 
 ```bash
-export PINGUIN_MIGRATION_IMAGE=ghcr.io/tyemirov/pinguin:<published-release-tag>
-export PINGUIN_DATA_VOLUME=mprlab-nginx-gateway_pinguin-data
-export PINGUIN_DATABASE_PATH=/app/data/pinguin.db
-export PINGUIN_BACKUP_DIRECTORY=/absolute/private
-export PINGUIN_BACKUP_NAME=pinguin-before-managed-YYYYMMDDTHHMMSSZ.tar.gz
-export PINGUIN_SOURCE_PATH=/absolute/private/former-tenants.yml
-export PINGUIN_MAPPING_PATH=/absolute/private/managed-tenant-mapping.yml
+export PINGWIN_MIGRATION_IMAGE=ghcr.io/tyemirov/pingwin:<published-release-tag>
+export PINGWIN_DATA_VOLUME=mprlab-nginx-gateway_pinguin-data
+export PINGWIN_DATABASE_PATH=/app/data/pingwin.db
+export PINGWIN_BACKUP_DIRECTORY=/absolute/private
+export PINGWIN_BACKUP_NAME=pingwin-before-managed-YYYYMMDDTHHMMSSZ.tar.gz
+export PINGWIN_SOURCE_PATH=/absolute/private/former-tenants.yml
+export PINGWIN_MAPPING_PATH=/absolute/private/managed-tenant-mapping.yml
 ```
 
 Create the backup from the stopped database volume:
 
 ```bash
-test ! -e "$PINGUIN_BACKUP_DIRECTORY/$PINGUIN_BACKUP_NAME"
+test ! -e "$PINGWIN_BACKUP_DIRECTORY/$PINGWIN_BACKUP_NAME"
 docker run --rm --network none \
-  --mount "type=volume,source=${PINGUIN_DATA_VOLUME},target=/app/data" \
-  --mount "type=bind,source=${PINGUIN_BACKUP_DIRECTORY},target=/backup" \
+  --mount "type=volume,source=${PINGWIN_DATA_VOLUME},target=/app/data" \
+  --mount "type=bind,source=${PINGWIN_BACKUP_DIRECTORY},target=/backup" \
   --entrypoint /bin/tar \
-  "$PINGUIN_MIGRATION_IMAGE" \
-  -czf "/backup/$PINGUIN_BACKUP_NAME" -C /app/data .
+  "$PINGWIN_MIGRATION_IMAGE" \
+  -czf "/backup/$PINGWIN_BACKUP_NAME" -C /app/data .
 ```
 
 Run the packaged command with the same `MASTER_ENCRYPTION_KEY` that encrypted the current provider secrets:
@@ -670,14 +671,14 @@ Run the packaged command with the same `MASTER_ENCRYPTION_KEY` that encrypted th
 ```bash
 docker run --rm --network none \
   --env MASTER_ENCRYPTION_KEY \
-  --mount "type=volume,source=${PINGUIN_DATA_VOLUME},target=/app/data" \
-  --mount "type=bind,source=${PINGUIN_SOURCE_PATH},target=/run/pinguin/former-tenants.yml,readonly" \
-  --mount "type=bind,source=${PINGUIN_MAPPING_PATH},target=/run/pinguin/managed-tenant-mapping.yml,readonly" \
-  "$PINGUIN_MIGRATION_IMAGE" \
-  pinguin-convert-managed-tenants \
-  --database "$PINGUIN_DATABASE_PATH" \
-  --tenant-source /run/pinguin/former-tenants.yml \
-  --mapping /run/pinguin/managed-tenant-mapping.yml \
+  --mount "type=volume,source=${PINGWIN_DATA_VOLUME},target=/app/data" \
+  --mount "type=bind,source=${PINGWIN_SOURCE_PATH},target=/run/pingwin/former-tenants.yml,readonly" \
+  --mount "type=bind,source=${PINGWIN_MAPPING_PATH},target=/run/pingwin/managed-tenant-mapping.yml,readonly" \
+  "$PINGWIN_MIGRATION_IMAGE" \
+  pingwin-convert-managed-tenants \
+  --database "$PINGWIN_DATABASE_PATH" \
+  --tenant-source /run/pingwin/former-tenants.yml \
+  --mapping /run/pingwin/managed-tenant-mapping.yml \
   --master-key-env MASTER_ENCRYPTION_KEY \
   --confirm managed-tenant-conversion
 ```
@@ -727,9 +728,9 @@ Obtain one owner-generated API credential ID and digest for each production tena
 
 ## Acceptance Criteria
 
-- An existing TAuth user can create a Pinguin tenant without an operator change.
+- An existing TAuth user can create a Pingwin tenant without an operator change.
 - Tenant creation rejects an incomplete email profile or an absent API credential ID or digest.
-- A new Pinguin database can start with zero tenants.
+- A new Pingwin database can start with zero tenants.
 - An owner can list and change only their tenants.
 - A foreign tenant ID does not disclose foreign tenant data.
 - Repeated tenant creates and credential rotations do not create duplicate resources.
@@ -738,7 +739,7 @@ Obtain one owner-generated API credential ID and digest for each production tena
 - Credential rotation immediately rejects the prior API key.
 - A tenant API credential defines the gRPC tenant context.
 - A gRPC caller cannot override the credential tenant.
-- Pinguin storage and operator responses contain no raw API secret.
+- Pingwin storage and operator responses contain no raw API secret.
 - Each SMTP sender domain, identity, credential, and forwarding route belongs to one tenant.
 - Tenant deletion removes all tenant-owned records in one transaction.
 - A tenant configuration change takes effect without a service restart.
@@ -748,5 +749,5 @@ Obtain one owner-generated API credential ID and digest for each production tena
 - The production data conversion assigns all four production tenants to the TAuth account for `temirov@gmail.com`.
 - The managed database contains no obsolete tenant domain or administrator data.
 - The steady-state release contains no conversion or compatibility path.
-- Current TAuth and `mpr-ui` authentication tests pass without a new Pinguin authentication flow.
+- Current TAuth and `mpr-ui` authentication tests pass without a new Pingwin authentication flow.
 - The complete `make ci` target passes.

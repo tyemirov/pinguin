@@ -47,10 +47,10 @@ type commandDependencies struct {
 func runWithDependencies(args []string, stdout io.Writer, stderr io.Writer, getenv func(string) string, dependencies commandDependencies) int {
 	flags := flag.NewFlagSet("convert-managed-tenants", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	databasePath := flags.String("database", "", "path to the write-stopped Pinguin SQLite database")
+	databasePath := flags.String("database", "", "path to the write-stopped Pingwin SQLite database")
 	sourcePath := flags.String("tenant-source", "", "path to the current tenant YAML")
 	mappingPath := flags.String("mapping", "", "path to the complete conversion mapping YAML")
-	masterKeyEnvironment := flags.String("master-key-env", "PINGUIN_MASTER_ENCRYPTION_KEY", "environment variable containing the current master encryption key")
+	masterKeyEnvironment := flags.String("master-key-env", "PINGWIN_MASTER_ENCRYPTION_KEY", "environment variable containing the current master encryption key")
 	confirmation := flags.String("confirm", "", "required destructive-operation confirmation")
 	if parseErr := flags.Parse(args); parseErr != nil {
 		return 2

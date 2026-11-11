@@ -34,30 +34,30 @@ func TestComposeProfilesProvideLocalAndImageVariants(t *testing.T) {
 		t.Fatalf("failed to parse docker-compose.yaml: %v", unmarshalErr)
 	}
 
-	localService, localExists := document.Services["pinguin-dev"]
+	localService, localExists := document.Services["pingwin-dev"]
 	if !localExists {
-		t.Fatalf("compose file missing pinguin-dev service")
+		t.Fatalf("compose file missing pingwin-dev service")
 	}
 
-	assertProfileContains(t, localService.Profiles, "dev", "pinguin-dev")
+	assertProfileContains(t, localService.Profiles, "dev", "pingwin-dev")
 	if localService.Build == nil || localService.Build.Context == "" {
-		t.Fatalf("pinguin-dev should define a build context for local development")
+		t.Fatalf("pingwin-dev should define a build context for local development")
 	}
 	if localService.Image != "" {
-		t.Fatalf("pinguin-dev should not specify an image because it builds locally")
+		t.Fatalf("pingwin-dev should not specify an image because it builds locally")
 	}
 
-	imageService, imageExists := document.Services["pinguin"]
+	imageService, imageExists := document.Services["pingwin"]
 	if !imageExists {
-		t.Fatalf("compose file missing pinguin service for docker profile")
+		t.Fatalf("compose file missing pingwin service for docker profile")
 	}
 
-	assertProfileContains(t, imageService.Profiles, "docker", "pinguin")
+	assertProfileContains(t, imageService.Profiles, "docker", "pingwin")
 	if imageService.Image == "" || !strings.HasPrefix(imageService.Image, "ghcr.io/") {
-		t.Fatalf("pinguin docker profile should pull image from ghcr.io, got %q", imageService.Image)
+		t.Fatalf("pingwin docker profile should pull image from ghcr.io, got %q", imageService.Image)
 	}
 	if imageService.Build != nil {
-		t.Fatalf("pinguin docker profile should not include build configuration")
+		t.Fatalf("pingwin docker profile should not include build configuration")
 	}
 }
 
@@ -75,13 +75,13 @@ func TestComposeDevPortsUseLocalhost8080AsBrowserOrigin(t *testing.T) {
 	assertStringContains(t, ghttp.Ports, "8080:8080", "ghttp ports")
 	assertStringContains(t, ghttp.Command, "8080", "ghttp command")
 
-	pinguin := requireComposeService(t, document, "pinguin-dev")
-	assertStringContains(t, pinguin.Ports, "8081:8081", "pinguin-dev ports")
-	assertStringContains(t, pinguin.Ports, "1587:587", "pinguin-dev ports")
-	assertStringContains(t, pinguin.Ports, "8025:25", "pinguin-dev ports")
-	assertStringContains(t, pinguin.Ports, "8465:465", "pinguin-dev ports")
-	assertStringDoesNotContain(t, pinguin.Ports, "1465:465", "pinguin-dev ports")
-	assertStringContains(t, pinguin.EnvFile, "./configs/.env.pinguin", "pinguin-dev env files")
+	pingwin := requireComposeService(t, document, "pingwin-dev")
+	assertStringContains(t, pingwin.Ports, "8081:8081", "pingwin-dev ports")
+	assertStringContains(t, pingwin.Ports, "1587:587", "pingwin-dev ports")
+	assertStringContains(t, pingwin.Ports, "8025:25", "pingwin-dev ports")
+	assertStringContains(t, pingwin.Ports, "8465:465", "pingwin-dev ports")
+	assertStringDoesNotContain(t, pingwin.Ports, "1465:465", "pingwin-dev ports")
+	assertStringContains(t, pingwin.EnvFile, "./configs/.env.pingwin", "pingwin-dev env files")
 
 	tauth := requireComposeService(t, document, "tauth")
 	assertStringContains(t, tauth.Ports, "8082:8082", "tauth ports")

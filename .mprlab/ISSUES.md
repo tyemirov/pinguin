@@ -7,6 +7,13 @@ Resolved non-recurring issues are in [ISSUES.archive.md](ISSUES.archive.md).
 
 ## Improvements
 
+- [x] [I007] (P1) Change the service name to Pingwin
+  Goal: Use `pingwin` for the current service contract.
+  Requirements: Preserve source repository paths, retained data identities, and historical records.
+  Deliverables: Update executable names, gRPC definitions, browser assets, SMTP names, configuration, and deployment declarations.
+  Validation: `make ci` passed with 100 percent Go coverage and 70 browser tests. CLI, gRPC, container health, doctor, and installed Gateway checks passed.
+  Validation: The Governor check reported the same 16 findings before and after this change. Production deployment remains pending.
+
 - [x] [I006] (P1) Use the `theme-control` contract
   Goal: Use the `mpr-ui` contract on each page.
   Requirements: Keep each mode, position, label, and initial selection.

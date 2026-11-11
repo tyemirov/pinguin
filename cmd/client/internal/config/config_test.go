@@ -47,7 +47,7 @@ func TestLoadSuccessful(t *testing.T) {
 func TestLoadIgnoresEnvironmentFallbacks(t *testing.T) {
 	t.Helper()
 	t.Setenv("GRPC_SERVER_ADDR", "localhost:6060")
-	t.Setenv("PINGUIN_API_KEY", "secret")
+	t.Setenv("PINGWIN_API_KEY", "secret")
 	t.Setenv("CONNECTION_TIMEOUT_SEC", "9")
 	t.Setenv("OPERATION_TIMEOUT_SEC", "11")
 	t.Setenv("LOG_LEVEL", "warn")

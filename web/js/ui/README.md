@@ -1,6 +1,6 @@
 # Front-end UI modules
 
-UI modules own Alpine state for the semantic Pinguin work surfaces.
+UI modules own Alpine state for the semantic Pingwin work surfaces.
 
 - `notificationsList.js` owns tenant selection, search, status filters, cursor loading, notification records, and single-flight reschedule/cancel dialogs with stable-list focus fallback.
 - `smtpDomains.js` owns sender-domain creation, single-panel disclosure, DNS checks, and DNS copy feedback.

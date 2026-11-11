@@ -539,13 +539,13 @@ func TestRunServerPublishesGRPCReadyEventAfterListenerBind(testHandle *testing.T
 		return slog.New(slog.NewTextHandler(&logOutput, &slog.HandlerOptions{}))
 	}
 	dependencies.listen = func(string, string) (net.Listener, error) {
-		if strings.Contains(logOutput.String(), "event=pinguin.grpc.ready") {
+		if strings.Contains(logOutput.String(), "event=pingwin.grpc.ready") {
 			testHandle.Fatal("gRPC readiness event was published before the listener bound")
 		}
 		return fakeListener{}, nil
 	}
 	dependencies.serveGRPC = func(net.Listener, service.NotificationService, *tenant.Repository, *slog.Logger) error {
-		if !strings.Contains(logOutput.String(), "event=pinguin.grpc.ready") {
+		if !strings.Contains(logOutput.String(), "event=pingwin.grpc.ready") {
 			testHandle.Fatalf("gRPC readiness event was not published after listener bind:\n%s", logOutput.String())
 		}
 		state.grpcServed = true
@@ -575,7 +575,7 @@ func TestRunServerDoesNotPublishGRPCReadyEventWhenListenerBindFails(testHandle *
 	if exitCode := runServer(nil, dependencies); exitCode != 1 {
 		testHandle.Fatalf("expected failure exit code, got %d", exitCode)
 	}
-	if strings.Contains(logOutput.String(), "event=pinguin.grpc.ready") {
+	if strings.Contains(logOutput.String(), "event=pingwin.grpc.ready") {
 		testHandle.Fatalf("gRPC readiness event was published after listener bind failed:\n%s", logOutput.String())
 	}
 }
@@ -629,7 +629,7 @@ func TestRunServerStartsSMTPForwarding(testHandle *testing.T) {
 	cfg := serverTestConfig()
 	cfg.SMTPForwarding = config.SMTPForwardingConfig{
 		Enabled:         true,
-		Hostname:        "mx.pinguin.mprlab.com",
+		Hostname:        "mx.pingwin.mprlab.com",
 		ListenAddr:      ":25",
 		MaxMessageBytes: 2048,
 		MaxRecipients:   3,
@@ -646,7 +646,7 @@ func TestRunServerStartsSMTPForwarding(testHandle *testing.T) {
 		testHandle.Fatalf("expected success exit code, got %d", exitCode)
 	}
 	waitForClosed(testHandle, state.smtpForwardingStarter.started)
-	if state.smtpForwardingConfig.Hostname != "mx.pinguin.mprlab.com" {
+	if state.smtpForwardingConfig.Hostname != "mx.pingwin.mprlab.com" {
 		testHandle.Fatalf("unexpected forwarding hostname %s", state.smtpForwardingConfig.Hostname)
 	}
 	if state.smtpForwardingConfig.CommandTimeout != 30*time.Second {
@@ -851,7 +851,7 @@ func TestServerMainReturnsForHelp(testHandle *testing.T) {
 	if pipeErr != nil {
 		testHandle.Fatalf("create stderr pipe: %v", pipeErr)
 	}
-	os.Args = []string{"pinguin-server", "-h"}
+	os.Args = []string{"pingwin-server", "-h"}
 	os.Stderr = writePipe
 	defer func() {
 		os.Args = oldArgs
@@ -865,7 +865,7 @@ func TestServerMainReturnsForHelp(testHandle *testing.T) {
 	if readErr != nil {
 		testHandle.Fatalf("read stderr: %v", readErr)
 	}
-	if !strings.Contains(string(output), "Usage of pinguin-server") {
+	if !strings.Contains(string(output), "Usage of pingwin-server") {
 		testHandle.Fatalf("expected help output, got %q", string(output))
 	}
 }
@@ -1134,7 +1134,7 @@ type serverTestState struct {
 
 func serverTestConfig() config.Config {
 	return config.Config{
-		DatabasePath:         "pinguin.db",
+		DatabasePath:         "pingwin.db",
 		LogLevel:             "INFO",
 		MaxRetries:           3,
 		RetryIntervalSec:     60,

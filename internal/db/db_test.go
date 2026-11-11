@@ -56,7 +56,7 @@ func (migrator failingSchemaMigrator) GetIndexes(interface{}) ([]gorm.Index, err
 func TestInitDBCreatesSchema(t *testing.T) {
 	t.Helper()
 
-	databasePath := filepath.Join(t.TempDir(), "pinguin.db")
+	databasePath := filepath.Join(t.TempDir(), "pingwin.db")
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
 
 	database, initError := InitDB(databasePath, logger)
@@ -108,7 +108,7 @@ func TestInitDBCreatesSchema(t *testing.T) {
 func TestValidateManagedSchema(t *testing.T) {
 	newDatabase := func(t *testing.T) *gorm.DB {
 		t.Helper()
-		database, err := InitDB(filepath.Join(t.TempDir(), "pinguin.db"), slog.New(slog.NewTextHandler(io.Discard, nil)))
+		database, err := InitDB(filepath.Join(t.TempDir(), "pingwin.db"), slog.New(slog.NewTextHandler(io.Discard, nil)))
 		if err != nil {
 			t.Fatalf("init managed database: %v", err)
 		}
@@ -116,7 +116,7 @@ func TestValidateManagedSchema(t *testing.T) {
 	}
 
 	t.Run("current schema", func(t *testing.T) {
-		databasePath := filepath.Join(t.TempDir(), "pinguin.db")
+		databasePath := filepath.Join(t.TempDir(), "pingwin.db")
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		if _, err := InitDB(databasePath, logger); err != nil {
 			t.Fatalf("initialize current schema: %v", err)
@@ -245,7 +245,7 @@ func TestValidateManagedSchema(t *testing.T) {
 func TestInitDBConfiguresSQLiteContentionSettings(t *testing.T) {
 	t.Helper()
 
-	databasePath := filepath.Join(t.TempDir(), "pinguin.db")
+	databasePath := filepath.Join(t.TempDir(), "pingwin.db")
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
 
 	database, initError := InitDB(databasePath, logger)
@@ -277,8 +277,8 @@ func TestInitDBConfiguresSQLiteContentionSettings(t *testing.T) {
 func TestSQLiteDSNAppendsPragmas(t *testing.T) {
 	t.Helper()
 
-	plainDSN := sqliteDSN("pinguin.db")
-	if !strings.Contains(plainDSN, "pinguin.db?") {
+	plainDSN := sqliteDSN("pingwin.db")
+	if !strings.Contains(plainDSN, "pingwin.db?") {
 		t.Fatalf("expected query separator in %s", plainDSN)
 	}
 	if !strings.Contains(plainDSN, "busy_timeout(10000)") {
@@ -288,7 +288,7 @@ func TestSQLiteDSNAppendsPragmas(t *testing.T) {
 		t.Fatalf("expected journal mode pragma in %s", plainDSN)
 	}
 
-	existingQueryDSN := sqliteDSN("file:pinguin.db?cache=shared")
+	existingQueryDSN := sqliteDSN("file:pingwin.db?cache=shared")
 	if !strings.Contains(existingQueryDSN, "cache=shared&") {
 		t.Fatalf("expected existing query separator in %s", existingQueryDSN)
 	}
@@ -298,7 +298,7 @@ func TestInitDBCreatesMissingDirectories(t *testing.T) {
 	t.Helper()
 
 	baseDirectory := t.TempDir()
-	databasePath := filepath.Join(baseDirectory, "nested", "pinguin.db")
+	databasePath := filepath.Join(baseDirectory, "nested", "pingwin.db")
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
 
 	database, initError := InitDB(databasePath, logger)
@@ -333,7 +333,7 @@ func TestInitDBReportsDirectoryCreationFailure(t *testing.T) {
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
 
-	_, initError := InitDB(filepath.Join(blockingFile, "pinguin.db"), logger)
+	_, initError := InitDB(filepath.Join(blockingFile, "pingwin.db"), logger)
 	if initError == nil {
 		t.Fatalf("expected directory creation error")
 	}
@@ -354,7 +354,7 @@ func TestInitDBReportsOpenOrMigrationFailure(t *testing.T) {
 	migrateDatabaseSchema = func(*gorm.DB) error {
 		return migrationErr
 	}
-	_, initError = InitDB(filepath.Join(t.TempDir(), "pinguin.db"), logger)
+	_, initError = InitDB(filepath.Join(t.TempDir(), "pingwin.db"), logger)
 	if !errors.Is(initError, migrationErr) {
 		t.Fatalf("expected migration error, got %v", initError)
 	}

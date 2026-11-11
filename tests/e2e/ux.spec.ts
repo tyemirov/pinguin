@@ -13,7 +13,7 @@ const PLATFORM_SERVICES = [
   { label: 'Ledger', href: 'https://github.com/tyemirov/ledger' },
   { label: 'ISSUES.md', href: 'https://issues.mprlab.com/' },
   { label: 'Dictator', href: 'https://github.com/tyemirov/dictator' },
-  { label: 'Pinguin', href: 'https://pinguin.mprlab.com/' },
+  { label: 'Pingwin', href: 'https://pingwin.mprlab.com/' },
   { label: 'LoopAware', href: 'https://loopaware.mprlab.com/' },
 ];
 
@@ -102,7 +102,7 @@ test.describe('Compact MPR UX', () => {
     });
   }
 
-  test('loads the current Pinguin LoopAware pixel on every page', async ({ page }) => {
+  test('loads the current Pingwin LoopAware pixel on every page', async ({ page }) => {
     const pages = [
       { path: '/index.html', authenticated: false },
       { path: '/tenants.html', authenticated: true },
@@ -121,7 +121,7 @@ test.describe('Compact MPR UX', () => {
     await configureRuntime(page, { authenticated: false });
     await page.goto('/index.html');
     await expectCompactMPRTheme(page);
-    await expect(page.getByRole('heading', { name: 'Pinguin notification workspace' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Pingwin notification workspace' })).toBeVisible();
     await expect(page.getByTestId('notification-preview')).toBeVisible();
 
     await configureRuntime(page, { authenticated: true });
@@ -138,12 +138,12 @@ test.describe('Compact MPR UX', () => {
     await expectWorkspaceNavigation(page, 'SMTP relay');
   });
 
-  test('places the workspace menu to the right of the Pinguin identity', async ({ page }) => {
+  test('places the workspace menu to the right of the Pingwin identity', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await configureRuntime(page, { authenticated: true });
     await page.goto('/event-log.html');
 
-    const brand = page.locator('mpr-header .pinguin-brand');
+    const brand = page.locator('mpr-header .pingwin-brand');
     const firstWorkspaceLink = page
       .locator('mpr-header [data-mpr-header="nav"] .workspace-navigation__link')
       .first();
@@ -339,7 +339,7 @@ test.describe('Compact MPR UX', () => {
     await expectFocusRestored(deleteTrigger);
   });
 
-  test('captures focused Pinguin-owned visual surfaces', async ({ page, request }) => {
+  test('captures focused Pingwin-owned visual surfaces', async ({ page, request }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await configureRuntime(page, { authenticated: false });
     await page.goto('/index.html');

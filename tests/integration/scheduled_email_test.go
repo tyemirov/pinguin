@@ -37,7 +37,7 @@ func TestScheduledEmailDispatchesAfterWorkerRuns(t *testing.T) {
 		model.NotificationEmail,
 		"user@example.com",
 		"Welcome",
-		"Hello from Pinguin",
+		"Hello from Pingwin",
 		&scheduledFor,
 		nil,
 	)
