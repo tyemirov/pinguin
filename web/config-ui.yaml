@@ -4,7 +4,7 @@ environments:
       - https://pingwin.mprlab.com
     auth:
       tauthUrl: https://tauth-api.mprlab.com
-      tenantId: pingwin
+      tenantId: pinguin
       logoutPath: /auth/logout
       sessionPath: /auth/session
       providers:

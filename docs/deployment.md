@@ -45,9 +45,9 @@ The operator authorized removal of Pingwin deployment records on November 11, 20
 For the complete name change:
 
 1. Configure DNS for all three hostnames.
-2. Configure the TAuth tenant `pingwin` and its browser origin.
+2. Keep the permanent TAuth tenant `pinguin`, its user IDs, signing keys, and cookie names. Set its browser origin to `https://pingwin.mprlab.com`.
 3. Authorize the new origin in the Google OAuth client.
-4. Update private origins, SMTP hostnames, cookies, and `TAUTH_TENANT_GOOGLE_WEB_CLIENT_ID_PINGWIN`.
+4. Update private origins, SMTP hostnames, and `TAUTH_TENANT_GOOGLE_WEB_CLIENT_ID_PINGWIN`.
 5. Publish new `_pingwin-challenge` TXT records and relay SPF records for each sender domain.
 6. Preserve deployment owner `pinguin` and retire `mprlab-pinguin-runtime/pinguin-api` before the replacement starts.
 7. Preserve volume `mprlab-nginx-gateway_pinguin-data`, the database path, and the encryption key.

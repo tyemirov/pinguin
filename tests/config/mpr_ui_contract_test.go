@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"slices"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -14,8 +15,31 @@ type mprUIConfigDocument struct {
 
 type mprUIEnvironment struct {
 	Description      string               `yaml:"description"`
+	Origins          []string             `yaml:"origins"`
 	Auth             map[string]any       `yaml:"auth"`
 	AdditionalFields map[string]yaml.Node `yaml:",inline"`
+}
+
+func TestProductionMPRUIConfigPreservesTAuthTenant(t *testing.T) {
+	const productionOrigin = "https://pingwin.mprlab.com"
+	const productionTenant = "pinguin"
+	var document mprUIConfigDocument
+	if unmarshalErr := yaml.Unmarshal(readRepoFile(t, "web", "config-ui.yaml"), &document); unmarshalErr != nil {
+		t.Fatalf("parse production browser config: %v", unmarshalErr)
+	}
+	productionEnvironments := 0
+	for _, environment := range document.Environments {
+		if !slices.Contains(environment.Origins, productionOrigin) {
+			continue
+		}
+		productionEnvironments++
+		if environment.Auth["tenantId"] != productionTenant {
+			t.Fatalf("production browser must use permanent TAuth tenant %q, got %#v", productionTenant, environment.Auth["tenantId"])
+		}
+	}
+	if productionEnvironments != 1 {
+		t.Fatalf("production origin must select exactly one auth environment, got %d", productionEnvironments)
+	}
 }
 
 func hasRetiredAuthButton(environment mprUIEnvironment) bool {

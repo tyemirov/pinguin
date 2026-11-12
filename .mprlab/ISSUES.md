@@ -34,6 +34,17 @@ Resolved non-recurring issues are in [ISSUES.archive.md](ISSUES.archive.md).
   Validation: API and website health returned `200`. All ten router rules and HTTPS bindings remained unchanged.
   Validation: The database volume, database path, and protected inputs were preserved.
 
+- [-] [B011] (P1) Keep the production TAuth tenant identity
+  Goal: Keep the production browser on its permanent TAuth tenant.
+  Requirements: Keep tenant `pinguin`, its user IDs, signing keys, and cookie names.
+  Requirements: Use `https://pingwin.mprlab.com` as the production browser origin.
+  Deliverables: Correct the production browser config, contract test, and deployment instructions.
+  Validation: The production browser used tenant `pingwin`, but the permanent TAuth tenant is `pinguin`.
+  Validation: The contract test failed before the config change and passed after it.
+  Validation: `make ci` passed with 100 percent Go coverage and 70 browser tests.
+  Validation: TAuth activated revision `2` with the current browser origin. The new-origin preflight returned `204`.
+  Validation: Complete the Google OAuth origin update and hosted sign-in check.
+
 ## Improvements
 
 - [x] [I008] (P1) Use one production deployment command
