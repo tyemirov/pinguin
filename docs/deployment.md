@@ -33,7 +33,7 @@ The tracked configuration declares these current production names:
 | HTTP API and SMTPS | `pingwin-api.mprlab.com` |
 | Inbound MX | `mx.pingwin.mprlab.com` |
 
-Native `make deploy` activated `v1.1.8` on November 11, 2026.
+Native `make deploy` activated `v1.1.10` on November 11, 2026.
 The source repository and Go module remain `github.com/tyemirov/pinguin`.
 The current runtime uses the Pingwin service names, browser keys, SMTP headers, and gRPC namespace.
 
@@ -58,10 +58,10 @@ The local Compose volume declaration keeps its existing `pinguin-data` identity.
 
 ## Current operational status
 
-The November 11, 2026 deployment completed for `v1.1.8`.
-Native state revision `774` contains six verified resources for owner `pinguin`, generation `2`.
+The November 11, 2026 deployment completed for `v1.1.10`.
+Native state revision `788` contains six verified resources for owner `pinguin`, generation `4`.
 The API and website health endpoints returned `200`.
-The public `/.mprlab-release.json` marker reported `v1.1.8`.
+The public `/.mprlab-release.json` marker reported `v1.1.10`.
 The private capability is `pingwin.grpc.private-lan`.
 The current gRPC interface returned `Unauthenticated` when the request contained no credentials.
 
@@ -75,7 +75,29 @@ The router targets host ports `8025` and `8465`, but Caddy published host ports 
 B010 set the manifest's `host_port` fields to match the existing router rules.
 Public SMTP and SMTPS checks now pass from the macOS CLI.
 All ten router rules and both HTTPS host bindings remained unchanged.
-Authenticated browser access and message delivery retain their separate acceptance procedures below.
+
+TAuth activated configuration revision `2` for the current browser origin.
+Hosted Google sign-in succeeded, and all six existing tenants remained available.
+Message delivery retains its separate acceptance procedure below.
+
+DNS for `pingwin.mprlab.com` uses four GitHub Pages A records and MX priority `10` to `mx.pingwin.mprlab.com`.
+The apex `mprlab.com` mail records remain unchanged.
+
+The dedicated Pingwin tenant owns verified sender domain `pingwin.mprlab.com` and SMTP identity `support@pingwin.mprlab.com`.
+The identity forwards to `marcopoloresearchlab@gmail.com`.
+Pingwin verified the challenge, SPF, and DMARC records.
+
+The PoodleScanner tenant moved to MPR Lab account `299335570791` on September 30, 2026, with verified message delivery.
+The previous shared forwarding and submission relays retained credentials from account `297841131854`.
+SES now verifies `pingwin.mprlab.com` and DKIM in account `299335570791`.
+
+The dedicated `pingwin-runtime-smtp` principal permits SMTP delivery from the six configured sender addresses.
+Its policy permits only `ses:SendRawEmail` for the three verified domains and the exact sender addresses.
+Future SMTP identities require an explicit policy update.
+
+The validated replacement credential is in the canonical private inputs and the Pingwin tenant profile.
+Native deployment and actual Gmail delivery remain pending.
+Existing tenant profiles and the PoodleScanner SMTP principal remain separate from this change.
 
 ## Managed tenant conversion
 

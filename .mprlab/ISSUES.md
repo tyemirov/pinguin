@@ -34,7 +34,7 @@ Resolved non-recurring issues are in [ISSUES.archive.md](ISSUES.archive.md).
   Validation: API and website health returned `200`. All ten router rules and HTTPS bindings remained unchanged.
   Validation: The database volume, database path, and protected inputs were preserved.
 
-- [-] [B011] (P1) Keep the production TAuth tenant identity
+- [x] [B011] (P1) Keep the production TAuth tenant identity
   Goal: Keep the production browser on its permanent TAuth tenant.
   Requirements: Keep tenant `pinguin`, its user IDs, signing keys, and cookie names.
   Requirements: Use `https://pingwin.mprlab.com` as the production browser origin.
@@ -43,9 +43,26 @@ Resolved non-recurring issues are in [ISSUES.archive.md](ISSUES.archive.md).
   Validation: The contract test failed before the config change and passed after it.
   Validation: `make ci` passed with 100 percent Go coverage and 70 browser tests.
   Validation: TAuth activated revision `2` with the current browser origin. The new-origin preflight returned `204`.
-  Validation: Complete the Google OAuth origin update and hosted sign-in check.
+  Validation: Google saved the current JavaScript origin. Hosted sign-in succeeded, and all six existing tenants remained available.
+  Validation: Native `make deploy` deployed `v1.1.10` at state revision `788`, generation `4`, with six verified resources.
+  Validation: Public SMTP checks returned `250`. API and website health checks returned `200`. Protected runtime inputs were preserved.
 
 ## Improvements
+
+- [-] [I009] (P1) Configure the Pingwin mail subdomain
+  Goal: Receive mail for `support@pingwin.mprlab.com` and forward it to `marcopoloresearchlab@gmail.com`.
+  Requirements: Preserve the apex domain mail records and all unrelated tenant records.
+  Deliverables: Configure DNS, a tenant, a verified sender domain, and the forwarding identity.
+  Validation: The local Squarespace TOTP helper passed provider verification.
+  Validation: All four authoritative nameservers returned the website A records and the new MX record. All unrelated registrar records were unchanged.
+  Validation: The dedicated Pingwin tenant and SMTP identity were created after user approval. The three sender domain checks passed.
+  Validation: The saved identity forwards to `marcopoloresearchlab@gmail.com`. Public SMTP accepted the recipient with `250` but returned `451` after message data.
+  Validation: The September 30 receipt confirms PoodleScanner delivery through MPR Lab account `299335570791`.
+  Validation: The previous shared SMTP credentials belonged to account `297841131854`.
+  Validation: SES verified `pingwin.mprlab.com` and its DKIM records in account `299335570791`. All twelve authoritative DNS checks passed.
+  Validation: The approved SMTP principal permits six exact sender addresses. TLS verification, SMTP authentication, and all six sender-policy checks passed.
+  Validation: The canonical relay inputs and the Pingwin tenant profile contain the validated credential. Existing tenant profiles remain unchanged.
+  Validation: Complete native deployment, public SMTP submission, and Gmail delivery acceptance.
 
 - [x] [I008] (P1) Use one production deployment command
   Goal: Use `make deploy` for the complete Gateway pipeline.
