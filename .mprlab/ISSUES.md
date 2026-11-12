@@ -49,7 +49,7 @@ Resolved non-recurring issues are in [ISSUES.archive.md](ISSUES.archive.md).
 
 ## Improvements
 
-- [-] [I009] (P1) Configure the Pingwin mail subdomain
+- [x] [I009] (P1) Configure the Pingwin mail subdomain
   Goal: Receive mail for `support@pingwin.mprlab.com` and forward it to `marcopoloresearchlab@gmail.com`.
   Requirements: Preserve the apex domain mail records and all unrelated tenant records.
   Deliverables: Configure DNS, a tenant, a verified sender domain, and the forwarding identity.
@@ -61,8 +61,11 @@ Resolved non-recurring issues are in [ISSUES.archive.md](ISSUES.archive.md).
   Validation: The previous shared SMTP credentials belonged to account `297841131854`.
   Validation: SES verified `pingwin.mprlab.com` and its DKIM records in account `299335570791`. All twelve authoritative DNS checks passed.
   Validation: The approved SMTP principal permits six exact sender addresses. TLS verification, SMTP authentication, and all six sender-policy checks passed.
-  Validation: The canonical relay inputs and the Pingwin tenant profile contain the validated credential. Existing tenant profiles remain unchanged.
-  Validation: Complete native deployment, public SMTP submission, and Gmail delivery acceptance.
+  Validation: The canonical relay inputs and the Pingwin tenant profile contain the validated credential. The other six tenant profiles remain unchanged.
+  Validation: Native `make deploy` completed for `v1.1.11` at state revision `790`, generation `5`, with six verified resources.
+  Validation: Public port `25` forwarded the message. Public port `465` authenticated the SMTP identity and accepted the outbound message.
+  Validation: Both test messages reached the destination Gmail inbox. SPF, DKIM, and DMARC passed for both messages.
+  Validation: All seven tenants and six SMTP identities remained available. The existing PoodleScanner SMTP principal and all unrelated DNS records remained unchanged.
 
 - [x] [I008] (P1) Use one production deployment command
   Goal: Use `make deploy` for the complete Gateway pipeline.

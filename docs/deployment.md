@@ -33,7 +33,7 @@ The tracked configuration declares these current production names:
 | HTTP API and SMTPS | `pingwin-api.mprlab.com` |
 | Inbound MX | `mx.pingwin.mprlab.com` |
 
-Native `make deploy` activated `v1.1.10` on November 11, 2026.
+Native `make deploy` activated `v1.1.11` on November 12, 2026.
 The source repository and Go module remain `github.com/tyemirov/pinguin`.
 The current runtime uses the Pingwin service names, browser keys, SMTP headers, and gRPC namespace.
 
@@ -58,10 +58,10 @@ The local Compose volume declaration keeps its existing `pinguin-data` identity.
 
 ## Current operational status
 
-The November 11, 2026 deployment completed for `v1.1.10`.
-Native state revision `788` contains six verified resources for owner `pinguin`, generation `4`.
+The November 12, 2026 deployment completed for `v1.1.11`.
+Native state revision `790` contains six verified resources for owner `pinguin`, generation `5`.
 The API and website health endpoints returned `200`.
-The public `/.mprlab-release.json` marker reported `v1.1.10`.
+The public `/.mprlab-release.json` marker reported `v1.1.11`.
 The private capability is `pingwin.grpc.private-lan`.
 The current gRPC interface returned `Unauthenticated` when the request contained no credentials.
 
@@ -96,8 +96,12 @@ Its policy permits only `ses:SendRawEmail` for the three verified domains and th
 Future SMTP identities require an explicit policy update.
 
 The validated replacement credential is in the canonical private inputs and the Pingwin tenant profile.
-Native deployment and actual Gmail delivery remain pending.
-Existing tenant profiles and the PoodleScanner SMTP principal remain separate from this change.
+Native deployment verified both shared relay credentials against those inputs.
+The other six tenant profiles and the PoodleScanner SMTP principal are unchanged.
+
+The public port `25` test reached the destination Gmail inbox through the configured forwarding route.
+The authenticated public port `465` test also reached that inbox.
+Both messages passed SPF, DKIM, and DMARC checks with DKIM domain `pingwin.mprlab.com`.
 
 ## Managed tenant conversion
 

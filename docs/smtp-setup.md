@@ -69,7 +69,7 @@ SMTP relay workflow:
    - TXT `_dmarc.acme.example` with a DMARC policy such as `v=DMARC1; p=none`.
 5. Click **Check DNS**. Pingwin enables SMTP identity creation when the domain status becomes **Verified**.
 6. Create an identity such as `alice@acme.example`.
-7. Use the settings in the Gmail SMTP settings dialog. Open **View password** to see the settings again.
+7. Use the settings in the **Gmail SMTP settings** dialog. Select the identity address to open the dialog again.
    - SMTP server: `pingwin-api.mprlab.com`
    - Port: `465`
    - Security: SSL
@@ -77,6 +77,23 @@ SMTP relay workflow:
 8. Use **Rotate credentials** in that modal when Gmail needs a new SMTP username and password.
 
 Pingwin validates that the SMTP login, envelope sender, and RFC 5322 `From` header all match the exact identity before accepting a message for delivery.
+
+## Upstream provider authorization
+
+Pingwin checks domain ownership, SPF, and DMARC through DNS.
+Upstream provider verification and sender permissions are separate requirements.
+
+For Amazon SES:
+
+1. Confirm the AWS account and region that own the configured SMTP credential.
+2. Verify each sender domain and its DKIM records in that account and region.
+3. Permit each SMTP identity address in the relay credential's IAM policy.
+4. Send test messages through the public submission and forwarding endpoints.
+5. Confirm actual delivery in the destination inbox.
+
+The shared forwarding and submission relays have separate service profiles.
+A tenant notification profile does not configure either shared relay.
+The [deployment guide](deployment.md#current-operational-status) records the production account and current sender policy.
 
 ## Inbound SMTP forwarding for shared addresses
 
