@@ -30,6 +30,7 @@ type Config struct {
 	HTTPTrustedProxies  []string
 	SMTPSubmission      SMTPSubmissionConfig
 	SMTPForwarding      SMTPForwardingConfig
+	EmailDelivery       EmailDeliveryConfig
 
 	TAuthSigningKey string
 	TAuthCookieName string
@@ -37,6 +38,18 @@ type Config struct {
 	// Simplified timeout settings (in seconds)
 	ConnectionTimeoutSec int
 	OperationTimeoutSec  int
+}
+
+// EmailDeliveryConfig selects the read-only SES delivery history source.
+type EmailDeliveryConfig struct {
+	Enabled          bool   `yaml:"enabled"`
+	Region           string `yaml:"region"`
+	AccountID        string `yaml:"accountId"`
+	LogGroup         string `yaml:"logGroup"`
+	ConfigurationSet string `yaml:"configurationSet"`
+	AccessKeyID      string `yaml:"accessKeyId"`
+	SecretAccessKey  string `yaml:"secretAccessKey"`
+	SessionToken     string `yaml:"sessionToken"`
 }
 
 // SMTPSubmissionConfig controls Gmail-facing SMTP submission listeners.
@@ -87,6 +100,7 @@ type fileConfig struct {
 	Web            webSection            `yaml:"web"`
 	SMTPSubmission smtpSubmissionSection `yaml:"smtpSubmission"`
 	SMTPForwarding smtpForwardingSection `yaml:"smtpForwarding"`
+	EmailDelivery  EmailDeliveryConfig   `yaml:"emailDelivery"`
 }
 
 type serverSection struct {
@@ -196,6 +210,16 @@ func loadConfigFromPath(configPath string) (Config, error) {
 		HTTPListenAddr:      strings.TrimSpace(fileCfg.Web.ListenAddr),
 		HTTPAllowedOrigins:  normalizeStrings(fileCfg.Web.AllowedOrigins),
 		HTTPTrustedProxies:  normalizeStrings(fileCfg.Web.TrustedProxies),
+		EmailDelivery: EmailDeliveryConfig{
+			Enabled:          fileCfg.EmailDelivery.Enabled,
+			Region:           strings.TrimSpace(fileCfg.EmailDelivery.Region),
+			AccountID:        strings.TrimSpace(fileCfg.EmailDelivery.AccountID),
+			LogGroup:         strings.TrimSpace(fileCfg.EmailDelivery.LogGroup),
+			ConfigurationSet: strings.TrimSpace(fileCfg.EmailDelivery.ConfigurationSet),
+			AccessKeyID:      strings.TrimSpace(fileCfg.EmailDelivery.AccessKeyID),
+			SecretAccessKey:  strings.TrimSpace(fileCfg.EmailDelivery.SecretAccessKey),
+			SessionToken:     strings.TrimSpace(fileCfg.EmailDelivery.SessionToken),
+		},
 		SMTPSubmission: SMTPSubmissionConfig{
 			Enabled:            fileCfg.SMTPSubmission.Enabled,
 			Hostname:           strings.TrimSpace(fileCfg.SMTPSubmission.Hostname),
@@ -300,6 +324,14 @@ func validateConfig(cfg Config) error {
 	if cfg.WebInterfaceEnabled {
 		requireString(cfg.HTTPListenAddr, "web.listenAddr", &errors)
 		requireString(cfg.TAuthSigningKey, "server.tauth.signingKey", &errors)
+	}
+	if cfg.EmailDelivery.Enabled {
+		requireString(cfg.EmailDelivery.Region, "emailDelivery.region", &errors)
+		requireString(cfg.EmailDelivery.AccountID, "emailDelivery.accountId", &errors)
+		requireString(cfg.EmailDelivery.LogGroup, "emailDelivery.logGroup", &errors)
+		requireString(cfg.EmailDelivery.ConfigurationSet, "emailDelivery.configurationSet", &errors)
+		requireString(cfg.EmailDelivery.AccessKeyID, "emailDelivery.accessKeyId", &errors)
+		requireString(cfg.EmailDelivery.SecretAccessKey, "emailDelivery.secretAccessKey", &errors)
 	}
 
 	if cfg.SMTPSubmission.Enabled {
