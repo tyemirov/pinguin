@@ -17,6 +17,7 @@ import (
 
 	"github.com/tyemirov/pinguin/internal/config"
 	"github.com/tyemirov/pinguin/internal/db"
+	"github.com/tyemirov/pinguin/internal/delivery"
 	"github.com/tyemirov/pinguin/internal/httpapi"
 	"github.com/tyemirov/pinguin/internal/model"
 	"github.com/tyemirov/pinguin/internal/service"
@@ -378,6 +379,7 @@ type serverDependencies struct {
 	newSMTPForwardingServer   func(smtpforwarding.Config) (smtpForwardingStarter, error)
 	newSessionValidator       func(sessionvalidator.Config) (httpapi.SessionValidator, error)
 	newHTTPServer             func(httpapi.Config) (httpServerRunner, error)
+	newDeliveryService        func(config.EmailDeliveryConfig) (*delivery.Service, error)
 	listen                    func(string, string) (net.Listener, error)
 	serveGRPC                 func(net.Listener, service.NotificationService, *tenant.Repository, *slog.Logger) error
 	exit                      func(int)
@@ -437,9 +439,10 @@ func productionServerDependencies() serverDependencies {
 		newHTTPServer: func(cfg httpapi.Config) (httpServerRunner, error) {
 			return httpapi.NewServer(cfg)
 		},
-		listen:    net.Listen,
-		serveGRPC: serveGRPC,
-		exit:      os.Exit,
+		newDeliveryService: buildDeliveryService,
+		listen:             net.Listen,
+		serveGRPC:          serveGRPC,
+		exit:               os.Exit,
 	}
 }
 
@@ -551,6 +554,15 @@ func runServer(args []string, dependencies serverDependencies) int {
 	}
 
 	if configuration.WebInterfaceEnabled {
+		var deliveryService *delivery.Service
+		if configuration.EmailDelivery.Enabled {
+			var deliveryErr error
+			deliveryService, deliveryErr = dependencies.newDeliveryService(configuration.EmailDelivery)
+			if deliveryErr != nil {
+				mainLogger.Error("Failed to initialize email delivery history", "error", deliveryErr)
+				return 1
+			}
+		}
 		sessionValidator, validatorErr := dependencies.newSessionValidator(sessionvalidator.Config{
 			SigningKey: []byte(configuration.TAuthSigningKey),
 			CookieName: configuration.TAuthCookieName,
@@ -567,6 +579,7 @@ func runServer(args []string, dependencies serverDependencies) int {
 			SessionValidator:    sessionValidator,
 			NotificationService: notificationSvc,
 			SMTPIdentityService: smtpIdentityService,
+			DeliveryService:     deliveryService,
 			TenantRepository:    tenantRepo,
 			Logger:              mainLogger,
 		})
@@ -648,6 +661,9 @@ func withServerDependencyDefaults(dependencies serverDependencies) serverDepende
 	if dependencies.newHTTPServer == nil {
 		dependencies.newHTTPServer = production.newHTTPServer
 	}
+	if dependencies.newDeliveryService == nil {
+		dependencies.newDeliveryService = production.newDeliveryService
+	}
 	if dependencies.listen == nil {
 		dependencies.listen = production.listen
 	}
@@ -658,6 +674,22 @@ func withServerDependencyDefaults(dependencies serverDependencies) serverDepende
 		dependencies.exit = production.exit
 	}
 	return dependencies
+}
+
+func buildDeliveryService(cfg config.EmailDeliveryConfig) (*delivery.Service, error) {
+	reader, err := delivery.NewCloudWatchReader(delivery.CloudWatchConfig{
+		Region:           cfg.Region,
+		AccountID:        cfg.AccountID,
+		LogGroup:         cfg.LogGroup,
+		ConfigurationSet: cfg.ConfigurationSet,
+		AccessKeyID:      cfg.AccessKeyID,
+		SecretAccessKey:  cfg.SecretAccessKey,
+		SessionToken:     cfg.SessionToken,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("email delivery provider: %w", err)
+	}
+	return delivery.NewService(reader, time.Now)
 }
 
 type smtpIdentityForwardingResolver struct {
