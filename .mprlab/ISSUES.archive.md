@@ -264,6 +264,55 @@ The active [ISSUES.md](ISSUES.md) file contains current work.
   Validation: The original request above does not replace that exception. See the [health guide](../docs/health.md).
   Validation: On 2026-11-18, the API, static health, and configuration tests passed.
 
+- [x] [I002] (P2) Normalize the managed governance sections.
+  Goal:
+  The managed governance sections match the current Governor templates.
+  Validation:
+  - Run the Governor check.
+  - Run `git diff --check`.
+  Validation: The 2026-11-18 check found drift in the Docker guide, Git guide, planning guide, and core policy.
+  Validation: Preserve the existing local changes when I002 reconciles these four files.
+  Validation: On 2026-11-18, the Governor check passed with no managed differences.
+  Validation: The repository policy source retains the four local validation sections without changes.
+  Validation: The core policy controls validation when the Git or planning guide differs.
+
+## Features
+
+- [x] [F001] (P1) {P002} Implement managed tenant configuration
+  Goal:
+  Let a TAuth user manage Pinguin tenants and tenant API access without tenant YAML.
+  Requirements:
+  - Keep the current TAuth and `mpr-ui` authentication integration.
+  - Derive each tenant owner from the validated TAuth user ID.
+  - Store tenant configuration in the Pinguin database.
+  - Require one complete external email delivery profile and one API credential during tenant creation.
+  - Store only the API credential digest.
+  - Provide permanent tenant deletion that removes all tenant-owned records.
+  - Make SMTP sender domains, identities, credentials, and forwarding routes tenant-owned.
+  - Remove tenant YAML, the global gRPC token, and gRPC caller-selected tenant IDs.
+  - Keep one forward-only runtime contract.
+  Deliverables:
+  - Implement the [managed tenant configuration plan](../docs/multitenancy-plan.md).
+  - Add the managed HTTP API, browser interface, gRPC authentication, and client contract.
+  - Add tenant-owned SMTP management under tenant resource routes.
+  - Add the exact managed schema and the bounded production data conversion command.
+  - Assign all current production tenants to the TAuth account for `temirov@gmail.com`.
+  - Remove the conversion command after user-owned production acceptance.
+  Validation:
+  - Pass all acceptance criteria in the managed tenant configuration plan.
+  - Validate the conversion with production-shape fixtures.
+  - Pass the complete `make ci` target.
+  Validation: Historical notes from the review before source cleanup follow.
+  Validation: The managed tenant source and automated acceptance suite are completed.
+  Validation: The remaining source change must remove the bounded conversion command, its package, tests, and image entry.
+  Validation: The [conversion record](../docs/multitenancy-plan.md#production-data-conversion) retains owner confirmation, conversion, and production acceptance requirements.
+  Validation: Review that record before the source cleanup. Run the complete code validation after the cleanup.
+  Validation: Retirement results follow. The September 15 records confirm authorized recovery of all four tenants under the retained owner.
+  Validation: The original conversion execution and historical notification preservation remain unverified.
+  Validation: The obsolete command, package, tests, and image executable are removed.
+  Validation: The image contract failed before removal and passed after removal.
+  Validation: The final code gate is `make ci`. SMS acceptance remains deferred by the user.
+
 ## Planning
 
 - [x] [P001] (P1) Define managed tenant configuration
