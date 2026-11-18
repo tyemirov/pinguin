@@ -1,5 +1,5 @@
 // @ts-check
-import { EMAIL_DELIVERY_STATUS_LABELS } from '../constants.js';
+import { EMAIL_DELIVERY_STATUS_LABELS, STRINGS } from '../constants.js';
 
 const POLL_INTERVAL_MS = 15_000;
 const EXPIRY_INTERVAL_MS = 1_000;
@@ -20,7 +20,7 @@ export function createEmailDelivery({ apiClient }) {
     tenants: /** @type {import('../types.d.js').TenantOption[]} */ ([]),
     selectedTenantId: '', searchQuery: '',
     messages: /** @type {import('../types.d.js').EmailDeliveryMessage[]} */ ([]), nextCursor: '',
-    isLoading: false, isLoadingMore: false, hasLoaded: false, errorMessage: '', loadedPages: 1,
+    isLoadingTenants: false, isLoading: false, isLoadingMore: false, hasLoaded: false, errorMessage: '', loadedPages: 1,
     requestSequence: 0, tenantSequence: 0, controller: null, pollTimer: null, expiryTimer: null,
     searchTimer: null, stopWatch: null, stopAuthWatch: null, resumeListener: null, visibilityListener: null,
     init() {
@@ -31,24 +31,25 @@ export function createEmailDelivery({ apiClient }) {
       this.stopWatch = this.$watch('searchQuery', () => this.changeSearch());
       this.resumeListener = () => {
         this.expireMessages();
-        if (document.visibilityState !== 'hidden') this.loadMessages();
+        if (document.visibilityState !== 'hidden') this.loadCurrentData();
       };
       this.visibilityListener = () => {
         this.expireMessages();
-        if (document.visibilityState !== 'hidden') this.loadMessages();
+        if (document.visibilityState !== 'hidden') this.loadCurrentData();
       };
       window.addEventListener('focus', this.resumeListener);
       window.addEventListener('online', this.resumeListener);
       window.addEventListener('pageshow', this.resumeListener);
       document.addEventListener('visibilitychange', this.visibilityListener);
       this.pollTimer = setInterval(() => {
-        if (document.visibilityState !== 'hidden' && !this.isLoading && !this.isLoadingMore) this.loadMessages();
+        if (document.visibilityState !== 'hidden' && !this.isLoading && !this.isLoadingMore) this.loadCurrentData();
       }, POLL_INTERVAL_MS);
       this.expiryTimer = setInterval(() => this.expireMessages(), EXPIRY_INTERVAL_MS);
       if (authenticated()) this.loadTenants();
     },
     clearSession() {
       this.tenantSequence += 1;
+      this.isLoadingTenants = false;
       this.invalidateRequest();
       this.tenants = []; this.selectedTenantId = ''; this.messages = []; this.nextCursor = '';
       this.errorMessage = ''; this.hasLoaded = false; this.loadedPages = 1;
@@ -59,20 +60,28 @@ export function createEmailDelivery({ apiClient }) {
       if (this.controller) this.controller.abort();
       this.controller = null; this.isLoading = false; this.isLoadingMore = false;
     },
+    loadCurrentData() {
+      return this.selectedTenantId ? this.loadMessages() : this.loadTenants();
+    },
     async loadTenants() {
+      if (!authenticated() || this.isLoadingTenants) return;
       const sequence = ++this.tenantSequence;
+      this.isLoadingTenants = true;
       this.invalidateRequest();
       try {
         const tenants = await apiClient.listTenants();
         if (!authenticated() || sequence !== this.tenantSequence) return;
         this.tenants = tenants;
+        this.errorMessage = '';
         this.selectedTenantId = tenants.some(tenant => tenant.id === this.selectedTenantId)
           ? this.selectedTenantId : tenants[0]?.id || '';
         if (this.selectedTenantId) await this.loadMessages();
       } catch (error) {
         if (!authenticated() || sequence !== this.tenantSequence) return;
         this.messages = []; this.tenants = []; this.selectedTenantId = '';
-        this.errorMessage = 'Unable to load tenants.';
+        this.errorMessage = STRINGS.tenants.loadError;
+      } finally {
+        if (sequence === this.tenantSequence) this.isLoadingTenants = false;
       }
     },
     changeTenant() {
