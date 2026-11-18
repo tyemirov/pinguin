@@ -1,0 +1,61 @@
+:root {
+  color-scheme: dark;
+  --font-family-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-family-mono: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
+  --surface: #0f1114;
+  --surface-raised: #16181c;
+  --surface-panel: #1f2126;
+  --surface-hover: #25282e;
+  --border-color: #2c2f36;
+  --border-hover: #3b3f48;
+  --text-color: #e3e5ec;
+  --text-support: #c4c7d1;
+  --text-muted: #727887;
+  --text-faint: #4b4f5b;
+  --accent: #5d93ff;
+  --accent-contrast: #0f1114;
+  --success: #95c23d;
+  --danger: #cc4b4b;
+  --warning: #f2b84b;
+  --information: #b487ff;
+  --font-size-base: 15px;
+  --font-size-ui: 0.78rem;
+  --font-size-title: 0.86rem;
+  --font-size-header: 0.95rem;
+  --font-size-meta: 0.65rem;
+  --radius-control: 4px;
+  --radius-panel: 6px;
+  --radius-overlay: 10px;
+  --radius-pill: 999px;
+  --gap-2xs: 0.25rem;
+  --gap-xs: 0.35rem;
+  --gap-sm: 0.5rem;
+  --gap-md: 0.75rem;
+  --gap-lg: 1rem;
+  --content-width: 960px;
+  --content-width-expanded: 1180px;
+  --footer-clearance: calc(4.75rem + env(safe-area-inset-bottom));
+  --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.3);
+  --shadow-toast: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --duration-fast: 120ms;
+  --duration-ui: 150ms;
+  --duration-panel: 250ms;
+}
+
+:root[data-theme="light"],
+body[data-theme="light"] {
+  color-scheme: light;
+  --surface: #f4f5f7;
+  --surface-raised: #ffffff;
+  --surface-panel: #e9ebef;
+  --surface-hover: #e0e3e8;
+  --border-color: #cfd3da;
+  --border-hover: #aeb4bf;
+  --text-color: #202329;
+  --text-support: #3f4651;
+  --text-muted: #687180;
+  --text-faint: #9299a5;
+  --accent-contrast: #ffffff;
+  --shadow-float: 0 8px 24px rgba(24, 30, 40, 0.16);
+  --shadow-toast: 0 4px 16px rgba(24, 30, 40, 0.18);
+}
