@@ -11,7 +11,7 @@ SMTP credentials authenticate one exact address.
 SMTP identity passwords are encrypted at rest and can be retrieved again by the authenticated owner.
 
 The hostnames below are the tracked production declarations.
-Their activation remains subject to the [deployment prerequisites](deployment.md).
+The [deployment record](deployment.md#recorded-operational-status) contains the November 12, 2026 SMTP acceptance results.
 Local Compose uses the ports in the [getting-started guide](getting-started.md).
 
 ## Authenticated SMTP submission for Gmail Send-As
@@ -93,7 +93,7 @@ For Amazon SES:
 
 The shared forwarding and submission relays have separate service profiles.
 A tenant notification profile does not configure either shared relay.
-The [deployment guide](deployment.md#current-operational-status) records the production account and current sender policy.
+The [deployment guide](deployment.md#recorded-operational-status) records the production account and current sender policy.
 
 ## Inbound SMTP forwarding for shared addresses
 

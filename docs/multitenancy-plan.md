@@ -2,13 +2,16 @@
 
 ## Status
 
-This document defines the implemented managed tenant contract and its remaining production acceptance gate.
+This document defines the implemented managed tenant contract, the remaining conversion code removal, and the separate production acceptance procedure.
 
 P001 verified this plan against the current product and deployment contracts on 2026-08-11.
 
 [P002](../.mprlab/ISSUES.archive.md) completed the product decisions on 2026-08-11.
 
-[F001](../.mprlab/ISSUES.md) remains active until the operator completes the production conversion, accepts the managed runtime, and removes the bounded conversion command.
+F001 remains active for removal of the bounded conversion command, its package, tests, and image entry.
+
+The November 12, 2026 [deployment record](deployment.md#recorded-operational-status) reports the managed production schema.
+Reconcile its conversion receipt, owner assignments, and acceptance record before the source cleanup.
 
 The source implementation and automated acceptance suite are completed.
 
@@ -518,7 +521,10 @@ Run `make ci` after the final implementation change.
 
 ## Production Data Conversion
 
-`cmd/convert-managed-tenants` is the bounded operator command for the production conversion.
+`cmd/convert-managed-tenants` is the bounded operator command for the former-schema conversion.
+
+The following procedure preserves the original conversion inputs and acceptance steps.
+For the recorded managed production database, reconcile the existing conversion receipt and owner assignments before removing the command.
 
 The command reads the former tenant YAML and one exhaustive mapping.
 
@@ -702,7 +708,7 @@ After the owner accepts these checks, delete the former tenant values from the p
 
 Publish a steady-state change that removes `cmd/convert-managed-tenants`, `internal/tenantconversion`, their tests, and this input runbook.
 
-Then archive F001.
+Archive F001 after the source cleanup and its required code validation pass. Keep production operations in the operational record.
 
 ## Implementation Order
 

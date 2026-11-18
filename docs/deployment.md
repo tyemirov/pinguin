@@ -42,7 +42,7 @@ This identity selects the current Gateway application graph during the public se
 Native convergence replaces that owner's routes and listeners with the current Pingwin declarations.
 The operator authorized removal of Pingwin deployment records on November 11, 2026.
 
-For the complete name change:
+The November 12 activation is recorded below. Use this checklist when changing production hostnames:
 
 1. Configure DNS for all three hostnames.
 2. Keep the permanent TAuth tenant `pinguin`, its user IDs, signing keys, and cookie names. Set its browser origin to `https://pingwin.mprlab.com`.
@@ -56,7 +56,7 @@ For the complete name change:
 
 The local Compose volume declaration keeps its existing `pinguin-data` identity.
 
-## Current operational status
+## Recorded operational status
 
 The November 12, 2026 deployment completed for `v1.1.11`.
 Native state revision `790` contains six verified resources for owner `pinguin`, generation `5`.
@@ -78,7 +78,7 @@ All ten router rules and both HTTPS host bindings remained unchanged.
 
 TAuth activated configuration revision `2` for the current browser origin.
 Hosted Google sign-in succeeded, and all six existing tenants remained available.
-Message delivery retains its separate acceptance procedure below.
+The message delivery results below complete the recorded I009 acceptance.
 
 DNS for `pingwin.mprlab.com` uses four GitHub Pages A records and MX priority `10` to `mx.pingwin.mprlab.com`.
 The apex `mprlab.com` mail records remain unchanged.
@@ -105,15 +105,16 @@ Both messages passed SPF, DKIM, and DMARC checks with DKIM domain `pingwin.mprla
 
 ## Managed tenant conversion
 
-The first managed release requires the bounded [production data conversion](multitenancy-plan.md#production-data-conversion) before deployment.
-The conversion assigns current production tenants to the TAuth account for `temirov@gmail.com`.
-The operator must confirm that account's TAuth user ID.
-The conversion requires a write-stopped maintenance window and the runbook's acceptance procedure.
+The recorded production database already has the managed schema.
+Reconcile the conversion receipt, tenant inventory, and owner assignment for `temirov@gmail.com` before removing the retained conversion command.
+The [conversion runbook](multitenancy-plan.md#production-data-conversion) preserves the former-schema procedure and its operator inputs.
+That procedure requires a write-stopped maintenance window and a confirmed TAuth user ID.
 Server startup never runs the conversion.
 
-F001 remains active until the operator accepts the managed runtime and the bounded conversion command is removed.
-The [managed tenant contract](multitenancy-plan.md) contains the complete conversion inputs, commands, and acceptance criteria.
-The [shared UI migration](mpr-ui-migration.md#activation) retains separate publication, cache, and hosted Google acceptance requirements.
+F001 remains active for removal of the conversion command, its package, tests, and image entry.
+Production acceptance records remain operational evidence, separate from implementation issue acceptance.
+The [managed tenant contract](multitenancy-plan.md) contains the source acceptance criteria and conversion procedure.
+The [shared UI activation record](mpr-ui-migration.md#activation) retains publication, cache, and hosted session checks.
 
 ## Production deployment
 
@@ -127,7 +128,7 @@ It sets `CI=1` and closes standard input.
 Gateway reads operator files from `MPRLAB_GATEWAY_OPERATOR_ROOT`.
 Its default operator root is `$HOME/.config/mprlab-gateway`.
 
-After the conversion and other production prerequisites, run the complete pipeline:
+After the applicable production prerequisites, run the complete pipeline:
 
 ```bash
 make deploy
@@ -154,6 +155,12 @@ The [SMTP setup guide](smtp-setup.md) preserves listener limits and DNS procedur
 
 ## Public acceptance
 
+PG-386 requested a public TLS SMTP dialogue from a disposable deployment host.
+The recorded B010 checks ran from the macOS CLI. I009 records destination delivery.
+The disposable-host qualification has no recorded result.
+Run and record that dialogue on a disposable software host to complete the historical environment-specific qualification.
+Keep this operational check separate from implementation issue acceptance.
+
 Complete the conversion acceptance procedure against the deployed managed runtime.
 Verify hosted Google sign-in, session restoration, and sign-out against the published shared UI contract.
 Verify browser publication through the public website and `/.mprlab-release.json`.
@@ -162,4 +169,4 @@ Verify Send-As and forwarding with the configured domains and destination inboxe
 Record the active release, lifecycle receipts, completed actions, and remaining acceptance items.
 
 Source changes and local test results do not establish production activation.
-The [issue tracker](../.mprlab/ISSUES.md) records the remaining F001 and I004 work.
+The [issue tracker](../.mprlab/ISSUES.md) records the remaining F001 source cleanup. I004 source acceptance is complete in the [issue archive](../.mprlab/ISSUES.archive.md).

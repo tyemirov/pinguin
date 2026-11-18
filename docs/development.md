@@ -43,6 +43,15 @@ The reusable notification worker comes from `github.com/tyemirov/utils/scheduler
 Its repository and dispatcher interfaces permit reuse in other binaries.
 The [delivery guide](smtp_delivery_plan.md) describes the Pingwin adapter and protocol tests.
 
+## Issue maintenance
+
+The [active tracker](../.mprlab/ISSUES.md) contains current work and recurring maintenance.
+The [resolved archive](../.mprlab/ISSUES.archive.md) preserves complete issue entries.
+The [historical snapshot](../issues.md/ISSUES.archive.md) preserves earlier identifiers and contracts.
+Review completed issues for documentation changes before moving them to the archive.
+Update the document that owns each changed product, architecture, operator, or testing contract.
+Keep production operations in the relevant runbook and use code validation for implementation closure.
+
 ## Visual baselines
 
 Snapshots use one host-independent path, locale `en-US`, and timezone `America/Los_Angeles`.
