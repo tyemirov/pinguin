@@ -40,11 +40,12 @@ API secrets are stored as SHA-256 digests and displayed once.
 The current source implements managed tenants, notification operations, sender-domain verification, SMTP submission, and shared-address forwarding.
 Provider-backed mailboxes remain planned work.
 
-Production acceptance for managed tenants and the shared UI remains pending in the project records.
-The Pingwin hostname change is declared for the next deployment.
-These source changes do not establish production availability.
-The [deployment guide](docs/deployment.md) preserves the conversion, rename, and activation prerequisites.
-The [issue tracker](.mprlab/ISSUES.md) records F001, F002, I004, and I007.
+The [deployment record](docs/deployment.md#recorded-operational-status) reports Pingwin `v1.1.11` activation on November 12, 2026.
+It records hosted Google sign-in, public SMTP acceptance, and delivery to the destination inbox.
+This cleanup did not repeat those production checks.
+Conversion records and shared UI cache and session checks remain in the operational guides.
+The [issue tracker](.mprlab/ISSUES.md) retains F001 for conversion code removal, F002 for mailboxes, and I002 for governance reconciliation.
+Completed implementation records, including I004 and I007, are in the [issue archive](.mprlab/ISSUES.archive.md).
 
 ## Quickstart
 
