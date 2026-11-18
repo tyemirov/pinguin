@@ -32,13 +32,14 @@
 
 ## HTTP API
 
-- `GET /runtime-config` returns `apiBaseUrl`, `tenantUrl`, `eventLogUrl`, and `smtpRelayUrl`. It contains no tenant or authentication-provider data.
+- `GET /runtime-config` returns `apiBaseUrl`, `tenantUrl`, `eventLogUrl`, `smtpRelayUrl`, and `emailDeliveryUrl`. It contains no tenant or authentication-provider data.
 - `GET /healthz` is the unauthenticated readiness route.
 - `/api/tenants` lists and creates owner-scoped tenants.
 - `/api/tenants/:tenant_id` reads, replaces tenant metadata, and permanently deletes one tenant.
 - Nested `email-profile`, `sms-profile`, and `api-credential` routes manage delivery data and the single programmatic credential.
 - Nested `notifications` routes list, reschedule, and cancel tenant notifications.
 - Nested `smtp-domains` and `smtp-identities` routes manage tenant-owned SMTP resources.
+- Nested `email-deliveries` reads sanitized SES delivery history for the tenant's currently verified sender domains.
 - Tenant creation requires `Idempotency-Key`. Mutating an existing versioned resource requires `If-Match`.
 - Authenticated responses use `Cache-Control: private, no-store`.
 - CORS permits configured browser origins and credentials. Forwarding headers affect `source_ip` only when the direct peer is in `web.trustedProxies`.
@@ -62,14 +63,14 @@
 
 ## Browser Structure
 
-- `index.html` is the public landing page. `tenants.html`, `event-log.html`, and `smtp-relay.html` are authenticated workspaces.
+- `index.html` is the public landing page. `tenants.html`, `event-log.html`, `smtp-relay.html`, and `email-delivery.html` are authenticated workspaces.
 - `web/js/runtime-config.js` buffers the latest public `mpr-ui` authentication event before the application module loads.
 - `web/js/core/sessionBridge.js` consumes the buffered event and the optional public profile snapshot.
 - `web/js/core/apiClient.js` owns the nested tenant HTTP routes.
 - `web/js/ui/tenantManagement.js` owns tenant creation, update, credential rotation, and permanent deletion.
-- Event log and SMTP relay require a selected owner tenant.
-- Each page uses the shared MPR header, three workspace destinations, and the seven-service MPR footer.
-- The shared header contains the brand, Tenants, Event log, SMTP relay, Docs, authentication, profile, and theme controls.
+- Event log, SMTP relay, and Email delivery require a selected owner tenant.
+- Each page uses the shared MPR header, four workspace destinations, and the seven-service MPR footer.
+- The shared header contains the brand, Tenants, Event log, SMTP relay, Email delivery, Docs, authentication, profile, and theme controls.
 - The active destination uses `aria-current="page"`.
 - The shared footer opens the seven-service **Built By Marco Polo Research Lab** catalog.
 - The workspace uses compact MPR styles with dark surfaces, dense controls, status chips, and a narrow work surface.
@@ -79,6 +80,7 @@
 - Each section uses one Alpine component with shared events and centralized strings.
 - `web/js/ui/notificationsList.js` owns Event log behavior.
 - `smtpDomains.js`, `smtpIdentities.js`, and `smtpCredentialsDialog.js` own SMTP workflows.
+- `emailDelivery.js` owns recent delivery search, automatic updates, recipient outcomes, observed forwarding links, and removal of expired entries.
 - The shared shell owns cross-tab authentication state.
 - Pingwin consumes the public `mpr-ui` events and optional profile snapshot.
 - Tenant API keys are displayed once during creation or rotation.
@@ -92,6 +94,18 @@
 - The obsolete conversion command and package have been removed after authorized tenant recovery.
 - Server startup creates the current schema for an empty database and rejects an obsolete non-empty schema.
 - The [production recovery record](docs/multitenancy-plan.md#production-data-conversion) preserves owner assignments, acceptance evidence, and operational limits.
+
+## Provider Delivery History
+
+- The optional `emailDelivery` service configuration selects a CloudWatch Logs group and an explicit read-only AWS credential.
+- `internal/delivery` uses the official AWS SDK, validates SES event envelopes, authorizes exact verified sender domains, and returns recipient-level outcomes.
+- Freely editable tenant email-profile From addresses never authorize log access.
+- The service excludes mail predating domain registration and enforces a moving 24-hour mail and event window.
+- It aggregates each SES message ID before pagination, preserving delivery evidence across out-of-order events and later complaints.
+- Forwarding correlation uses observed headers and authorized parent and child attempts; it does not authenticate original-message ownership.
+- The API exposes no raw headers, message bodies, AWS credentials, or provider filter controls.
+- Pingwin keeps no second delivery-history store or cache. CloudWatch's retention and asynchronous physical deletion remain provider concerns.
+- Runtime activation and exact permissions are in the [delivery-history guide](docs/ses-delivery-logging.md).
 
 ## Validation
 

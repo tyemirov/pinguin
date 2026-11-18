@@ -116,3 +116,16 @@ test-image:
 	$(SHORT_TIMEOUT) docker run --rm --entrypoint pingwin $(TEST_IMAGE) --help
 	$(SHORT_TIMEOUT) docker run --rm --entrypoint pingwin-doctor $(TEST_IMAGE) --help
 	$(SHORT_TIMEOUT) docker run --rm --entrypoint /bin/sh $(TEST_IMAGE) -c 'test ! -e /usr/local/bin/pingwin-convert-managed-tenants'
+
+.PHONY: test-delivery test-delivery-contract test-delivery-coverage test-delivery-frontend
+test-delivery:
+	$(LONG_TIMEOUT) go test ./internal/delivery ./internal/httpapi ./internal/config ./cmd/server -run 'Delivery|CloudWatch' -count=1
+
+test-delivery-contract:
+	$(LONG_TIMEOUT) go test ./tests/config -run '^(TestGORMQueriesUseStructuredClauses|TestServiceEnvExamplesCoverConfigTemplates|TestServerRuntimeEnvironmentAccessIsCentralized|TestRepositoryOwnsCompleteVersionlessDeployment|TestProductionLifecycleUsesInstalledGateway)$$' -count=1
+
+test-delivery-coverage:
+	$(LONG_TIMEOUT) go test ./internal/delivery ./internal/httpapi -coverprofile=$(COVERAGE_PROFILE) -run 'Delivery|CloudWatch' -count=1
+
+test-delivery-frontend:
+	CI=1 $(LONG_TIMEOUT) npm test -- email-delivery.spec.ts dashboard.spec.ts ux.spec.ts

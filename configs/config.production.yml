@@ -18,6 +18,15 @@ web:
     - ${HTTP_ALLOWED_ORIGIN2}
     - ${HTTP_ALLOWED_ORIGIN3}
 
+emailDelivery:
+  enabled: ${EMAIL_DELIVERY_ENABLED}
+  region: us-east-1
+  accountId: "299335570791"
+  logGroup: /aws/events/pingwin-ses-delivery
+  configurationSet: pingwin-delivery-events
+  accessKeyId: ${EMAIL_DELIVERY_ACCESS_KEY_ID}
+  secretAccessKey: ${EMAIL_DELIVERY_SECRET_ACCESS_KEY}
+
 smtpSubmission:
   enabled: true
   hostname: ${SMTP_SUBMISSION_HOSTNAME}

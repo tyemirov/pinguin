@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/tyemirov/pinguin/internal/delivery"
 	"github.com/tyemirov/pinguin/internal/model"
 	"github.com/tyemirov/pinguin/internal/service"
 	"github.com/tyemirov/pinguin/internal/smtpidentity"
@@ -43,6 +44,7 @@ type Config struct {
 	SessionValidator     SessionValidator
 	NotificationService  service.NotificationService
 	SMTPIdentityService  *smtpidentity.Service
+	DeliveryService      *delivery.Service
 	TenantRepository     *tenant.Repository
 	Logger               *slog.Logger
 	ReadHeaderTimeout    time.Duration
@@ -116,6 +118,7 @@ func NewServer(cfg Config) (*Server, error) {
 	protected.GET("/tenants/:tenant_id/api-credential", tenantHandler.getCredential)
 	protected.PUT("/tenants/:tenant_id/api-credential", tenantHandler.rotateCredential)
 	protected.GET("/tenants/:tenant_id/notifications", handler.listNotifications)
+	protected.GET(emailDeliveriesPath, (&Server{config: cfg, logger: cfg.Logger}).listEmailDeliveries)
 	protected.PATCH("/tenants/:tenant_id/notifications/:notification_id", handler.patchNotification)
 	if cfg.SMTPIdentityService != nil {
 		identityHandler := newSMTPIdentityHandler(cfg.SMTPIdentityService, cfg.TenantRepository, cfg.Logger)
@@ -469,19 +472,21 @@ func pickDuration(candidate time.Duration, fallback time.Duration) time.Duration
 }
 
 type runtimeConfigPayload struct {
-	APIBaseURL   string `json:"apiBaseUrl"`
-	TenantURL    string `json:"tenantUrl"`
-	EventLogURL  string `json:"eventLogUrl"`
-	SMTPRelayURL string `json:"smtpRelayUrl"`
+	APIBaseURL       string `json:"apiBaseUrl"`
+	TenantURL        string `json:"tenantUrl"`
+	EventLogURL      string `json:"eventLogUrl"`
+	SMTPRelayURL     string `json:"smtpRelayUrl"`
+	EmailDeliveryURL string `json:"emailDeliveryUrl"`
 }
 
 func serveRuntimeConfig() gin.HandlerFunc {
 	return func(contextGin *gin.Context) {
 		payload := runtimeConfigPayload{
-			APIBaseURL:   buildAPIBaseURL(contextGin.Request),
-			TenantURL:    "/tenants.html",
-			EventLogURL:  "/event-log.html",
-			SMTPRelayURL: "/smtp-relay.html",
+			APIBaseURL:       buildAPIBaseURL(contextGin.Request),
+			TenantURL:        "/tenants.html",
+			EventLogURL:      "/event-log.html",
+			SMTPRelayURL:     "/smtp-relay.html",
+			EmailDeliveryURL: "/email-delivery.html",
 		}
 		contextGin.JSON(http.StatusOK, payload)
 	}

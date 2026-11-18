@@ -8,8 +8,9 @@ import { createSMTPWorkspace } from './ui/smtpIdentities.js';
 import { dispatchRefresh } from './core/events.js';
 import { createToastCenter } from './ui/toastCenter.js';
 import { createTenantManagement } from './ui/tenantManagement.js';
+import { createEmailDelivery } from './ui/emailDelivery.js';
 
-const PROTECTED_PAGE_IDS = new Set(['tenants', 'event-log', 'smtp-relay']);
+const PROTECTED_PAGE_IDS = new Set(['tenants', 'event-log', 'smtp-relay', 'email-delivery']);
 
 window.Alpine = Alpine;
 Alpine.store('auth', createAuthStore());
@@ -33,6 +34,7 @@ Alpine.data('smtpWorkspace', () =>
     actions: STRINGS.actions,
   }),
 );
+Alpine.data('emailDelivery', () => createEmailDelivery({ apiClient }));
 Alpine.data('toastCenter', () => createToastCenter());
 Alpine.data('tenantManagement', () =>
   createTenantManagement({ apiClient, strings: STRINGS.tenants, actions: STRINGS.actions }),

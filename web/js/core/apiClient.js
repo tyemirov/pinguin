@@ -1,5 +1,5 @@
 // @ts-check
-import { RUNTIME_CONFIG } from '../constants.js';
+import { RUNTIME_CONFIG, EMAIL_DELIVERY_STATUS_LABELS } from '../constants.js';
 
 function getFetcher() {
   return (input, init = {}) => window.MPRUI.authenticatedFetch(
@@ -108,6 +108,43 @@ function tenantPath(tenantId, suffix = '') {
   return `/tenants/${encodeURIComponent(normalized)}${suffix}`;
 }
 
+const DELIVERY_STATUSES = new Set(Object.keys(EMAIL_DELIVERY_STATUS_LABELS));
+const DELIVERY_SUFFIX = '/email-deliveries';
+
+function validDeliveryTime(value) {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+/** @param {any} payload @returns {import('../types.d.js').EmailDeliveryPage} */
+function mapDeliveryPage(payload) {
+  if (!payload || !Array.isArray(payload.messages) || !validDeliveryTime(payload.window_start)
+      || !validDeliveryTime(payload.as_of) || (payload.next_cursor !== undefined && typeof payload.next_cursor !== 'string')) {
+    throw new Error('delivery_payload_invalid');
+  }
+  const messages = payload.messages.map((item) => {
+    if (!item || typeof item.id !== 'string' || !item.id || typeof item.from !== 'string'
+        || typeof item.subject !== 'string' || !['sent_at', 'updated_at', 'expires_at'].every(key => validDeliveryTime(item[key]))
+        || !Array.isArray(item.recipients) || !Array.isArray(item.forwarded_message_ids)
+        || !item.forwarded_message_ids.every(id => typeof id === 'string')
+        || (item.parent_message_id !== undefined && typeof item.parent_message_id !== 'string')) {
+      throw new Error('delivery_payload_invalid');
+    }
+    const recipients = item.recipients.map((recipient) => {
+      if (!recipient || typeof recipient.address !== 'string' || !DELIVERY_STATUSES.has(recipient.status)
+          || !validDeliveryTime(recipient.updated_at) || typeof recipient.response !== 'string'
+          || (recipient.delivered_at !== undefined && !validDeliveryTime(recipient.delivered_at))) {
+        throw new Error('delivery_payload_invalid');
+      }
+      return { address: recipient.address, status: recipient.status, updatedAt: recipient.updated_at,
+        response: recipient.response, deliveredAt: recipient.delivered_at || '' };
+    });
+    return { id: item.id, from: item.from, subject: item.subject, sentAt: item.sent_at,
+      updatedAt: item.updated_at, expiresAt: item.expires_at, recipients,
+      parentMessageId: item.parent_message_id || '', forwardedMessageIds: [...item.forwarded_message_ids] };
+  });
+  return { messages, nextCursor: payload.next_cursor || '', windowStart: payload.window_start, asOf: payload.as_of };
+}
+
 export function createApiClient(baseUrl = RUNTIME_CONFIG.apiBaseUrl) {
   const normalizedBase = baseUrl.replace(/\/$/, '') || '/api';
 
@@ -130,6 +167,14 @@ export function createApiClient(baseUrl = RUNTIME_CONFIG.apiBaseUrl) {
   }
 
   return {
+    /** @param {string} tenantId @param {import('../types.d.js').EmailDeliveryListOptions} options */
+    async listEmailDeliveries(tenantId, options = {}) {
+      const params = new URLSearchParams({ q: options.query || '', limit: String(options.limit || 50) });
+      if (options.cursor) params.set('cursor', options.cursor);
+      return mapDeliveryPage(await request(`${tenantPath(tenantId, DELIVERY_SUFFIX)}?${params}`, {
+        method: 'GET', signal: options.signal, cache: 'no-store',
+      }));
+    },
     async listTenants() {
       const payload = await request('/tenants', { method: 'GET' });
       return (Array.isArray(payload?.tenants) ? payload.tenants : []).map(mapTenant).filter(Boolean);

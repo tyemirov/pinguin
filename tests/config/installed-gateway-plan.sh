@@ -57,6 +57,9 @@ selected_input_file="$application_root/.mprlab/deploy/.env"
 cat >"$selected_input_file" <<'INPUTS'
 CONNECTION_TIMEOUT_SEC=5
 DATABASE_PATH=/app/data/fixture.db
+EMAIL_DELIVERY_ENABLED=true
+EMAIL_DELIVERY_ACCESS_KEY_ID=fixture-delivery-reader
+EMAIL_DELIVERY_SECRET_ACCESS_KEY=fixture-delivery-secret
 HTTP_ALLOWED_ORIGIN1=https://pingwin.fixture.invalid
 HTTP_ALLOWED_ORIGIN2=http://127.0.0.1:4174
 HTTP_ALLOWED_ORIGIN3=http://localhost:4174

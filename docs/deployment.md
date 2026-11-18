@@ -95,9 +95,13 @@ The dedicated `pingwin-runtime-smtp` principal permits SMTP delivery from the si
 Its policy permits only `ses:SendRawEmail` for the three verified domains and the exact sender addresses.
 Future SMTP identities require an explicit policy update.
 
+On November 18, 2026, SES delivery-event logging was enabled for all three SES domains with one-day CloudWatch Logs retention.
+The [delivery logging guide](ses-delivery-logging.md) records the configuration, generic recipient and forwarding queries, retention semantics, and live acceptance results.
+
 The validated replacement credential is in the canonical private inputs and the Pingwin tenant profile.
 Native deployment verified both shared relay credentials against those inputs.
-The other six tenant profiles and the PoodleScanner SMTP principal are unchanged.
+That credential replacement preserved the other six tenant profiles and the PoodleScanner SMTP principal.
+The November 18 logging activation added the configuration-set ARN to both SMTP principals' policies while preserving their credentials and sender restrictions.
 
 The public port `25` test reached the destination Gmail inbox through the configured forwarding route.
 The authenticated public port `465` test also reached that inbox.

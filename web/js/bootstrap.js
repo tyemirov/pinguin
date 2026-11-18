@@ -5,6 +5,7 @@ const DEFAULT_CONFIG = Object.freeze({
 	tenantUrl: '/tenants.html',
   eventLogUrl: '/event-log.html',
   smtpRelayUrl: '/smtp-relay.html',
+  emailDeliveryUrl: '/email-delivery.html',
 });
 const RUNTIME_CONFIG_URL_HINT =
   typeof window.__PINGWIN_RUNTIME_CONFIG_URL === 'string'
@@ -103,6 +104,9 @@ function mergeConfig(base, overrides) {
       if (remote && typeof remote.smtpRelayUrl === 'string') {
         runtimeOverrides.smtpRelayUrl = remote.smtpRelayUrl;
       }
+      if (remote && typeof remote.emailDeliveryUrl === 'string') {
+        runtimeOverrides.emailDeliveryUrl = remote.emailDeliveryUrl;
+      }
       effectiveConfig = mergeConfig(effectiveConfig, apiOverride);
       effectiveConfig = mergeConfig(effectiveConfig, runtimeOverrides);
     } catch (error) {
@@ -115,6 +119,7 @@ function mergeConfig(base, overrides) {
 	tenantUrl: effectiveConfig.tenantUrl || DEFAULT_CONFIG.tenantUrl,
     eventLogUrl: effectiveConfig.eventLogUrl || DEFAULT_CONFIG.eventLogUrl,
     smtpRelayUrl: effectiveConfig.smtpRelayUrl || DEFAULT_CONFIG.smtpRelayUrl,
+    emailDeliveryUrl: effectiveConfig.emailDeliveryUrl || DEFAULT_CONFIG.emailDeliveryUrl,
   };
   window.__PINGWIN_CONFIG__ = finalConfig;
   window.dispatchEvent(new CustomEvent('pingwin:config-updated', { detail: finalConfig }));
