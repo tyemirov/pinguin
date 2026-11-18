@@ -64,7 +64,7 @@ async function expectWorkspaceNavigation(page: Page, currentLabel: string) {
   const navigation = header.getByRole('navigation', { name: 'Primary navigation' });
   const workspaceLinks = navigation.locator('.workspace-navigation__link');
   await expect(navigation).toBeVisible();
-  await expect(workspaceLinks).toHaveText(['Tenants', 'Event log', 'SMTP relay']);
+  await expect(workspaceLinks).toHaveText(['Tenants', 'Event log', 'SMTP relay', 'Email delivery']);
   await expect(workspaceLinks.filter({ hasText: currentLabel })).toHaveAttribute(
     'aria-current',
     'page',
@@ -94,7 +94,7 @@ test.describe('Compact MPR UX', () => {
       await expectWorkSurfaceClearOfFooter(page);
 
       await configureRuntime(page, { authenticated: true });
-      for (const path of ['/tenants.html', '/event-log.html', '/smtp-relay.html']) {
+      for (const path of ['/tenants.html', '/event-log.html', '/smtp-relay.html', '/email-delivery.html']) {
         await page.goto(path);
         await expectNoHorizontalOverflow(page);
         await expectWorkSurfaceClearOfFooter(page);
@@ -108,6 +108,7 @@ test.describe('Compact MPR UX', () => {
       { path: '/tenants.html', authenticated: true },
       { path: '/event-log.html', authenticated: true },
       { path: '/smtp-relay.html', authenticated: true },
+      { path: '/email-delivery.html', authenticated: true },
     ];
 
     for (const pageContract of pages) {
@@ -136,6 +137,10 @@ test.describe('Compact MPR UX', () => {
     await page.goto('/smtp-relay.html');
     await expectCompactMPRTheme(page);
     await expectWorkspaceNavigation(page, 'SMTP relay');
+
+    await page.goto('/email-delivery.html');
+    await expectCompactMPRTheme(page);
+    await expectWorkspaceNavigation(page, 'Email delivery');
   });
 
   test('places the workspace menu to the right of the Pingwin identity', async ({ page }) => {
@@ -164,6 +169,7 @@ test.describe('Compact MPR UX', () => {
       { path: '/tenants.html', authenticated: true },
       { path: '/event-log.html', authenticated: true },
       { path: '/smtp-relay.html', authenticated: true },
+      { path: '/email-delivery.html', authenticated: true },
     ];
 
     for (const pageContract of pages) {

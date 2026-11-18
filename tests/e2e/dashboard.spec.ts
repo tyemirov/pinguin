@@ -71,7 +71,7 @@ test.describe('Authenticated pages', () => {
       .getByRole('navigation', { name: 'Primary navigation' });
     await expect(workspaceNavigation).toBeVisible();
     const menuLinks = workspaceNavigation.locator('.workspace-navigation__link');
-    await expect(menuLinks).toHaveText(['Tenants', 'Event log', 'SMTP relay']);
+    await expect(menuLinks).toHaveText(['Tenants', 'Event log', 'SMTP relay', 'Email delivery']);
     await expect(menuLinks.nth(0)).toHaveAttribute('href', '/tenants.html');
     await expect(menuLinks.nth(1)).toHaveAttribute('href', '/event-log.html');
     await expect(menuLinks.nth(2)).toHaveAttribute('href', '/smtp-relay.html');
@@ -92,6 +92,7 @@ test.describe('Authenticated pages', () => {
       'Tenants',
       'Event log',
       'SMTP relay',
+      'Email delivery',
     ]);
     await expect(smtpMenu.locator('.workspace-navigation__link').nth(2)).toHaveAttribute(
       'aria-current',
