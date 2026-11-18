@@ -46,7 +46,7 @@ Complete consumer preparation under mpr-ui I009 before shared publication.
 Use `mpr-ui/docs/config-migration-deployment-plan.md` for the coordinated interruption and cache procedure.
 Verify the published HTML, YAML, loader, bundle, and CSS as one current contract.
 Verify real Google sign-in, session restoration, and sign-out on the hosted frontend.
-Keep the managed tenant conversion records separate from this source migration. F001 retains the conversion code removal.
+Keep the managed tenant recovery records separate from this source migration. F001 retires the obsolete converter.
 
 The [public asset record](mpr-ui/public-assets-2026-09-09.json) contains eight HTTP observations from one network location.
 The application pages and configuration declare `max-age=600`.

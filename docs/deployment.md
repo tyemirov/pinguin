@@ -103,18 +103,14 @@ The public port `25` test reached the destination Gmail inbox through the config
 The authenticated public port `465` test also reached that inbox.
 Both messages passed SPF, DKIM, and DMARC checks with DKIM domain `pingwin.mprlab.com`.
 
-## Managed tenant conversion
+## Managed tenant recovery
 
-The recorded production database already has the managed schema.
-Reconcile the conversion receipt, tenant inventory, and owner assignment for `temirov@gmail.com` before removing the retained conversion command.
-The [conversion runbook](multitenancy-plan.md#production-data-conversion) preserves the former-schema procedure and its operator inputs.
-That procedure requires a write-stopped maintenance window and a confirmed TAuth user ID.
-Server startup never runs the conversion.
-
-F001 remains active for removal of the conversion command, its package, tests, and image entry.
-Production acceptance records remain operational evidence, separate from implementation issue acceptance.
-The [managed tenant contract](multitenancy-plan.md) contains the source acceptance criteria and conversion procedure.
-The [shared UI activation record](mpr-ui-migration.md#activation) retains publication, cache, and hosted session checks.
+The [production recovery record](multitenancy-plan.md#production-data-conversion) documents the authorized September 15 tenant restoration, owner assignments, and acceptance receipts.
+The obsolete converter and its image executable have been removed from the source.
+SMS acceptance was deferred by the user. Client keys were updated locally; client application redeployment was not recorded.
+These operational items remain separate from F001 source completion.
+The original converter execution and historical notification preservation remain unverified.
+The [shared UI activation record](mpr-ui-migration.md#activation) retains separate cache and hosted session checks.
 
 ## Production deployment
 
@@ -161,7 +157,7 @@ The disposable-host qualification has no recorded result.
 Run and record that dialogue on a disposable software host to complete the historical environment-specific qualification.
 Keep this operational check separate from implementation issue acceptance.
 
-Complete the conversion acceptance procedure against the deployed managed runtime.
+Verify the managed tenant inventory and owner access against the deployed runtime.
 Verify hosted Google sign-in, session restoration, and sign-out against the published shared UI contract.
 Verify browser publication through the public website and `/.mprlab-release.json`.
 Verify the API health route and the protocol-native gRPC and SMTP routes.
@@ -169,4 +165,4 @@ Verify Send-As and forwarding with the configured domains and destination inboxe
 Record the active release, lifecycle receipts, completed actions, and remaining acceptance items.
 
 Source changes and local test results do not establish production activation.
-The [issue tracker](../.mprlab/ISSUES.md) records the remaining F001 source cleanup. I004 source acceptance is complete in the [issue archive](../.mprlab/ISSUES.archive.md).
+The [issue archive](../.mprlab/ISSUES.archive.md) records F001 and I004 source acceptance.

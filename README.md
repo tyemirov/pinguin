@@ -43,9 +43,9 @@ Provider-backed mailboxes remain planned work.
 The [deployment record](docs/deployment.md#recorded-operational-status) reports Pingwin `v1.1.11` activation on November 12, 2026.
 It records hosted Google sign-in, public SMTP acceptance, and delivery to the destination inbox.
 This cleanup did not repeat those production checks.
-Conversion records and shared UI cache and session checks remain in the operational guides.
-The [issue tracker](.mprlab/ISSUES.md) retains F001 for conversion code removal, F002 for mailboxes, and I002 for governance reconciliation.
-Completed implementation records, including I004 and I007, are in the [issue archive](.mprlab/ISSUES.archive.md).
+Tenant recovery records and shared UI cache and session checks remain in the operational guides.
+The [issue tracker](.mprlab/ISSUES.md) retains F002 for provider-backed mailboxes.
+Completed implementation records, including F001, I004, and I007, are in the [issue archive](.mprlab/ISSUES.archive.md).
 
 ## Quickstart
 
@@ -104,7 +104,7 @@ The [API guide](docs/api.md) contains CLI examples, complete `grpcurl` commands,
 | [Delivery behavior](docs/smtp_delivery_plan.md) | Notification and SMTP delivery paths, storage, retries, and transport limits. |
 | [Deployment](docs/deployment.md) | Release, publication, deployment, retained data, and production acceptance. |
 | [Architecture](ARCHITECTURE.md) | Components, ownership, persistence, browser modules, and deployment boundaries. |
-| [Managed tenant contract](docs/multitenancy-plan.md) | Resource schemas, API details, conversion procedure, and acceptance criteria. |
+| [Managed tenant contract](docs/multitenancy-plan.md) | Resource schemas, API details, recovery evidence, and acceptance criteria. |
 | [Shared UI migration](docs/mpr-ui-migration.md) | Shared-library qualification and production activation requirements. |
 
 ## Development

@@ -108,3 +108,11 @@ test-deployment-contract:
 
 test-installed-plan:
 	$(LONG_TIMEOUT) go test ./tests/config -run '^TestInstalledGatewayPlansCurrentTrackedManifest$$' -count=1
+
+TEST_IMAGE ?= pingwin-test:local
+.PHONY: test-image
+test-image:
+	$(LONG_TIMEOUT) docker build -t $(TEST_IMAGE) .
+	$(SHORT_TIMEOUT) docker run --rm --entrypoint pingwin $(TEST_IMAGE) --help
+	$(SHORT_TIMEOUT) docker run --rm --entrypoint pingwin-doctor $(TEST_IMAGE) --help
+	$(SHORT_TIMEOUT) docker run --rm --entrypoint /bin/sh $(TEST_IMAGE) -c 'test ! -e /usr/local/bin/pingwin-convert-managed-tenants'

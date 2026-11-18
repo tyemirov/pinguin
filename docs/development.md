@@ -29,6 +29,7 @@ The CLI and doctor build commands are in the [API](api.md) and [configuration](c
 | `make lint` | Run go vet, staticcheck, and ineffassign. |
 | `make test` | Run fast Go packages and integration packages. |
 | `make test-coverage` | Require 100% total Go statement coverage. |
+| `make test-image` | Build the production image and verify the server, doctor, and current executable set. |
 | `make test-frontend` | Run the Playwright browser suite. |
 | `make test-shared-ui` | Run focused shared-library candidate scenarios. |
 | `make ci` | Run format checks, analysis, Go tests, coverage, and browser acceptance. |
