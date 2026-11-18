@@ -33,6 +33,12 @@ mprlab_resources:
               variable: DATABASE_PATH
             - id: deploy-sudo-password-tutosh
               variable: DEPLOY_SUDO_PASSWORD_TUTOSH
+            - id: email-delivery-enabled
+              variable: EMAIL_DELIVERY_ENABLED
+            - id: email-delivery-access-key-id
+              variable: EMAIL_DELIVERY_ACCESS_KEY_ID
+            - id: email-delivery-secret-access-key
+              variable: EMAIL_DELIVERY_SECRET_ACCESS_KEY
             - id: http-allowed-origin1
               variable: HTTP_ALLOWED_ORIGIN1
             - id: http-allowed-origin2
@@ -267,6 +273,12 @@ mprlab_resources:
                           name: CONNECTION_TIMEOUT_SEC
                         - input: database-path
                           name: DATABASE_PATH
+                        - input: email-delivery-enabled
+                          name: EMAIL_DELIVERY_ENABLED
+                        - input: email-delivery-access-key-id
+                          name: EMAIL_DELIVERY_ACCESS_KEY_ID
+                        - input: email-delivery-secret-access-key
+                          name: EMAIL_DELIVERY_SECRET_ACCESS_KEY
                         - input: http-allowed-origin1
                           name: HTTP_ALLOWED_ORIGIN1
                         - input: http-allowed-origin2
