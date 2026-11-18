@@ -21,6 +21,30 @@ async function setup(page: Page) {
 test.describe('Email delivery', () => {
   test.beforeEach(async ({ request }) => resetNotifications(request));
 
+  for (const trigger of ['poll', 'online', 'focus', 'pageshow', 'visibilitychange']) {
+    test(`recovers tenant discovery after a transient failure on ${trigger}`, async ({ page }) => {
+      await setup(page);
+      await page.clock.install();
+      let tenantsAvailable = false;
+      await page.route('**/api/tenants', route => tenantsAvailable
+        ? route.continue()
+        : route.fulfill({ status: 503, json: { error: { message: 'Temporarily unavailable' } } }));
+      await page.route('**/api/tenants/*/email-deliveries?*', route => route.fulfill({ json: payload([delivery()]) }));
+      await page.goto('/email-delivery.html');
+      await expect(page.getByRole('alert')).toHaveText('Unable to load tenants.');
+      await expect(page.getByLabel('Tenant', { exact: true })).toBeDisabled();
+      tenantsAvailable = true;
+      if (trigger === 'poll') await page.clock.fastForward(15_000);
+      else await page.evaluate(eventName => {
+        const target = eventName === 'visibilitychange' ? document : window;
+        target.dispatchEvent(new Event(eventName));
+      }, trigger);
+      await expect(page.getByText('Catalog review', { exact: true })).toBeVisible();
+      await expect(page.getByLabel('Tenant', { exact: true })).toBeEnabled();
+      await expect(page.getByRole('alert')).toHaveCount(0);
+    });
+  }
+
   test('shows generic recipient outcomes and a forwarding chain on a narrow screen', async ({ page }, testInfo) => {
     await setup(page);
     const original = delivery();
