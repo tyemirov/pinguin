@@ -2,16 +2,13 @@
 
 ## Status
 
-This document defines the implemented managed tenant contract, the remaining conversion code removal, and the separate production acceptance procedure.
+This document defines the implemented managed tenant contract and its production recovery record.
 
 P001 verified this plan against the current product and deployment contracts on 2026-08-11.
 
 [P002](../.mprlab/ISSUES.archive.md) completed the product decisions on 2026-08-11.
 
-F001 remains active for removal of the bounded conversion command, its package, tests, and image entry.
-
-The November 12, 2026 [deployment record](deployment.md#recorded-operational-status) reports the managed production schema.
-Reconcile its conversion receipt, owner assignments, and acceptance record before the source cleanup.
+F001 retires the obsolete converter after the recorded authorized recovery.
 
 The source implementation and automated acceptance suite are completed.
 
@@ -40,8 +37,8 @@ The managed product does not require an operator to edit tenant YAML or restart 
 - Make SMTP sender domains, identities, forwarding routes, and credentials tenant-owned.
 - Keep shared SMTP listeners and upstream relays in service configuration.
 - Keep one forward-only runtime contract.
-- Use one bounded production data conversion before the managed contract starts.
-- Remove the conversion code after the production conversion.
+- Keep only the current managed schema in the runtime.
+- Keep obsolete conversion code outside the application source.
 
 ## Scope Boundary
 
@@ -521,194 +518,31 @@ Run `make ci` after the final implementation change.
 
 ## Production Data Conversion
 
-`cmd/convert-managed-tenants` is the bounded operator command for the former-schema conversion.
+### Completed managed tenant recovery
 
-The following procedure preserves the original conversion inputs and acceptance steps.
-For the recorded managed production database, reconcile the existing conversion receipt and owner assignments before removing the command.
+The original four-tenant conversion was incomplete. On September 15, 2026, the user authorized restoration of the missing tenants.
+Loopaware, NameSignal, and SummerCan were restored through the managed API. PoodleScanner retained its existing Amazon SES profile.
+The saved production database query confirms all four tenants share owner `google:111357980452034959148`.
+The restoration used the same authenticated browser session as the retained PoodleScanner tenant.
 
-The command reads the former tenant YAML and one exhaustive mapping.
+The archived chat `01a0a3de-9e9a-7521-9266-83908bef89e1`, turn `01a0a3de-aee1-7790-a56f-f4bd2fb017d7`, records the authorized recovery.
+Command `exec-02b1223e-a4f8-48f6-99b6-d5d7db3114f4` records the production owner assignments.
+The private receipt directory is `$HOME/.config/pinguin/tenant-recovery-2026-09-15-cB6TIM`.
 
-The mapping identifies the TAuth account for `temirov@gmail.com` with its validated user ID.
+| Receipt | Recorded result |
+| --- | --- |
+| `probe-receipt.json` | The three restored tenant API keys authenticated successfully. |
+| `email-acceptance-receipt.json` | Loopaware delivery reached Gmail; initial NameSignal and SummerCan relay attempts failed. |
+| `mailbox-verification-receipt.json` | Corrected NameSignal and SummerCan profiles returned `SENT`; both messages reached Gmail from their dedicated sender addresses. |
+| `client-inputs-receipt.json` | Client API keys were updated in local private deployment inputs. Client redeployment was not performed. |
 
-The command assigns each source tenant to this one owner user ID.
+The user explicitly deferred SMS acceptance. Client application activation remains separate operational work.
+These records establish authorized tenant restoration and managed-runtime acceptance.
+They do not establish execution of the original converter, preservation of historical notification data, or matching conversion output counts.
+The November 12 deployment record separately confirms the managed production schema.
 
-The mapping also assigns one API credential digest to each source tenant.
-
-It assigns each retained SMTP sender domain and identity to a retained tenant.
-
-The command validates the exact former schema, source tenant set, and complete mapping. It also validates profiles, owners, credentials, and SMTP assignments. The command then completes these operations in one transaction:
-
-1. Create the exact managed schema.
-2. Generate one UUID for each current tenant.
-3. Assign each source tenant to the owner user ID for `temirov@gmail.com`.
-4. Update all tenant foreign keys to the new UUID values.
-5. Add exactly one API credential digest to each source tenant.
-6. Store current provider secrets with the current encryption contract.
-7. Convert each retained SMTP resource to its target tenant.
-8. Delete each SMTP resource that the mapping marks for deletion.
-9. Remove obsolete tenant domain, administrator, owner email, and status data.
-10. Validate row counts, foreign keys, schema shape, and encrypted profile access.
-
-The former global gRPC token is not a tenant credential. Each source tenant receives a new owner-generated API key.
-
-The tenant entries in the mapping contain only the credential ID and digest.
-
-### Prepare the conversion inputs
-
-Use a mode-`0600` source file with the complete former tenant configuration.
-
-Include the current PS, LA, NameSignal, and SummerCan tenant entries with their expanded production values.
-
-```yaml
-tenants:
-  - id: tenant-acme
-    displayName: Acme
-    supportEmail: support@acme.example
-    enabled: true
-    domains:
-      - acme.example
-    admins:
-      - owner@acme.example
-    emailProfile:
-      host: smtp.acme.example
-      port: 587
-      username: smtp-user
-      password: smtp-password
-      fromAddress: notify@acme.example
-    smsProfile:
-      accountSid: ACxxxxxxxx
-      authToken: twilio-secret
-      fromNumber: "+12015550123"
-```
-
-Generate one credential record for each source tenant. Store each result in a private file and give the `api_key` value to its owner:
-
-```bash
-umask 077
-export PINGWIN_CREDENTIAL_FILE=/absolute/private/tenant-acme-credential.txt
-python3 - <<'PY' > "$PINGWIN_CREDENTIAL_FILE"
-import base64
-import hashlib
-import secrets
-import uuid
-
-credential_id = str(uuid.uuid4())
-secret = secrets.token_bytes(32)
-encoded_secret = base64.urlsafe_b64encode(secret).rstrip(b"=").decode()
-digest = base64.urlsafe_b64encode(hashlib.sha256(secret).digest()).rstrip(b"=").decode()
-print(f"api_key=pgn_1_{credential_id}_{encoded_secret}")
-print(f"apiCredentialId={credential_id}")
-print(f"apiCredentialDigest={digest}")
-PY
-```
-
-Sign in to Pingwin with `temirov@gmail.com` before the maintenance window.
-
-Read `user_email` and `user_id` from the authenticated TAuth session response.
-
-Confirm that `user_email` is `temirov@gmail.com`.
-
-Create one exhaustive mode-`0600` mapping.
-
-Set `owner.userId` to the confirmed TAuth `user_id` value.
-
-Copy only `apiCredentialId` and `apiCredentialDigest` from each private credential file:
-
-```yaml
-owner:
-  email: temirov@gmail.com
-  userId: google:confirmed-subject
-tenants:
-  - sourceTenantId: tenant-acme
-    apiCredentialId: 00000000-0000-4000-8000-000000000001
-    apiCredentialDigest: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-smtpSenderDomains:
-  - id: 1
-    disposition: retain
-    targetSourceTenantId: tenant-acme
-  - id: 2
-    disposition: delete
-    targetSourceTenantId: ""
-smtpIdentities:
-  - id: identity-acme
-    disposition: retain
-    targetSourceTenantId: tenant-acme
-  - id: identity-remove
-    disposition: delete
-    targetSourceTenantId: ""
-```
-
-Each former tenant, sender-domain ID, and SMTP identity ID must occur exactly once.
-
-The mapping must contain the current PS, LA, NameSignal, and SummerCan tenants.
-
-Use empty SMTP lists when the database has no resources of that type.
-
-### Run the conversion
-
-Use one write-stopped maintenance window. Stop every process that writes to the Pingwin database. Use the published managed release image and the retained production volume.
-
-Set the published image, retained volume, and absolute private input paths on the production placement host:
-
-```bash
-export PINGWIN_MIGRATION_IMAGE=ghcr.io/tyemirov/pingwin:<published-release-tag>
-export PINGWIN_DATA_VOLUME=mprlab-nginx-gateway_pinguin-data
-export PINGWIN_DATABASE_PATH=/app/data/pingwin.db
-export PINGWIN_BACKUP_DIRECTORY=/absolute/private
-export PINGWIN_BACKUP_NAME=pingwin-before-managed-YYYYMMDDTHHMMSSZ.tar.gz
-export PINGWIN_SOURCE_PATH=/absolute/private/former-tenants.yml
-export PINGWIN_MAPPING_PATH=/absolute/private/managed-tenant-mapping.yml
-```
-
-Create the backup from the stopped database volume:
-
-```bash
-test ! -e "$PINGWIN_BACKUP_DIRECTORY/$PINGWIN_BACKUP_NAME"
-docker run --rm --network none \
-  --mount "type=volume,source=${PINGWIN_DATA_VOLUME},target=/app/data" \
-  --mount "type=bind,source=${PINGWIN_BACKUP_DIRECTORY},target=/backup" \
-  --entrypoint /bin/tar \
-  "$PINGWIN_MIGRATION_IMAGE" \
-  -czf "/backup/$PINGWIN_BACKUP_NAME" -C /app/data .
-```
-
-Run the packaged command with the same `MASTER_ENCRYPTION_KEY` that encrypted the current provider secrets:
-
-```bash
-docker run --rm --network none \
-  --env MASTER_ENCRYPTION_KEY \
-  --mount "type=volume,source=${PINGWIN_DATA_VOLUME},target=/app/data" \
-  --mount "type=bind,source=${PINGWIN_SOURCE_PATH},target=/run/pingwin/former-tenants.yml,readonly" \
-  --mount "type=bind,source=${PINGWIN_MAPPING_PATH},target=/run/pingwin/managed-tenant-mapping.yml,readonly" \
-  "$PINGWIN_MIGRATION_IMAGE" \
-  pingwin-convert-managed-tenants \
-  --database "$PINGWIN_DATABASE_PATH" \
-  --tenant-source /run/pingwin/former-tenants.yml \
-  --mapping /run/pingwin/managed-tenant-mapping.yml \
-  --master-key-env MASTER_ENCRYPTION_KEY \
-  --confirm managed-tenant-conversion
-```
-
-The success output reports tenant, notification, attachment, SMTP domain, SMTP identity, and forwarding-route counts. A failure rolls back the transaction.
-
-### Accept the managed runtime
-
-Deploy the managed release after conversion and complete these checks:
-
-1. Confirm that `/healthz` returns `200`.
-2. Sign in as `temirov@gmail.com` and confirm that **Tenants** lists all four production tenants.
-3. Confirm each tenant's external email profile and optional SMS profile metadata.
-4. Use each new tenant API key with the CLI or `grpcurl` and confirm that the request uses its assigned tenant.
-5. Confirm that the former global token and each rotated or replaced key fail authentication.
-6. Confirm that Event log and SMTP relay show only resources under the selected tenant.
-7. Send one accepted email and, when configured, one accepted SMS and SMTP submission test for each production tenant.
-8. Compare the conversion output counts with the approved production inventory.
-
-After the owner accepts these checks, delete the former tenant values from the private deployment environment.
-
-Publish a steady-state change that removes `cmd/convert-managed-tenants`, `internal/tenantconversion`, their tests, and this input runbook.
-
-Archive F001 after the source cleanup and its required code validation pass. Keep production operations in the operational record.
+F001 removes the obsolete conversion source, image executable, and former input procedure.
+The service supports the current managed schema; a new empty database receives that schema at startup.
 
 ## Implementation Order
 
@@ -718,19 +552,9 @@ Archive F001 after the source cleanup and its required code validation pass. Kee
 4. Add managed HTTP tenant, profile, credential, and SMTP APIs.
 5. Replace gRPC authentication and update clients.
 6. Add the managed tenant browser interface.
-7. Add the bounded conversion command and validate it with production-shape fixtures.
+7. Complete the recorded tenant recovery and remove the obsolete converter.
 8. Remove tenant YAML, global token input, bootstrap, old routes, and startup data conversion.
 9. Update current documentation and run the final `make ci` gate.
-
-## Production Inputs
-
-Confirm the TAuth user ID for `temirov@gmail.com` from an authenticated production session.
-
-Assign each current production tenant to this one owner user ID.
-
-Identify the target tenant for each current SMTP sender domain and identity.
-
-Obtain one owner-generated API credential ID and digest for each production tenant.
 
 ## Acceptance Criteria
 
@@ -751,8 +575,8 @@ Obtain one owner-generated API credential ID and digest for each production tena
 - A tenant configuration change takes effect without a service restart.
 - Runtime configuration contains no tenant definitions or global gRPC token.
 - Deployment inputs contain no tenant provider values or global gRPC token.
-- The production data conversion assigns UUID tenant IDs and keeps all required references.
-- The production data conversion assigns all four production tenants to the TAuth account for `temirov@gmail.com`.
+- Managed tenants use UUID identifiers and current schema references.
+- The recorded recovery assigns all four tenants to the retained owner.
 - The managed database contains no obsolete tenant domain or administrator data.
 - The steady-state release contains no conversion or compatibility path.
 - Current TAuth and `mpr-ui` authentication tests pass without a new Pingwin authentication flow.

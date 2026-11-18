@@ -132,7 +132,7 @@ Pingwin stores only the SHA-256 digest of its raw secret.
 Sender domains, SMTP identities, identity credentials, and forwarding routes belong to the selected tenant.
 Shared listeners and upstream SMTP relays remain service configuration.
 Permanent tenant deletion removes all tenant-owned records.
-The [managed tenant contract](multitenancy-plan.md) defines routes, storage, and conversion acceptance.
+The [managed tenant contract](multitenancy-plan.md) defines routes, storage, and recorded recovery acceptance.
 
 ## Current schema
 
@@ -142,8 +142,8 @@ An empty database receives the managed schema at startup.
 A non-empty obsolete schema is rejected.
 
 There is no backward compatibility layer for obsolete data, config keys, endpoints, users, or behavior.
-The bounded [production conversion](multitenancy-plan.md#production-data-conversion) is an explicit operator procedure.
-Startup does not run that conversion.
+The [production recovery record](multitenancy-plan.md#production-data-conversion) documents the completed tenant restoration.
+The obsolete converter is removed. Startup accepts only the current managed schema.
 
 ## Configuration validation
 
