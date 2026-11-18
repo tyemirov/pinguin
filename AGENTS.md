@@ -45,7 +45,7 @@ Pingwin does not support backward compatibility. Legacy data, schemas, config ke
 - Use the repository `Makefile` for local automation. Invoke `make test`, `make lint`, `make ci`, or other documented targets instead of running ad-hoc tool commands.
 - `make test` runs the canonical test suite for the active stack.
 - `make lint` enforces linting rules before code review.
-- `make ci` is the local CI contract and should pass locally before opening a PR.
+- `make ci` is the local CI contract. Use the final validation gate in `.mprlab/POLICY.md`, including equivalent pull-request CI.
 
 ### Tooling Workflow (Tests, Lint, Format)
 
@@ -81,6 +81,9 @@ Read each selected guide in full before its first applicable action.
 
 - Before edits: `.mprlab/PLANNING.md`.
 - For technical prose: `.mprlab/AGENTS.DOCS.md` and `.mprlab/TERMINOLOGY.md`.
+- For explicitly required ASD-STE100 compliance: `.mprlab/AGENTS.STE.md`.
+- For application onboarding or user-interface behavior: `.mprlab/AGENTS.PRODUCT.md`.
+- For deployment manifests, release, publication, deployment, or native preparation: `.mprlab/AGENTS.DEPLOYMENT.md`.
 - For issue work: the selected issue and its dependencies in `.mprlab/ISSUES.md`.
 - For tracker edits: `.mprlab/issues-md-format.md`.
 - For Git operations: `.mprlab/AGENTS.GIT.md`.
@@ -94,6 +97,9 @@ Never examine, validate, compare, require, change, or record a file permission m
 Never use a file permission mode in acceptance, security, credential, execution, publication, deployment, or failure analysis.
 The values `0600` and `7777` have no governance meaning.
 This rule does not change service authorization or operation authority.
+
+Always reference each issue by its ID, for example `B001` or `I027`.
+Never use an `ISSUES.md` file path, line number, or `path:line` syntax as an issue reference.
 
 Do not create `.mprlab/AGENTS.md`. Scoped guidance belongs in `.mprlab/AGENTS.*.md` files.
 If guidance conflicts, obey `.mprlab/POLICY.md` first, then root `AGENTS.md`, then the applicable scoped guide.
