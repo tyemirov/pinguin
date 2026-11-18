@@ -32,6 +32,10 @@ The CLI and doctor build commands are in the [API](api.md) and [configuration](c
 | `make test-image` | Build the production image and verify the server, doctor, and current executable set. |
 | `make test-frontend` | Run the Playwright browser suite. |
 | `make test-shared-ui` | Run focused shared-library candidate scenarios. |
+| `make test-delivery` | Run focused delivery-history Go, HTTP, configuration, and startup scenarios. |
+| `make test-delivery-contract` | Check affected GORM, environment, and production declaration contracts. |
+| `make test-delivery-coverage` | Collect focused delivery-history coverage through `COVERAGE_PROFILE`. |
+| `make test-delivery-frontend` | Run delivery-history and affected navigation browser scenarios. |
 | `make ci` | Run format checks, analysis, Go tests, coverage, and browser acceptance. |
 
 Browser tests cover authentication, tenant lifecycle, responsive layout, Event log, SMTP relay, accessibility, and visual snapshots.

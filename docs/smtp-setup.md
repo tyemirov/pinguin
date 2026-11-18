@@ -88,8 +88,9 @@ For Amazon SES:
 1. Confirm the AWS account and region that own the configured SMTP credential.
 2. Verify each sender domain and its DKIM records in that account and region.
 3. Permit each SMTP identity address in the relay credential's IAM policy.
-4. Send test messages through the public submission and forwarding endpoints.
-5. Confirm actual delivery in the destination inbox.
+4. Assign the shared SES delivery configuration set and authorize its exact ARN for the SMTP principal. Follow the [delivery logging guide](ses-delivery-logging.md).
+5. Send test messages through the public submission and forwarding endpoints.
+6. Check recipient-specific delivery events and confirm actual delivery in the destination inbox.
 
 The shared forwarding and submission relays have separate service profiles.
 A tenant notification profile does not configure either shared relay.

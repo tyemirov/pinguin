@@ -30,11 +30,20 @@ Create private inputs with the [local setup procedure](getting-started.md#prepar
 | `HTTP_ALLOWED_ORIGIN1/2/3` | Browser origins permitted to send authenticated requests. |
 | `HTTP_TRUSTED_PROXY1/2/3` | Proxy addresses or CIDR ranges permitted to supply forwarding headers. |
 | `SMTP_SUBMISSION_*`, `SMTP_FORWARDING_*` | Shared listeners and relay profiles. See the SMTP setup guide. |
+| `EMAIL_DELIVERY_ENABLED` | Enable the production read-only SES delivery-history adapter. |
+| `EMAIL_DELIVERY_ACCESS_KEY_ID`, `EMAIL_DELIVERY_SECRET_ACCESS_KEY` | Dedicated read-only CloudWatch Logs credential for delivery history. |
 
 `web.enabled: false` disables the HTTP API.
 The `smtpSubmission.enabled` and `smtpForwarding.enabled` flags independently control SMTP listeners.
 A gRPC-only process requires all three optional listeners to be disabled.
 An API key and an existing tenant remain necessary for notification requests.
+
+`emailDelivery.enabled` controls the delivery-history source.
+When enabled, the YAML must supply `region`, `accountId`, `logGroup`, `configurationSet`, `accessKeyId`, and `secretAccessKey`.
+`sessionToken` is optional for an explicitly configured temporary AWS credential.
+The adapter uses these inputs directly; it does not discover credentials from other AWS profiles or environment providers.
+An unconfigured source returns an explicit unavailable response in the Email delivery view.
+The [delivery-history guide](ses-delivery-logging.md#pingwin-ui-and-runtime-activation) contains the required read policy and activation steps.
 
 ## Local private inputs
 

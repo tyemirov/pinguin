@@ -144,3 +144,30 @@ Expected failures use this envelope:
 CORS permits configured origins and credentials.
 HTTP logs honor forwarding headers only from configured trusted proxies.
 The [managed tenant contract](multitenancy-plan.md#http-contract) contains the resource schemas and route details.
+
+## Email delivery history
+
+`GET /api/tenants/:tenant_id/email-deliveries` reads the last 24 hours of SES delivery history for currently verified sender domains owned by that tenant.
+It requires the existing owner-authenticated session and returns `Cache-Control: private, no-store`.
+The caller cannot select an AWS account, log group, or provider filter expression.
+
+| Query | Meaning |
+| --- | --- |
+| `q` | Case-insensitive subject, sender, recipient, or message-ID search; at most 200 characters. |
+| `limit` | Page size from 1 to 100; default 50. |
+| `cursor` | Opaque continuation bound to the tenant, search, and recent time window. |
+
+The response contains `messages`, `next_cursor` when more records exist, `window_start`, and `as_of`.
+Each message includes its SES `id`, `from`, `subject`, `sent_at`, `updated_at`, `expires_at`, and recipient outcomes.
+Each recipient has `address`, `status`, `updated_at`, and `response`; `delivered_at` preserves server-acceptance evidence when available.
+The optional `parent_message_id` and `forwarded_message_ids` link observed attempts within the authorized history.
+Raw headers and message bodies are not returned.
+
+Recipient statuses distinguish `delivered`, `delayed`, `bounced`, `complaint`, `rejected`, `rendering_failed`, and `unconfirmed`.
+A `Send` event alone remains unconfirmed.
+Forwarding links are header-based observations, not authenticated statements about message origin.
+Missing or truncated headers can leave a forwarding attempt unlinked.
+
+Malformed filters or cursors return `400`; missing authentication returns `401`; absent or foreign tenants return `404`.
+An unconfigured reader or a provider failure is an explicit availability error, separate from an empty history.
+The [delivery-history guide](ses-delivery-logging.md) describes retention, configuration, evidence limits, and production activation.
