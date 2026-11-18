@@ -4,7 +4,7 @@
 
 ### Service name
 - Changed the service name to Pingwin in the CLI, gRPC contract, browser workspace, SMTP headers, container commands, and deployment declarations.
-- Preserved source repository paths and retained data identities. Production activation remains pending.
+- Preserved source repository paths and retained data identities. The deployment record reports Pingwin `v1.1.11` activation on November 12, 2026.
 
 ### Features
 - Add authenticated sender-domain DNS setup for SMTP relay, including exact DNS records, manual DNS checks, verified-domain identity creation, and owner-scoped relay management for non-admin users.
@@ -43,7 +43,7 @@
 - Replace the light, table-led browser interface with the compact dark-first MPR shell, shared-header workspace navigation, responsive notification records, one-at-a-time sender-domain DNS panels, dense SMTP identity rows, and application dialogs with focus restoration.
 - Replace the generic footer Explore menu with a Built By Marco Polo Research Lab drop-up linking the seven MPR Platform services.
 - Split front-end presentation ownership across MPR tokens, shared primitives, page-scoped styles, the session bridge, the notification list, sender domains, SMTP identities, and the credential dialog; delete the superseded table and native-confirmation paths.
-- Migrate the sole production manifest to the current contract with typed private values, service placement, retained data, HTTP/gRPC/SMTP capabilities, Caddy routes and listeners, Pages, the server binary, and the Pinguin TAuth tenant; delegate the three production lifecycle commands to the exact sibling gateway.
+- Migrated the sole production manifest to the current contract with typed private values, service placement, retained data, HTTP/gRPC/SMTP capabilities, Caddy routes and listeners, Pages, the server binary, and the permanent `pinguin` TAuth tenant. I008 replaced the separate lifecycle entry points with `make deploy` through the installed Gateway runtime.
 - Declare Pinguin's stable TAuth tenant requirements in the app-owned deployment manifest for gateway assembly.
 - Replace the old landing page with a focused Pinguin sign-in screen and notification queue preview.
 - Add a dashboard horizontal menu using `mpr-ui` header links for Event log and SMTP relay.
