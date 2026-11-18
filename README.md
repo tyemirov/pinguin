@@ -24,6 +24,7 @@ The source repository and Go module remain `github.com/tyemirov/pinguin`.
 | SMTP submission | Verified domains and exact sender credentials. Delivery uses an upstream relay or direct recipient MX hosts. |
 | Direct SMTP | Each message can address one recipient domain. Pingwin provides no DKIM signer or bounce processor. |
 | Shared addresses | Synchronous forwarding through a shared upstream relay. Pingwin stores no forwarded message body or mailbox state. |
+| Email delivery history | Search the last 24 hours of SES delivery outcomes and observed forwarding links for the tenant's verified sender domains. Requires a configured read-only event source. |
 
 Notification status `sent` means successful provider handoff, rather than confirmed receipt.
 Status `errored` remains eligible for retries below the configured limit.
@@ -87,7 +88,7 @@ The [getting-started guide](docs/getting-started.md) includes ports, native star
 | --- | --- | --- |
 | gRPC | Send, list, inspect, reschedule, and cancel notifications. | Tenant bearer API key. |
 | HTTP API | Manage tenants, profiles, credentials, notifications, and SMTP resources. | TAuth session cookie. |
-| Browser | Tenants, Event log, and SMTP relay workspaces. | TAuth through the shared MPR UI. |
+| Browser | Tenants, Event log, SMTP relay, and Email delivery workspaces. | TAuth through the shared MPR UI. |
 | SMTP submission | Send as one verified identity. | Identity-specific SMTP credentials. |
 | SMTP forwarding | Receive mail for configured shared addresses. | Public listener with recipient restrictions. |
 
@@ -102,6 +103,7 @@ The [API guide](docs/api.md) contains CLI examples, complete `grpcurl` commands,
 | [Configuration](docs/configuration.md) | Service settings, private inputs, tenant ownership, schema rules, doctor, and logs. |
 | [SMTP setup](docs/smtp-setup.md) | DNS verification, Gmail Send-As, forwarding, listener limits, and gateway TLS. |
 | [Delivery behavior](docs/smtp_delivery_plan.md) | Notification and SMTP delivery paths, storage, retries, and transport limits. |
+| [SES delivery history](docs/ses-delivery-logging.md) | One-day event retention, delivery checks, forwarding correlation, and UI activation. |
 | [Deployment](docs/deployment.md) | Release, publication, deployment, retained data, and production acceptance. |
 | [Architecture](ARCHITECTURE.md) | Components, ownership, persistence, browser modules, and deployment boundaries. |
 | [Managed tenant contract](docs/multitenancy-plan.md) | Resource schemas, API details, recovery evidence, and acceptance criteria. |
