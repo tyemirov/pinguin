@@ -32,6 +32,7 @@ export const RUNTIME_CONFIG = Object.freeze({
 	tenantUrl: String(rawConfig.tenantUrl || "/tenants.html"),
   eventLogUrl: String(rawConfig.eventLogUrl || "/event-log.html"),
   smtpRelayUrl: String(rawConfig.smtpRelayUrl || "/smtp-relay.html"),
+  emailDeliveryUrl: String(rawConfig.emailDeliveryUrl || "/email-delivery.html"),
 });
 
 export const STRINGS = Object.freeze({
@@ -40,6 +41,7 @@ export const STRINGS = Object.freeze({
 	tenants: "Tenants",
     eventLog: "Event log",
     smtpRelay: "SMTP relay",
+    emailDelivery: "Email delivery",
   },
   landing: {
     eyebrow: "Delivery operations",
@@ -260,3 +262,13 @@ export const STATUS_OPTIONS = Object.freeze([
   { value: "errored", label: STATUS_LABELS.errored },
   { value: "cancelled", label: STATUS_LABELS.cancelled },
 ]);
+
+export const EMAIL_DELIVERY_STATUS_LABELS = Object.freeze({
+  delivered: 'Delivered',
+  delayed: 'Delayed',
+  bounced: 'Bounced',
+  complaint: 'Complaint',
+  rejected: 'Rejected',
+  rendering_failed: 'Rendering failed',
+  unconfirmed: 'Unconfirmed',
+});

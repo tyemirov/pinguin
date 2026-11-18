@@ -92,3 +92,39 @@
  * @property {NotificationStatusKey | "all"} value
  * @property {string} label
  */
+
+/** @typedef {'delivered' | 'delayed' | 'bounced' | 'complaint' | 'rejected' | 'rendering_failed' | 'unconfirmed'} EmailDeliveryStatus */
+/**
+ * @typedef {Object} EmailDeliveryRecipient
+ * @property {string} address
+ * @property {EmailDeliveryStatus} status
+ * @property {string} updatedAt
+ * @property {string} response
+ * @property {string} deliveredAt
+ */
+/**
+ * @typedef {Object} EmailDeliveryMessage
+ * @property {string} id
+ * @property {string} from
+ * @property {string} subject
+ * @property {string} sentAt
+ * @property {string} updatedAt
+ * @property {string} expiresAt
+ * @property {EmailDeliveryRecipient[]} recipients
+ * @property {string} parentMessageId
+ * @property {string[]} forwardedMessageIds
+ */
+/**
+ * @typedef {Object} EmailDeliveryPage
+ * @property {EmailDeliveryMessage[]} messages
+ * @property {string} nextCursor
+ * @property {string} windowStart
+ * @property {string} asOf
+ */
+/**
+ * @typedef {Object} EmailDeliveryListOptions
+ * @property {string=} query
+ * @property {string=} cursor
+ * @property {number=} limit
+ * @property {AbortSignal=} signal
+ */
