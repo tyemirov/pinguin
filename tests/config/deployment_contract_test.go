@@ -222,15 +222,21 @@ func TestProductionImageAndPagesSourcesRemainComplete(t *testing.T) {
 	for _, requiredSnippet := range []string{
 		"go build -o /workspace/bin/pingwin ./cmd/server",
 		"go build -o /workspace/bin/pingwin-doctor ./cmd/doctor",
-		"go build -o /workspace/bin/pingwin-convert-managed-tenants ./cmd/convert-managed-tenants",
 		"COPY --from=builder /workspace/bin/pingwin /usr/local/bin/pingwin",
 		"COPY --from=builder /workspace/bin/pingwin-doctor /usr/local/bin/pingwin-doctor",
-		"COPY --from=builder /workspace/bin/pingwin-convert-managed-tenants /usr/local/bin/pingwin-convert-managed-tenants",
 		`CMD ["/usr/local/bin/pingwin"]`,
 	} {
 		if !strings.Contains(dockerfile, requiredSnippet) {
 			t.Fatalf("Dockerfile missing production contract snippet %q", requiredSnippet)
 		}
+	}
+	for _, obsoletePath := range []string{"cmd/convert-managed-tenants", "internal/tenantconversion"} {
+		if _, statErr := os.Stat(repoPath(filepath.FromSlash(obsoletePath))); !errors.Is(statErr, os.ErrNotExist) {
+			t.Fatalf("obsolete conversion source remains at %s", obsoletePath)
+		}
+	}
+	if strings.Contains(dockerfile, "pingwin-convert-managed-tenants") {
+		t.Fatal("Dockerfile still packages the obsolete conversion command")
 	}
 	for _, reservedPath := range []string{"web/.nojekyll", "web/CNAME", "web/.mprlab-release.json"} {
 		if _, statErr := os.Stat(repoPath(filepath.FromSlash(reservedPath))); !errors.Is(statErr, os.ErrNotExist) {
