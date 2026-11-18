@@ -2,137 +2,12 @@
 
 Entries record newly discovered requests or changes.
 Resolved non-recurring issues are in [ISSUES.archive.md](ISSUES.archive.md).
+The [historical tracker](../issues.md/ISSUES.archive.md) preserves earlier records.
+The 2026-11-18 review restored all eight recurring maintenance entries.
 
 ## BugFixes
 
-- [x] [B009] (P1) {I007} Preserve the deployment owner during the Pingwin rename
-  Goal: Deploy Pingwin with one permanent owner.
-  Requirements: Keep the permanent owner `pinguin`, retained volume, database path, and encryption key.
-  Requirements: Keep the current Pingwin service names and public interfaces.
-  Deliverables: Correct the manifest, retirement declaration, contract test, and deployment guide.
-  Validation: The v1.1.4 deployment reproduced a shared SMTP listener conflict at state revision 765.
-  Validation: State inspection found owner `pinguin` generation 5 and runtime service `pinguin-api` in project `mprlab-pinguin-runtime`.
-  Validation: The contract test failed before the manifest correction and passed after it.
-  Validation: `make ci` passed with 100 percent Go coverage and 70 browser tests.
-  Validation: The user authorized removal of Pingwin deployment records. The cleanup preserved application data and all other application records.
-  Validation: The manifest uses route `pingwin-public-api` and the deployed Caddy execution policy.
-  Validation: Native `make deploy` deployed `v1.1.7` at state revision `770`. API and website health checks returned `200`.
-  Validation: The volume name, `DATABASE_PATH`, `MASTER_ENCRYPTION_KEY`, and `TAUTH_SIGNING_KEY` matched the previous runtime.
-  Validation: B010 records the later public SMTP host-port correction.
-
-- [x] [B010] (P1) Correct public SMTP host ports
-  Goal: Expose the current SMTP listeners.
-  Requirements: Keep public ports `25` and `465`. Publish host ports `8025` and `8465` through the manifest.
-  Requirements: Preserve the router rules, HTTPS bindings, application data, and keys.
-  Deliverables: Correct the listener declarations, contract test, and operational record.
-  Validation: Public SMTP connections failed. Direct host connections returned `250` on ports `25` and `465`.
-  Validation: The router forwards to host ports `8025` and `8465`. The manifest omitted both host ports.
-  Validation: The contract test failed before the correction and passed after it. The installed Gateway plan accepted both host ports.
-  Validation: `make ci` passed with 100 percent Go coverage and 70 browser tests.
-  Validation: Native `make deploy` deployed `v1.1.8` at state revision `774`.
-  Validation: Public SMTP and SMTPS `NOOP` commands returned `250`. TLS certificate verification passed on port `465`.
-  Validation: API and website health returned `200`. All ten router rules and HTTPS bindings remained unchanged.
-  Validation: The database volume, database path, and protected inputs were preserved.
-
-- [x] [B011] (P1) Keep the production TAuth tenant identity
-  Goal: Keep the production browser on its permanent TAuth tenant.
-  Requirements: Keep tenant `pinguin`, its user IDs, signing keys, and cookie names.
-  Requirements: Use `https://pingwin.mprlab.com` as the production browser origin.
-  Deliverables: Correct the production browser config, contract test, and deployment instructions.
-  Validation: The production browser used tenant `pingwin`, but the permanent TAuth tenant is `pinguin`.
-  Validation: The contract test failed before the config change and passed after it.
-  Validation: `make ci` passed with 100 percent Go coverage and 70 browser tests.
-  Validation: TAuth activated revision `2` with the current browser origin. The new-origin preflight returned `204`.
-  Validation: Google saved the current JavaScript origin. Hosted sign-in succeeded, and all six existing tenants remained available.
-  Validation: Native `make deploy` deployed `v1.1.10` at state revision `788`, generation `4`, with six verified resources.
-  Validation: Public SMTP checks returned `250`. API and website health checks returned `200`. Protected runtime inputs were preserved.
-
 ## Improvements
-
-- [x] [I009] (P1) Configure the Pingwin mail subdomain
-  Goal: Receive mail for `support@pingwin.mprlab.com` and forward it to `marcopoloresearchlab@gmail.com`.
-  Requirements: Preserve the apex domain mail records and all unrelated tenant records.
-  Deliverables: Configure DNS, a tenant, a verified sender domain, and the forwarding identity.
-  Validation: The local Squarespace TOTP helper passed provider verification.
-  Validation: All four authoritative nameservers returned the website A records and the new MX record. All unrelated registrar records were unchanged.
-  Validation: The dedicated Pingwin tenant and SMTP identity were created after user approval. The three sender domain checks passed.
-  Validation: The saved identity forwards to `marcopoloresearchlab@gmail.com`. Public SMTP accepted the recipient with `250` but returned `451` after message data.
-  Validation: The September 30 receipt confirms PoodleScanner delivery through MPR Lab account `299335570791`.
-  Validation: The previous shared SMTP credentials belonged to account `297841131854`.
-  Validation: SES verified `pingwin.mprlab.com` and its DKIM records in account `299335570791`. All twelve authoritative DNS checks passed.
-  Validation: The approved SMTP principal permits six exact sender addresses. TLS verification, SMTP authentication, and all six sender-policy checks passed.
-  Validation: The canonical relay inputs and the Pingwin tenant profile contain the validated credential. The other six tenant profiles remain unchanged.
-  Validation: Native `make deploy` completed for `v1.1.11` at state revision `790`, generation `5`, with six verified resources.
-  Validation: Public port `25` forwarded the message. Public port `465` authenticated the SMTP identity and accepted the outbound message.
-  Validation: Both test messages reached the destination Gmail inbox. SPF, DKIM, and DMARC passed for both messages.
-  Validation: All seven tenants and six SMTP identities remained available. The existing PoodleScanner SMTP principal and all unrelated DNS records remained unchanged.
-
-- [x] [I008] (P1) Use one production deployment command
-  Goal: Use `make deploy` for the complete Gateway pipeline.
-  Requirements: Call the installed `deploy` command. Remove the separate release and publication targets.
-  Requirements: Preserve the current manifest, internal policy identifiers, private inputs, and runtime resources.
-  Deliverables: Update the Makefile, command test, and deployment instructions.
-  Validation: Gateway v9.2.1 exposes `deploy` and retains the internal `app-*` policy identifiers.
-  Validation: The command test failed because `make release` remained available.
-  Validation: The corrected command test passed. It verifies Gateway selection, closed standard input, CI mode, and failure propagation.
-  Validation: The installed Gateway planner accepted the current manifest. The manifest required no changes.
-  Validation: `make ci` passed with 100 percent Go coverage and 70 browser tests.
-
-- [x] [I007] (P1) Change the service name to Pingwin
-  Goal: Use `pingwin` for the current service contract.
-  Requirements: Preserve source repository paths, retained data identities, and historical records.
-  Deliverables: Update executable names, gRPC definitions, browser assets, SMTP names, configuration, and deployment declarations.
-  Validation: `make ci` passed with 100 percent Go coverage and 70 browser tests. CLI, gRPC, container health, doctor, and installed Gateway checks passed.
-  Validation: The Governor check reported the same 16 findings before and after this change. Native `make deploy` deployed `v1.1.7`.
-
-- [x] [I006] (P1) Use the `theme-control` contract
-  Goal: Use the `mpr-ui` contract on each page.
-  Requirements: Keep each mode, position, label, and initial selection.
-  Validation: The browser suite and `make ci` passed with `mpr-ui` assets from `v4.3.5`. All 70 browser scenarios passed.
-
-- [!] [I004] (P1) {I009@https://github.com/MarcoPoloResearchLab/mpr-ui} Adopt the shared authentication and footer contracts.
-  Goal: Preserve the four browser pages with the current shared library.
-  Requirements: Declare each provider. Preserve the session endpoint and identifiers. Replace the obsolete footer menu attribute.
-  Deliverables: Prepare source changes, browser checks, integration instructions, and a pull request.
-  Validation: Final `make ci` passed with 100% Go coverage and 63 browser checks. Eight candidate checks failed before migration.
-  Validation: Final B069 qualification passed `make ci`, with 65 browser checks and 100 percent Go coverage. Ten candidate scenarios verify all four pages and protected recovery. B008 preserves mutation payloads and request identities after authentication recovery.
-  Blocked: mpr-ui I009 must complete coordinated publication and cache qualification. The owner must complete real Google acceptance.
-
-- [ ] [I005] (P1) Standardize HTTP health at `/healthz`.
-  Goal:
-  Make `/healthz` the canonical health endpoint for the Pinguin API and
-  static web origins. Use the endpoint for readiness without application requests.
-
-  Requirements:
-  - Keep unauthenticated `GET /healthz` on the API origin.
-  - Publish a static `/healthz` resource for the GitHub Pages origin.
-  - Return `200` only when each origin can serve its current application contract.
-  - Return a non-success status when a required runtime dependency prevents API service.
-  - Send `Cache-Control: no-store` on every health response.
-  - Keep each response free from credentials and internal state.
-  - Do not mutate application state during a probe.
-  - Do not record a probe as application usage or an audit event.
-  - Do not emit routine information-level request events for successful probes.
-  - Keep failed probe evidence in container and deployment diagnostics.
-  - Use `/healthz` for local Compose, runtime capability, and public health checks.
-  - Set `start_interval: 1s` and `interval: 30s` for Docker probes.
-  - Set a bounded `start_period` for the API startup contract.
-  - Keep protocol-native readiness for gRPC and SMTP services.
-  - Do not add HTTP mirrors for non-HTTP services.
-  - Keep the selected manifest contract unchanged.
-
-  Deliverables:
-  - Update the API, static artifact, request logging, orchestration, manifest, documentation, and black-box tests.
-
-  Validation:
-  - Verify unauthenticated `GET /healthz` returns `200` and `Cache-Control: no-store` on each HTTP origin.
-  - Verify a required dependency failure returns a non-success API status.
-  - Verify the static publication artifact contains `/healthz`.
-  - Verify gRPC and SMTP readiness remain protocol-native.
-  - Verify Docker probes use the required startup and steady intervals.
-  - Verify successful probes create no routine request events.
-  - Verify failed probes retain diagnostic evidence.
-  - Run `make ci`.
 
 - [ ] [I002] (P2) Normalize the managed governance sections.
   Goal:
@@ -140,12 +15,185 @@ Resolved non-recurring issues are in [ISSUES.archive.md](ISSUES.archive.md).
   Validation:
   - Run the Governor check.
   - Run `git diff --check`.
+  Validation: The 2026-11-18 check found drift in the Docker guide, Git guide, planning guide, and core policy.
+  Validation: Preserve the existing local changes when I002 reconciles these four files.
 
 ## Maintenance
 
+- [ ] [M400R] (P2) Backlog hygiene and archive
+  Goal:
+  Keep the issue tracker reliable, readable, and focused on active work while preserving resolved history in the appropriate archive.
+
+  Requirements:
+  - Cadence: run weekly during active development and before each release cut.
+  - Validate section names, identifier prefixes, recurrence suffixes, priority markers, dependencies, and duplicate IDs against the current `issues-md-format.md`.
+  - Reconcile stale statuses, duplicate issues, broken references, obsolete instructions, and entries filed under the wrong section.
+  - Move completed non-recurring history to the repository issue archive or durable documentation when the active tracker becomes noisy.
+  - Keep active, blocked, planning, and recurring entries visible in `ISSUES.md`.
+
+  Deliverables:
+  - Normalized `ISSUES.md` structure and statuses.
+  - Updated issue archive or docs when completed entries are removed from the active tracker.
+  - A short `Last run:` note summarizing the cleanup and any follow-up issues filed.
+
+  Validation:
+  - Re-read `ISSUES.md` after edits and confirm every issue is under the right section with a unique section-aware ID.
+  - Confirm recurring entries remain open and keep the `R` suffix.
+  - Confirm no active, blocked, recurring, or planning work was archived.
+  Validation: Last run 2026-11-18: Archived nine non-recurring entries and preserved the historical tracker. Restored all eight recurring entries.
+
+- [ ] [M401R] (P2) Polish open issues
+  Goal:
+  Keep unresolved work executable by making each open issue concrete, ordered, and testable.
+
+  Requirements:
+  - Cadence: run weekly during active development and before handing a repo to automated execution.
+  - Review every unresolved non-recurring issue for missing context, dependencies, repro steps, acceptance criteria, and validation expectations.
+  - Make priorities concrete and ensure each open issue has actionable deliverables.
+  - Merge duplicate open issues or add explicit dependency links when separate entries must remain.
+  - Do not close or implement issues as part of this polish pass unless that work is separately requested.
+
+  Deliverables:
+  - Open issues with enough detail for a person or agent to execute without rediscovery.
+  - New or updated dependency markers where ordering matters.
+  - A short `Last run:` note listing the number of issues polished and any blockers found.
+
+  Validation:
+  - Sample the open entries after the pass and confirm each has clear next actions and validation expectations.
+  - Confirm no recurring runbook was marked complete.
+  - Confirm duplicates were merged or explicitly cross-referenced.
+  Validation: Last run 2026-11-18: Reviewed I002, F001, and F002. Recorded the remaining source work and provider selection.
+
+- [ ] [M402R] (P2) Architecture and policy review
+  Goal:
+  Catch architecture, policy, and workflow drift before it becomes hidden maintenance debt.
+
+  Requirements:
+  - Cadence: run monthly, before large refactors, and after major framework or runtime changes.
+  - Review the codebase, docs, and workflow against `AGENTS.md`, `POLICY.md`, stack guides, and the current architecture notes.
+  - Look for drift from forward-only contracts, edge-validation boundaries, smart-constructor usage, testing policy, and module ownership.
+  - Record findings as new Maintenance issues with concrete scope, priority, and validation.
+  - Close the pass with a no-action note only when the review finds no actionable drift.
+
+  Deliverables:
+  - New Maintenance issues for each actionable architecture or policy drift finding.
+  - Updated notes on areas reviewed and areas intentionally left unchanged.
+  - A short `Last run:` note with the review scope and outcome.
+
+  Validation:
+  - Confirm every finding is represented as an issue with owner-readable context and validation criteria.
+  - Confirm no implementation changes were mixed into the review runbook unless separately requested.
+  - Confirm all recurring runbooks remain open.
+
+- [ ] [M403R] (P1) Dependency and security audit
+  Goal:
+  Keep third-party dependencies, runtime versions, and security-sensitive configuration within the current supported contract.
+
+  Requirements:
+  - Cadence: run weekly for active apps and before each release cut.
+  - Inspect package managers, lockfiles, language toolchains, container bases, and generated clients for known vulnerabilities or stale direct dependencies.
+  - Review auth, secret, CORS, CSP, SQL, network, and permission-sensitive configuration for drift from the current contract.
+  - Prefer current supported dependencies; do not add compatibility shims for obsolete dependency behavior.
+  - File separate Maintenance or BugFix issues for each actionable vulnerability, unsupported runtime, or security-contract gap.
+
+  Deliverables:
+  - Documented audit commands or data sources used for the pass.
+  - Updated issues for each actionable dependency or security finding.
+  - A short `Last run:` note with clean result or follow-up issue IDs.
+
+  Validation:
+  - Rerun the repository-native audit, lint, or dependency checks used for the pass.
+  - Confirm every finding is either filed, fixed under a separate issue, or explicitly marked not applicable with evidence.
+  - Confirm no secrets or private payloads were written into the tracker.
+
+- [ ] [M404R] (P1) CI, release, and artifact health
+  Goal:
+  Keep the repository's validation, release, publication, and generated artifact surfaces trustworthy.
+
+  Requirements:
+  - Cadence: run before every release, publish, or deploy, and weekly for critical services.
+  - Verify repository-native CI, lint, format, coverage, release, publish, Docker image, Pages, and artifact workflows still match the documented contract.
+  - Check generated artifacts, release tags, published images, and Pages outputs for source-to-public drift.
+  - File concrete follow-up issues for failing gates, stale artifacts, missing release prerequisites, or undocumented workflow changes.
+  - Do not perform production deployment from this runbook unless the operator explicitly requests that deployment.
+
+  Deliverables:
+  - Recorded gate status and artifact surfaces inspected.
+  - Follow-up issues for each reproducible CI, release, publish, or artifact drift problem.
+  - A short `Last run:` note with commands run and any skipped surfaces.
+
+  Validation:
+  - Use repository-native `make` targets or documented release helpers for checks.
+  - Confirm release and deployment ownership boundaries remain separate.
+  - Confirm public or published artifacts match the intended source revision when that surface is inspected.
+
+- [ ] [M405R] (P1) Code contract and static hygiene
+  Goal:
+  Keep source contracts explicit, current, and statically guarded against policy drift.
+
+  Requirements:
+  - Cadence: run monthly and before large refactors.
+  - Scan for dead code, unused exports, duplicated literals, silent fallbacks, legacy aliases, compatibility reads, and zero-but-invalid domain states.
+  - Check static analysis, coverage, schema, and contract guards that are supposed to prevent drift.
+  - File focused Maintenance issues for each concrete violation instead of broad cleanup placeholders.
+  - Keep the current canonical contract only; do not preserve obsolete behavior unless a product requirement explicitly says so.
+
+  Deliverables:
+  - Issue entries for each actionable static hygiene or contract violation.
+  - Notes on static tools, searches, and contract guards used during the pass.
+  - A short `Last run:` note with clean result or follow-up issue IDs.
+
+  Validation:
+  - Rerun the relevant static checks, contract tests, or repository searches used to identify drift.
+  - Confirm every finding has a narrow follow-up issue and does not duplicate existing backlog work.
+  - Confirm no implementation changes were mixed into the audit unless separately requested.
+
+- [ ] [M406R] (P1) Production drift and health
+  Goal:
+  Detect when production, public, or scheduled runtime state has drifted from the intended repository contract.
+
+  Requirements:
+  - Cadence: run weekly for deployed services and after each publish or deploy.
+  - Compare current source, runtime configuration, published images, public routes, scheduled jobs, and health checks for drift.
+  - Inspect real operator-facing surfaces rather than assuming merged source is deployed.
+  - File follow-up issues for stale images, stale Pages output, missing routes, failed monitors, invalid production config, or undocumented runtime differences.
+  - Stop before production deploy or destructive operator actions unless the operator explicitly requests them.
+
+  Deliverables:
+  - Recorded source revision, public artifact, route, image, or health surfaces inspected.
+  - Follow-up issues for each source-to-runtime drift finding.
+  - A short `Last run:` note with evidence links or commands used.
+
+  Validation:
+  - Verify inspected production or public surfaces directly where access is available.
+  - Confirm any deploy-required finding is filed with the exact publish/deploy boundary and owner.
+  - Confirm no production state was changed by the audit unless explicitly requested.
+
+- [ ] [M407R] (P2) Documentation and runbook hygiene
+  Goal:
+  Keep durable documentation and runbooks aligned with the current behavior users and operators actually rely on.
+
+  Requirements:
+  - Cadence: run before release cuts and after merge bursts that change user-facing or operator-facing behavior.
+  - Review README, ARCHITECTURE, PRD, CHANGELOG, docs, runbooks, setup guides, and local workflow notes for stale behavior or missing new contracts.
+  - Update docs when closed issues changed durable behavior, public APIs, operator workflows, release semantics, or deployment expectations.
+  - Remove or rewrite stale instructions instead of preserving obsolete alternatives.
+  - File separate issues for documentation gaps that require product or implementation decisions.
+
+  Deliverables:
+  - Updated documentation or filed follow-up issues for each gap.
+  - A short `Last run:` note listing docs inspected and changes made.
+  - Cross-references from archived issue history to durable docs when useful.
+
+  Validation:
+  - Check links, command names, paths, and public contract descriptions touched by the pass.
+  - Confirm docs describe the current canonical path only.
+  - Confirm issue archive and active tracker references remain consistent.
+  Validation: Last run 2026-11-18: Updated README, deployment, shared UI, managed tenant, development, and changelog documentation.
+
 ## Features
 
-- [!] [F001] (P1) {P002} Implement managed tenant configuration
+- [ ] [F001] (P1) {P002} Implement managed tenant configuration
   Goal:
   Let a TAuth user manage Pinguin tenants and tenant API access without tenant YAML.
   Requirements:
@@ -169,10 +217,10 @@ Resolved non-recurring issues are in [ISSUES.archive.md](ISSUES.archive.md).
   - Pass all acceptance criteria in the managed tenant configuration plan.
   - Validate the conversion with production-shape fixtures.
   - Pass the complete `make ci` target.
-  Blocked:
-  - The production operator must confirm the TAuth user ID for `temirov@gmail.com`.
-  - The production operator must run the conversion and accept the managed runtime.
-  - After acceptance, remove the bounded conversion command and archive F001.
+  Validation: The managed tenant source and automated acceptance suite are completed.
+  Validation: The remaining source change must remove the bounded conversion command, its package, tests, and image entry.
+  Validation: The [conversion record](../docs/multitenancy-plan.md#production-data-conversion) retains owner confirmation, conversion, and production acceptance requirements.
+  Validation: Review that record before the source cleanup. Run the complete code validation after the cleanup.
 
 - [ ] [F002] (P1) {F001} Add provider-backed tenant mailboxes
   Goal:
@@ -193,6 +241,7 @@ Resolved non-recurring issues are in [ISSUES.archive.md](ISSUES.archive.md).
   - Remove each provider mailbox during permanent tenant deletion.
   - Reject unsupported provider capabilities at the API boundary.
   Deliverables:
+  - Select the canonical mailbox provider before implementation.
   - Define the canonical mailbox domain types, persistence schema, HTTP routes, and browser workflow.
   - Implement one mailbox provider adapter and its tenant-scoped lifecycle operations.
   - Add provider sandbox or local protocol integration tests for provisioning, sending, receiving, isolation, failure, and deletion.
