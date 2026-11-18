@@ -89,10 +89,9 @@
 - `configs/config.pingwin.yml` contains only service settings: database, logging, encryption, TAuth validation, HTTP, SMTP submission, and SMTP forwarding.
 - Runtime configuration and `.mprlab/deploy/resources.yml` contain no tenant definitions, tenant provider values, or global gRPC token.
 - `.mprlab/deploy/resources.yml` is the versionless production declaration.
-- The bounded `cmd/convert-managed-tenants` command converts the former schema during one write-stopped maintenance window.
-- The conversion assigns all current production tenants to the TAuth account for `temirov@gmail.com`.
-- Server startup never runs this conversion.
-- The production operator owns conversion and deployment. After production acceptance, a steady-state change removes the conversion command.
+- The obsolete conversion command and package have been removed after authorized tenant recovery.
+- Server startup creates the current schema for an empty database and rejects an obsolete non-empty schema.
+- The [production recovery record](docs/multitenancy-plan.md#production-data-conversion) preserves owner assignments, acceptance evidence, and operational limits.
 
 ## Validation
 
