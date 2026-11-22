@@ -15,41 +15,31 @@ The [SMTP setup guide](smtp-setup.md) covers DNS and listener configuration.
 
 ## Prepare the local stack
 
-1. Clone the repository and enter its root:
+Clone the repository and enter its root.
 
-   ```bash
-   git clone https://github.com/tyemirov/pinguin.git pingwin
-   cd pingwin
-   ```
+```bash
+git clone https://github.com/tyemirov/pingwin.git
+cd pingwin
+```
 
-2. Create `configs/.env.pingwin` and `configs/.env.tauth` with the complete [local private inputs](configuration.md#local-private-inputs).
+### Configure the local stack
+
+1. Create `configs/.env.pingwin` and `configs/.env.tauth` with the complete [local private inputs](configuration.md#local-private-inputs).
    Generate real keys and replace the Google client ID placeholder.
    The tracked example values are documentation only.
-3. In `web/config-ui.yaml`, set the **Local Docker** Google `clientId` to your OAuth web client ID.
+2. In `web/config-ui.yaml`, set the **Local Docker** Google `clientId` to your OAuth web client ID.
    Use that same client ID in `TAUTH_TENANT_GOOGLE_WEB_CLIENT_ID_PINGWIN`.
-4. Authorize `http://localhost:8080` as a JavaScript origin in that Google OAuth client.
-5. Keep the browser `tenantId` and `TAUTH_TENANT_ID_PINGWIN` equal to `pingwin`.
-6. Match `TAUTH_SIGNING_KEY` with `TAUTH_TENANT_JWT_SIGNING_KEY_PINGWIN`.
-7. Match `TAUTH_COOKIE_NAME` with `TAUTH_TENANT_SESSION_COOKIE_NAME_PINGWIN`.
-8. Keep the local origin in Pingwin `HTTP_ALLOWED_ORIGIN1` and both TAuth origin inputs.
+3. Authorize `http://localhost:8080` as a JavaScript origin in that Google OAuth client.
+4. Keep the browser `tenantId` and `TAUTH_TENANT_ID_PINGWIN` equal to `pingwin`.
+5. Match `TAUTH_SIGNING_KEY` with `TAUTH_TENANT_JWT_SIGNING_KEY_PINGWIN`.
+6. Match `TAUTH_COOKIE_NAME` with `TAUTH_TENANT_SESSION_COOKIE_NAME_PINGWIN`.
+7. Keep the local origin in Pingwin `HTTP_ALLOWED_ORIGIN1` and both TAuth origin inputs.
    The local TAuth URL is `http://localhost:8082`.
    Compose mounts `configs/config.tauth.yml` at `/config/config.yml`.
-9. Create the local override for host gRPC access:
 
-   ```bash
-   cat > /tmp/pingwin-local.yml <<'YAML'
-   services:
-     pingwin-dev:
-       ports:
-         - "127.0.0.1:50051:50051"
-   YAML
-   ```
+### Start the stack
 
-10. Start the stack:
-
-    ```bash
-    make up DOCKER_COMPOSE='docker compose -f docker-compose.yaml -f /tmp/pingwin-local.yml'
-    ```
+Run `make up`.
 
 The `dev` profile builds Pingwin from the local Dockerfile.
 TAuth and ghttp use their published images.
@@ -60,11 +50,10 @@ The browser loads shared `mpr-ui` assets from their configured network URLs.
 | Browser workspace | `http://localhost:8080` |
 | HTTP API | `http://localhost:8081` |
 | TAuth | `http://localhost:8082` |
-| gRPC with the override | `127.0.0.1:50051` |
+| gRPC (loopback only) | `127.0.0.1:50051` |
 | SMTP forwarding, when enabled | Host `8025` to container `25` |
 | SMTP submission, when enabled | Host `1587` to container `587`, host `8465` to container `465` |
 
-The base Compose file does not publish gRPC to the host.
 An SMTP port mapping does not enable its listener.
 The local private inputs disable both SMTP listeners until the SMTP setup procedure is completed.
 
@@ -96,7 +85,7 @@ Compose mounts the `pingwin-web` volume at `/web` for Pingwin and ghttp.
 
    ```bash
    ./bin/pingwin-cli send \
-  --grpc-server-addr localhost:50051 \
+  --grpc-server-addr 127.0.0.1:50051 \
   --api-key "$PINGWIN_API_KEY" \
   --type email \
   --recipient you@example.com \
@@ -114,11 +103,7 @@ The [API guide](api.md) provides status retrieval, schedules, attachment example
 
 ## Stop and inspect the stack
 
-Stop the stack with the same profile and override:
-
-```bash
-make down DOCKER_COMPOSE='docker compose -f docker-compose.yaml -f /tmp/pingwin-local.yml'
-```
+Run `make down` to stop the default stack.
 
 For a published Pingwin image, use the `docker` profile:
 
@@ -129,7 +114,7 @@ COMPOSE_PROFILE=docker make down
 
 That profile still pulls TAuth and ghttp.
 Its Pingwin service is named `pingwin`.
-A host gRPC override for that profile must target `services.pingwin` instead of `services.pingwin-dev`.
+Its gRPC listener also uses `127.0.0.1:50051` on the host.
 
 Inspect Compose volumes with:
 
@@ -177,6 +162,6 @@ Tenant creation and an API key must precede its first gRPC request.
 
 - For a missing-variable or schema error, correct the named input before restart.
 - For HTTP authentication failure, compare signing keys, cookie names, tenant IDs, origins, and Google client IDs.
-- For a refused gRPC connection, verify the local override and the active Compose profile.
+- For a refused gRPC connection, verify the active Compose profile and the Pingwin container's health.
 - For email failure, inspect the tenant SMTP profile and notification status.
 - For configuration errors, run the [doctor procedure](configuration.md#configuration-validation).

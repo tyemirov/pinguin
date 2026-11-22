@@ -37,14 +37,14 @@ git clone --quiet --bare "$application_root" "$fixture_root/origin.git"
 
 cat >"$fixture_root/ssh-transport.sh" <<EOF
 set -eu
-if [ "\$#" -ne 2 ] || [ "\$1" != 'git@github.com' ] || [ "\$2" != "git-upload-pack 'tyemirov/pinguin.git'" ]; then
+if [ "\$#" -ne 2 ] || [ "\$1" != 'git@github.com' ] || [ "\$2" != "git-upload-pack 'tyemirov/pingwin.git'" ]; then
   printf 'unexpected fixture Git transport arguments\\n' >&2
   exit 2
 fi
 exec git upload-pack '$fixture_root/origin.git'
 EOF
 
-git -C "$application_root" remote add origin git@github.com:tyemirov/pinguin.git
+git -C "$application_root" remote add origin git@github.com:tyemirov/pingwin.git
 export GIT_SSH_COMMAND="sh '$fixture_root/ssh-transport.sh'"
 export GIT_SSH_VARIANT=simple
 git -C "$application_root" config branch.master.remote origin

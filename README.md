@@ -1,72 +1,56 @@
 # Pingwin
 
 Pingwin is a self-hosted service for application notifications and domain email routing.
-It sends email and SMS through gRPC, accepts authenticated SMTP submissions, and forwards shared addresses to existing inboxes.
-A browser workspace manages tenants, credentials, notification records, and sender domains.
+Applications submit immediate or scheduled email and SMS notifications over gRPC.
+Pingwin delivers email through each tenant's SMTP server and SMS through its Twilio account when configured.
 
-Use Pingwin to:
-
-- Centralize scheduled application email and SMS with tenant-specific provider credentials.
-- Create exact sender identities for clients such as Gmail Send-As.
-- Forward a shared address to one or more existing inboxes.
-
-The service name is `pingwin`.
-The source repository and Go module remain `github.com/tyemirov/pinguin`.
+Pingwin accepts authenticated SMTP submissions from clients such as Gmail Send-As.
+It forwards mail sent to shared addresses to one or more existing inboxes.
+In the browser workspace, you can manage tenants, credentials, notification records, and sender domains.
 
 ## Capabilities and limits
 
 | Capability | Current behavior |
 | --- | --- |
-| Notifications | Email through a tenant SMTP profile. SMS through an optional Twilio profile. |
-| Schedules and retries | SQLite retains notification records and attachments. A worker dispatches due requests and retries eligible failures with exponential backoff. |
-| Attachments | Email supports 10 files, 5 MiB per file, and 25 MiB combined. The gRPC message limit is 32 MiB. |
+| Schedules and retries | Pingwin stores notification records, including message content and attachments. A worker dispatches due requests and retries eligible failures with exponential backoff. |
+| Attachments | Email notification requests accept up to 10 attachments, 5 MiB per file, and 25 MiB total. The full gRPC message limit is 32 MiB. |
 | Tenant management | Signed-in users can create and manage their own Pingwin tenants. Each tenant has one rotatable API key. |
-| SMTP submission | Verified domains and exact sender credentials. Delivery uses an upstream relay or direct recipient MX hosts. |
+| SMTP submission | Verify sender domains and create credentials for individual sender addresses. Delivery uses an upstream relay or connects directly to recipient mail servers. |
 | Direct SMTP | Each message can address one recipient domain. Pingwin provides no DKIM signer or bounce processor. |
 | Shared addresses | Synchronous forwarding through a shared upstream relay. Pingwin stores no forwarded message body or mailbox state. |
 | Email delivery history | Search the last 24 hours of SES delivery outcomes and observed forwarding links for the tenant's verified sender domains. Requires a configured read-only event source. |
 
-Notification status `sent` means successful provider handoff, rather than confirmed receipt.
+Notification status `sent` records successful provider handoff. Check the destination to confirm receipt.
 Status `errored` remains eligible for retries below the configured limit.
 SMTP submission and forwarding use synchronous delivery, separate from the notification worker.
 The [delivery guide](docs/smtp_delivery_plan.md) explains persistence, transport behavior, and duplicate-delivery risks.
 
 Each tenant requires a complete external SMTP profile, even when its intended use is SMS or direct SMTP submission.
 Provider secrets and SMTP identity passwords are encrypted at rest.
-Notification content and attachment bytes remain in SQLite.
 API secrets are stored as SHA-256 digests and displayed once.
 
-## Project status
-
-The current source implements managed tenants, notification operations, sender-domain verification, SMTP submission, and shared-address forwarding.
-Provider-backed mailboxes remain planned work.
-
-The [deployment record](docs/deployment.md#recorded-operational-status) reports Pingwin `v1.1.11` activation on November 12, 2026.
-It records hosted Google sign-in, public SMTP acceptance, and delivery to the destination inbox.
-This cleanup did not repeat those production checks.
-Tenant recovery records and shared UI cache and session checks remain in the operational guides.
-The [issue tracker](.mprlab/ISSUES.md) retains F002 for provider-backed mailboxes.
-Completed implementation records, including F001, I004, and I007, are in the [issue archive](.mprlab/ISSUES.archive.md).
+Provider-backed mailboxes are planned.
 
 ## Quickstart
 
-The local stack requires Docker Compose, Go 1.25.4 or later, and a Google OAuth web client.
+The local stack requires Docker Compose and a Google OAuth web client.
+Use Go 1.25.4 or later to build the CLI for the first send.
 Tenant creation also requires an external SMTP account.
 SMS requires Twilio credentials.
 
-1. Clone the repository:
+1. Clone the repository and enter its root.
 
    ```bash
-   git clone https://github.com/tyemirov/pinguin.git pingwin
+   git clone https://github.com/tyemirov/pingwin.git
    cd pingwin
    ```
 
-2. Complete [local configuration](docs/getting-started.md#prepare-the-local-stack).
+2. Complete [local configuration](docs/getting-started.md#configure-the-local-stack).
    This step creates private environment files and configures web sign-in.
-3. Start the stack with the documented local gRPC override:
+3. Start the stack.
 
    ```bash
-   make up DOCKER_COMPOSE='docker compose -f docker-compose.yaml -f /tmp/pingwin-local.yml'
+   make up
    ```
 
 4. Open [the local workspace](http://localhost:8080).
@@ -74,15 +58,18 @@ SMS requires Twilio credentials.
    Save the API key when Pingwin displays it.
 5. Complete [the first-send procedure](docs/getting-started.md#send-the-first-notification).
    Send an immediate email and inspect its returned status.
-6. Stop the stack with the same override:
+6. Stop the stack.
 
    ```bash
-   make down DOCKER_COMPOSE='docker compose -f docker-compose.yaml -f /tmp/pingwin-local.yml'
+   make down
    ```
 
 The [getting-started guide](docs/getting-started.md) includes ports, native startup, expected results, and failure diagnosis.
 
 ## Interfaces
+
+[TAuth](https://github.com/tyemirov/TAuth) handles web sign-in and issues the session cookie.
+Pingwin validates the cookie on management API requests and uses the session's user ID to check tenant ownership in its own database.
 
 | Interface | Purpose | Authentication |
 | --- | --- | --- |
@@ -91,9 +78,6 @@ The [getting-started guide](docs/getting-started.md) includes ports, native star
 | Browser | Tenants, Event log, SMTP relay, and Email delivery workspaces. | TAuth sign-in through the shared MPR UI. |
 | SMTP submission | Send as one verified identity. | Identity-specific SMTP credentials. |
 | SMTP forwarding | Receive mail for configured shared addresses. | Public listener with recipient restrictions. |
-
-TAuth handles web sign-in and issues the session cookie.
-Pingwin validates the cookie on management API requests and uses the session's user ID to check tenant ownership in its own database.
 
 The gRPC namespace is `pingwin.NotificationService`.
 The canonical schema is [pingwin.proto](pkg/proto/pingwin.proto).
@@ -114,10 +98,9 @@ The [API guide](docs/api.md) contains CLI examples, complete `grpcurl` commands,
 
 ## Development
 
-The backend uses Go, SQLite, and GORM.
+The backend uses Go and GORM for database access.
 The browser uses ES modules, Alpine.js, and `mpr-ui`.
-Local CI runs through the repository Makefile.
-GitHub Actions are disabled for this repository. See [GitHub automation](.github/AUTOMATION.md).
+Run local validation through the repository Makefile. See [GitHub automation](.github/AUTOMATION.md).
 
 ```bash
 make build

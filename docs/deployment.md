@@ -2,7 +2,7 @@
 
 ## Lifecycle ownership
 
-GitHub Actions are disabled for Pingwin.
+Run `make ci` for local validation.
 The permanent production declaration is the versionless [resources manifest](../.mprlab/deploy/resources.yml).
 It declares the binary, container image, retained data, runtime capabilities, listeners, health probe, and Pages site.
 It declares private TAuth inputs.
@@ -34,7 +34,6 @@ The tracked configuration declares these current production names:
 | Inbound MX | `mx.pingwin.mprlab.com` |
 
 Native `make deploy` activated `v1.1.11` on November 12, 2026.
-The source repository and Go module remain `github.com/tyemirov/pinguin`.
 The current runtime uses the Pingwin service names, browser keys, SMTP headers, and gRPC namespace.
 
 The permanent deployment owner remains `pinguin`.
