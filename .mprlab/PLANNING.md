@@ -33,7 +33,8 @@ Start with the tests that express the requested behavior.
 Record the changed contract, relevant public entry point, and chosen tests.
 For a bug fix, reproduce the failure before the fix and retain the result.
 For behavior changes or consequential refactors, protect the affected contract with appropriate coverage.
-Use passing relevant tests as the final validation authority.
+Record applicable independent reviews and CI selected by the user or repository policy.
+Resolve review findings and finish all other authorized work before the selected final CI gate.
 Treat production state and deployed versions as auxiliary context, separate from implementation acceptance.
 
 A short task can use the host's plan or a concise checklist.

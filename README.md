@@ -20,7 +20,7 @@ The source repository and Go module remain `github.com/tyemirov/pinguin`.
 | Notifications | Email through a tenant SMTP profile. SMS through an optional Twilio profile. |
 | Schedules and retries | SQLite retains notification records and attachments. A worker dispatches due requests and retries eligible failures with exponential backoff. |
 | Attachments | Email supports 10 files, 5 MiB per file, and 25 MiB combined. The gRPC message limit is 32 MiB. |
-| Tenant management | TAuth owners manage their tenants through the browser or HTTP API. Each tenant has one rotatable API key. |
+| Tenant management | Signed-in users can create and manage their own Pingwin tenants. Each tenant has one rotatable API key. |
 | SMTP submission | Verified domains and exact sender credentials. Delivery uses an upstream relay or direct recipient MX hosts. |
 | Direct SMTP | Each message can address one recipient domain. Pingwin provides no DKIM signer or bounce processor. |
 | Shared addresses | Synchronous forwarding through a shared upstream relay. Pingwin stores no forwarded message body or mailbox state. |
@@ -62,7 +62,7 @@ SMS requires Twilio credentials.
    ```
 
 2. Complete [local configuration](docs/getting-started.md#prepare-the-local-stack).
-   This step creates private environment files and aligns the browser with TAuth.
+   This step creates private environment files and configures web sign-in.
 3. Start the stack with the documented local gRPC override:
 
    ```bash
@@ -87,10 +87,13 @@ The [getting-started guide](docs/getting-started.md) includes ports, native star
 | Interface | Purpose | Authentication |
 | --- | --- | --- |
 | gRPC | Send, list, inspect, reschedule, and cancel notifications. | Tenant bearer API key. |
-| HTTP API | Manage tenants, profiles, credentials, notifications, and SMTP resources. | TAuth session cookie. |
-| Browser | Tenants, Event log, SMTP relay, and Email delivery workspaces. | TAuth through the shared MPR UI. |
+| HTTP management API | Manage tenants, profiles, credentials, notifications, and SMTP resources. | TAuth session cookie. |
+| Browser | Tenants, Event log, SMTP relay, and Email delivery workspaces. | TAuth sign-in through the shared MPR UI. |
 | SMTP submission | Send as one verified identity. | Identity-specific SMTP credentials. |
 | SMTP forwarding | Receive mail for configured shared addresses. | Public listener with recipient restrictions. |
+
+TAuth handles web sign-in and issues the session cookie.
+Pingwin validates the cookie on management API requests and uses the session's user ID to check tenant ownership in its own database.
 
 The gRPC namespace is `pingwin.NotificationService`.
 The canonical schema is [pingwin.proto](pkg/proto/pingwin.proto).
@@ -114,7 +117,7 @@ The [API guide](docs/api.md) contains CLI examples, complete `grpcurl` commands,
 The backend uses Go, SQLite, and GORM.
 The browser uses ES modules, Alpine.js, and `mpr-ui`.
 Local CI runs through the repository Makefile.
-GitHub Actions are disabled for this repository.
+GitHub Actions are disabled for this repository. See [GitHub automation](.github/AUTOMATION.md).
 
 ```bash
 make build
