@@ -74,7 +74,7 @@ build:
 
 .PHONY: generate-proto
 generate-proto:
-	$(SHORT_TIMEOUT) protoc --go_out=. --go_opt=module=github.com/tyemirov/pinguin --go-grpc_out=. --go-grpc_opt=module=github.com/tyemirov/pinguin pkg/proto/pingwin.proto
+	$(SHORT_TIMEOUT) protoc --go_out=. --go_opt=module=github.com/tyemirov/pingwin --go-grpc_out=. --go-grpc_opt=module=github.com/tyemirov/pingwin pkg/proto/pingwin.proto
 
 up:
 	$(LONG_TIMEOUT) $(DOCKER_COMPOSE) --profile $(COMPOSE_PROFILE) up -d --build

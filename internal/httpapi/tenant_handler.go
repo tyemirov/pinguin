@@ -12,7 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/tyemirov/pinguin/internal/tenant"
+	"github.com/tyemirov/pingwin/internal/tenant"
 	"gorm.io/gorm"
 )
 

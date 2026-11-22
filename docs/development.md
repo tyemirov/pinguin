@@ -81,8 +81,14 @@ Then run:
 make generate-proto
 ```
 
-Go clients import packages from the `github.com/tyemirov/pinguin` module.
+Go clients import packages from the `github.com/tyemirov/pingwin` module.
 The RPC namespace is `pingwin.NotificationService`.
+
+Install the Go client from the latest source version.
+
+```bash
+go get github.com/tyemirov/pingwin/pkg/client@latest
+```
 
 ## Browser implementation
 

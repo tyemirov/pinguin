@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/tyemirov/pinguin/cmd/client/internal/command"
+	"github.com/tyemirov/pingwin/cmd/client/internal/command"
 )
 
 func main() {

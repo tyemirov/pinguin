@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/tyemirov/pinguin/internal/delivery"
-	"github.com/tyemirov/pinguin/internal/smtpidentity"
+	"github.com/tyemirov/pingwin/internal/delivery"
+	"github.com/tyemirov/pingwin/internal/smtpidentity"
 )
 
 const emailDeliveriesPath = "/tenants/:tenant_id/email-deliveries"

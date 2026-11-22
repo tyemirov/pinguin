@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tyemirov/pinguin/internal/model"
+	"github.com/tyemirov/pingwin/internal/model"
 	"github.com/tyemirov/utils/scheduler"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"

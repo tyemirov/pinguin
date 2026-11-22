@@ -16,10 +16,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	"github.com/glebarez/sqlite"
-	"github.com/tyemirov/pinguin/internal/delivery"
-	"github.com/tyemirov/pinguin/internal/model"
-	"github.com/tyemirov/pinguin/internal/smtpidentity"
-	"github.com/tyemirov/pinguin/internal/tenant"
+	"github.com/tyemirov/pingwin/internal/delivery"
+	"github.com/tyemirov/pingwin/internal/model"
+	"github.com/tyemirov/pingwin/internal/smtpidentity"
+	"github.com/tyemirov/pingwin/internal/tenant"
 	"gorm.io/gorm"
 )
 

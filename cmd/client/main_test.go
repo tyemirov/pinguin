@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tyemirov/pinguin/cmd/client/internal/command"
-	"github.com/tyemirov/pinguin/pkg/client"
-	"github.com/tyemirov/pinguin/pkg/grpcapi"
+	"github.com/tyemirov/pingwin/cmd/client/internal/command"
+	"github.com/tyemirov/pingwin/pkg/client"
+	"github.com/tyemirov/pingwin/pkg/grpcapi"
 )
 
 type mainRecordingSender struct{}

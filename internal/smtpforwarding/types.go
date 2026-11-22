@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/tyemirov/pinguin/internal/smtpidentity"
+	"github.com/tyemirov/pingwin/internal/smtpidentity"
 )
 
 var (

@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/tyemirov/pinguin/internal/smtpidentity"
+	"github.com/tyemirov/pingwin/internal/smtpidentity"
 )
 
 var (

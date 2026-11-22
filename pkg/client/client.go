@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tyemirov/pinguin/pkg/grpcapi"
-	"github.com/tyemirov/pinguin/pkg/grpcutil"
+	"github.com/tyemirov/pingwin/pkg/grpcapi"
+	"github.com/tyemirov/pingwin/pkg/grpcutil"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"

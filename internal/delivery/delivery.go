@@ -15,7 +15,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/tyemirov/pinguin/internal/smtpidentity"
+	"github.com/tyemirov/pingwin/internal/smtpidentity"
 )
 
 const (

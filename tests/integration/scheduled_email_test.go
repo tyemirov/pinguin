@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tyemirov/pinguin/internal/config"
-	"github.com/tyemirov/pinguin/internal/model"
-	"github.com/tyemirov/pinguin/internal/service"
-	"github.com/tyemirov/pinguin/internal/tenant"
+	"github.com/tyemirov/pingwin/internal/config"
+	"github.com/tyemirov/pingwin/internal/model"
+	"github.com/tyemirov/pingwin/internal/service"
+	"github.com/tyemirov/pingwin/internal/tenant"
 	"log/slog"
 )
 

@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tyemirov/pinguin/internal/config"
-	"github.com/tyemirov/pinguin/internal/smtpidentity"
+	"github.com/tyemirov/pingwin/internal/config"
+	"github.com/tyemirov/pingwin/internal/smtpidentity"
 )
 
 const defaultDirectRelayOperationTimeout = 30 * time.Second

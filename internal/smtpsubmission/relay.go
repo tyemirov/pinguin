@@ -8,8 +8,8 @@ import (
 	"net/textproto"
 	"strconv"
 
-	"github.com/tyemirov/pinguin/internal/config"
-	"github.com/tyemirov/pinguin/internal/service"
+	"github.com/tyemirov/pingwin/internal/config"
+	"github.com/tyemirov/pingwin/internal/service"
 )
 
 // UpstreamRelay relays submitted messages through the configured SMTP submission provider.
