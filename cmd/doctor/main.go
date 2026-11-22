@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/tyemirov/pinguin/internal/doctor"
+	"github.com/tyemirov/pingwin/internal/doctor"
 )
 
 const (

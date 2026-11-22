@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tyemirov/pinguin/pkg/grpcapi"
+	"github.com/tyemirov/pingwin/pkg/grpcapi"
 	"google.golang.org/grpc"
 )
 

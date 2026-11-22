@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/tyemirov/pinguin/pkg/client"
-	"github.com/tyemirov/pinguin/pkg/grpcapi"
+	"github.com/tyemirov/pingwin/pkg/client"
+	"github.com/tyemirov/pingwin/pkg/grpcapi"
 )
 
 type recordingSender struct {

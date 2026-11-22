@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tyemirov/pinguin/internal/smtpidentity"
+	"github.com/tyemirov/pingwin/internal/smtpidentity"
 )
 
 func TestRouteSetValidationAndAccessors(testHandle *testing.T) {

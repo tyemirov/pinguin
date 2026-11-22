@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"github.com/tyemirov/pinguin/internal/tenant"
+	"github.com/tyemirov/pingwin/internal/tenant"
 )
 
 const testTenantID = "tenant-service"

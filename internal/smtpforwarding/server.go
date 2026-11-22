@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tyemirov/pinguin/internal/smtpidentity"
+	"github.com/tyemirov/pingwin/internal/smtpidentity"
 )
 
 const (

@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/tyemirov/pinguin/internal/smtpidentity"
-	"github.com/tyemirov/pinguin/internal/tenant"
+	"github.com/tyemirov/pingwin/internal/smtpidentity"
+	"github.com/tyemirov/pingwin/internal/tenant"
 	"gorm.io/gorm"
 )
 

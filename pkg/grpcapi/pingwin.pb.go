@@ -696,7 +696,7 @@ const file_pkg_proto_pingwin_proto_rawDesc = "" +
 	"\x15GetNotificationStatus\x12%.pingwin.GetNotificationStatusRequest\x1a\x1d.pingwin.NotificationResponse\x12Z\n" +
 	"\x11ListNotifications\x12!.pingwin.ListNotificationsRequest\x1a\".pingwin.ListNotificationsResponse\x12_\n" +
 	"\x16RescheduleNotification\x12&.pingwin.RescheduleNotificationRequest\x1a\x1d.pingwin.NotificationResponse\x12W\n" +
-	"\x12CancelNotification\x12\".pingwin.CancelNotificationRequest\x1a\x1d.pingwin.NotificationResponseB1Z/github.com/tyemirov/pinguin/pkg/grpcapi;grpcapib\x06proto3"
+	"\x12CancelNotification\x12\".pingwin.CancelNotificationRequest\x1a\x1d.pingwin.NotificationResponseB1Z/github.com/tyemirov/pingwin/pkg/grpcapi;grpcapib\x06proto3"
 
 var (
 	file_pkg_proto_pingwin_proto_rawDescOnce sync.Once

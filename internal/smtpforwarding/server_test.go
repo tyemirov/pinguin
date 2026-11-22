@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tyemirov/pinguin/internal/smtpidentity"
+	"github.com/tyemirov/pingwin/internal/smtpidentity"
 )
 
 func TestServerAcceptsAndForwardsInboundMessage(testHandle *testing.T) {

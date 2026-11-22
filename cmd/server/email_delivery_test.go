@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/tyemirov/pinguin/internal/config"
+	"github.com/tyemirov/pingwin/internal/config"
 )
 
 func TestRunServerEmailDelivery(t *testing.T) {

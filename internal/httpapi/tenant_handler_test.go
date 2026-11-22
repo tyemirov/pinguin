@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/glebarez/sqlite"
-	"github.com/tyemirov/pinguin/internal/tenant"
+	"github.com/tyemirov/pingwin/internal/tenant"
 	"gorm.io/gorm"
 )
 

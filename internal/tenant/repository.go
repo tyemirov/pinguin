@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tyemirov/pinguin/internal/model"
-	"github.com/tyemirov/pinguin/internal/smtpidentity"
+	"github.com/tyemirov/pingwin/internal/model"
+	"github.com/tyemirov/pingwin/internal/smtpidentity"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

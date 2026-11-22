@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	runtimeconfig "github.com/tyemirov/pinguin/internal/config"
+	runtimeconfig "github.com/tyemirov/pingwin/internal/config"
 	"gopkg.in/yaml.v3"
 )
 

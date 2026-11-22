@@ -9,11 +9,11 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	cliConfig "github.com/tyemirov/pinguin/cmd/client/internal/config"
-	"github.com/tyemirov/pinguin/pkg/attachments"
-	"github.com/tyemirov/pinguin/pkg/client"
-	"github.com/tyemirov/pinguin/pkg/grpcapi"
-	"github.com/tyemirov/pinguin/pkg/logging"
+	cliConfig "github.com/tyemirov/pingwin/cmd/client/internal/config"
+	"github.com/tyemirov/pingwin/pkg/attachments"
+	"github.com/tyemirov/pingwin/pkg/client"
+	"github.com/tyemirov/pingwin/pkg/grpcapi"
+	"github.com/tyemirov/pingwin/pkg/logging"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"log/slog"
 )

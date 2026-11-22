@@ -8,6 +8,22 @@ Pingwin accepts authenticated SMTP submissions from clients such as Gmail Send-A
 It forwards mail sent to shared addresses to one or more existing inboxes.
 In the browser workspace, you can manage tenants, credentials, notification records, and sender domains.
 
+## Web workspace
+
+These views use sample data.
+
+Manage tenant delivery profiles and API access.
+
+![Tenants workspace showing two sample tenants and their delivery profiles and API access controls](docs/screenshots/tenants.png)
+
+Review notification status and manage queued deliveries.
+
+![Event log showing email and SMS notifications with sent, queued, and errored statuses](docs/screenshots/event-log.png)
+
+Inspect email delivery receipts and forwarding links.
+
+![Email delivery workspace showing recipient outcomes and an expanded forwarding record](docs/screenshots/email-delivery.png)
+
 ## Capabilities and limits
 
 | Capability | Current behavior |

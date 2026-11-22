@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package pingwin;
 
-option go_package = "github.com/tyemirov/pinguin/pkg/grpcapi;grpcapi";
+option go_package = "github.com/tyemirov/pingwin/pkg/grpcapi;grpcapi";
 import "google/protobuf/timestamp.proto";
 
 // Enumeration for notification type.

@@ -12,11 +12,11 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/tyemirov/pinguin/internal/delivery"
-	"github.com/tyemirov/pinguin/internal/model"
-	"github.com/tyemirov/pinguin/internal/service"
-	"github.com/tyemirov/pinguin/internal/smtpidentity"
-	"github.com/tyemirov/pinguin/internal/tenant"
+	"github.com/tyemirov/pingwin/internal/delivery"
+	"github.com/tyemirov/pingwin/internal/model"
+	"github.com/tyemirov/pingwin/internal/service"
+	"github.com/tyemirov/pingwin/internal/smtpidentity"
+	"github.com/tyemirov/pingwin/internal/tenant"
 	sessionvalidator "github.com/tyemirov/tauth/pkg/sessionvalidator"
 	"gorm.io/gorm"
 )

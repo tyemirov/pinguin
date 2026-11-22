@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/tyemirov/pinguin/internal/config"
-	"github.com/tyemirov/pinguin/internal/model"
-	"github.com/tyemirov/pinguin/internal/tenant"
+	"github.com/tyemirov/pingwin/internal/config"
+	"github.com/tyemirov/pingwin/internal/model"
+	"github.com/tyemirov/pingwin/internal/tenant"
 	"github.com/tyemirov/utils/scheduler"
 	"gorm.io/gorm"
 )

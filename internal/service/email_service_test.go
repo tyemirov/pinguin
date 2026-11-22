@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tyemirov/pinguin/internal/model"
+	"github.com/tyemirov/pingwin/internal/model"
 	"log/slog"
 )
 

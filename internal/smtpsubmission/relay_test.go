@@ -8,8 +8,8 @@ import (
 	"net/textproto"
 	"testing"
 
-	"github.com/tyemirov/pinguin/internal/config"
-	"github.com/tyemirov/pinguin/internal/smtpidentity"
+	"github.com/tyemirov/pingwin/internal/config"
+	"github.com/tyemirov/pingwin/internal/smtpidentity"
 )
 
 func TestUpstreamRelayBuildsSenderFromConfig(t *testing.T) {
