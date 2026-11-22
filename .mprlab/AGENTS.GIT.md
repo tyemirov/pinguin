@@ -6,7 +6,7 @@ Git and GitHub workflow guidance for this repository. Use this guide whenever br
 
 ## Rules
 
-- The production branch is `master` unless the repo explicitly documents a different current branch.
+- Discover the remote default branch before selecting a base or production branch.
 - Use forward-only history. Do not rewrite, rebase, force-push, or amend published work.
 - Branch names use taxonomy prefixes: `feature/`, `improvement/`, `bugfix/`, `maintenance/`, or `blocked/`.
 - Keep one concrete issue or task per branch.
@@ -22,7 +22,7 @@ Git and GitHub workflow guidance for this repository. Use this guide whenever br
 
 - Create each pull request as ready for review. Never create a draft pull request.
 
-- Open pull requests after the applicable focused local checks pass.
+- Open pull requests after the applicable focused local checks pass. When a push or pull request starts full CI automatically, schedule that action at the selected final checkpoint. Honor a user instruction to skip CI before triggering a workflow.
 - Use passing relevant tests as validation, whether they ran locally or in the pull request.
 - Reuse passing results while the tested state remains unchanged.
 - A pull request description must summarize changed behavior and completed validation.
@@ -40,7 +40,7 @@ Git and GitHub workflow guidance for this repository. Use this guide whenever br
 
 Before you finalize Git work, complete the applicable validation after the last change.
 Use the policy's [Validation](POLICY.md#validation) rule to select the relevant tests.
-Passing relevant tests completes validation; CI is not a separate authority.
+Complete applicable independent reviews and selected CI gates before merge or completion.
 
 Use that result while the applicable files stay the same.
 
