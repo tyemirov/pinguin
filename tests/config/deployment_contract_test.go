@@ -71,6 +71,11 @@ func TestRepositoryOwnsCompleteVersionlessDeployment(t *testing.T) {
 			t.Fatalf("unexpected %s publications", provider)
 		}
 	}
+	const githubRepository = "tyemirov/pingwin"
+	pagesPublication := currentContractDeclaration(t, currentContractMap(t, publications["github_pages"])["sites"], "website")
+	requireCurrentContractYAML(t, "website.repository", pagesPublication["repository"], githubRepository)
+	releasePublication := currentContractDeclaration(t, currentContractMap(t, publications["github_releases"])["binaries"], "server")
+	requireCurrentContractYAML(t, "server.repository", releasePublication["repository"], githubRepository)
 	projects := currentContractIndex(t, currentContractMap(t, targets["docker_compose"])["projects"], "id")
 	if len(projects) != 1 {
 		t.Fatalf("unexpected Compose projects: %#v", projects)

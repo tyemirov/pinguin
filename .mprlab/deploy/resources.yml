@@ -179,12 +179,12 @@ mprlab_resources:
                   id: website
                   marker:
                     path: /.mprlab-release.json
-                  repository: tyemirov/pinguin
+                  repository: tyemirov/pingwin
         github_releases:
             binaries:
                 - artifact: server
                   id: server
-                  repository: tyemirov/pinguin
+                  repository: tyemirov/pingwin
     release:
         scheme: semver
     targets:

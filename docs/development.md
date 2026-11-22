@@ -6,7 +6,6 @@ The Go module requires Go 1.25.4 or later.
 The backend uses SQLite through GORM.
 The browser uses ES modules, Alpine.js, and `mpr-ui`.
 The repository uses its Makefile for local automation.
-GitHub Actions are disabled.
 
 Install the locked browser dependencies and Playwright browsers:
 
@@ -82,7 +81,7 @@ Then run:
 make generate-proto
 ```
 
-The generated Go package remains under the `github.com/tyemirov/pinguin` module.
+Go clients import packages from the `github.com/tyemirov/pinguin` module.
 The RPC namespace is `pingwin.NotificationService`.
 
 ## Browser implementation

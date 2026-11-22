@@ -1,7 +1,7 @@
 # Contributor License Terms
 
 These terms apply to Contributions intentionally submitted for inclusion in
-the `tyemirov/pinguin` repository at <https://github.com/tyemirov/pinguin> (the "Repository").
+the `tyemirov/pingwin` repository at <https://github.com/tyemirov/pingwin> (the "Repository").
 
 ## Definitions
 

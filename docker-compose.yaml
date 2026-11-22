@@ -2,6 +2,7 @@ x-pingwin-service: &pingwin-service
   restart: unless-stopped
   ports:
     - "8081:8081"
+    - "127.0.0.1:50051:50051"
     - "8025:25"
     - "1587:587"
     - "8465:465"

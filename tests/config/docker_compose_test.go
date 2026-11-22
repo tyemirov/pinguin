@@ -27,6 +27,7 @@ type composeBuildSpec struct {
 func TestComposeProfilesProvideLocalAndImageVariants(t *testing.T) {
 	t.Helper()
 
+	const grpcPort = "127.0.0.1:50051:50051"
 	documentData := readRepoFile(t, "docker-compose.yaml")
 
 	var document composeDocument
@@ -40,6 +41,7 @@ func TestComposeProfilesProvideLocalAndImageVariants(t *testing.T) {
 	}
 
 	assertProfileContains(t, localService.Profiles, "dev", "pingwin-dev")
+	assertStringContains(t, localService.Ports, grpcPort, "pingwin-dev ports")
 	if localService.Build == nil || localService.Build.Context == "" {
 		t.Fatalf("pingwin-dev should define a build context for local development")
 	}
@@ -53,6 +55,7 @@ func TestComposeProfilesProvideLocalAndImageVariants(t *testing.T) {
 	}
 
 	assertProfileContains(t, imageService.Profiles, "docker", "pingwin")
+	assertStringContains(t, imageService.Ports, grpcPort, "pingwin ports")
 	if imageService.Image == "" || !strings.HasPrefix(imageService.Image, "ghcr.io/") {
 		t.Fatalf("pingwin docker profile should pull image from ghcr.io, got %q", imageService.Image)
 	}
