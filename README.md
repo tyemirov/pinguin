@@ -114,7 +114,7 @@ The [API guide](docs/api.md) contains CLI examples, complete `grpcurl` commands,
 
 ## Development
 
-The backend uses Go and GORM for database access.
+The Go backend uses GORM for database access with SQLite as its driver.
 The browser uses ES modules, Alpine.js, and `mpr-ui`.
 Run local validation through the repository Makefile. See [GitHub automation](.github/AUTOMATION.md).
 
