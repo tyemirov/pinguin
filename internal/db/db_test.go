@@ -242,35 +242,54 @@ func TestValidateManagedSchema(t *testing.T) {
 	})
 }
 
-func TestInitDBConfiguresSQLiteContentionSettings(t *testing.T) {
-	t.Helper()
-
+func TestInitDBReadersRemainAvailableDuringPendingWrite(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "pingwin.db")
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
-
-	database, initError := InitDB(databasePath, logger)
-	if initError != nil {
-		t.Fatalf("init db error: %v", initError)
+	writer, err := InitDB(databasePath, logger)
+	if err != nil {
+		t.Fatalf("initialize writer: %v", err)
 	}
-
-	var journalMode string
-	sqlDB, sqlDBError := database.DB()
-	if sqlDBError != nil {
-		t.Fatalf("retrieve sql db error: %v", sqlDBError)
+	reader, err := InitDB(databasePath, logger)
+	if err != nil {
+		t.Fatalf("initialize reader: %v", err)
 	}
-	if queryError := sqlDB.QueryRow("PRAGMA journal_mode").Scan(&journalMode); queryError != nil {
-		t.Fatalf("query journal mode: %v", queryError)
+	for _, database := range []*gorm.DB{writer, reader} {
+		handle, err := database.DB()
+		if err != nil {
+			t.Fatalf("get database lifecycle handle: %v", err)
+		}
+		t.Cleanup(func() {
+			if err := handle.Close(); err != nil {
+				t.Errorf("close database: %v", err)
+			}
+		})
 	}
-	if !strings.EqualFold(journalMode, sqliteJournalMode) {
-		t.Fatalf("expected journal mode %s, got %s", sqliteJournalMode, journalMode)
+	record := model.Notification{
+		TenantID:       dbTestTenantID,
+		NotificationID: "concurrent-reader",
+		Message:        "committed",
 	}
-
-	var busyTimeoutMilliseconds int
-	if queryError := sqlDB.QueryRow("PRAGMA busy_timeout").Scan(&busyTimeoutMilliseconds); queryError != nil {
-		t.Fatalf("query busy timeout: %v", queryError)
+	if err := writer.Create(&record).Error; err != nil {
+		t.Fatalf("create record: %v", err)
 	}
-	if busyTimeoutMilliseconds != sqliteBusyTimeoutMilliseconds {
-		t.Fatalf("expected busy timeout %d, got %d", sqliteBusyTimeoutMilliseconds, busyTimeoutMilliseconds)
+	err = writer.Transaction(func(transaction *gorm.DB) error {
+		if err := transaction.Model(&record).Update("message", "pending").Error; err != nil {
+			return err
+		}
+		var fetched model.Notification
+		if err := reader.Where(&model.Notification{NotificationID: record.NotificationID}).First(&fetched).Error; err != nil {
+			return err
+		}
+		if fetched.Message != "committed" {
+			t.Errorf("reader saw uncommitted message %q", fetched.Message)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("read while writer transaction is active: %v", err)
+	}
+	if _, err := os.Stat(databasePath + "-wal"); err != nil {
+		t.Fatalf("expected active driver-managed write-ahead log: %v", err)
 	}
 }
 
@@ -278,19 +297,13 @@ func TestSQLiteDSNAppendsPragmas(t *testing.T) {
 	t.Helper()
 
 	plainDSN := sqliteDSN("pingwin.db")
-	if !strings.Contains(plainDSN, "pingwin.db?") {
-		t.Fatalf("expected query separator in %s", plainDSN)
-	}
-	if !strings.Contains(plainDSN, "busy_timeout(10000)") {
-		t.Fatalf("expected busy timeout pragma in %s", plainDSN)
-	}
-	if !strings.Contains(plainDSN, "journal_mode(WAL)") {
-		t.Fatalf("expected journal mode pragma in %s", plainDSN)
+	if plainDSN != "pingwin.db?_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)" {
+		t.Fatalf("unexpected SQLite driver configuration %s", plainDSN)
 	}
 
 	existingQueryDSN := sqliteDSN("file:pingwin.db?cache=shared")
-	if !strings.Contains(existingQueryDSN, "cache=shared&") {
-		t.Fatalf("expected existing query separator in %s", existingQueryDSN)
+	if existingQueryDSN != "file:pingwin.db?cache=shared&_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)" {
+		t.Fatalf("unexpected SQLite driver configuration %s", existingQueryDSN)
 	}
 }
 
@@ -371,13 +384,13 @@ func TestSlogGormLoggerImplementsMethods(t *testing.T) {
 	logger.Warn(context.Background(), "warn", "key", "value")
 	logger.Error(context.Background(), "error", "key", "value")
 	logger.Trace(context.Background(), time.Now(), func() (string, int64) {
-		return "select 1", 1
+		return "successful query with sensitive data", 1
 	}, nil)
 	logger.Trace(context.Background(), time.Now(), func() (string, int64) {
-		return "select missing", 0
+		return "missing record with sensitive data", 0
 	}, gorm.ErrRecordNotFound)
 	logger.Trace(context.Background(), time.Now(), func() (string, int64) {
-		return "select broken", 0
+		return "failed query with sensitive data", 0
 	}, errors.New("query failed"))
 }
 
@@ -387,14 +400,14 @@ func TestSlogGormLoggerOmitsInterpolatedSQLValues(t *testing.T) {
 	var logBuffer bytes.Buffer
 	logger := &slogGormLogger{logger: slog.New(slog.NewTextHandler(&logBuffer, &slog.HandlerOptions{}))}
 	logger.Trace(context.Background(), time.Now(), func() (string, int64) {
-		return `SELECT * FROM identities WHERE username = "smtp_sensitive_username"`, 0
+		return "driver-generated statement with smtp_sensitive_username", 0
 	}, errors.New("query failed"))
 
 	output := logBuffer.String()
 	if strings.Contains(output, "smtp_sensitive_username") {
 		t.Fatalf("expected log output to omit SQL values, got %q", output)
 	}
-	if strings.Contains(output, "SELECT * FROM identities") {
+	if strings.Contains(output, "driver-generated statement") {
 		t.Fatalf("expected log output to omit raw SQL, got %q", output)
 	}
 	if !strings.Contains(output, "query failed") {

@@ -307,8 +307,16 @@ func (repository *Repository) RotateForScope(ctx context.Context, scope AccessSc
 	record.PasswordDigest = digest
 	record.PasswordCipher = passwordCipher
 	record.UpdatedAt = repository.clockFunc()
-	if saveErr := repository.db.WithContext(ctx).Save(&record).Error; saveErr != nil {
-		return PublicIdentity{}, "", fmt.Errorf("smtp identity rotate: %w", saveErr)
+	update := repository.db.WithContext(ctx).
+		Model(&Identity{}).
+		Where(&Identity{ID: record.ID, TenantID: record.TenantID, Status: IdentityStatusActive}).
+		Select([]string{usernameColumn, "password_salt", "password_digest", "password_cipher", updatedAtColumn}).
+		Updates(&record)
+	if update.Error != nil {
+		return PublicIdentity{}, "", fmt.Errorf("smtp identity rotate: %w", update.Error)
+	}
+	if update.RowsAffected == 0 {
+		return PublicIdentity{}, "", ErrIdentityNotFound
 	}
 	return publicIdentity(record), password, nil
 }
@@ -319,10 +327,15 @@ func (repository *Repository) DeleteForScope(ctx context.Context, scope AccessSc
 	if fetchErr != nil {
 		return fetchErr
 	}
-	record.Status = IdentityStatusDeleted
-	record.UpdatedAt = repository.clockFunc()
-	if saveErr := repository.db.WithContext(ctx).Save(&record).Error; saveErr != nil {
-		return fmt.Errorf("smtp identity delete: %w", saveErr)
+	update := repository.db.WithContext(ctx).
+		Model(&Identity{}).
+		Where(&Identity{ID: record.ID, TenantID: record.TenantID, Status: IdentityStatusActive}).
+		Updates(Identity{Status: IdentityStatusDeleted, UpdatedAt: repository.clockFunc()})
+	if update.Error != nil {
+		return fmt.Errorf("smtp identity delete: %w", update.Error)
+	}
+	if update.RowsAffected == 0 {
+		return ErrIdentityNotFound
 	}
 	return nil
 }
@@ -362,7 +375,7 @@ func (repository *Repository) ResolveForwarding(ctx context.Context, address Add
 	return address, recipients, true, nil
 }
 
-// Authenticate verifies SMTP credentials and returns the exact sender identity.
+// Authenticate reads SMTP credentials and returns the verified sender identity.
 func (repository *Repository) Authenticate(ctx context.Context, username string, password string) (AuthenticatedIdentity, error) {
 	normalizedUsername := strings.TrimSpace(username)
 	if normalizedUsername == "" || strings.TrimSpace(password) == "" {
@@ -372,7 +385,7 @@ func (repository *Repository) Authenticate(ctx context.Context, username string,
 	if err := repository.db.WithContext(ctx).
 		Where(&Identity{Username: normalizedUsername, Status: IdentityStatusActive}).
 		First(&record).Error; err != nil {
-		return AuthenticatedIdentity{}, ErrAuthenticationFailed
+		return AuthenticatedIdentity{}, classifyAuthLookupError("identity lookup", err)
 	}
 	digest := repository.digest(record.PasswordSalt, password)
 	if subtle.ConstantTimeCompare(digest, record.PasswordDigest) != 1 {
@@ -388,9 +401,12 @@ func (repository *Repository) Authenticate(ctx context.Context, username string,
 		}
 		return AuthenticatedIdentity{}, domainErr
 	}
-	now := repository.clockFunc()
-	if markErr := repository.markAuthenticatedIdentityUsed(ctx, record, now); markErr != nil {
-		return AuthenticatedIdentity{}, markErr
+	var activeIdentity Identity
+	if err := repository.db.WithContext(ctx).
+		Select([]string{identityIDColumn}).
+		Where(&Identity{ID: record.ID, TenantID: record.TenantID, Status: IdentityStatusActive, Username: record.Username}).
+		Take(&activeIdentity).Error; err != nil {
+		return AuthenticatedIdentity{}, classifyAuthLookupError("active credential check", err)
 	}
 	return AuthenticatedIdentity{
 		ID:           record.ID,
@@ -399,23 +415,29 @@ func (repository *Repository) Authenticate(ctx context.Context, username string,
 	}, nil
 }
 
-func (repository *Repository) markAuthenticatedIdentityUsed(ctx context.Context, record Identity, now time.Time) error {
-	updateResult := repository.db.WithContext(ctx).
+func classifyAuthLookupError(operation string, err error) error {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrAuthenticationFailed
+	}
+	return fmt.Errorf("smtp identity auth: %s: %w", operation, err)
+}
+
+// RecordIdentityUse advances the usage timestamp for the active credential.
+func (repository *Repository) RecordIdentityUse(ctx context.Context, identity AuthenticatedIdentity, usedAt time.Time) error {
+	err := repository.db.WithContext(ctx).
 		Model(&Identity{}).
 		Where(map[string]interface{}{
-			identityIDColumn: record.ID,
+			identityIDColumn: identity.ID,
 			statusColumn:     IdentityStatusActive,
-			usernameColumn:   record.Username,
+			usernameColumn:   identity.Username,
 		}).
-		Updates(map[string]interface{}{
-			lastUsedAtColumn: &now,
-			updatedAtColumn:  now,
-		})
-	if updateResult.Error != nil {
-		return fmt.Errorf("smtp identity auth: mark used: %w", updateResult.Error)
-	}
-	if updateResult.RowsAffected == 0 {
-		return ErrAuthenticationFailed
+		Where(clause.Or(
+			clause.Eq{Column: clause.Column{Name: lastUsedAtColumn}, Value: nil},
+			clause.Lt{Column: clause.Column{Name: lastUsedAtColumn}, Value: usedAt},
+		)).
+		UpdateColumn(lastUsedAtColumn, usedAt).Error
+	if err != nil {
+		return fmt.Errorf("smtp identity: record use: %w", err)
 	}
 	return nil
 }

@@ -3,6 +3,7 @@ package smtpsubmission
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/tyemirov/pingwin/internal/smtpidentity"
 )
@@ -14,9 +15,15 @@ var (
 	ErrRelayPermanent = errors.New("smtp_submission.relay_permanent")
 )
 
-// Authenticator verifies SMTP AUTH credentials.
+// Authenticator verifies SMTP credentials. It returns smtpidentity.ErrAuthenticationFailed
+// for denied credentials and contextual errors when verification is unavailable.
 type Authenticator interface {
 	Authenticate(ctx context.Context, username string, password string) (smtpidentity.AuthenticatedIdentity, error)
+}
+
+// IdentityUsageRecorder persists the time of a successful SMTP authentication.
+type IdentityUsageRecorder interface {
+	RecordIdentityUse(ctx context.Context, identity smtpidentity.AuthenticatedIdentity, usedAt time.Time) error
 }
 
 // RawRelay forwards an accepted RFC 5322 message to an upstream provider.

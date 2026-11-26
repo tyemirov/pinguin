@@ -879,17 +879,17 @@ func TestSMTPSubmissionConnectionHandshakeFailure(t *testing.T) {
 func TestSMTPSubmissionStartTLSResponseWriteFailure(t *testing.T) {
 	server := newBareSMTPSubmissionServer(t)
 	server.config.TLSConfig = testTLSConfig(t)
-	server.handleConnection(context.Background(), &failingAfterGreetingConn{reader: strings.NewReader("STARTTLS\r\n")}, false, "remote")
+	server.handleConnection(context.Background(), &failingAfterGreetingConn{reader: strings.NewReader("STARTTLS\r\n")}, false, "remote", nil)
 }
 
 func TestSMTPSubmissionInitialGreetingWriteFailure(t *testing.T) {
 	server := newBareSMTPSubmissionServer(t)
-	server.handleConnection(context.Background(), failingSMTPConn{}, false, "remote")
+	server.handleConnection(context.Background(), failingSMTPConn{}, false, "remote", nil)
 }
 
 func TestSMTPSubmissionDeadlineErrorPaths(t *testing.T) {
 	server := newBareSMTPSubmissionServer(t)
-	server.handleConnection(context.Background(), &smtpDeadlineFailingConn{reader: strings.NewReader("NOOP\r\n")}, false, "remote")
+	server.handleConnection(context.Background(), &smtpDeadlineFailingConn{reader: strings.NewReader("NOOP\r\n")}, false, "remote", nil)
 	from := mustSMTPSubmissionAddress(t, "alice@example.com")
 	session := &sessionState{
 		authenticated: &smtpidentity.AuthenticatedIdentity{ID: "identity", EmailAddress: from},
@@ -1043,6 +1043,7 @@ type smtpServerFixture struct {
 	relay  *recordingRelay
 	addr   string
 	cancel context.CancelFunc
+	done   <-chan struct{}
 }
 
 func newSMTPServerFixture(t *testing.T, allowInsecureAuth bool, relayError error) *smtpServerFixture {
@@ -1087,11 +1088,13 @@ func newSMTPServerFixtureWithConfig(t *testing.T, allowInsecureAuth bool, relayE
 		t.Fatalf("listen: %v", listenErr)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
 	t.Cleanup(func() {
 		cancel()
 		listener.Close()
 	})
 	go func() {
+		defer close(done)
 		_ = server.Serve(ctx, listener, false)
 	}()
 	return &smtpServerFixture{
@@ -1099,6 +1102,7 @@ func newSMTPServerFixtureWithConfig(t *testing.T, allowInsecureAuth bool, relayE
 		relay:  relay,
 		addr:   listener.Addr().String(),
 		cancel: cancel,
+		done:   done,
 	}
 }
 

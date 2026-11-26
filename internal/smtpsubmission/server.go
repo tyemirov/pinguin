@@ -48,6 +48,7 @@ type Config struct {
 	MessageWindow            time.Duration
 	AllowInsecureAuth        bool
 	Authenticator            Authenticator
+	IdentityUsageRecorder    IdentityUsageRecorder
 	Relay                    RawRelay
 	Logger                   *slog.Logger
 }
@@ -72,11 +73,17 @@ const (
 	smtpAuthAccepted smtpAuthStatus = iota
 	smtpAuthRejected
 	smtpAuthThrottled
+	smtpAuthUnavailable
 )
 
 type smtpAuthResult struct {
 	status   smtpAuthStatus
 	identity smtpidentity.AuthenticatedIdentity
+}
+
+type identityUse struct {
+	identity smtpidentity.AuthenticatedIdentity
+	usedAt   time.Time
 }
 
 type smtpRelayStatus int
@@ -180,13 +187,31 @@ func (server *Server) Start(ctx context.Context) error {
 }
 
 func (server *Server) serveListeners(ctx context.Context, listeners []smtpListener) error {
+	ctx, cancel := context.WithCancel(ctx)
+	var identityUses chan identityUse
+	var usageWorkerDone chan struct{}
+	if server.config.IdentityUsageRecorder != nil {
+		identityUses = make(chan identityUse, server.config.MaxConcurrentSessions)
+		usageWorkerDone = make(chan struct{})
+		go func() {
+			defer close(usageWorkerDone)
+			server.recordIdentityUses(ctx, identityUses)
+		}()
+	}
+	defer func() {
+		cancel()
+		if usageWorkerDone != nil {
+			<-usageWorkerDone
+		}
+	}()
+
 	errChan := make(chan error, len(listeners))
 	var closeOnce sync.Once
 	done := make(chan struct{})
 	defer close(done)
 	for _, listenerConfig := range listeners {
 		go func(listener net.Listener, implicitTLS bool) {
-			errChan <- server.Serve(ctx, listener, implicitTLS)
+			errChan <- server.serveListener(ctx, listener, implicitTLS, identityUses)
 		}(listenerConfig.listener, listenerConfig.implicitTLS)
 	}
 	go func() {
@@ -211,6 +236,23 @@ func (server *Server) serveListeners(ctx context.Context, listeners []smtpListen
 
 // Serve accepts connections from an existing listener.
 func (server *Server) Serve(ctx context.Context, listener net.Listener, implicitTLS bool) error {
+	return server.serveListeners(ctx, []smtpListener{{listener: listener, implicitTLS: implicitTLS}})
+}
+
+func (server *Server) recordIdentityUses(ctx context.Context, identityUses <-chan identityUse) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case use := <-identityUses:
+			if err := server.config.IdentityUsageRecorder.RecordIdentityUse(ctx, use.identity, use.usedAt); err != nil {
+				server.logger.Warn("smtp_submission_identity_usage_failed", "identity_id", use.identity.ID, "error", err)
+			}
+		}
+	}
+}
+
+func (server *Server) serveListener(ctx context.Context, listener net.Listener, implicitTLS bool, identityUses chan<- identityUse) error {
 	for {
 		connection, acceptErr := listener.Accept()
 		if acceptErr != nil {
@@ -228,12 +270,12 @@ func (server *Server) Serve(ctx context.Context, listener net.Listener, implicit
 		}
 		go func() {
 			defer releaseSession()
-			server.handleConnection(ctx, connection, implicitTLS, remoteHost)
+			server.handleConnection(ctx, connection, implicitTLS, remoteHost, identityUses)
 		}()
 	}
 }
 
-func (server *Server) handleConnection(ctx context.Context, connection net.Conn, implicitTLS bool, remoteHost string) {
+func (server *Server) handleConnection(ctx context.Context, connection net.Conn, implicitTLS bool, remoteHost string, identityUses chan<- identityUse) {
 	defer connection.Close()
 	session := &sessionState{secure: implicitTLS}
 	reader := bufio.NewReader(connection)
@@ -274,7 +316,7 @@ func (server *Server) handleConnection(ctx context.Context, connection net.Conn,
 			writer = bufio.NewWriter(connection)
 			*session = sessionState{secure: true}
 		case "AUTH":
-			server.handleAuth(ctx, reader, writer, session, argument, remoteHost)
+			server.handleAuth(ctx, reader, writer, session, argument, remoteHost, identityUses)
 		case "MAIL":
 			server.handleMail(writer, session, argument)
 		case "RCPT":
@@ -313,7 +355,7 @@ func (server *Server) handleHello(writer *bufio.Writer, session *sessionState) {
 	}
 }
 
-func (server *Server) handleAuth(ctx context.Context, reader *bufio.Reader, writer *bufio.Writer, session *sessionState, argument string, remoteHost string) {
+func (server *Server) handleAuth(ctx context.Context, reader *bufio.Reader, writer *bufio.Writer, session *sessionState, argument string, remoteHost string, identityUses chan<- identityUse) {
 	if session.authenticated != nil {
 		writeSMTPLine(writer, "503 Already authenticated")
 		return
@@ -343,26 +385,40 @@ func (server *Server) handleAuth(ctx context.Context, reader *bufio.Reader, writ
 	case smtpAuthRejected:
 		writeSMTPLine(writer, "535 Authentication failed")
 		return
+	case smtpAuthUnavailable:
+		writeSMTPLine(writer, "454 4.7.0 Temporary authentication failure")
+		return
 	case smtpAuthAccepted:
 		session.authenticated = &authResult.identity
 		writeSMTPLine(writer, "235 Authentication successful")
+		if identityUses != nil {
+			select {
+			case identityUses <- identityUse{identity: authResult.identity, usedAt: time.Now().UTC()}:
+			default:
+				server.logger.Warn("smtp_submission_identity_usage_queue_full", "identity_id", authResult.identity.ID)
+			}
+		}
 		return
 	}
 }
 
-func (server *Server) completeAuthAttempt(ctx context.Context, remoteHost string, username string, password string, parseErr error) smtpAuthResult {
+func (server *Server) completeAuthAttempt(ctx context.Context, remoteHost string, username string, password string, parseErr error) (result smtpAuthResult) {
 	authReservation, authAllowed := server.throttle.reserveAuthAttempt(remoteHost, username)
 	if !authAllowed {
 		return smtpAuthResult{status: smtpAuthThrottled}
 	}
+	defer func() { authReservation.finish(result.status) }()
 	if parseErr != nil {
 		return smtpAuthResult{status: smtpAuthRejected}
 	}
 	identity, authErr := server.config.Authenticator.Authenticate(ctx, username, password)
-	if authErr != nil {
+	if errors.Is(authErr, smtpidentity.ErrAuthenticationFailed) {
 		return smtpAuthResult{status: smtpAuthRejected}
 	}
-	authReservation.accept()
+	if authErr != nil {
+		server.logger.Warn("smtp_submission_auth_unavailable", "error", authErr)
+		return smtpAuthResult{status: smtpAuthUnavailable}
+	}
 	return smtpAuthResult{status: smtpAuthAccepted, identity: identity}
 }
 
