@@ -48,6 +48,10 @@ The public SMTPS listener uses Caddy Layer 4 and does not use the shared HTTP re
 
 Session limits apply globally and to each backend-visible remote host. Authentication failure limits apply to each credential username. Message limits apply to each SMTP identity. Defaults permit 200 global sessions and 20 sessions for each remote host. Defaults also permit five authentication failures per 10 minutes and 60 accepted messages per identity per hour.
 
+A storage failure during AUTH, including a SQLite lock, returns retryable `454 4.7.0`. Rejected credentials return `535` and count toward the authentication failure limit. [RFC 4954 status codes](https://datatracker.ietf.org/doc/html/rfc4954#section-6)
+
+A background worker records `last_used_at` after successful AUTH. A usage update can be skipped if the queue is full, the write fails, or the server shuts down. `updated_at` tracks changes to the identity configuration.
+
 For upstream delivery, set `deliveryMode: upstream` and provide:
 
 ```yaml
