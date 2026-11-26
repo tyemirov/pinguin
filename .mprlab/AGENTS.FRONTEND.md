@@ -43,13 +43,10 @@ Obey the binding [automatic data updates and persistence](AGENTS.PRODUCT.md#auto
 
 ## Testing
 
-- Apply the proportional test sequence in `.mprlab/POLICY.md`. Use integration tests for the changed public contract.
-- Use dependency injection for integration scenarios that are difficult to reproduce.
-- Keep the product logic under test real.
+- Apply the test pyramid in `.mprlab/POLICY.md`.
+- Select a one-off browser check when the task needs evidence from rendering, browser interactions, or browser APIs.
 - Prefer Playwright or the repo-standard browser harness.
-- Cover user-visible behavior through the real page and browser entry point.
 - Assert rendered state, accessibility-relevant behavior, emitted events, requests, and downloaded artifacts.
-- Do not use unit tests as the only proof for visible behavior.
 
 ## Validation
 
@@ -57,7 +54,7 @@ Use `.mprlab/POLICY.md` for validation.
 
 During the change, run the smallest frontend target that validates the changed contract.
 
-Run build or browser tests when source changes affect generated or shipped assets.
+Run the applicable build check when source changes affect generated or shipped assets. Select a browser check when the task needs browser evidence.
 
 ## Language Contract
 
@@ -65,4 +62,3 @@ Apply the JavaScript Modules rules in `.mprlab/POLICY.md` together with these br
 
 - Components render validated state and emit intent.
 - Backend clients own request construction and response validation.
-- User-visible behavior belongs in browser or integration coverage.
