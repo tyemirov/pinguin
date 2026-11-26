@@ -54,12 +54,9 @@ Pingwin does not support backward compatibility. Legacy data, schemas, config ke
 
 ### Testing Philosophy
 
-- Use test-driven development with an inverted test pyramid.
-- We **strive for 100% test coverage**, achieved primarily through integration/black-box suites whose scenarios are exhaustive enough to exercise all meaningful branches and error paths.
-- For CLI and backend services, tests compile or run the real program/CLI entrypoints, capture exit codes and output (stdout/stderr, files, side effects), and assert against those observable results—not internal functions.
-- For web/UI, tests run the app and backing web server, drive flows through the browser, and assert against the rendered page, DOM state, events, and other user-visible behavior.
-- Use focused unit tests for complex algorithms, calculations, and isolated logic when useful.
-- Require integration coverage of public behavior for product acceptance.
+- Apply the [test pyramid](.mprlab/POLICY.md#test-pyramid).
+- Cover business behavior and measure coverage with fast, deterministic unit tests in the routine development and CI lane.
+- Select separate, one-off integration or end-to-end checks when the task needs evidence from real boundaries.
 
 ## Tech Stack Guides
 
