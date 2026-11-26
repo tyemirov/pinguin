@@ -507,17 +507,18 @@ func runServer(args []string, dependencies serverDependencies) int {
 			tlsConfig = loadedTLSConfig
 		}
 		smtpSubmissionServer, smtpServerErr := dependencies.newSMTPSubmissionServer(smtpsubmission.Config{
-			Hostname:          configuration.SMTPSubmission.Hostname,
-			ListenAddr:        configuration.SMTPSubmission.ListenAddr,
-			TLSListenAddr:     configuration.SMTPSubmission.TLSListenAddr,
-			TLSConfig:         tlsConfig,
-			MaxMessageBytes:   configuration.SMTPSubmission.MaxMessageBytes,
-			MaxRecipients:     configuration.SMTPSubmission.MaxRecipients,
-			CommandTimeout:    time.Duration(configuration.OperationTimeoutSec) * time.Second,
-			AllowInsecureAuth: configuration.SMTPSubmission.AllowInsecureAuth,
-			Authenticator:     smtpIdentityRepo,
-			Relay:             dependencies.newSMTPRelay(mainLogger, configuration),
-			Logger:            mainLogger,
+			Hostname:              configuration.SMTPSubmission.Hostname,
+			ListenAddr:            configuration.SMTPSubmission.ListenAddr,
+			TLSListenAddr:         configuration.SMTPSubmission.TLSListenAddr,
+			TLSConfig:             tlsConfig,
+			MaxMessageBytes:       configuration.SMTPSubmission.MaxMessageBytes,
+			MaxRecipients:         configuration.SMTPSubmission.MaxRecipients,
+			CommandTimeout:        time.Duration(configuration.OperationTimeoutSec) * time.Second,
+			AllowInsecureAuth:     configuration.SMTPSubmission.AllowInsecureAuth,
+			Authenticator:         smtpIdentityRepo,
+			IdentityUsageRecorder: smtpIdentityRepo,
+			Relay:                 dependencies.newSMTPRelay(mainLogger, configuration),
+			Logger:                mainLogger,
 		})
 		if smtpServerErr != nil {
 			mainLogger.Error("Failed to initialize SMTP submission server", "error", smtpServerErr)
