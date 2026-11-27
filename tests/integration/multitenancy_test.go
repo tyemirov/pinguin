@@ -1,3 +1,5 @@
+//go:build integration
+
 package integrationtest
 
 import (
@@ -33,7 +35,7 @@ func (acceptingEmailSender) SendEmail(context.Context, string, string, string, [
 	return nil
 }
 
-func TestManagedTenantNotificationIsolation(t *testing.T) {
+func TestIntegrationManagedTenantNotificationIsolation(t *testing.T) {
 	database, keeper := setupTestDB(t)
 	repository := tenant.NewRepository(database, keeper)
 	tenantA := createManagedTenant(t, repository, integrationOwnerID, "Tenant A")
@@ -83,7 +85,7 @@ func (validator *mockSessionValidator) ValidateRequest(*http.Request) (*sessionv
 	return &sessionvalidator.Claims{UserID: integrationOwnerID, UserEmail: "owner@example.com"}, nil
 }
 
-func TestManagedTenantHTTPCreateAndList(t *testing.T) {
+func TestIntegrationManagedTenantHTTPCreateAndList(t *testing.T) {
 	database, keeper := setupTestDB(t)
 	repository := tenant.NewRepository(database, keeper)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))

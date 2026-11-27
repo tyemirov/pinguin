@@ -1,3 +1,5 @@
+//go:build integration
+
 package integrationtest
 
 import (
@@ -22,7 +24,7 @@ type recordingNotificationServer struct {
 	lastMetadata metadata.MD
 }
 
-func TestNotificationServiceUsesPingwinNamespace(t *testing.T) {
+func TestIntegrationNotificationServiceUsesPingwinNamespace(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
@@ -58,7 +60,7 @@ func (s *recordingNotificationServer) SendNotification(ctx context.Context, req 
 	}, nil
 }
 
-func TestCLISendUsesFlagsAndToAlias(t *testing.T) {
+func TestIntegrationCLISendUsesFlagsAndToAlias(t *testing.T) {
 	t.Helper()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -120,7 +122,7 @@ func TestCLISendUsesFlagsAndToAlias(t *testing.T) {
 	}
 }
 
-func TestCLISendUsesExplicitFlags(t *testing.T) {
+func TestIntegrationCLISendUsesExplicitFlags(t *testing.T) {
 	t.Helper()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -161,7 +163,7 @@ func TestCLISendUsesExplicitFlags(t *testing.T) {
 	}
 }
 
-func TestCLISendRejectsAttachmentsForSMS(t *testing.T) {
+func TestIntegrationCLISendRejectsAttachmentsForSMS(t *testing.T) {
 	t.Helper()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -207,7 +209,7 @@ func TestCLISendRejectsAttachmentsForSMS(t *testing.T) {
 	}
 }
 
-func TestCLISendRequiresSubjectForEmail(t *testing.T) {
+func TestIntegrationCLISendRequiresSubjectForEmail(t *testing.T) {
 	t.Helper()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

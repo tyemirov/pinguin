@@ -1,3 +1,5 @@
+//go:build integration
+
 package integrationtest
 
 import (
@@ -7,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestBuildCLIFromRepositoryRoot(t *testing.T) {
+func TestIntegrationBuildCLIFromRepositoryRoot(t *testing.T) {
 	workingDirectory, workingDirectoryErr := os.Getwd()
 	if workingDirectoryErr != nil {
 		t.Fatalf("failed to get working directory: %v", workingDirectoryErr)

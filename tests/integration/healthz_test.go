@@ -1,3 +1,5 @@
+//go:build integration
+
 package integrationtest
 
 import (
@@ -17,7 +19,7 @@ import (
 	"log/slog"
 )
 
-func TestHealthzBypassesTenantResolution(t *testing.T) {
+func TestIntegrationHealthzBypassesTenantResolution(t *testing.T) {
 	t.Helper()
 
 	db, secretKeeper := setupTestDB(t)
