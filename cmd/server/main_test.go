@@ -13,7 +13,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -665,10 +664,7 @@ func TestRunServerStartsSMTPForwarding(testHandle *testing.T) {
 
 func TestSMTPIdentityForwardingResolver(testHandle *testing.T) {
 	testHandle.Helper()
-	database, dbErr := gorm.Open(sqlite.Open(filepath.Join(testHandle.TempDir(), "resolver.db")), &gorm.Config{})
-	if dbErr != nil {
-		testHandle.Fatalf("open database: %v", dbErr)
-	}
+	database := newServerTestDatabase(testHandle)
 	if migrateErr := database.AutoMigrate(&smtpidentity.SenderDomain{}, &smtpidentity.Identity{}, &smtpidentity.ForwardRecipient{}); migrateErr != nil {
 		testHandle.Fatalf("migrate database: %v", migrateErr)
 	}
@@ -974,34 +970,34 @@ func TestServerDependencyDefaultsAndProductionWrappers(testHandle *testing.T) {
 
 func TestServeGRPCBuildsServer(testHandle *testing.T) {
 	testHandle.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		testHandle.Fatalf("listen: %v", err)
-	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- serveGRPC(listener, &recordingNotificationService{}, nil, logger)
-	}()
-	if err := listener.Close(); err != nil {
-		testHandle.Fatalf("close listener: %v", err)
-	}
-	select {
-	case err := <-errCh:
-		if err == nil {
-			testHandle.Fatalf("expected serve error after listener close")
-		}
-	case <-time.After(time.Second):
-		testHandle.Fatalf("timed out waiting for grpc serve")
+	if err := serveGRPC(fakeListener{}, &recordingNotificationService{}, nil, logger); err == nil {
+		testHandle.Fatalf("expected serve error from the closed listener")
 	}
 }
 
-func newCredentialTestRepository(testHandle *testing.T) (*tenant.Repository, string, *gorm.DB) {
+func newServerTestDatabase(testHandle *testing.T) *gorm.DB {
 	testHandle.Helper()
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		testHandle.Fatalf("open database: %v", err)
 	}
+	databaseHandle, handleErr := database.DB()
+	if handleErr != nil {
+		testHandle.Fatalf("database handle: %v", handleErr)
+	}
+	databaseHandle.SetMaxOpenConns(1)
+	testHandle.Cleanup(func() {
+		if closeErr := databaseHandle.Close(); closeErr != nil {
+			testHandle.Errorf("close database: %v", closeErr)
+		}
+	})
+	return database
+}
+
+func newCredentialTestRepository(testHandle *testing.T) (*tenant.Repository, string, *gorm.DB) {
+	testHandle.Helper()
+	database := newServerTestDatabase(testHandle)
 	if err := database.AutoMigrate(
 		&tenant.Tenant{},
 		&tenant.EmailProfile{},
