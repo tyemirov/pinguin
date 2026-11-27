@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-mpr-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>Pingwin Email Delivery</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.css"
+    />
+    <link rel="stylesheet" href="/assets/css/tokens.css" />
+    <link rel="stylesheet" href="/assets/css/base.css" />
+    <link rel="stylesheet" href="/assets/css/email-delivery.css" />
+    <script defer src="/js/google-analytics.js"></script>
+    <script defer src="/js/runtime-config.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui-config.js"></script>
+    <script
+      id="mpr-ui-bundle"
+      type="application/json"
+      data-mpr-ui-bundle-src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js"
+    ></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script defer src="https://loopaware.mprlab.com/pixel.js?site_id=f42bd5af-db6b-41e1-811e-5c04332ecdee"></script>
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+</head>
+  <body data-page="email-delivery" class="theme-dark" data-theme="dark" x-data="appShell()">
+    <mpr-header
+      id="pingwin-email-delivery-header"
+      data-config-url="/config-ui.yaml"
+      brand-label="Pingwin"
+      brand-href="/"
+      nav-links='[{ "label": "Docs", "href": "https://github.com/tyemirov/pingwin" }]'
+    >
+      <a slot="brand" class="pingwin-brand" href="/" aria-label="Pingwin home">
+        <img class="pingwin-brand__mark" src="/favicon.svg" alt="" aria-hidden="true" />
+        <span>Pingwin</span>
+      </a>
+      <span slot="nav-left" class="workspace-navigation__menu">
+		<a
+		  class="workspace-navigation__link"
+		  :href="RUNTIME_CONFIG.tenantUrl"
+		  x-text="STRINGS.navigation.tenants"
+		></a>
+        <a
+          class="workspace-navigation__link"
+          :href="RUNTIME_CONFIG.eventLogUrl"
+          x-text="STRINGS.navigation.eventLog"
+        ></a>
+        <a
+          class="workspace-navigation__link"
+          :href="RUNTIME_CONFIG.smtpRelayUrl"
+          x-text="STRINGS.navigation.smtpRelay"
+        ></a>
+        <a class="workspace-navigation__link" :href="RUNTIME_CONFIG.emailDeliveryUrl" aria-current="page" x-text="STRINGS.navigation.emailDelivery"></a>
+      </span>
+    </mpr-header>
+    <main class="page-main">
+      <section class="page-work-surface panel delivery-panel" x-data="emailDelivery()" aria-labelledby="delivery-title" data-testid="page-work-surface">
+        <section class="delivery-toolbar" aria-label="Email delivery controls">
+          <h1 id="delivery-title" class="section-title">Email delivery</h1>
+          <span class="delivery-retention" title="Automatically updated history for your verified sender domains">24h</span>
+          <label class="delivery-tenant"><span class="delivery-sr-only">Tenant</span>
+            <select aria-label="Tenant" x-model="selectedTenantId" x-on:change="changeTenant()" :disabled="tenants.length === 0">
+              <template x-for="tenant in tenants" :key="tenant.id">
+                <option :value="tenant.id" x-text="tenant.displayName"></option>
+              </template>
+            </select>
+          </label>
+          <label class="delivery-search"><span class="delivery-sr-only">Search emails</span>
+            <input type="search" x-model="searchQuery" maxlength="200" placeholder="Subject, recipient, or message ID" autocomplete="off" />
+          </label>
+          <span class="delivery-sr-only" x-show="isLoading || isLoadingMore" aria-live="polite">Checking delivery…</span>
+        </section>
+        <template x-if="errorMessage"><p class="notice" data-variant="error" role="alert" x-text="errorMessage"></p></template>
+        <template x-if="!selectedTenantId && !errorMessage"><p class="empty-state">Select a tenant to check email delivery.</p></template>
+        <template x-if="hasLoaded && messages.length === 0 && !errorMessage"><p class="empty-state">No matching emails in the last 24 hours.</p></template>
+        <section class="delivery-records" aria-label="Recent email deliveries" :aria-busy="String(isLoading)">
+          <template x-for="message in messages" :key="message.id">
+            <details class="delivery-record" :id="messageAnchor(message.id)" data-testid="email-delivery-record">
+              <summary class="delivery-summary">
+                <time :datetime="message.sentAt" :title="formatTime(message.sentAt)" x-text="formatShortTime(message.sentAt)"></time>
+                <div class="delivery-summary__main">
+                  <h2 :title="message.subject" x-text="message.subject || 'No subject'"></h2>
+                  <p class="delivery-route" :title="message.from + ' → ' + recipientAddresses(message)" x-text="message.from + ' → ' + recipientAddresses(message)"></p>
+                </div>
+                <div class="delivery-outcomes">
+                  <span class="delivery-forward-label" x-show="message.parentMessageId" title="Linked by observed message headers">↳ Forwarded</span>
+                  <template x-for="outcome in summaryOutcomes(message)" :key="outcome.status">
+                    <span class="delivery-status" :data-status="outcome.status" x-text="outcome.count + ' ' + statusLabel(outcome.status)"></span>
+                  </template>
+                  <span class="delivery-forward-label" x-show="message.forwardedMessageIds.length" x-text="message.forwardedMessageIds.length + ' forwarded'"></span>
+                </div>
+              </summary>
+              <div class="delivery-details">
+              <ul class="delivery-recipients" aria-label="Recipient outcomes">
+                <template x-for="recipient in message.recipients" :key="recipient.address">
+                  <li>
+                    <div class="delivery-recipient__summary"><span x-text="recipient.address"></span><span class="delivery-status" :data-status="recipient.status" x-text="statusLabel(recipient.status)"></span></div>
+                    <p class="delivery-response" x-show="recipient.response" x-text="recipient.response"></p>
+                    <p class="text-muted" x-show="recipient.deliveredAt && recipient.status !== 'delivered'">Accepted earlier: <time x-text="recipient.deliveredAt ? formatTime(recipient.deliveredAt) : ''"></time></p>
+                  </li>
+                </template>
+              </ul>
+              <section class="delivery-forwarding" x-show="visibleParent(message) || visibleForwards(message).length" aria-label="Forwarding details">
+                <p x-show="visibleParent(message)">Forwarded copy of <a :href="'#' + messageAnchor(visibleParent(message))" x-text="visibleParent(message)"></a></p>
+                <ul><template x-for="id in visibleForwards(message)" :key="id"><li>Forwarded copy: <a :href="'#' + messageAnchor(id)" x-text="id"></a></li></template></ul>
+                <p class="text-muted">Linked by the observed message headers.</p>
+              </section>
+              <div class="delivery-metadata"><code x-text="message.id"></code><span>Expires <time :datetime="message.expiresAt" x-text="formatTime(message.expiresAt)"></time></span></div>
+              </div>
+            </details>
+          </template>
+        </section>
+        <p class="delivery-legend">Delivered = server accepted · Unconfirmed = no receipt · Updates automatically</p>
+        <button class="button delivery-more" type="button" x-show="nextCursor" :disabled="isLoadingMore" x-on:click="loadMessages(true)">More emails</button>
+      </section>
+    </main>
+    <div class="toast-center" x-data="toastCenter()" x-init="init()" aria-live="polite">
+      <template x-for="toast in toasts" :key="toast.id">
+        <button
+          type="button"
+          class="toast"
+          :data-variant="toast.variant"
+          x-on:click="dismissToast(toast.id)"
+          x-text="toast.message"
+        ></button>
+      </template>
+    </div>
+    <script type="module" src="/js/bootstrap.js"></script>
+    <mpr-footer
+      id="pingwin-email-delivery-footer"
+      prefix-text="Pingwin Notification Service"
+      privacy-link-label="Privacy &amp; Terms"
+      privacy-modal-content="
+        <h1>Privacy Policy — Pingwin</h1>
+        <p>Pingwin displays delivery metadata for the last 24 hours without storing another copy of the mail history.</p>
+        <p>Authentication happens through the shared sign-in shell; Pingwin receives HttpOnly session cookies and never stores your password.</p>
+        <p>We do not sell or share notification content with third parties, and you may remove queued items from the workspace at any time.</p>
+      "
+      menu='{&quot;label&quot;:&quot;Built By Marco Polo Research Lab&quot;,&quot;placement&quot;:&quot;top&quot;,&quot;sections&quot;:[{&quot;id&quot;:&quot;links&quot;,&quot;label&quot;:&quot;Built By Marco Polo Research Lab&quot;,&quot;mode&quot;:&quot;static&quot;,&quot;links&quot;:[{&quot;label&quot;:&quot;LLM Proxy&quot;,&quot;href&quot;:&quot;https://llm-proxy.mprlab.com/&quot;},{&quot;label&quot;:&quot;TAuth&quot;,&quot;href&quot;:&quot;https://tauth.mprlab.com/&quot;},{&quot;label&quot;:&quot;Ledger&quot;,&quot;href&quot;:&quot;https://github.com/tyemirov/ledger&quot;},{&quot;label&quot;:&quot;ISSUES.md&quot;,&quot;href&quot;:&quot;https://issues.mprlab.com/&quot;},{&quot;label&quot;:&quot;Dictator&quot;,&quot;href&quot;:&quot;https://github.com/tyemirov/dictator&quot;},{&quot;label&quot;:&quot;Pingwin&quot;,&quot;href&quot;:&quot;https://pingwin.mprlab.com/&quot;},{&quot;label&quot;:&quot;LoopAware&quot;,&quot;href&quot;:&quot;https://loopaware.mprlab.com/&quot;}]}]}'
+      theme-control='{"kind":"switch","choices":{"off":"light","on":"dark"}}'
+      theme-config='{"storageKey":"pingwin.theme","initialMode":"dark","attribute":"data-theme","targets":["body"],"modes":[{"value":"light","attributeValue":"light","classList":["theme-light"]},{"value":"dark","attributeValue":"dark","classList":["theme-dark"]}]}'
+    ></mpr-footer>
+  </body>
+</html>
