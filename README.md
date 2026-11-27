@@ -114,7 +114,7 @@ The [API guide](docs/api.md) contains CLI examples, complete `grpcurl` commands,
 
 ## Development
 
-The backend uses Go and GORM for database access.
+The Go backend uses GORM for database access with SQLite as its driver.
 The browser uses ES modules, Alpine.js, and `mpr-ui`.
 Run local validation through the repository Makefile. See [GitHub automation](.github/AUTOMATION.md).
 
@@ -122,13 +122,12 @@ Run local validation through the repository Makefile. See [GitHub automation](.g
 make build
 make test
 make lint
-make test-frontend
 make ci
 ```
 
-`make ci` includes format checks, Go analysis, Go tests, the 100% Go statement coverage gate, and Playwright browser tests.
-The browser harness uses a local API and controlled authentication responses.
-Those tests do not establish live provider connectivity or hosted sign-in acceptance.
+`make ci` checks formatting and Go analysis, then runs the unit suite with the 100% Go statement coverage gate.
+Select `make test-integration` for CLI, transport, and persistence checks.
+Select `make test-frontend` for Playwright checks through a local API with controlled authentication responses.
 The [development guide](docs/development.md) covers dependencies, test targets, protobuf generation, and visual baselines.
 
 ## License and commercial use

@@ -11,7 +11,12 @@ import (
 
 	"github.com/tyemirov/pingwin/pkg/grpcapi"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/test/bufconn"
 )
+
+const testServerAddress = "passthrough:///bufconn"
+
+type testDialContext func(context.Context, string, string) (net.Conn, error)
 
 func TestNewSettingsValidation(t *testing.T) {
 	t.Helper()
@@ -75,19 +80,18 @@ func (s *fakeNotificationServer) GetNotificationStatus(context.Context, *grpcapi
 	}, nil
 }
 
-func startFakeServer(t *testing.T, srv grpcapi.NotificationServiceServer) (string, func()) {
+func startFakeServer(t *testing.T, srv grpcapi.NotificationServiceServer) (testDialContext, func()) {
 	t.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("failed to listen: %v", err)
-	}
+	listener := bufconn.Listen(1024 * 1024)
 	server := grpc.NewServer()
 	grpcapi.RegisterNotificationServiceServer(server, srv)
 	go server.Serve(listener)
-	return listener.Addr().String(), func() {
-		server.Stop()
-		listener.Close()
-	}
+	return func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return listener.DialContext(ctx)
+		}, func() {
+			server.Stop()
+			listener.Close()
+		}
 }
 
 func newTestLogger() *slog.Logger {
@@ -103,14 +107,14 @@ func TestNotificationClientSendAndWait(t *testing.T) {
 		initialStatus: grpcapi.Status_QUEUED,
 		polledStatus:  grpcapi.Status_SENT,
 	}
-	address, stop := startFakeServer(t, server)
+	dialContext, stop := startFakeServer(t, server)
 	defer stop()
 
-	settings, err := NewSettings(address, "key", 5, 5)
+	settings, err := NewSettings(testServerAddress, "key", 5, 5)
 	if err != nil {
 		t.Fatalf("NewSettings error: %v", err)
 	}
-	clientInstance, err := NewNotificationClient(newTestLogger(), settings)
+	clientInstance, err := newNotificationClient(newTestLogger(), settings, dialContext)
 	if err != nil {
 		t.Fatalf("NewNotificationClient error: %v", err)
 	}
@@ -143,12 +147,12 @@ func TestNotificationClientFailurePaths(t *testing.T) {
 	t.Cleanup(func() { sendPollInterval = 2 * time.Second })
 	sendPollInterval = 5 * time.Millisecond
 
-	failureAddr := startServerWithStatuses(t, grpcapi.Status_ERRORED, grpcapi.Status_ERRORED)
-	settings, err := NewSettings(failureAddr, "key", 5, 1)
+	failureDial := startServerWithStatuses(t, grpcapi.Status_ERRORED, grpcapi.Status_ERRORED)
+	settings, err := NewSettings(testServerAddress, "key", 5, 1)
 	if err != nil {
 		t.Fatalf("NewSettings error: %v", err)
 	}
-	clientInstance, err := NewNotificationClient(newTestLogger(), settings)
+	clientInstance, err := newNotificationClient(newTestLogger(), settings, failureDial)
 	if err != nil {
 		t.Fatalf("NewNotificationClient error: %v", err)
 	}
@@ -159,12 +163,12 @@ func TestNotificationClientFailurePaths(t *testing.T) {
 		t.Fatalf("expected errored status and error, got resp=%v err=%v", resp, err)
 	}
 
-	timeoutAddr := startServerWithStatuses(t, grpcapi.Status_QUEUED, grpcapi.Status_QUEUED)
-	unresponsiveSettings, err := NewSettings(timeoutAddr, "key", 5, 1)
+	timeoutDial := startServerWithStatuses(t, grpcapi.Status_QUEUED, grpcapi.Status_QUEUED)
+	unresponsiveSettings, err := NewSettings(testServerAddress, "key", 5, 1)
 	if err != nil {
 		t.Fatalf("NewSettings error: %v", err)
 	}
-	timeoutClient, err := NewNotificationClient(newTestLogger(), unresponsiveSettings)
+	timeoutClient, err := newNotificationClient(newTestLogger(), unresponsiveSettings, timeoutDial)
 	if err != nil {
 		t.Fatalf("NewNotificationClient error: %v", err)
 	}
@@ -182,13 +186,13 @@ func TestNotificationClientPropagatesRPCErrors(t *testing.T) {
 	sendPollInterval = 5 * time.Millisecond
 
 	sendFailureServer := &fakeNotificationServer{sendErr: errors.New("send failed")}
-	sendFailureAddr, stopSendFailure := startFakeServer(t, sendFailureServer)
+	sendFailureDial, stopSendFailure := startFakeServer(t, sendFailureServer)
 	defer stopSendFailure()
-	settings, err := NewSettings(sendFailureAddr, "key", 5, 1)
+	settings, err := NewSettings(testServerAddress, "key", 5, 1)
 	if err != nil {
 		t.Fatalf("NewSettings error: %v", err)
 	}
-	clientInstance, err := NewNotificationClient(newTestLogger(), settings)
+	clientInstance, err := newNotificationClient(newTestLogger(), settings, sendFailureDial)
 	if err != nil {
 		t.Fatalf("NewNotificationClient error: %v", err)
 	}
@@ -204,13 +208,13 @@ func TestNotificationClientPropagatesRPCErrors(t *testing.T) {
 		initialStatus: grpcapi.Status_QUEUED,
 		statusErr:     errors.New("status failed"),
 	}
-	statusFailureAddr, stopStatusFailure := startFakeServer(t, statusFailureServer)
+	statusFailureDial, stopStatusFailure := startFakeServer(t, statusFailureServer)
 	defer stopStatusFailure()
-	statusSettings, err := NewSettings(statusFailureAddr, "key", 5, 1)
+	statusSettings, err := NewSettings(testServerAddress, "key", 5, 1)
 	if err != nil {
 		t.Fatalf("NewSettings error: %v", err)
 	}
-	statusClient, err := NewNotificationClient(newTestLogger(), statusSettings)
+	statusClient, err := newNotificationClient(newTestLogger(), statusSettings, statusFailureDial)
 	if err != nil {
 		t.Fatalf("NewNotificationClient error: %v", err)
 	}
@@ -239,13 +243,13 @@ func TestNewNotificationClientReportsConstructorError(t *testing.T) {
 	}
 }
 
-func startServerWithStatuses(t *testing.T, initial, polled grpcapi.Status) string {
+func startServerWithStatuses(t *testing.T, initial, polled grpcapi.Status) testDialContext {
 	t.Helper()
 	server := &fakeNotificationServer{
 		initialStatus: initial,
 		polledStatus:  polled,
 	}
-	address, stop := startFakeServer(t, server)
+	dialContext, stop := startFakeServer(t, server)
 	t.Cleanup(stop)
-	return address
+	return dialContext
 }

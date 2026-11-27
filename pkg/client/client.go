@@ -92,11 +92,14 @@ var newGRPCClient = grpc.NewClient
 // NewNotificationClient dials the configured server and returns a ready-to-use
 // NotificationClient.
 func NewNotificationClient(logger *slog.Logger, settings Settings) (*NotificationClient, error) {
+	return newNotificationClient(logger, settings, (&net.Dialer{}).DialContext)
+}
+
+func newNotificationClient(logger *slog.Logger, settings Settings, dialContext func(context.Context, string, string) (net.Conn, error)) (*NotificationClient, error) {
 	conn, err := newGRPCClient(
 		settings.ServerAddress(),
 		grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
-			dialer := &net.Dialer{}
-			return dialer.DialContext(ctx, "tcp", addr)
+			return dialContext(ctx, "tcp", addr)
 		}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultCallOptions(

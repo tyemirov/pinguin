@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -319,10 +318,7 @@ func TestManagedTenantRepositoryLifecycle(t *testing.T) {
 
 func TestManagedTenantRepositoryFailures(t *testing.T) {
 	t.Run("default constructors", func(t *testing.T) {
-		database, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "default.db")), &gorm.Config{})
-		if err != nil {
-			t.Fatalf("open database: %v", err)
-		}
+		database := newTenantTestDatabase(t)
 		keeper, _ := NewSecretKeeper(strings.Repeat("a", 64))
 		repository := NewRepository(database, keeper)
 		if repository.clock().IsZero() || repository.newID() == "" {
@@ -859,12 +855,28 @@ func deleteTenantSMS(t *testing.T, database *gorm.DB, tenantID string) {
 	}
 }
 
-func newRepositoryTestFixture(t *testing.T) (*Repository, *gorm.DB) {
+func newTenantTestDatabase(t *testing.T) *gorm.DB {
 	t.Helper()
-	database, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "tenant.db")), &gorm.Config{})
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
+	databaseHandle, handleErr := database.DB()
+	if handleErr != nil {
+		t.Fatalf("database handle: %v", handleErr)
+	}
+	databaseHandle.SetMaxOpenConns(1)
+	t.Cleanup(func() {
+		if closeErr := databaseHandle.Close(); closeErr != nil {
+			t.Errorf("close database: %v", closeErr)
+		}
+	})
+	return database
+}
+
+func newRepositoryTestFixture(t *testing.T) (*Repository, *gorm.DB) {
+	t.Helper()
+	database := newTenantTestDatabase(t)
 	if err := database.AutoMigrate(&Tenant{}, &EmailProfile{}, &SMSProfile{}, &APICredential{}, &IdempotencyRecord{}, &smtpidentity.SenderDomain{}, &smtpidentity.Identity{}, &smtpidentity.ForwardRecipient{}, &model.Notification{}, &model.NotificationAttachment{}); err != nil {
 		t.Fatalf("migrate database: %v", err)
 	}

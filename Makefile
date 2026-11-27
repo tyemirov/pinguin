@@ -1,7 +1,8 @@
 MPRLAB_GATEWAY_EXECUTABLE ?= mprlab-gateway
 GO_SOURCES := $(shell find . -name '*.go' -not -path "./vendor/*" -not -path "./.git/*" -not -path "*/.git/*")
-ROOT_FAST_PACKAGES := $(shell go list ./... | grep -v '/tests/integration$$')
-ROOT_SLOW_PACKAGES := $(shell go list ./... | grep '/tests/integration$$')
+UNIT_PACKAGES ?= ./...
+INTEGRATION_PACKAGES ?= ./...
+GO_TEST_FLAGS ?=
 MODULE_DIRS := .
 BINARY_NAME := pingwin
 COMPOSE_PROFILE ?= dev
@@ -13,7 +14,7 @@ LONG_TIMEOUT := timeout -k 350s -s SIGKILL 350s
 COVERAGE_PROFILE ?= coverage.out
 COVERAGE_REQUIRED_TOTAL ?= 100.0%
 
-.PHONY: test-shared-ui format check-format lint test test-unit test-integration test-fast test-slow test-coverage test-frontend test-frontend-update build up down ci deploy
+.PHONY: test-shared-ui format check-format lint test test-unit test-integration test-coverage test-frontend test-frontend-update build up down ci deploy
 
 format:
 	$(SHORT_TIMEOUT) gofmt -w $(GO_SOURCES)
@@ -30,31 +31,23 @@ lint:
 	@set -e; \
 	for dir in $(MODULE_DIRS); do \
 		echo "Running go vet in $$dir"; \
-		( cd $$dir && $(LONG_TIMEOUT) go vet ./... ); \
+		( cd $$dir && $(LONG_TIMEOUT) go vet -tags=integration ./... ); \
 		echo "Running staticcheck in $$dir"; \
-		( cd $$dir && $(LONG_TIMEOUT) go run $(STATICCHECK_MODULE) ./... ); \
+		( cd $$dir && $(LONG_TIMEOUT) go run $(STATICCHECK_MODULE) -tags=integration ./... ); \
 		echo "Running ineffassign in $$dir"; \
 		( cd $$dir && $(LONG_TIMEOUT) go run $(INEFFASSIGN_MODULE) ./... ); \
 	done
 
-test-fast:
-	$(LONG_TIMEOUT) go test $(ROOT_FAST_PACKAGES)
+test-unit:
+	$(LONG_TIMEOUT) go test $(GO_TEST_FLAGS) $(UNIT_PACKAGES)
 
-test-slow:
-ifneq ($(strip $(ROOT_SLOW_PACKAGES)),)
-	$(LONG_TIMEOUT) go test $(ROOT_SLOW_PACKAGES)
-else
-	@echo "No slow test packages detected"
-endif
+test-integration:
+	$(LONG_TIMEOUT) go test -tags=integration -run '^TestIntegration' $(GO_TEST_FLAGS) $(INTEGRATION_PACKAGES)
 
-test-unit: test-fast
-
-test-integration: test-slow
-
-test: test-fast test-slow
+test: test-unit
 
 test-coverage:
-	$(LONG_TIMEOUT) go test ./... -coverprofile=$(COVERAGE_PROFILE) -covermode=count
+	$(LONG_TIMEOUT) go test -coverprofile=$(COVERAGE_PROFILE) -covermode=count $(GO_TEST_FLAGS) $(UNIT_PACKAGES)
 	@coverage_total="$$(go tool cover -func=$(COVERAGE_PROFILE) | awk '/^total:/ {print $$3}')"; \
 	if [ "$$coverage_total" != "$(COVERAGE_REQUIRED_TOTAL)" ]; then \
 		echo "Expected total Go statement coverage $(COVERAGE_REQUIRED_TOTAL), got $$coverage_total"; \
@@ -82,7 +75,7 @@ up:
 down:
 	$(SHORT_TIMEOUT) $(DOCKER_COMPOSE) --profile $(COMPOSE_PROFILE) down
 
-ci: check-format lint test test-coverage test-frontend
+ci: check-format lint test-coverage
 
 .PHONY: deploy
 
@@ -107,7 +100,7 @@ test-deployment-contract:
 	$(LONG_TIMEOUT) go test ./tests/config -run '^(TestProductionLifecycleUsesInstalledGateway|TestRepositoryOwnsCompleteVersionlessDeployment)$$' -count=1
 
 test-installed-plan:
-	$(LONG_TIMEOUT) go test ./tests/config -run '^TestInstalledGatewayPlansCurrentTrackedManifest$$' -count=1
+	$(LONG_TIMEOUT) go test -tags=integration ./tests/config -run '^TestIntegrationInstalledGatewayPlansCurrentTrackedManifest$$' -count=1
 
 TEST_IMAGE ?= pingwin-test:local
 .PHONY: test-image

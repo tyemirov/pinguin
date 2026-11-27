@@ -79,19 +79,23 @@ Give each term one meaning. Use the same term for the same concept in all docume
 - `validation`: Evidence that a change obeys its current contract.
 - `worktree`: A Git checkout that has its own working directory.
 
-- `characterization test`: An integration test that records current public behavior before a refactor.
+- `characterization test`: A test that records current observable behavior before a refactor.
 - `file permission mode`: A number or symbol that gives filesystem access bits.
 - `GitHub Pages`: The GitHub service that hosts a static website from a repository branch.
-- `integration test`: A test of real product logic and component interactions through a public entry point, with controlled dependencies when necessary.
-- `inverted test pyramid`: The MPR Lab test strategy with integration tests as the primary layer and focused unit tests where useful.
+- `integration test`: A test of a contract between real components through the relevant entry point, with other dependencies controlled when necessary.
 - `production code`: Source code that implements repository behavior outside the test suite.
 - `public entry point`: An interface through which a user or caller uses repository behavior.
 - `static website`: A browser frontend that uses generated files without a website server runtime.
-- `test-driven development`: A coding sequence that uses a failing integration test before a production code change.
-- `unit test`: A test that isolates one code unit from its collaborators.
+- `test-driven development`: A coding sequence that uses tests of expected behavior to guide implementation.
+- `unit test`: An in-process test of a unit's observable behavior with controlled dependencies.
 - `website hostname`: The hostname that identifies a public static website.
 
 - `dependency injection`: A design that supplies a component's dependencies from outside that component.
+
+- `end-to-end test`: A test of a complete user or caller workflow through the application entry point.
+- `test double`: A substitute for a dependency during a test.
+- `test pyramid`: A strategy with many fast unit tests, fewer integration tests, and a small number of end-to-end tests.
+- `test shim`: A test-scoped patch or wrapper that redirects a dependency call.
 
 ## Repository Technical Nouns
 

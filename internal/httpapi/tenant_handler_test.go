@@ -6,13 +6,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/glebarez/sqlite"
 	"github.com/tyemirov/pingwin/internal/tenant"
-	"gorm.io/gorm"
 )
 
 const tenantCredentialID = "44444444-4444-4444-8444-444444444444"
@@ -290,10 +287,7 @@ func TestManagedRoutesCoverSharedHTTPValidation(t *testing.T) {
 	}
 	seedKeeper, _ := tenant.NewSecretKeeper(strings.Repeat("a", 64))
 	runtimeKeeper, _ := tenant.NewSecretKeeper(strings.Repeat("b", 64))
-	runtimeDatabase, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "broken-runtime.db")), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("open broken runtime database: %v", err)
-	}
+	runtimeDatabase := newHTTPTestDatabase(t)
 	if err := runtimeDatabase.AutoMigrate(&tenant.Tenant{}, &tenant.EmailProfile{}, &tenant.SMSProfile{}, &tenant.APICredential{}); err != nil {
 		t.Fatalf("migrate broken runtime database: %v", err)
 	}

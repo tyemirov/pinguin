@@ -109,6 +109,7 @@
 
 ## Validation
 
-- `make test-coverage` requires 100% Go statement coverage.
+- `make test-coverage` requires 100% Go statement coverage from the unit suite.
+- `make test-integration` runs the tagged Go tests through CLI, service, storage, and lifecycle boundaries.
 - `make test-frontend` runs the Playwright browser suite against `tests/support/devServer.js`.
-- `make ci` runs format checks, Go analysis, all Go tests, the coverage gate, and browser acceptance tests.
+- `make ci` runs Go format checks, analysis, and the unit coverage gate.

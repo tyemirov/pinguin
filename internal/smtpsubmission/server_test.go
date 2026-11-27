@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/big"
 	"net"
 	"os"
@@ -23,7 +24,7 @@ import (
 	"time"
 
 	"github.com/tyemirov/pingwin/internal/smtpidentity"
-	"log/slog"
+	"google.golang.org/grpc/test/bufconn"
 )
 
 func TestSMTPSubmissionStartTLSPlainAuthRelaysRawMessage(t *testing.T) {
@@ -167,44 +168,10 @@ func TestSMTPSubmissionRejectsAuthBeforeTLS(t *testing.T) {
 }
 
 func TestSMTPSubmissionStartTLSUnavailableAndAlreadyActive(t *testing.T) {
-	address, addressErr := smtpidentity.NewAddress("alice@example.com")
-	if addressErr != nil {
-		t.Fatalf("identity address: %v", addressErr)
-	}
-	server, serverErr := NewServer(Config{
-		Hostname:          "smtp.test",
-		MaxMessageBytes:   1024 * 1024,
-		MaxRecipients:     10,
-		AllowInsecureAuth: true,
-		Authenticator: &staticAuthenticator{
-			username: "smtp-user",
-			password: "smtp-pass",
-			identity: smtpidentity.AuthenticatedIdentity{
-				ID:           "identity-1",
-				EmailAddress: address,
-				Username:     "smtp-user",
-			},
-		},
-		Relay:  &recordingRelay{},
-		Logger: slog.New(slog.NewTextHandler(ioDiscard{}, nil)),
+	fixture := newSMTPServerFixtureWithConfig(t, true, nil, func(cfg *Config) {
+		cfg.TLSConfig = nil
 	})
-	if serverErr != nil {
-		t.Fatalf("new server: %v", serverErr)
-	}
-	listener, listenErr := net.Listen("tcp", "127.0.0.1:0")
-	if listenErr != nil {
-		t.Fatalf("listen: %v", listenErr)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(func() {
-		cancel()
-		listener.Close()
-	})
-	go func() {
-		_ = server.Serve(ctx, listener, false)
-	}()
-
-	client := newSMTPTestClient(mustDial(t, listener.Addr().String()))
+	client := fixture.dial(t)
 	defer client.close()
 	client.expectCode(t, "220")
 	client.send(t, "STARTTLS")
@@ -656,8 +623,18 @@ func TestSMTPSubmissionStartTLSListenerStopsWithContext(t *testing.T) {
 	server.config.TLSConfig = testTLSConfig(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := server.Start(ctx); err != nil {
+	listener := newBlockingAcceptListener()
+	listenTLS := func(_ string, address string, config *tls.Config) (net.Listener, error) {
+		if address != server.config.TLSListenAddr || config != server.config.TLSConfig {
+			t.Fatalf("unexpected TLS listener settings: %s", address)
+		}
+		return listener, nil
+	}
+	if err := server.start(ctx, net.Listen, listenTLS); err != nil {
 		t.Fatalf("expected canceled TLS listener start to stop cleanly, got %v", err)
+	}
+	if !listener.wasClosed() {
+		t.Fatal("TLS listener remained open after cancellation")
 	}
 }
 
@@ -766,8 +743,14 @@ func TestSMTPSubmissionConstructorAndStartValidation(t *testing.T) {
 	defaulted.config.ListenAddr = "127.0.0.1:0"
 	defaulted.config.TLSListenAddr = "bad address"
 	defaulted.config.TLSConfig = testTLSConfig(t)
-	if err := defaulted.Start(context.Background()); err == nil || !strings.Contains(err.Error(), "tls listen") {
+	listener := newBlockingAcceptListener()
+	listenTCP := func(string, string) (net.Listener, error) { return listener, nil }
+	listenTLS := func(string, string, *tls.Config) (net.Listener, error) { return nil, errors.New("listen failed") }
+	if err := defaulted.start(context.Background(), listenTCP, listenTLS); err == nil || !strings.Contains(err.Error(), "tls listen") {
 		t.Fatalf("expected tls listen error, got %v", err)
+	}
+	if !listener.wasClosed() {
+		t.Fatal("plaintext listener remained open after TLS listener failed")
 	}
 }
 
@@ -879,17 +862,17 @@ func TestSMTPSubmissionConnectionHandshakeFailure(t *testing.T) {
 func TestSMTPSubmissionStartTLSResponseWriteFailure(t *testing.T) {
 	server := newBareSMTPSubmissionServer(t)
 	server.config.TLSConfig = testTLSConfig(t)
-	server.handleConnection(context.Background(), &failingAfterGreetingConn{reader: strings.NewReader("STARTTLS\r\n")}, false, "remote")
+	server.handleConnection(context.Background(), &failingAfterGreetingConn{reader: strings.NewReader("STARTTLS\r\n")}, false, "remote", nil)
 }
 
 func TestSMTPSubmissionInitialGreetingWriteFailure(t *testing.T) {
 	server := newBareSMTPSubmissionServer(t)
-	server.handleConnection(context.Background(), failingSMTPConn{}, false, "remote")
+	server.handleConnection(context.Background(), failingSMTPConn{}, false, "remote", nil)
 }
 
 func TestSMTPSubmissionDeadlineErrorPaths(t *testing.T) {
 	server := newBareSMTPSubmissionServer(t)
-	server.handleConnection(context.Background(), &smtpDeadlineFailingConn{reader: strings.NewReader("NOOP\r\n")}, false, "remote")
+	server.handleConnection(context.Background(), &smtpDeadlineFailingConn{reader: strings.NewReader("NOOP\r\n")}, false, "remote", nil)
 	from := mustSMTPSubmissionAddress(t, "alice@example.com")
 	session := &sessionState{
 		authenticated: &smtpidentity.AuthenticatedIdentity{ID: "identity", EmailAddress: from},
@@ -944,10 +927,14 @@ func TestSMTPParsingHelpers(t *testing.T) {
 }
 
 func TestSMTPThrottleHelpers(t *testing.T) {
-	if remoteHost := remoteHostForConnection(splitRemoteSMTPConn{remoteAddress: "192.0.2.10:2525"}); remoteHost != "192.0.2.10" {
+	tcpAddress := &net.TCPAddr{IP: net.IPv4(192, 0, 2, 10), Port: 2525}
+	if remoteHost := remoteHostForConnection(splitRemoteSMTPConn{remoteAddress: tcpAddress}); remoteHost != "192.0.2.10" {
+		t.Fatalf("unexpected TCP remote host: %s", remoteHost)
+	}
+	if remoteHost := remoteHostForConnection(splitRemoteSMTPConn{remoteAddress: testListenerAddr("192.0.2.10:2525")}); remoteHost != "192.0.2.10" {
 		t.Fatalf("unexpected split remote host %q", remoteHost)
 	}
-	if remoteHost := remoteHostForConnection(splitRemoteSMTPConn{remoteAddress: "opaque"}); remoteHost != "opaque" {
+	if remoteHost := remoteHostForConnection(splitRemoteSMTPConn{remoteAddress: testListenerAddr("opaque")}); remoteHost != "opaque" {
 		t.Fatalf("unexpected opaque remote host %q", remoteHost)
 	}
 	if deadlineErr := setSMTPReadDeadline(failingSMTPConn{}, 0); deadlineErr != nil {
@@ -1038,11 +1025,14 @@ func (reader smtpErrorReader) Read([]byte) (int, error) {
 	return 0, reader.err
 }
 
+const smtpTestBufferSize = 64 << 10
+
 type smtpServerFixture struct {
-	server *Server
-	relay  *recordingRelay
-	addr   string
-	cancel context.CancelFunc
+	server  *Server
+	relay   *recordingRelay
+	connect func(context.Context) (net.Conn, error)
+	cancel  context.CancelFunc
+	done    <-chan struct{}
 }
 
 func newSMTPServerFixture(t *testing.T, allowInsecureAuth bool, relayError error) *smtpServerFixture {
@@ -1052,6 +1042,13 @@ func newSMTPServerFixture(t *testing.T, allowInsecureAuth bool, relayError error
 
 func newSMTPServerFixtureWithConfig(t *testing.T, allowInsecureAuth bool, relayError error, mutate func(*Config)) *smtpServerFixture {
 	t.Helper()
+	listener := bufconn.Listen(smtpTestBufferSize)
+	return serveSMTPTestFixture(t, allowInsecureAuth, relayError, mutate, listener, listener.DialContext)
+}
+
+func serveSMTPTestFixture(t *testing.T, allowInsecureAuth bool, relayError error, mutate func(*Config), listener net.Listener, connect func(context.Context) (net.Conn, error)) *smtpServerFixture {
+	t.Helper()
+	t.Cleanup(func() { _ = listener.Close() })
 	address, addressErr := smtpidentity.NewAddress("alice@example.com")
 	if addressErr != nil {
 		t.Fatalf("identity address: %v", addressErr)
@@ -1082,29 +1079,34 @@ func newSMTPServerFixtureWithConfig(t *testing.T, allowInsecureAuth bool, relayE
 	if serverErr != nil {
 		t.Fatalf("new server: %v", serverErr)
 	}
-	listener, listenErr := net.Listen("tcp", "127.0.0.1:0")
-	if listenErr != nil {
-		t.Fatalf("listen: %v", listenErr)
-	}
 	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
 	t.Cleanup(func() {
 		cancel()
-		listener.Close()
+		receiveWithin(t, done)
 	})
 	go func() {
+		defer close(done)
 		_ = server.Serve(ctx, listener, false)
 	}()
 	return &smtpServerFixture{
-		server: server,
-		relay:  relay,
-		addr:   listener.Addr().String(),
-		cancel: cancel,
+		server:  server,
+		relay:   relay,
+		connect: connect,
+		cancel:  cancel,
+		done:    done,
 	}
 }
 
 func (fixture *smtpServerFixture) dial(t *testing.T) *smtpTestClient {
 	t.Helper()
-	return newSMTPTestClient(mustDial(t, fixture.addr))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	connection, err := fixture.connect(ctx)
+	if err != nil {
+		t.Fatalf("dial SMTP fixture: %v", err)
+	}
+	return newSMTPTestClient(connection)
 }
 
 func (fixture *smtpServerFixture) authenticatedClient(t *testing.T) *smtpTestClient {
@@ -1295,7 +1297,7 @@ func (failingSMTPConn) SetWriteDeadline(time.Time) error {
 }
 
 type splitRemoteSMTPConn struct {
-	remoteAddress string
+	remoteAddress net.Addr
 }
 
 func (conn splitRemoteSMTPConn) Read([]byte) (int, error) {
@@ -1315,7 +1317,7 @@ func (conn splitRemoteSMTPConn) LocalAddr() net.Addr {
 }
 
 func (conn splitRemoteSMTPConn) RemoteAddr() net.Addr {
-	return testListenerAddr(conn.remoteAddress)
+	return conn.remoteAddress
 }
 
 func (conn splitRemoteSMTPConn) SetDeadline(time.Time) error {
@@ -1553,13 +1555,4 @@ func writeTLSFiles(t *testing.T) (string, string) {
 		t.Fatalf("write key: %v", err)
 	}
 	return certPath, keyPath
-}
-
-func mustDial(t *testing.T, address string) net.Conn {
-	t.Helper()
-	connection, dialErr := net.Dial("tcp", address)
-	if dialErr != nil {
-		t.Fatalf("dial smtp server: %v", dialErr)
-	}
-	return connection
 }

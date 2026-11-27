@@ -11,7 +11,7 @@ type smtpThrottle struct {
 	mutex                    sync.Mutex
 	activeSessions           int
 	activeSessionsByHost     map[string]int
-	authFailuresByKey        map[string][]time.Time
+	authAttemptsByKey        map[string]*smtpAuthAttempts
 	acceptedMessagesByKey    map[string][]time.Time
 	maxConcurrentSessions    int
 	maxSessionsPerRemoteHost int
@@ -20,6 +20,11 @@ type smtpThrottle struct {
 	messageLimit             int
 	messageWindow            time.Duration
 	clockFunc                func() time.Time
+}
+
+type smtpAuthAttempts struct {
+	pending  int
+	failures []time.Time
 }
 
 type smtpAuthReservation struct {
@@ -36,7 +41,7 @@ type smtpMessageReservation struct {
 func newSMTPThrottle(configValues Config) *smtpThrottle {
 	return &smtpThrottle{
 		activeSessionsByHost:     make(map[string]int),
-		authFailuresByKey:        make(map[string][]time.Time),
+		authAttemptsByKey:        make(map[string]*smtpAuthAttempts),
 		acceptedMessagesByKey:    make(map[string][]time.Time),
 		maxConcurrentSessions:    configValues.MaxConcurrentSessions,
 		maxSessionsPerRemoteHost: configValues.MaxSessionsPerRemoteHost,
@@ -83,23 +88,34 @@ func (throttle *smtpThrottle) reserveAuthAttempt(remoteHost string, username str
 	throttle.mutex.Lock()
 	defer throttle.mutex.Unlock()
 	now := throttle.clockFunc()
-	failures := pruneWindow(throttle.authFailuresByKey[key], now.Add(-throttle.authFailureWindow))
-	if len(failures) >= throttle.authFailureLimit {
-		throttle.authFailuresByKey[key] = failures
+	attempts := throttle.authAttemptsByKey[key]
+	if attempts == nil {
+		attempts = &smtpAuthAttempts{}
+		throttle.authAttemptsByKey[key] = attempts
+	}
+	attempts.failures = pruneWindow(attempts.failures, now.Add(-throttle.authFailureWindow))
+	if attempts.pending+len(attempts.failures) >= throttle.authFailureLimit {
 		return smtpAuthReservation{}, false
 	}
-	throttle.authFailuresByKey[key] = append(failures, now)
+	attempts.pending++
 	return smtpAuthReservation{throttle: throttle, key: key}, true
 }
 
-func (reservation smtpAuthReservation) accept() {
-	reservation.throttle.clearAuthFailures(reservation.key)
-}
-
-func (throttle *smtpThrottle) clearAuthFailures(key string) {
+func (reservation smtpAuthReservation) finish(status smtpAuthStatus) {
+	throttle := reservation.throttle
 	throttle.mutex.Lock()
 	defer throttle.mutex.Unlock()
-	delete(throttle.authFailuresByKey, key)
+	attempts := throttle.authAttemptsByKey[reservation.key]
+	attempts.pending--
+	switch status {
+	case smtpAuthAccepted:
+		attempts.failures = nil
+	case smtpAuthRejected:
+		attempts.failures = append(attempts.failures, throttle.clockFunc())
+	}
+	if attempts.pending == 0 && len(attempts.failures) == 0 {
+		delete(throttle.authAttemptsByKey, reservation.key)
+	}
 }
 
 func (throttle *smtpThrottle) reserveAcceptedMessage(identityID string) (smtpMessageReservation, bool) {

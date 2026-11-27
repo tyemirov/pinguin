@@ -11,13 +11,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 )
 
+type cloudWatchHTTPClient http.HandlerFunc
+
+func (client cloudWatchHTTPClient) Do(request *http.Request) (*http.Response, error) {
+	recorder := httptest.NewRecorder()
+	client(recorder, request)
+	return recorder.Result(), nil
+}
+
 func TestCloudWatchReadsAllPagesAndUsesExplicitCredential(t *testing.T) {
 	count := 0
-	provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	provider := cloudWatchHTTPClient(func(writer http.ResponseWriter, request *http.Request) {
 		count++
 		if !strings.Contains(request.Header.Get("Authorization"), "Credential=test-key/") {
 			t.Error("explicit credential not used")
@@ -41,11 +48,9 @@ func TestCloudWatchReadsAllPagesAndUsesExplicitCredential(t *testing.T) {
 		envelope["time"] = deliveryNow.Add(-30 * time.Minute)
 		raw, _ := json.Marshal(envelope)
 		_ = json.NewEncoder(writer).Encode(map[string]interface{}{"events": []map[string]interface{}{{"message": string(raw)}}})
-	}))
-	defer provider.Close()
+	})
 	reader, err := NewCloudWatchReader(testCloudConfig, func(options *cloudwatchlogs.Options) {
-		options.BaseEndpoint = aws.String(provider.URL)
-		options.HTTPClient = provider.Client()
+		options.HTTPClient = provider
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -74,16 +79,15 @@ func TestCloudWatchProviderFailures(t *testing.T) {
 		{name: "provider denied", response: `{"__type":"AccessDeniedException","message":"denied"}`, status: 400},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			provider := cloudWatchHTTPClient(func(writer http.ResponseWriter, _ *http.Request) {
 				writer.Header().Set("Content-Type", "application/x-amz-json-1.1")
 				if testCase.status != 0 {
 					writer.WriteHeader(testCase.status)
 				}
 				_, _ = io.WriteString(writer, testCase.response)
-			}))
-			defer provider.Close()
+			})
 			reader, _ := NewCloudWatchReader(testCloudConfig, func(options *cloudwatchlogs.Options) {
-				options.BaseEndpoint = aws.String(provider.URL)
+				options.HTTPClient = provider
 				options.RetryMaxAttempts = 1
 			})
 			if _, err := reader.Read(context.Background(), deliveryNow.Add(-Retention), deliveryNow); err == nil {
@@ -108,7 +112,7 @@ func TestCloudWatchRejectsIncompleteScans(t *testing.T) {
 	for _, mode := range []string{"pages", "records"} {
 		t.Run(mode, func(t *testing.T) {
 			calls := 0
-			provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			provider := cloudWatchHTTPClient(func(writer http.ResponseWriter, _ *http.Request) {
 				calls++
 				if mode == "pages" {
 					_ = json.NewEncoder(writer).Encode(map[string]interface{}{"events": []interface{}{}, "nextToken": fmt.Sprint(calls)})
@@ -119,9 +123,8 @@ func TestCloudWatchRejectsIncompleteScans(t *testing.T) {
 					events[index] = map[string]string{"message": `{"source":"unrelated"}`}
 				}
 				_ = json.NewEncoder(writer).Encode(map[string]interface{}{"events": events})
-			}))
-			defer provider.Close()
-			reader, _ := NewCloudWatchReader(testCloudConfig, func(options *cloudwatchlogs.Options) { options.BaseEndpoint = aws.String(provider.URL) })
+			})
+			reader, _ := NewCloudWatchReader(testCloudConfig, func(options *cloudwatchlogs.Options) { options.HTTPClient = provider })
 			if _, err := reader.Read(context.Background(), deliveryNow.Add(-Retention), deliveryNow); err == nil {
 				t.Fatal("incomplete scan returned success")
 			}
@@ -251,11 +254,10 @@ func TestCloudWatchValidatesSESBoundaryAndEventOutcomes(t *testing.T) {
 		t.Fatal("non-forward header linked")
 	}
 	// The SDK reader ignores unrelated envelopes rather than returning them.
-	provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+	provider := cloudWatchHTTPClient(func(writer http.ResponseWriter, _ *http.Request) {
 		_, _ = fmt.Fprint(writer, `{"events":[{"message":"{\"source\":\"other\"}"}]}`)
-	}))
-	defer provider.Close()
-	reader, _ := NewCloudWatchReader(testCloudConfig, func(options *cloudwatchlogs.Options) { options.BaseEndpoint = aws.String(provider.URL) })
+	})
+	reader, _ := NewCloudWatchReader(testCloudConfig, func(options *cloudwatchlogs.Options) { options.HTTPClient = provider })
 	events, err := reader.Read(context.Background(), deliveryNow.Add(-Retention), deliveryNow)
 	if err != nil || len(events) != 0 {
 		t.Fatal("foreign provider event returned")

@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -56,6 +55,8 @@ func TestRepositoryCreateAuthenticateRotateAndDelete(t *testing.T) {
 		t.Fatalf("unexpected authenticated sender %s", authenticated.EmailAddress.String())
 	}
 
+	rotatedAt := time.Date(2024, time.January, 2, 3, 4, 5, 600000000, time.UTC)
+	repository.clockFunc = func() time.Time { return rotatedAt }
 	rotatedIdentity, rotatedPassword, rotateErr := repository.Rotate(context.Background(), identity.ID)
 	if rotateErr != nil {
 		t.Fatalf("rotate identity: %v", rotateErr)
@@ -66,12 +67,20 @@ func TestRepositoryCreateAuthenticateRotateAndDelete(t *testing.T) {
 	if _, oldAuthErr := repository.Authenticate(context.Background(), identity.Username, password); !errors.Is(oldAuthErr, ErrAuthenticationFailed) {
 		t.Fatalf("expected old credentials to fail, got %v", oldAuthErr)
 	}
-	_, retrievedRotatedPassword, rotatedCredentialsErr := repository.Credentials(context.Background(), identity.ID)
+	retrievedRotatedIdentity, retrievedRotatedPassword, rotatedCredentialsErr := repository.Credentials(context.Background(), identity.ID)
 	if rotatedCredentialsErr != nil {
 		t.Fatalf("retrieve rotated credentials: %v", rotatedCredentialsErr)
 	}
 	if retrievedRotatedPassword != rotatedPassword {
 		t.Fatalf("expected retrievable rotated password, got %s", retrievedRotatedPassword)
+	}
+	if fetchErr := database.Where(&Identity{ID: identity.ID}).First(&storedIdentity).Error; fetchErr != nil {
+		t.Fatalf("fetch rotated identity: %v", fetchErr)
+	}
+	for _, updatedAt := range []time.Time{rotatedIdentity.UpdatedAt, retrievedRotatedIdentity.UpdatedAt, storedIdentity.UpdatedAt} {
+		if !updatedAt.Equal(rotatedAt) {
+			t.Fatalf("expected rotation timestamp %v in the response and stored identity, got %v", rotatedAt, updatedAt)
+		}
 	}
 	if _, newAuthErr := repository.Authenticate(context.Background(), rotatedIdentity.Username, rotatedPassword); newAuthErr != nil {
 		t.Fatalf("expected rotated credentials to authenticate: %v", newAuthErr)
@@ -95,21 +104,8 @@ func TestRepositoryAuthenticateDoesNotRestoreIdentityDeletedDuringAuth(t *testin
 		t.Fatalf("create identity: %v", createErr)
 	}
 
-	deleteDuringAuth := true
 	var deleteErr error
-	repository.clockFunc = func() time.Time {
-		now := time.Now().UTC()
-		if deleteDuringAuth {
-			deleteDuringAuth = false
-			deleteErr = database.Model(&Identity{}).
-				Where(&Identity{ID: identity.ID}).
-				Updates(map[string]interface{}{
-					statusColumn:    IdentityStatusDeleted,
-					updatedAtColumn: now,
-				}).Error
-		}
-		return now
-	}
+	afterSenderDomainRead(t, database, func() { deleteErr = repository.Delete(context.Background(), identity.ID) })
 
 	_, authErr := repository.Authenticate(context.Background(), identity.Username, password)
 	if deleteErr != nil {
@@ -125,6 +121,149 @@ func TestRepositoryAuthenticateDoesNotRestoreIdentityDeletedDuringAuth(t *testin
 	}
 	if storedIdentity.Status != IdentityStatusDeleted {
 		t.Fatalf("expected identity to remain deleted, got %s", storedIdentity.Status)
+	}
+}
+
+func TestRepositoryAuthenticateRejectsCredentialsRotatedDuringAuth(t *testing.T) {
+	repository, database := newIdentityRepository(t)
+	seedSenderDomain(t, database, "example.com")
+	ctx := context.Background()
+	identity, password, err := repository.Create(ctx, mustAddress(t, "alice@example.com"), defaultForwardRecipients(t))
+	if err != nil {
+		t.Fatalf("create identity: %v", err)
+	}
+	var rotateErr error
+	afterSenderDomainRead(t, database, func() {
+		_, _, rotateErr = repository.Rotate(ctx, identity.ID)
+	})
+	_, authErr := repository.Authenticate(ctx, identity.Username, password)
+	if rotateErr != nil {
+		t.Fatalf("rotate during auth: %v", rotateErr)
+	}
+	if !errors.Is(authErr, ErrAuthenticationFailed) {
+		t.Fatalf("expected rotated credentials to be rejected, got %v", authErr)
+	}
+}
+
+func TestRepositoryRecordsUsageOnlyForCurrentCredentialAndKeepsLatestTime(t *testing.T) {
+	repository, database := newIdentityRepository(t)
+	seedSenderDomain(t, database, "example.com")
+	ctx := context.Background()
+	address := mustAddress(t, "alice@example.com")
+	identity, password, err := repository.Create(ctx, address, defaultForwardRecipients(t))
+	if err != nil {
+		t.Fatalf("create identity: %v", err)
+	}
+	authenticated, err := repository.Authenticate(ctx, identity.Username, password)
+	if err != nil {
+		t.Fatalf("authenticate: %v", err)
+	}
+	newest := time.Date(2026, time.November, 26, 3, 0, 0, 123000000, time.UTC)
+	for _, usedAt := range []time.Time{newest, newest.Add(-time.Nanosecond)} {
+		if err := repository.RecordIdentityUse(ctx, authenticated, usedAt); err != nil {
+			t.Fatalf("record identity usage: %v", err)
+		}
+	}
+	var stored Identity
+	if err := database.Where(&Identity{ID: identity.ID}).First(&stored).Error; err != nil {
+		t.Fatalf("read used identity: %v", err)
+	}
+	if stored.LastUsedAt == nil || !stored.LastUsedAt.Equal(newest) || !stored.UpdatedAt.Equal(identity.UpdatedAt) {
+		t.Fatalf("expected latest usage and original update timestamp, got %v and %v", stored.LastUsedAt, stored.UpdatedAt)
+	}
+	if err := repository.Delete(ctx, identity.ID); err != nil {
+		t.Fatalf("delete used identity: %v", err)
+	}
+	if err := repository.RecordIdentityUse(ctx, authenticated, newest.Add(time.Hour)); err != nil {
+		t.Fatalf("record use for deleted credential: %v", err)
+	}
+	if err := database.Where(&Identity{ID: identity.ID}).First(&stored).Error; err != nil {
+		t.Fatalf("read deleted identity: %v", err)
+	}
+	if stored.Status != IdentityStatusDeleted || stored.LastUsedAt == nil || !stored.LastUsedAt.Equal(newest) {
+		t.Fatalf("expected deleted status and original usage, got %q and %v", stored.Status, stored.LastUsedAt)
+	}
+	reactivated, _, err := repository.Create(ctx, address, defaultForwardRecipients(t))
+	if err != nil {
+		t.Fatalf("reactivate identity: %v", err)
+	}
+	if err := repository.RecordIdentityUse(ctx, authenticated, newest.Add(time.Hour)); err != nil {
+		t.Fatalf("record use for stale credential: %v", err)
+	}
+	var active Identity
+	if err := database.Where(&Identity{ID: reactivated.ID}).First(&active).Error; err != nil {
+		t.Fatalf("read reactivated identity: %v", err)
+	}
+	if active.LastUsedAt != nil {
+		t.Fatalf("stale credential updated reactivated identity usage to %v", active.LastUsedAt)
+	}
+}
+
+func TestRepositoryIdentityManagementDoesNotOverwriteConcurrentUsage(t *testing.T) {
+	for _, operation := range []string{"rotate", "delete"} {
+		t.Run(operation, func(t *testing.T) {
+			repository, database := newIdentityRepository(t)
+			seedSenderDomain(t, database, "example.com")
+			ctx := context.Background()
+			identity, password, err := repository.Create(ctx, mustAddress(t, "alice@example.com"), defaultForwardRecipients(t))
+			if err != nil {
+				t.Fatalf("create identity: %v", err)
+			}
+			authenticated, err := repository.Authenticate(ctx, identity.Username, password)
+			if err != nil {
+				t.Fatalf("authenticate: %v", err)
+			}
+			usedAt := identity.CreatedAt.Add(time.Minute)
+			var usageErr error
+			repository.clockFunc = func() time.Time {
+				usageErr = repository.RecordIdentityUse(ctx, authenticated, usedAt)
+				return usedAt.Add(time.Second)
+			}
+			if operation == "rotate" {
+				_, _, err = repository.Rotate(ctx, identity.ID)
+			} else {
+				err = repository.Delete(ctx, identity.ID)
+			}
+			if err != nil || usageErr != nil {
+				t.Fatalf("management error %v, usage error %v", err, usageErr)
+			}
+			var stored Identity
+			if err := database.Where(&Identity{ID: identity.ID}).First(&stored).Error; err != nil {
+				t.Fatalf("read identity after management operation: %v", err)
+			}
+			if stored.LastUsedAt == nil || !stored.LastUsedAt.Equal(usedAt) {
+				t.Fatalf("expected concurrent usage timestamp %v, got %v", usedAt, stored.LastUsedAt)
+			}
+		})
+	}
+}
+
+func TestRepositoryRejectsManagementOfAnIdentityDeletedAfterLookup(t *testing.T) {
+	for _, operation := range []string{"rotate", "delete"} {
+		t.Run(operation, func(t *testing.T) {
+			repository, database := newIdentityRepository(t)
+			seedSenderDomain(t, database, "example.com")
+			ctx := context.Background()
+			identity, _, err := repository.Create(ctx, mustAddress(t, "alice@example.com"), defaultForwardRecipients(t))
+			if err != nil {
+				t.Fatalf("create identity: %v", err)
+			}
+			var deleteErr error
+			repository.clockFunc = func() time.Time {
+				deleteErr = database.Model(&Identity{}).
+					Where(&Identity{ID: identity.ID}).
+					Update(statusColumn, IdentityStatusDeleted).Error
+				return time.Now().UTC()
+			}
+			if operation == "rotate" {
+				_, _, err = repository.Rotate(ctx, identity.ID)
+			} else {
+				err = repository.Delete(ctx, identity.ID)
+			}
+			if deleteErr != nil || !errors.Is(err, ErrIdentityNotFound) {
+				t.Fatalf("concurrent delete error %v, expected missing identity, got %v", deleteErr, err)
+			}
+		})
 	}
 }
 
@@ -968,8 +1107,12 @@ func TestRepositoryAuthenticateRejectsInvalidAndReportsStoredDataFailures(t *tes
 	}
 
 	registerIdentityUpdateError(t, database)
-	if _, authErr := repository.Authenticate(context.Background(), identity.Username, password); authErr == nil || !strings.Contains(authErr.Error(), "mark used") {
-		t.Fatalf("expected mark-used storage failure, got %v", authErr)
+	authenticated, authErr := repository.Authenticate(context.Background(), identity.Username, password)
+	if authErr != nil {
+		t.Fatalf("authenticate independently of usage storage: %v", authErr)
+	}
+	if err := repository.RecordIdentityUse(context.Background(), authenticated, time.Now().UTC()); err == nil || !strings.Contains(err.Error(), "record use") {
+		t.Fatalf("expected usage storage failure, got %v", err)
 	}
 }
 
@@ -992,6 +1135,15 @@ func TestRepositoryAuthenticateReportsInvalidStoredAddress(t *testing.T) {
 	_, authErr := repository.Authenticate(context.Background(), record.Username, password)
 	if authErr == nil || !strings.Contains(authErr.Error(), "stored address") {
 		t.Fatalf("expected stored address error, got %v", authErr)
+	}
+}
+
+func TestRepositoryAuthenticatePreservesIdentityLookupStorageFailure(t *testing.T) {
+	repository, database := newIdentityRepository(t)
+	closeIdentityDatabase(t, database)
+	_, err := repository.Authenticate(context.Background(), "smtp-test-user", "test-password")
+	if err == nil || errors.Is(err, ErrAuthenticationFailed) || !strings.Contains(err.Error(), "identity lookup") {
+		t.Fatalf("expected a contextual identity lookup failure, got %v", err)
 	}
 }
 
@@ -1037,10 +1189,20 @@ func newIdentityRepository(t *testing.T) (*testRepository, *gorm.DB) {
 
 func newIdentityDatabase(t *testing.T) *gorm.DB {
 	t.Helper()
-	database, databaseErr := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "identity.db")), &gorm.Config{})
+	database, databaseErr := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if databaseErr != nil {
 		t.Fatalf("open database: %v", databaseErr)
 	}
+	databaseHandle, handleErr := database.DB()
+	if handleErr != nil {
+		t.Fatalf("database handle: %v", handleErr)
+	}
+	databaseHandle.SetMaxOpenConns(1)
+	t.Cleanup(func() {
+		if closeErr := databaseHandle.Close(); closeErr != nil {
+			t.Errorf("close database: %v", closeErr)
+		}
+	})
 	if migrateErr := database.AutoMigrate(&SenderDomain{}, &Identity{}, &ForwardRecipient{}); migrateErr != nil {
 		t.Fatalf("migrate database: %v", migrateErr)
 	}
@@ -1109,21 +1271,14 @@ func registerSenderDomainCreateError(t *testing.T, database *gorm.DB) {
 
 func registerSenderDomainConcurrentClaim(t *testing.T, database *gorm.DB, claimedTenant string) {
 	t.Helper()
+	claim := &SenderDomain{TenantID: claimedTenant, Domain: "customer.example", Status: SenderDomainStatusPending}
 	callbackName := "pingwin:force_sender_domain_concurrent_claim"
 	if err := database.Callback().Create().Before("gorm:create").Register(callbackName, func(tx *gorm.DB) {
-		if _, ok := tx.Statement.Dest.(*SenderDomain); !ok {
+		domain, ok := tx.Statement.Dest.(*SenderDomain)
+		if !ok || domain == claim {
 			return
 		}
-		_, insertErr := tx.Statement.ConnPool.ExecContext(
-			tx.Statement.Context,
-			"INSERT INTO sender_domains (tenant_id, domain, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-			claimedTenant,
-			"customer.example",
-			SenderDomainStatusPending,
-			time.Now().UTC(),
-			time.Now().UTC(),
-		)
-		if insertErr != nil {
+		if insertErr := tx.Session(&gorm.Session{NewDB: true}).Create(claim).Error; insertErr != nil {
 			tx.AddError(insertErr)
 			return
 		}
@@ -1134,6 +1289,23 @@ func registerSenderDomainConcurrentClaim(t *testing.T, database *gorm.DB, claime
 	t.Cleanup(func() {
 		if err := database.Callback().Create().Remove(callbackName); err != nil {
 			t.Fatalf("remove sender domain concurrent claim callback: %v", err)
+		}
+	})
+}
+
+func afterSenderDomainRead(t *testing.T, database *gorm.DB, run func()) {
+	t.Helper()
+	const callbackName = "pingwin:after_sender_domain_read"
+	if err := database.Callback().Query().After("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		if _, ok := tx.Statement.Dest.(*SenderDomain); ok && tx.Error == nil {
+			run()
+		}
+	}); err != nil {
+		t.Fatalf("register sender domain read callback: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := database.Callback().Query().Remove(callbackName); err != nil {
+			t.Fatalf("remove sender domain read callback: %v", err)
 		}
 	})
 }

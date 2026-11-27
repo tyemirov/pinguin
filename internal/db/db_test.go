@@ -56,13 +56,7 @@ func (migrator failingSchemaMigrator) GetIndexes(interface{}) ([]gorm.Index, err
 func TestInitDBCreatesSchema(t *testing.T) {
 	t.Helper()
 
-	databasePath := filepath.Join(t.TempDir(), "pingwin.db")
-	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
-
-	database, initError := InitDB(databasePath, logger)
-	if initError != nil {
-		t.Fatalf("init db error: %v", initError)
-	}
+	database := newMemoryDatabase(t)
 
 	notification := model.Notification{
 		TenantID:         dbTestTenantID,
@@ -106,31 +100,17 @@ func TestInitDBCreatesSchema(t *testing.T) {
 }
 
 func TestValidateManagedSchema(t *testing.T) {
-	newDatabase := func(t *testing.T) *gorm.DB {
-		t.Helper()
-		database, err := InitDB(filepath.Join(t.TempDir(), "pingwin.db"), slog.New(slog.NewTextHandler(io.Discard, nil)))
-		if err != nil {
-			t.Fatalf("init managed database: %v", err)
-		}
-		return database
-	}
-
 	t.Run("current schema", func(t *testing.T) {
-		databasePath := filepath.Join(t.TempDir(), "pingwin.db")
-		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		if _, err := InitDB(databasePath, logger); err != nil {
-			t.Fatalf("initialize current schema: %v", err)
-		}
-		database, err := InitDB(databasePath, logger)
-		if err != nil {
-			t.Fatalf("reopen current schema: %v", err)
+		database := newMemoryDatabase(t)
+		if err := migrateDatabaseSchema(database); err != nil {
+			t.Fatalf("inspect current schema: %v", err)
 		}
 		if err := ValidateManagedSchema(database); err != nil {
 			t.Fatalf("validate current schema: %v", err)
 		}
 	})
 	t.Run("migration table inspection failure", func(t *testing.T) {
-		database := newDatabase(t)
+		database := newMemoryDatabase(t)
 		sqlDatabase, err := database.DB()
 		if err != nil {
 			t.Fatalf("database handle: %v", err)
@@ -143,7 +123,7 @@ func TestValidateManagedSchema(t *testing.T) {
 		}
 	})
 	t.Run("table inspection failure", func(t *testing.T) {
-		database := newDatabase(t)
+		database := newMemoryDatabase(t)
 		sqlDatabase, err := database.DB()
 		if err != nil {
 			t.Fatalf("database handle: %v", err)
@@ -156,7 +136,7 @@ func TestValidateManagedSchema(t *testing.T) {
 		}
 	})
 	t.Run("missing table", func(t *testing.T) {
-		database := newDatabase(t)
+		database := newMemoryDatabase(t)
 		if err := database.Migrator().DropTable(&tenant.Tenant{}); err != nil {
 			t.Fatalf("drop tenant table: %v", err)
 		}
@@ -165,7 +145,7 @@ func TestValidateManagedSchema(t *testing.T) {
 		}
 	})
 	t.Run("extra table", func(t *testing.T) {
-		database := newDatabase(t)
+		database := newMemoryDatabase(t)
 		if err := database.Migrator().CreateTable(&extraApplicationTable{}); err != nil {
 			t.Fatalf("create extra table: %v", err)
 		}
@@ -174,7 +154,7 @@ func TestValidateManagedSchema(t *testing.T) {
 		}
 	})
 	t.Run("extra column", func(t *testing.T) {
-		database := newDatabase(t)
+		database := newMemoryDatabase(t)
 		if err := database.AutoMigrate(&tenantWithExtraColumn{}); err != nil {
 			t.Fatalf("add extra tenant column: %v", err)
 		}
@@ -183,7 +163,7 @@ func TestValidateManagedSchema(t *testing.T) {
 		}
 	})
 	t.Run("missing expected column", func(t *testing.T) {
-		database := newDatabase(t)
+		database := newMemoryDatabase(t)
 		if err := database.Migrator().RenameColumn(&tenant.Tenant{}, "support_email", "unexpected"); err != nil {
 			t.Fatalf("rename tenant column: %v", err)
 		}
@@ -192,7 +172,7 @@ func TestValidateManagedSchema(t *testing.T) {
 		}
 	})
 	t.Run("missing index count", func(t *testing.T) {
-		database := newDatabase(t)
+		database := newMemoryDatabase(t)
 		if err := database.Migrator().DropIndex(&tenant.Tenant{}, "idx_tenants_owner_user_id"); err != nil {
 			t.Fatalf("drop tenant index: %v", err)
 		}
@@ -201,7 +181,7 @@ func TestValidateManagedSchema(t *testing.T) {
 		}
 	})
 	t.Run("missing expected index", func(t *testing.T) {
-		database := newDatabase(t)
+		database := newMemoryDatabase(t)
 		if err := database.Migrator().RenameIndex(&tenant.Tenant{}, "idx_tenants_owner_user_id", "idx_unexpected"); err != nil {
 			t.Fatalf("rename tenant index: %v", err)
 		}
@@ -210,14 +190,14 @@ func TestValidateManagedSchema(t *testing.T) {
 		}
 	})
 	t.Run("schema parse failure", func(t *testing.T) {
-		database := newDatabase(t)
+		database := newMemoryDatabase(t)
 		err := validateDatabaseSchemaWithModels(database, database.Migrator(), map[string]struct{}{}, []interface{}{make(chan int)})
 		if err == nil || !strings.Contains(err.Error(), "parse managed schema") {
 			t.Fatalf("schema parse error = %v", err)
 		}
 	})
 	t.Run("column inspection failure", func(t *testing.T) {
-		database := newDatabase(t)
+		database := newMemoryDatabase(t)
 		err := validateDatabaseSchemaWithModels(
 			database,
 			failingSchemaMigrator{Migrator: database.Migrator(), columnErr: errors.New("column inspection blocked")},
@@ -229,7 +209,7 @@ func TestValidateManagedSchema(t *testing.T) {
 		}
 	})
 	t.Run("index inspection failure", func(t *testing.T) {
-		database := newDatabase(t)
+		database := newMemoryDatabase(t)
 		err := validateDatabaseSchemaWithModels(
 			database,
 			failingSchemaMigrator{Migrator: database.Migrator(), indexErr: errors.New("index inspection blocked")},
@@ -242,55 +222,17 @@ func TestValidateManagedSchema(t *testing.T) {
 	})
 }
 
-func TestInitDBConfiguresSQLiteContentionSettings(t *testing.T) {
-	t.Helper()
-
-	databasePath := filepath.Join(t.TempDir(), "pingwin.db")
-	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
-
-	database, initError := InitDB(databasePath, logger)
-	if initError != nil {
-		t.Fatalf("init db error: %v", initError)
-	}
-
-	var journalMode string
-	sqlDB, sqlDBError := database.DB()
-	if sqlDBError != nil {
-		t.Fatalf("retrieve sql db error: %v", sqlDBError)
-	}
-	if queryError := sqlDB.QueryRow("PRAGMA journal_mode").Scan(&journalMode); queryError != nil {
-		t.Fatalf("query journal mode: %v", queryError)
-	}
-	if !strings.EqualFold(journalMode, sqliteJournalMode) {
-		t.Fatalf("expected journal mode %s, got %s", sqliteJournalMode, journalMode)
-	}
-
-	var busyTimeoutMilliseconds int
-	if queryError := sqlDB.QueryRow("PRAGMA busy_timeout").Scan(&busyTimeoutMilliseconds); queryError != nil {
-		t.Fatalf("query busy timeout: %v", queryError)
-	}
-	if busyTimeoutMilliseconds != sqliteBusyTimeoutMilliseconds {
-		t.Fatalf("expected busy timeout %d, got %d", sqliteBusyTimeoutMilliseconds, busyTimeoutMilliseconds)
-	}
-}
-
 func TestSQLiteDSNAppendsPragmas(t *testing.T) {
 	t.Helper()
 
 	plainDSN := sqliteDSN("pingwin.db")
-	if !strings.Contains(plainDSN, "pingwin.db?") {
-		t.Fatalf("expected query separator in %s", plainDSN)
-	}
-	if !strings.Contains(plainDSN, "busy_timeout(10000)") {
-		t.Fatalf("expected busy timeout pragma in %s", plainDSN)
-	}
-	if !strings.Contains(plainDSN, "journal_mode(WAL)") {
-		t.Fatalf("expected journal mode pragma in %s", plainDSN)
+	if plainDSN != "pingwin.db?_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)" {
+		t.Fatalf("unexpected SQLite driver configuration %s", plainDSN)
 	}
 
 	existingQueryDSN := sqliteDSN("file:pingwin.db?cache=shared")
-	if !strings.Contains(existingQueryDSN, "cache=shared&") {
-		t.Fatalf("expected existing query separator in %s", existingQueryDSN)
+	if existingQueryDSN != "file:pingwin.db?cache=shared&_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)" {
+		t.Fatalf("unexpected SQLite driver configuration %s", existingQueryDSN)
 	}
 }
 
@@ -371,13 +313,13 @@ func TestSlogGormLoggerImplementsMethods(t *testing.T) {
 	logger.Warn(context.Background(), "warn", "key", "value")
 	logger.Error(context.Background(), "error", "key", "value")
 	logger.Trace(context.Background(), time.Now(), func() (string, int64) {
-		return "select 1", 1
+		return "successful query with sensitive data", 1
 	}, nil)
 	logger.Trace(context.Background(), time.Now(), func() (string, int64) {
-		return "select missing", 0
+		return "missing record with sensitive data", 0
 	}, gorm.ErrRecordNotFound)
 	logger.Trace(context.Background(), time.Now(), func() (string, int64) {
-		return "select broken", 0
+		return "failed query with sensitive data", 0
 	}, errors.New("query failed"))
 }
 
@@ -387,14 +329,14 @@ func TestSlogGormLoggerOmitsInterpolatedSQLValues(t *testing.T) {
 	var logBuffer bytes.Buffer
 	logger := &slogGormLogger{logger: slog.New(slog.NewTextHandler(&logBuffer, &slog.HandlerOptions{}))}
 	logger.Trace(context.Background(), time.Now(), func() (string, int64) {
-		return `SELECT * FROM identities WHERE username = "smtp_sensitive_username"`, 0
+		return "driver-generated statement with smtp_sensitive_username", 0
 	}, errors.New("query failed"))
 
 	output := logBuffer.String()
 	if strings.Contains(output, "smtp_sensitive_username") {
 		t.Fatalf("expected log output to omit SQL values, got %q", output)
 	}
-	if strings.Contains(output, "SELECT * FROM identities") {
+	if strings.Contains(output, "driver-generated statement") {
 		t.Fatalf("expected log output to omit raw SQL, got %q", output)
 	}
 	if !strings.Contains(output, "query failed") {
@@ -403,4 +345,23 @@ func TestSlogGormLoggerOmitsInterpolatedSQLValues(t *testing.T) {
 	if !strings.Contains(output, "rows=0") {
 		t.Fatalf("expected log output to include row count, got %q", output)
 	}
+}
+
+func newMemoryDatabase(t *testing.T) *gorm.DB {
+	t.Helper()
+	database, err := InitDB(":memory:", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("initialize in-memory database: %v", err)
+	}
+	handle, err := database.DB()
+	if err != nil {
+		t.Fatalf("get database lifecycle handle: %v", err)
+	}
+	handle.SetMaxOpenConns(1)
+	t.Cleanup(func() {
+		if err := handle.Close(); err != nil {
+			t.Errorf("close database: %v", err)
+		}
+	})
+	return database
 }

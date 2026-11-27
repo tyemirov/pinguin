@@ -15,6 +15,7 @@ import (
 
 	"github.com/tyemirov/pingwin/internal/config"
 	"github.com/tyemirov/pingwin/internal/smtpidentity"
+	"google.golang.org/grpc/test/bufconn"
 )
 
 func TestDirectMXRelayDeliversToRecipientMX(t *testing.T) {
@@ -24,7 +25,7 @@ func TestDirectMXRelayDeliversToRecipientMX(t *testing.T) {
 			"example.net": {{Host: "mx.example.net.", Pref: 10}},
 		},
 	}
-	dialer := &fakeSMTPDialer{targetAddress: smtpServer.address}
+	dialer := &fakeSMTPDialer{listener: smtpServer.listener}
 	relay := &DirectMXRelay{
 		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 		hostname:         "pingwin-api.mprlab.com",
@@ -98,7 +99,7 @@ func TestDirectMXRelayFallsBackToDomainWhenMXIsAbsent(t *testing.T) {
 		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 		hostname:         "pingwin-api.mprlab.com",
 		resolver:         fakeMXResolver{lookupErr: &net.DNSError{Err: "no such host", Name: "example.net", IsNotFound: true}},
-		dialer:           &fakeSMTPDialer{targetAddress: smtpServer.address},
+		dialer:           &fakeSMTPDialer{listener: smtpServer.listener},
 		operationTimeout: time.Second,
 	}
 
@@ -149,12 +150,12 @@ func TestDirectMXRelayMapsFailures(t *testing.T) {
 	permanentServer := startFakeDirectSMTPServer(t, fakeSMTPBehavior{rcptResponse: "550 no such user"})
 	temporaryServer := startFakeDirectSMTPServer(t, fakeSMTPBehavior{dataResponse: "451 try later"})
 	testCases := []struct {
-		name    string
-		address string
-		wantErr error
+		name     string
+		listener *bufconn.Listener
+		wantErr  error
 	}{
-		{name: "permanent", address: permanentServer.address, wantErr: ErrRelayPermanent},
-		{name: "temporary", address: temporaryServer.address, wantErr: ErrRelayTemporary},
+		{name: "permanent", listener: permanentServer.listener, wantErr: ErrRelayPermanent},
+		{name: "temporary", listener: temporaryServer.listener, wantErr: ErrRelayTemporary},
 	}
 	for _, testCase := range testCases {
 		testCase := testCase
@@ -163,7 +164,7 @@ func TestDirectMXRelayMapsFailures(t *testing.T) {
 				logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 				hostname:         "pingwin-api.mprlab.com",
 				resolver:         fakeMXResolver{records: map[string][]*net.MX{"example.net": {{Host: "mx.example.net.", Pref: 10}}}},
-				dialer:           &fakeSMTPDialer{targetAddress: testCase.address},
+				dialer:           &fakeSMTPDialer{listener: testCase.listener},
 				operationTimeout: time.Second,
 			}
 			err := relay.Relay(context.Background(), RawMessage{
@@ -185,7 +186,7 @@ func TestDirectMXRelayTreatsAcceptedDataAsDeliveredWhenQuitFails(t *testing.T) {
 		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 		hostname:         "pingwin-api.mprlab.com",
 		resolver:         fakeMXResolver{records: map[string][]*net.MX{"example.net": {{Host: "mx.example.net.", Pref: 10}}}},
-		dialer:           &fakeSMTPDialer{targetAddress: smtpServer.address},
+		dialer:           &fakeSMTPDialer{listener: smtpServer.listener},
 		operationTimeout: time.Second,
 	}
 
@@ -294,7 +295,7 @@ func TestDirectMXRelayCoversSMTPCommandErrorBranches(t *testing.T) {
 				logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 				hostname:         "pingwin-api.mprlab.com",
 				resolver:         fakeMXResolver{records: map[string][]*net.MX{"example.net": {{Host: "mx.example.net.", Pref: 10}}}},
-				dialer:           &fakeSMTPDialer{targetAddress: smtpServer.address},
+				dialer:           &fakeSMTPDialer{listener: smtpServer.listener},
 				operationTimeout: time.Second,
 			}
 			err := relay.Relay(context.Background(), RawMessage{
@@ -421,13 +422,13 @@ func (blockingMXResolver) LookupMX(ctx context.Context, _ string) ([]*net.MX, er
 }
 
 type fakeSMTPDialer struct {
-	targetAddress string
-	lastAddress   string
-	connection    net.Conn
-	err           error
+	listener    *bufconn.Listener
+	lastAddress string
+	connection  net.Conn
+	err         error
 }
 
-func (dialer *fakeSMTPDialer) DialContext(ctx context.Context, network string, address string) (net.Conn, error) {
+func (dialer *fakeSMTPDialer) DialContext(ctx context.Context, _ string, address string) (net.Conn, error) {
 	dialer.lastAddress = address
 	if dialer.err != nil {
 		return nil, dialer.err
@@ -435,8 +436,7 @@ func (dialer *fakeSMTPDialer) DialContext(ctx context.Context, network string, a
 	if dialer.connection != nil {
 		return dialer.connection, nil
 	}
-	var netDialer net.Dialer
-	return netDialer.DialContext(ctx, network, dialer.targetAddress)
+	return dialer.listener.DialContext(ctx)
 }
 
 type fakeSMTPBehavior struct {
@@ -463,7 +463,7 @@ func (closer *recordingDataCloser) Close() error {
 }
 
 type fakeDirectSMTPServer struct {
-	address  string
+	listener *bufconn.Listener
 	done     chan struct{}
 	err      error
 	commands []string
@@ -473,13 +473,10 @@ type fakeDirectSMTPServer struct {
 
 func startFakeDirectSMTPServer(t *testing.T, behavior fakeSMTPBehavior) *fakeDirectSMTPServer {
 	t.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen fake smtp: %v", err)
-	}
+	listener := bufconn.Listen(smtpTestBufferSize)
 	server := &fakeDirectSMTPServer{
-		address: listener.Addr().String(),
-		done:    make(chan struct{}),
+		listener: listener,
+		done:     make(chan struct{}),
 	}
 	go func() {
 		defer close(server.done)

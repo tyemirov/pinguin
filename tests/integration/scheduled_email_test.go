@@ -1,3 +1,5 @@
+//go:build integration
+
 package integrationtest
 
 import (
@@ -14,7 +16,7 @@ import (
 	"log/slog"
 )
 
-func TestScheduledEmailDispatchesAfterWorkerRuns(t *testing.T) {
+func TestIntegrationScheduledEmailDispatchesAfterWorkerRuns(t *testing.T) {
 	t.Helper()
 
 	database, keeper := setupTestDB(t)

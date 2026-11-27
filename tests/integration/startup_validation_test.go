@@ -1,3 +1,5 @@
+//go:build integration
+
 package integrationtest
 
 import (
@@ -8,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestServerRejectsObsoleteTenantBootstrapConfiguration(t *testing.T) {
+func TestIntegrationServerRejectsObsoleteTenantBootstrapConfiguration(t *testing.T) {
 	temporaryBinaryDirectory := t.TempDir()
 	temporaryBinaryPath := buildServerBinary(t, temporaryBinaryDirectory)
 
@@ -61,7 +63,7 @@ web:
 	}
 }
 
-func TestServerExitsWhenConfigEnvironmentVariableIsMissing(t *testing.T) {
+func TestIntegrationServerExitsWhenConfigEnvironmentVariableIsMissing(t *testing.T) {
 	temporaryBinaryDirectory := t.TempDir()
 	temporaryBinaryPath := buildServerBinary(t, temporaryBinaryDirectory)
 

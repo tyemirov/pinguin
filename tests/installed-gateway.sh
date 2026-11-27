@@ -11,15 +11,11 @@ make_command="$(command -v make)"
 git_command="$(command -v git)"
 mkdir -p "$application_root" "$runtime_bin" "$tools_bin"
 cp "$repository_root/Makefile" "$application_root/Makefile"
-# The real Makefile reads Go package metadata before selecting its target.
-printf 'module fixture.invalid/gateway-wrapper\n' > "$application_root/go.mod"
-printf 'package fixture\n' > "$application_root/fixture.go"
 git -C "$application_root" init --quiet
 application_root="$(cd "$application_root" && pwd -P)"
 ln -s "$git_command" "$tools_bin/git"
 ln -s "$(command -v dirname)" "$tools_bin/dirname"
 ln -s "$(command -v find)" "$tools_bin/find"
-ln -s "$(command -v go)" "$tools_bin/go"
 ln -s "$(command -v grep)" "$tools_bin/grep"
 
 # The application Makefile is real. Only its external Gateway dependency is controlled.
@@ -52,7 +48,7 @@ export MPRLAB_GATEWAY_OPERATOR_ROOT="$fixture_root/operator with spaces"
 
 for obsolete_target in release publish; do
   status=0
-  PATH="$runtime_bin:$tools_bin" "$make_command" --no-print-directory -s -C "$application_root" "$obsolete_target" ROOT_FAST_PACKAGES= ROOT_SLOW_PACKAGES= > "$fixture_root/obsolete.log" 2>&1 || status=$?
+  PATH="$runtime_bin:$tools_bin" "$make_command" --no-print-directory -s -C "$application_root" "$obsolete_target" > "$fixture_root/obsolete.log" 2>&1 || status=$?
   if [ "$status" -ne 2 ]; then
     cat "$fixture_root/obsolete.log" >&2
     printf '%s: expected an unsupported target, got Make status %s\n' "$obsolete_target" "$status" >&2
@@ -74,7 +70,7 @@ for operation in deploy; do
       command_path="$runtime_bin:$tools_bin"
     fi
     status=0
-    actual="$(PATH="$command_path" "$make_command" --no-print-directory -s -C "$application_root" "$operation" ROOT_FAST_PACKAGES= ROOT_SLOW_PACKAGES= "${arguments[@]}" 2> "$fixture_root/success.err" <<< 'terminal input must be closed')" || status=$?
+    actual="$(PATH="$command_path" "$make_command" --no-print-directory -s -C "$application_root" "$operation" "${arguments[@]}" 2> "$fixture_root/success.err" <<< 'terminal input must be closed')" || status=$?
     if [ "$status" -ne 0 ]; then
       cat "$fixture_root/success.err" >&2
       exit "$status"
@@ -95,7 +91,7 @@ for operation in deploy; do
       arguments+=("MPRLAB_GATEWAY_EXECUTABLE=$fixture_root/missing runtime")
     fi
     status=0
-    PATH="$tools_bin" "$make_command" --no-print-directory -s -C "$application_root" "$operation" ROOT_FAST_PACKAGES= ROOT_SLOW_PACKAGES= "${arguments[@]}" > "$fixture_root/missing.log" 2>&1 || status=$?
+    PATH="$tools_bin" "$make_command" --no-print-directory -s -C "$application_root" "$operation" "${arguments[@]}" > "$fixture_root/missing.log" 2>&1 || status=$?
     if [ "$status" -ne 2 ]; then
       cat "$fixture_root/missing.log" >&2
       printf 'missing runtime: expected Make status 2, got %s\n' "$status" >&2
@@ -106,7 +102,7 @@ for operation in deploy; do
   done
 
   status=0
-  TEST_GATEWAY_FAILURE=1 PATH="$runtime_bin:$tools_bin" "$make_command" --no-print-directory -s -C "$application_root" "$operation" ROOT_FAST_PACKAGES= ROOT_SLOW_PACKAGES= > "$fixture_root/failure.log" 2>&1 || status=$?
+  TEST_GATEWAY_FAILURE=1 PATH="$runtime_bin:$tools_bin" "$make_command" --no-print-directory -s -C "$application_root" "$operation" > "$fixture_root/failure.log" 2>&1 || status=$?
   if [ "$status" -ne 2 ]; then
     cat "$fixture_root/failure.log" >&2
     printf 'Gateway failure: expected Make status 2, got %s\n' "$status" >&2

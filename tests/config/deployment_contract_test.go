@@ -3,7 +3,6 @@ package tests
 import (
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -160,15 +159,6 @@ cardinality: one`)
 }
 
 func TestProductionLifecycleUsesInstalledGateway(t *testing.T) {
-	root, rootErr := filepath.Abs(repoPath())
-	if rootErr != nil {
-		t.Fatalf("resolve application root: %v", rootErr)
-	}
-	command := exec.Command("bash", filepath.Join(root, "tests", "installed-gateway.sh"))
-	command.Dir = root
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("installed Gateway Make integration: %v\n%s", err, output)
-	}
 	makefile := string(readRepoFile(t, "Makefile"))
 	for _, obsoleteTarget := range []string{"\npages-deploy:", "\npublish-release:", "\ncontainer-artifacts:", "\nrelease-artifacts:"} {
 		if strings.Contains(makefile, obsoleteTarget) {

@@ -1,3 +1,5 @@
+//go:build integration
+
 package tests
 
 import (
@@ -10,7 +12,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func TestInstalledGatewayPlansCurrentTrackedManifest(t *testing.T) {
+func TestIntegrationMakeDelegatesToInstalledGateway(t *testing.T) {
+	command := exec.Command("bash", repoPath("tests", "installed-gateway.sh"))
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("installed Gateway Make integration: %v\n%s", err, output)
+	}
+}
+
+func TestIntegrationInstalledGatewayPlansCurrentTrackedManifest(t *testing.T) {
 	trapPath := filepath.Join(t.TempDir(), "inherited-transport.sh")
 	trapFile, err := os.Create(trapPath)
 	if err != nil {
