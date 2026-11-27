@@ -19,7 +19,7 @@ The shared footer uses `menu` for its seven-service catalog.
 
 Run `make test-shared-ui` to verify each page at mobile and desktop widths.
 Run `make test-frontend` for the complete browser suite.
-Run `make ci` for Go analysis, Go tests, coverage, and browser acceptance.
+Run `make ci` for Go format checks, analysis, and unit coverage.
 The repository contract disables GitHub Actions. Local CI provides the application validation result.
 
 The browser suite loads the real shared candidate at the production asset URLs.

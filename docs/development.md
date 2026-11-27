@@ -25,9 +25,10 @@ The CLI and doctor build commands are in the [API](api.md) and [configuration](c
 | --- | --- |
 | `make check-format` | Verify Go formatting. |
 | `make format` | Format Go source files. |
-| `make lint` | Run go vet, staticcheck, and ineffassign. |
-| `make test` | Run fast Go packages and integration packages. |
-| `make test-coverage` | Require 100% total Go statement coverage. |
+| `make lint` | Analyze Go code and tests with go vet, staticcheck, and ineffassign. |
+| `make test` or `make test-unit` | Run the in-process Go suite with controlled dependencies. |
+| `make test-coverage` | Run the unit suite and require 100% Go statement coverage. |
+| `make test-integration` | Run the separately selected CLI, service, SQLite contention, and Gateway integration checks. |
 | `make test-image` | Build the production image and verify the server, doctor, and current executable set. |
 | `make test-frontend` | Run the Playwright browser suite. |
 | `make test-shared-ui` | Run focused shared-library candidate scenarios. |
@@ -35,7 +36,11 @@ The CLI and doctor build commands are in the [API](api.md) and [configuration](c
 | `make test-delivery-contract` | Check affected GORM, environment, and production declaration contracts. |
 | `make test-delivery-coverage` | Collect focused delivery-history coverage through `COVERAGE_PROFILE`. |
 | `make test-delivery-frontend` | Run delivery-history and affected navigation browser scenarios. |
-| `make ci` | Run format checks, analysis, Go tests, coverage, and browser acceptance. |
+| `make ci` | Run Go format checks, analysis, and the unit coverage gate. |
+
+The unit suite uses in-process protocol peers, HTTP recorders, and isolated in-memory SQLite fixtures.
+Put Go integration cases in files with the `integration` build tag and use the `TestIntegration` prefix for their test functions.
+Select those checks when a change needs evidence from real component interactions.
 
 Browser tests cover authentication, tenant lifecycle, responsive layout, Event log, SMTP relay, accessibility, and visual snapshots.
 The harness starts a local server with the managed tenant API and TAuth test boundary.
