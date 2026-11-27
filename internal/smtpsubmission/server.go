@@ -164,16 +164,20 @@ func LoadTLSConfig(certPath string, keyPath string) (*tls.Config, error) {
 
 // Start listens on configured SMTP submission addresses until the context ends.
 func (server *Server) Start(ctx context.Context) error {
+	return server.start(ctx, net.Listen, tls.Listen)
+}
+
+func (server *Server) start(ctx context.Context, listenTCP func(string, string) (net.Listener, error), listenTLS func(string, string, *tls.Config) (net.Listener, error)) error {
 	var listeners []smtpListener
 	if strings.TrimSpace(server.config.ListenAddr) != "" {
-		listener, listenErr := net.Listen("tcp", server.config.ListenAddr)
+		listener, listenErr := listenTCP("tcp", server.config.ListenAddr)
 		if listenErr != nil {
 			return fmt.Errorf("smtp submission: listen %s: %w", server.config.ListenAddr, listenErr)
 		}
 		listeners = append(listeners, smtpListener{listener: listener})
 	}
 	if strings.TrimSpace(server.config.TLSListenAddr) != "" {
-		listener, listenErr := tls.Listen("tcp", server.config.TLSListenAddr, server.config.TLSConfig)
+		listener, listenErr := listenTLS("tcp", server.config.TLSListenAddr, server.config.TLSConfig)
 		if listenErr != nil {
 			closeListeners(listeners)
 			return fmt.Errorf("smtp submission: tls listen %s: %w", server.config.TLSListenAddr, listenErr)

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/tyemirov/pingwin/internal/smtpidentity"
+	"google.golang.org/grpc/test/bufconn"
 )
 
 func TestServerAcceptsAndForwardsInboundMessage(testHandle *testing.T) {
@@ -209,7 +210,10 @@ func TestServerValidationStartAndLimiter(testHandle *testing.T) {
 	}
 	cancelledContext, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := server.Start(cancelledContext); err != nil {
+	listen := func(string, string) (net.Listener, error) {
+		return bufconn.Listen(1024 * 1024), nil
+	}
+	if err := server.start(cancelledContext, listen); err != nil {
 		testHandle.Fatalf("expected canceled start to return nil, got %v", err)
 	}
 
@@ -230,21 +234,18 @@ func TestServerValidationStartAndLimiter(testHandle *testing.T) {
 	if limitedErr != nil {
 		testHandle.Fatalf("limited server: %v", limitedErr)
 	}
-	release, acquireErr := limitedServer.limiter.acquire("127.0.0.1")
+	release, acquireErr := limitedServer.limiter.acquire("bufconn")
 	if acquireErr != nil {
 		testHandle.Fatalf("acquire limiter: %v", acquireErr)
 	}
 	defer release()
-	testListener, listenErr := net.Listen("tcp", "127.0.0.1:0")
-	if listenErr != nil {
-		testHandle.Fatalf("listen: %v", listenErr)
-	}
+	testListener := bufconn.Listen(1024 * 1024)
 	serveContext, serveCancel := context.WithCancel(context.Background())
 	defer serveCancel()
 	go func() {
 		_ = limitedServer.Serve(serveContext, testListener)
 	}()
-	throttledClient := newForwardingTestClient(mustDial(testHandle, testListener.Addr().String()))
+	throttledClient := newForwardingTestClient(mustDial(testHandle, testListener))
 	defer throttledClient.close()
 	throttledClient.expectCode(testHandle, "421")
 	serveCancel()
@@ -323,6 +324,9 @@ func TestHelpersAndReadDataErrors(testHandle *testing.T) {
 	if remoteHostForConnection(&fakeConnection{remoteAddress: fakeAddress("bad address")}) != "bad address" {
 		testHandle.Fatalf("expected unsplittable remote address")
 	}
+	if remoteHostForConnection(&fakeConnection{remoteAddress: fakeAddress("127.0.0.1:25")}) != "127.0.0.1" {
+		testHandle.Fatalf("expected the remote host without its port")
+	}
 	if _, _, err := server.readData(bufio.NewReader(strings.NewReader("partial"))); !errors.Is(err, io.EOF) {
 		testHandle.Fatalf("expected EOF, got %v", err)
 	}
@@ -374,7 +378,7 @@ func TestHelpersAndReadDataErrors(testHandle *testing.T) {
 
 type forwardingServerFixture struct {
 	server    *Server
-	listener  net.Listener
+	listener  *bufconn.Listener
 	forwarder *recordingForwarder
 	cancel    context.CancelFunc
 }
@@ -400,10 +404,7 @@ func newForwardingServerFixture(testHandle *testing.T, mutate func(Config) Confi
 	if serverErr != nil {
 		testHandle.Fatalf("new server: %v", serverErr)
 	}
-	listener, listenErr := net.Listen("tcp", "127.0.0.1:0")
-	if listenErr != nil {
-		testHandle.Fatalf("listen: %v", listenErr)
-	}
+	listener := bufconn.Listen(1024 * 1024)
 	contextValue, cancel := context.WithCancel(context.Background())
 	fixture := &forwardingServerFixture{server: server, listener: listener, forwarder: forwarder, cancel: cancel}
 	go func() {
@@ -418,7 +419,7 @@ func newForwardingServerFixture(testHandle *testing.T, mutate func(Config) Confi
 
 func (fixture *forwardingServerFixture) dial(testHandle *testing.T) *forwardingTestClient {
 	testHandle.Helper()
-	return newForwardingTestClient(mustDial(testHandle, fixture.listener.Addr().String()))
+	return newForwardingTestClient(mustDial(testHandle, fixture.listener))
 }
 
 type recordingForwarder struct {
@@ -530,9 +531,11 @@ func mustRouteSet(testHandle *testing.T) RouteSet {
 	return routeSet
 }
 
-func mustDial(testHandle *testing.T, address string) net.Conn {
+func mustDial(testHandle *testing.T, listener *bufconn.Listener) net.Conn {
 	testHandle.Helper()
-	connection, dialErr := net.Dial("tcp", address)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	connection, dialErr := listener.DialContext(ctx)
 	if dialErr != nil {
 		testHandle.Fatalf("dial: %v", dialErr)
 	}

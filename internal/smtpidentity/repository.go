@@ -310,8 +310,13 @@ func (repository *Repository) RotateForScope(ctx context.Context, scope AccessSc
 	update := repository.db.WithContext(ctx).
 		Model(&Identity{}).
 		Where(&Identity{ID: record.ID, TenantID: record.TenantID, Status: IdentityStatusActive}).
-		Select([]string{usernameColumn, "password_salt", "password_digest", "password_cipher", updatedAtColumn}).
-		Updates(&record)
+		Updates(map[string]interface{}{
+			usernameColumn:    record.Username,
+			"password_salt":   record.PasswordSalt,
+			"password_digest": record.PasswordDigest,
+			"password_cipher": record.PasswordCipher,
+			updatedAtColumn:   record.UpdatedAt,
+		})
 	if update.Error != nil {
 		return PublicIdentity{}, "", fmt.Errorf("smtp identity rotate: %w", update.Error)
 	}

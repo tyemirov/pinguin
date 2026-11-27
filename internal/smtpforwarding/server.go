@@ -98,7 +98,11 @@ func NewServer(configValues Config) (*Server, error) {
 
 // Start listens for inbound SMTP until the context is cancelled.
 func (server *Server) Start(ctx context.Context) error {
-	listener, listenErr := net.Listen("tcp", server.config.ListenAddr)
+	return server.start(ctx, net.Listen)
+}
+
+func (server *Server) start(ctx context.Context, listen func(string, string) (net.Listener, error)) error {
+	listener, listenErr := listen("tcp", server.config.ListenAddr)
 	if listenErr != nil {
 		return fmt.Errorf("smtp forwarding: listen %s: %w", server.config.ListenAddr, listenErr)
 	}

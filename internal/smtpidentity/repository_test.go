@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -56,6 +55,8 @@ func TestRepositoryCreateAuthenticateRotateAndDelete(t *testing.T) {
 		t.Fatalf("unexpected authenticated sender %s", authenticated.EmailAddress.String())
 	}
 
+	rotatedAt := time.Date(2024, time.January, 2, 3, 4, 5, 600000000, time.UTC)
+	repository.clockFunc = func() time.Time { return rotatedAt }
 	rotatedIdentity, rotatedPassword, rotateErr := repository.Rotate(context.Background(), identity.ID)
 	if rotateErr != nil {
 		t.Fatalf("rotate identity: %v", rotateErr)
@@ -66,12 +67,20 @@ func TestRepositoryCreateAuthenticateRotateAndDelete(t *testing.T) {
 	if _, oldAuthErr := repository.Authenticate(context.Background(), identity.Username, password); !errors.Is(oldAuthErr, ErrAuthenticationFailed) {
 		t.Fatalf("expected old credentials to fail, got %v", oldAuthErr)
 	}
-	_, retrievedRotatedPassword, rotatedCredentialsErr := repository.Credentials(context.Background(), identity.ID)
+	retrievedRotatedIdentity, retrievedRotatedPassword, rotatedCredentialsErr := repository.Credentials(context.Background(), identity.ID)
 	if rotatedCredentialsErr != nil {
 		t.Fatalf("retrieve rotated credentials: %v", rotatedCredentialsErr)
 	}
 	if retrievedRotatedPassword != rotatedPassword {
 		t.Fatalf("expected retrievable rotated password, got %s", retrievedRotatedPassword)
+	}
+	if fetchErr := database.Where(&Identity{ID: identity.ID}).First(&storedIdentity).Error; fetchErr != nil {
+		t.Fatalf("fetch rotated identity: %v", fetchErr)
+	}
+	for _, updatedAt := range []time.Time{rotatedIdentity.UpdatedAt, retrievedRotatedIdentity.UpdatedAt, storedIdentity.UpdatedAt} {
+		if !updatedAt.Equal(rotatedAt) {
+			t.Fatalf("expected rotation timestamp %v in the response and stored identity, got %v", rotatedAt, updatedAt)
+		}
 	}
 	if _, newAuthErr := repository.Authenticate(context.Background(), rotatedIdentity.Username, rotatedPassword); newAuthErr != nil {
 		t.Fatalf("expected rotated credentials to authenticate: %v", newAuthErr)
@@ -1180,10 +1189,20 @@ func newIdentityRepository(t *testing.T) (*testRepository, *gorm.DB) {
 
 func newIdentityDatabase(t *testing.T) *gorm.DB {
 	t.Helper()
-	database, databaseErr := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "identity.db")), &gorm.Config{})
+	database, databaseErr := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if databaseErr != nil {
 		t.Fatalf("open database: %v", databaseErr)
 	}
+	databaseHandle, handleErr := database.DB()
+	if handleErr != nil {
+		t.Fatalf("database handle: %v", handleErr)
+	}
+	databaseHandle.SetMaxOpenConns(1)
+	t.Cleanup(func() {
+		if closeErr := databaseHandle.Close(); closeErr != nil {
+			t.Errorf("close database: %v", closeErr)
+		}
+	})
 	if migrateErr := database.AutoMigrate(&SenderDomain{}, &Identity{}, &ForwardRecipient{}); migrateErr != nil {
 		t.Fatalf("migrate database: %v", migrateErr)
 	}

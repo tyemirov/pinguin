@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -938,15 +937,11 @@ func TestHealthzBypassesTenantLookup(t *testing.T) {
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			server := newTestHTTPServerWithRepo(t, &stubNotificationService{}, &stubValidator{}, scenario.repo)
-			listener := httptest.NewServer(server.httpServer.Handler)
-			defer listener.Close()
-			response, err := listener.Client().Get(listener.URL + "/healthz")
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer response.Body.Close()
-			if response.StatusCode != scenario.status || response.Header.Get("Cache-Control") != "no-store" {
-				t.Fatalf("health response: %d %v", response.StatusCode, response.Header)
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+			server.httpServer.Handler.ServeHTTP(recorder, request)
+			if recorder.Code != scenario.status || recorder.Header().Get("Cache-Control") != "no-store" {
+				t.Fatalf("health response: %d %v", recorder.Code, recorder.Header())
 			}
 		})
 	}
@@ -1599,10 +1594,7 @@ func newTestHTTPServerWithSMTPIdentitiesValidatorAndResolverSeeded(t *testing.T,
 	if err != nil {
 		t.Fatalf("secret keeper error: %v", err)
 	}
-	dbInstance, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "httpapi.db")), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
+	dbInstance := newHTTPTestDatabase(t)
 	if err := dbInstance.AutoMigrate(
 		&model.Notification{},
 		&model.NotificationAttachment{},
@@ -1670,10 +1662,7 @@ func newTestHTTPServerWithBrokenSMTPIdentities(t *testing.T) (*Server, *smtpiden
 func newTestHTTPServerWithBrokenSMTPIdentitiesAndValidator(t *testing.T, validator SessionValidator) (*Server, *smtpidentity.Repository) {
 	t.Helper()
 	secretKey := strings.Repeat("a", 64)
-	dbInstance, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "broken-httpapi.db")), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
+	dbInstance := newHTTPTestDatabase(t)
 	if err := dbInstance.AutoMigrate(&smtpidentity.SenderDomain{}, &smtpidentity.Identity{}, &smtpidentity.ForwardRecipient{}); err != nil {
 		t.Fatalf("migrate sqlite: %v", err)
 	}
@@ -1730,10 +1719,7 @@ func newClosedTenantRepository(t *testing.T) *tenant.Repository {
 	if err != nil {
 		t.Fatalf("secret keeper error: %v", err)
 	}
-	dbInstance, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "closed.db")), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
+	dbInstance := newHTTPTestDatabase(t)
 	sqlDB, err := dbInstance.DB()
 	if err != nil {
 		t.Fatalf("get sql db: %v", err)
@@ -1757,11 +1743,7 @@ func newSeededTenantRepository(t *testing.T, seeds []tenantSeed) *tenant.Reposit
 	if err != nil {
 		t.Fatalf("secret keeper error: %v", err)
 	}
-	databaseName := "file:" + strings.ReplaceAll(t.Name(), "/", "_") + "_" + time.Now().UTC().Format("20060102150405.000000000") + "?mode=memory&cache=shared"
-	dbInstance, err := gorm.Open(sqlite.Open(databaseName), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
+	dbInstance := newHTTPTestDatabase(t)
 	if err := dbInstance.AutoMigrate(
 		&model.Notification{},
 		&model.NotificationAttachment{},
@@ -1780,6 +1762,25 @@ func newSeededTenantRepository(t *testing.T, seeds []tenantSeed) *tenant.Reposit
 		seedManagedTenant(t, dbInstance, keeper, seed.id, seed.ownerUserID, seed.displayName, seed.supportEmail)
 	}
 	return tenant.NewRepository(dbInstance, keeper)
+}
+
+func newHTTPTestDatabase(t *testing.T) *gorm.DB {
+	t.Helper()
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open SQLite test database: %v", err)
+	}
+	handle, err := database.DB()
+	if err != nil {
+		t.Fatalf("get SQLite test database handle: %v", err)
+	}
+	handle.SetMaxOpenConns(1)
+	t.Cleanup(func() {
+		if err := handle.Close(); err != nil {
+			t.Errorf("close SQLite test database: %v", err)
+		}
+	})
+	return database
 }
 
 func seedManagedTenant(t *testing.T, database *gorm.DB, keeper *tenant.SecretKeeper, tenantID, ownerUserID, displayName, supportEmail string) {

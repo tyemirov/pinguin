@@ -8,14 +8,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
-	"github.com/glebarez/sqlite"
 	"github.com/tyemirov/pingwin/internal/delivery"
 	"github.com/tyemirov/pingwin/internal/model"
 	"github.com/tyemirov/pingwin/internal/smtpidentity"
@@ -31,13 +28,18 @@ type deliveryHTTPFixture struct {
 	calls          int
 }
 
+type deliveryHTTPClient http.HandlerFunc
+
+func (client deliveryHTTPClient) Do(request *http.Request) (*http.Response, error) {
+	recorder := httptest.NewRecorder()
+	client(recorder, request)
+	return recorder.Result(), nil
+}
+
 func newDeliveryHTTPFixture(t *testing.T) *deliveryHTTPFixture {
 	t.Helper()
 	fixture := &deliveryHTTPFixture{now: time.Now().UTC().Truncate(time.Second)}
-	database, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "delivery.db")), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	database := newHTTPTestDatabase(t)
 	fixture.database = database
 	if err := database.AutoMigrate(&tenant.Tenant{}, &tenant.EmailProfile{}, &tenant.SMSProfile{}, &tenant.APICredential{}, &tenant.IdempotencyRecord{}, &smtpidentity.SenderDomain{}, &smtpidentity.Identity{}, &smtpidentity.ForwardRecipient{}, &model.Notification{}, &model.NotificationAttachment{}); err != nil {
 		t.Fatal(err)
@@ -56,7 +58,7 @@ func newDeliveryHTTPFixture(t *testing.T) *deliveryHTTPFixture {
 	}
 	identityRepo, _ := smtpidentity.NewRepository(database, strings.Repeat("a", 64))
 	identityService := smtpidentity.NewService(identityRepo, smtpidentity.PublicSettings{})
-	provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+	provider := deliveryHTTPClient(func(writer http.ResponseWriter, _ *http.Request) {
 		fixture.calls++
 		writer.Header().Set("Content-Type", "application/x-amz-json-1.1")
 		if fixture.providerStatus != 0 {
@@ -73,10 +75,9 @@ func newDeliveryHTTPFixture(t *testing.T) *deliveryHTTPFixture {
 			events = append(events, map[string]interface{}{"message": string(raw)})
 		}
 		_ = json.NewEncoder(writer).Encode(map[string]interface{}{"events": events})
-	}))
-	t.Cleanup(provider.Close)
+	})
 	reader, err := delivery.NewCloudWatchReader(delivery.CloudWatchConfig{Region: "us-east-1", AccountID: "123456789012", LogGroup: "/delivery", ConfigurationSet: "delivery", AccessKeyID: "key", SecretAccessKey: "secret"}, func(options *cloudwatchlogs.Options) {
-		options.BaseEndpoint = aws.String(provider.URL)
+		options.HTTPClient = provider
 		options.RetryMaxAttempts = 1
 	})
 	if err != nil {
@@ -96,18 +97,10 @@ func newDeliveryHTTPFixture(t *testing.T) *deliveryHTTPFixture {
 
 func deliveryHTTPGet(t *testing.T, fixture *deliveryHTTPFixture, path string) (int, http.Header, string) {
 	t.Helper()
-	listener := httptest.NewServer(fixture.server.httpServer.Handler)
-	defer listener.Close()
-	response, err := http.Get(listener.URL + path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer response.Body.Close()
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return response.StatusCode, response.Header, string(body)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, path, nil)
+	fixture.server.httpServer.Handler.ServeHTTP(recorder, request)
+	return recorder.Code, recorder.Header(), recorder.Body.String()
 }
 
 func TestEmailDeliveryHTTPIsolationSearchAndPagination(t *testing.T) {
